@@ -54,4 +54,8 @@ export function requestDelete<T>(url: string, config?: AxiosRequestConfig): Prom
   return request.delete<unknown, ApiResult<T>>(url, config)
 }
 
+export function requestPut<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiResult<T>> {
+  return request.put<unknown, ApiResult<T>>(url, data, config)
+}
+
 export default request

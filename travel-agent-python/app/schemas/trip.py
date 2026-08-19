@@ -39,3 +39,31 @@ class GenerateResponse(WireModel):
     title: str
     daily_plans: list[DailyPlan]
     budget_estimate: dict[str, float] = Field(default_factory=dict)
+
+
+class AdjustRequest(WireModel):
+    city: str = Field(min_length=1, max_length=64)
+    item_type: str = Field(default="attraction", pattern="^(attraction|food|hotel|transport)$")
+    poi_name: str = Field(min_length=1, max_length=128)
+    preferences: list[str] = Field(default_factory=list)
+
+
+class PoiOption(WireModel):
+    poi_id: int | None = None
+    name: str
+    category: str | None = None
+    address: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    ticket_price: float | None = None
+    duration_min: int | None = None
+    open_time: str | None = None
+    tags: str | None = None
+    rating: float | None = None
+    description: str | None = None
+
+
+class AdjustResponse(WireModel):
+    city: str
+    current: str
+    recommendations: list[PoiOption] = Field(default_factory=list)

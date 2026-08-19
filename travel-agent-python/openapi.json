@@ -47,28 +47,6 @@
         }
       }
     },
-    "/api/agent/debug-db": {
-      "get": {
-        "tags": [
-          "agent"
-        ],
-        "summary": "Debug Db",
-        "operationId": "debug_db_api_agent_debug_db_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "title": "Response Debug Db Api Agent Debug Db Get"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/agent/test-generate": {
       "get": {
         "tags": [
@@ -130,10 +108,139 @@
           }
         }
       }
+    },
+    "/api/agent/v1/adjust": {
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Adjust",
+        "operationId": "adjust_api_agent_v1_adjust_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_AdjustResponse_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AdjustRequest": {
+        "properties": {
+          "city": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "City"
+          },
+          "itemType": {
+            "type": "string",
+            "pattern": "^(attraction|food|hotel|transport)$",
+            "title": "Itemtype",
+            "default": "attraction"
+          },
+          "poiName": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Poiname"
+          },
+          "preferences": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Preferences"
+          }
+        },
+        "type": "object",
+        "required": [
+          "city",
+          "poiName"
+        ],
+        "title": "AdjustRequest"
+      },
+      "AdjustResponse": {
+        "properties": {
+          "city": {
+            "type": "string",
+            "title": "City"
+          },
+          "current": {
+            "type": "string",
+            "title": "Current"
+          },
+          "recommendations": {
+            "items": {
+              "$ref": "#/components/schemas/PoiOption"
+            },
+            "type": "array",
+            "title": "Recommendations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "city",
+          "current"
+        ],
+        "title": "AdjustResponse"
+      },
+      "ApiResponse_AdjustResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ApiResponse[AdjustResponse]"
+      },
       "ApiResponse_GenerateResponse_": {
         "properties": {
           "code": {
@@ -359,6 +466,140 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "PoiOption": {
+        "properties": {
+          "poiId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poiid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "ticketPrice": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticketprice"
+          },
+          "durationMin": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Durationmin"
+          },
+          "openTime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opentime"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "PoiOption"
       },
       "TripItem": {
         "properties": {

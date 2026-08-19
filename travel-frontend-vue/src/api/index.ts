@@ -1,5 +1,11 @@
-import { requestDelete, requestGet, requestPost } from './request'
-import type { ItineraryDetail, ItinerarySummary, LoginResponse, UserInfo } from '../types/itinerary'
+import { requestDelete, requestGet, requestPost, requestPut } from './request'
+import type {
+  ItineraryDetail,
+  ItinerarySummary,
+  LoginResponse,
+  TripItem,
+  UserInfo,
+} from '../types/itinerary'
 
 export function getHello() {
   return requestGet<string>('/test/hello')
@@ -43,4 +49,35 @@ export function getItineraryDetail(id: number | string) {
 
 export function deleteItinerary(id: number) {
   return requestDelete<void>(`/itinerary/${id}`)
+}
+
+export interface AmapPoi {
+  id: string
+  name: string
+  address: string | null
+  latitude: number | null
+  longitude: number | null
+  type: string | null
+}
+
+export function searchPoi(keywords: string, city?: string) {
+  return requestGet<AmapPoi[]>('/amap/poi', {
+    params: { keywords, city: city || undefined },
+  })
+}
+
+export function addItem(id: number | string, data: Partial<TripItem> & { dayId: number }) {
+  return requestPost<ItineraryDetail>(`/itinerary/${id}/items`, data)
+}
+
+export function updateItem(itemId: number, data: Partial<TripItem>) {
+  return requestPut<ItineraryDetail>(`/itinerary/items/${itemId}`, data)
+}
+
+export function deleteItem(itemId: number) {
+  return requestDelete<ItineraryDetail>(`/itinerary/items/${itemId}`)
+}
+
+export function reorderItems(id: number | string, dayId: number, itemIds: number[]) {
+  return requestPut<ItineraryDetail>(`/itinerary/${id}/days/${dayId}/order`, itemIds)
 }

@@ -3,6 +3,7 @@ import logging
 from math import ceil
 
 from app.agent import tools
+from app.agent.geo import nearest_neighbor_order
 from app.common.config import settings
 from app.common.llm_client import get_llm_client
 
@@ -23,10 +24,13 @@ def fallback_generate(city: str, days: int, persons: int, preferences: list[str]
 
     daily_plans: list[dict] = []
     cursor = 0
+    ordered = nearest_neighbor_order(attractions)
+    if not ordered:
+        ordered = attractions
     for day_no in range(1, days + 1):
         items: list[dict] = []
         for slot_index in range(ATTRACTIONS_PER_DAY):
-            poi = attractions[cursor % len(attractions)] if attractions else None
+            poi = ordered[cursor % len(ordered)] if ordered else None
             cursor += 1
             if poi is None:
                 continue

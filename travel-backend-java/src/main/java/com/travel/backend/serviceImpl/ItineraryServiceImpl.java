@@ -5,6 +5,7 @@ import com.travel.backend.common.BizException;
 import com.travel.backend.dto.AgentGenerateRequest;
 import com.travel.backend.dto.AgentGenerateResponse;
 import com.travel.backend.dto.GenerateRequest;
+import com.travel.backend.dto.ItemUpsertRequest;
 import com.travel.backend.entity.BudgetDetail;
 import com.travel.backend.entity.ItineraryDay;
 import com.travel.backend.entity.ItineraryItem;
@@ -14,6 +15,7 @@ import com.travel.backend.mapper.ItineraryDayMapper;
 import com.travel.backend.mapper.ItineraryItemMapper;
 import com.travel.backend.mapper.ItineraryMainMapper;
 import com.travel.backend.service.AgentService;
+import com.travel.backend.service.BudgetEngine;
 import com.travel.backend.service.ItineraryService;
 import com.travel.backend.vo.ItinerarySummaryVO;
 import com.travel.backend.vo.ItineraryVO;
@@ -24,7 +26,6 @@ import java.math.BigDecimal;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 @Service
 public class ItineraryServiceImpl implements ItineraryService {
@@ -34,15 +35,17 @@ public class ItineraryServiceImpl implements ItineraryService {
     private final ItineraryItemMapper itemMapper;
     private final BudgetDetailMapper budgetMapper;
     private final AgentService agentService;
+    private final BudgetEngine budgetEngine;
 
     public ItineraryServiceImpl(ItineraryMainMapper mainMapper, ItineraryDayMapper dayMapper,
                                 ItineraryItemMapper itemMapper, BudgetDetailMapper budgetMapper,
-                                AgentService agentService) {
+                                AgentService agentService, BudgetEngine budgetEngine) {
         this.mainMapper = mainMapper;
         this.dayMapper = dayMapper;
         this.itemMapper = itemMapper;
         this.budgetMapper = budgetMapper;
         this.agentService = agentService;
+        this.budgetEngine = budgetEngine;
     }
 
     @Override
@@ -96,24 +99,17 @@ public class ItineraryServiceImpl implements ItineraryService {
         }
 
         List<ItineraryVO.BudgetVO> budgetVOList = new ArrayList<>();
-        List<BudgetDetail> budgetEntities = new ArrayList<>();
-        if (response.getBudgetEstimate() != null) {
-            for (Map.Entry<String, BigDecimal> entry : response.getBudgetEstimate().entrySet()) {
-                BudgetDetail budget = new BudgetDetail();
-                budget.setItineraryId(main.getId());
-                budget.setCategory(entry.getKey());
-                budget.setAmount(entry.getValue());
-                budget.setItemCount(0);
-                budgetMapper.insert(budget);
-                budgetEntities.add(budget);
-                budgetVOList.add(toBudgetVO(budget));
-            }
+        for (BudgetDetail budget : budgetEngine.recalculate(main.getId())) {
+            budgetVOList.add(toBudgetVO(budget));
         }
 
         ItineraryVO vo = toVO(main);
         vo.setDayList(dayVOList);
         vo.setBudgetList(budgetVOList);
-        vo.setTotalAmount(sumAmount(budgetEntities));
+        vo.setTotalAmount(budgetVOList.stream()
+                .map(ItineraryVO.BudgetVO::getAmount)
+                .filter(amount -> amount != null)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
         return vo;
     }
 
@@ -186,6 +182,112 @@ public class ItineraryServiceImpl implements ItineraryService {
         itemMapper.delete(new LambdaQueryWrapper<ItineraryItem>().eq(ItineraryItem::getItineraryId, id));
         budgetMapper.delete(new LambdaQueryWrapper<BudgetDetail>().eq(BudgetDetail::getItineraryId, id));
         mainMapper.deleteById(id);
+    }
+
+    @Override
+    @Transactional
+    public ItineraryVO addItem(Long userId, Long itineraryId, ItemUpsertRequest request) {
+        findOwnedMain(userId, itineraryId);
+        if (request.getDayId() == null || request.getItemType() == null
+                || request.getPoiName() == null || request.getPoiName().isBlank()) {
+            throw new BizException(400, "dayId、itemType、poiName 必填");
+        }
+        ItineraryDay day = dayMapper.selectOne(new LambdaQueryWrapper<ItineraryDay>()
+                .eq(ItineraryDay::getId, request.getDayId())
+                .eq(ItineraryDay::getItineraryId, itineraryId));
+        if (day == null) {
+            throw new BizException(404, "日期不存在");
+        }
+        Integer maxSort = itemMapper.selectList(new LambdaQueryWrapper<ItineraryItem>()
+                        .eq(ItineraryItem::getDayId, request.getDayId()))
+                .stream().map(ItineraryItem::getSortNo)
+                .filter(sort -> sort != null)
+                .max(Integer::compareTo).orElse(-1);
+
+        ItineraryItem entity = new ItineraryItem();
+        entity.setDayId(request.getDayId());
+        entity.setItineraryId(itineraryId);
+        entity.setItemType(request.getItemType());
+        entity.setPoiName(request.getPoiName());
+        entity.setPoiId(request.getPoiId());
+        entity.setAddress(request.getAddress());
+        entity.setLatitude(request.getLatitude());
+        entity.setLongitude(request.getLongitude());
+        entity.setStartTime(request.getStartTime());
+        entity.setEndTime(request.getEndTime());
+        entity.setDurationMin(request.getDurationMin());
+        entity.setCost(request.getCost());
+        entity.setTag(request.getTag());
+        entity.setRemark(request.getRemark());
+        entity.setSortNo(maxSort + 1);
+        itemMapper.insert(entity);
+
+        budgetEngine.recalculate(itineraryId);
+        return detail(userId, itineraryId);
+    }
+
+    @Override
+    @Transactional
+    public ItineraryVO updateItem(Long userId, Long itemId, ItemUpsertRequest request) {
+        ItineraryItem item = findOwnedItem(userId, itemId);
+        if (request.getItemType() != null) {
+            item.setItemType(request.getItemType());
+        }
+        if (request.getPoiName() != null && !request.getPoiName().isBlank()) {
+            item.setPoiName(request.getPoiName());
+        }
+        item.setPoiId(request.getPoiId());
+        item.setAddress(request.getAddress());
+        item.setLatitude(request.getLatitude());
+        item.setLongitude(request.getLongitude());
+        item.setStartTime(request.getStartTime());
+        item.setEndTime(request.getEndTime());
+        item.setDurationMin(request.getDurationMin());
+        item.setCost(request.getCost());
+        item.setTag(request.getTag());
+        item.setRemark(request.getRemark());
+        itemMapper.updateById(item);
+
+        budgetEngine.recalculate(item.getItineraryId());
+        return detail(userId, item.getItineraryId());
+    }
+
+    @Override
+    @Transactional
+    public ItineraryVO deleteItem(Long userId, Long itemId) {
+        ItineraryItem item = findOwnedItem(userId, itemId);
+        itemMapper.deleteById(itemId);
+        budgetEngine.recalculate(item.getItineraryId());
+        return detail(userId, item.getItineraryId());
+    }
+
+    @Override
+    @Transactional
+    public ItineraryVO reorderItems(Long userId, Long itineraryId, Long dayId, List<Long> itemIds) {
+        findOwnedMain(userId, itineraryId);
+        List<ItineraryItem> items = itemMapper.selectList(new LambdaQueryWrapper<ItineraryItem>()
+                .eq(ItineraryItem::getDayId, dayId)
+                .eq(ItineraryItem::getItineraryId, itineraryId));
+        for (int index = 0; index < itemIds.size(); index++) {
+            for (ItineraryItem item : items) {
+                if (item.getId().equals(itemIds.get(index))) {
+                    item.setSortNo(index);
+                    itemMapper.updateById(item);
+                    break;
+                }
+            }
+        }
+        budgetEngine.recalculate(itineraryId);
+        return detail(userId, itineraryId);
+    }
+
+    private ItineraryItem findOwnedItem(Long userId, Long itemId) {
+        ItineraryItem item = itemMapper.selectById(itemId);
+        if (item == null) {
+            throw new BizException(404, "行程项不存在");
+        }
+        findOwnedMain(userId, item.getItineraryId());
+        return item;
     }
 
     private ItineraryMain findOwnedMain(Long userId, Long id) {

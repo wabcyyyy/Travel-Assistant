@@ -5,8 +5,9 @@ from langgraph.graph import END, StateGraph
 
 from app.agent import tools
 from app.agent.generators import fallback_generate, llm_generate
+from app.agent.tools import search_attractions, search_foods
 from app.common.config import settings
-from app.schemas.trip import DailyPlan, GenerateRequest, GenerateResponse, TripItem
+from app.schemas.trip import AdjustRequest, AdjustResponse, DailyPlan, GenerateRequest, GenerateResponse, PoiOption, TripItem
 
 logger = logging.getLogger(__name__)
 
@@ -121,3 +122,21 @@ def run_generate(req: GenerateRequest) -> GenerateResponse:
     }
     result = agent_graph.invoke(state)
     return result["result"]
+
+
+def run_adjust(req: AdjustRequest) -> AdjustResponse:
+    if req.item_type == "attraction":
+        candidates = search_attractions(req.city, req.preferences)
+    else:
+        candidates = search_foods(req.city)
+    seen = set()
+    recommendations: list[PoiOption] = []
+    for poi in candidates:
+        name = poi.get("name")
+        if not name or name == req.poi_name or name in seen:
+            continue
+        seen.add(name)
+        recommendations.append(PoiOption(**poi))
+        if len(recommendations) >= 5:
+            break
+    return AdjustResponse(city=req.city, current=req.poi_name, recommendations=recommendations)

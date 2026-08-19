@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 
-from app.agent.workflow import run_generate
+from app.agent.workflow import run_adjust, run_generate
 from app.schemas.common import ApiResponse
-from app.schemas.trip import GenerateRequest, GenerateResponse
+from app.schemas.trip import AdjustRequest, AdjustResponse, GenerateRequest, GenerateResponse
 
 router = APIRouter()
 
@@ -64,3 +64,8 @@ def test_generate() -> ApiResponse[dict]:
 @router.post("/v1/generate")
 def generate(req: GenerateRequest) -> ApiResponse[GenerateResponse]:
     return ApiResponse.ok(run_generate(req))
+
+
+@router.post("/v1/adjust")
+def adjust(req: AdjustRequest) -> ApiResponse[AdjustResponse]:
+    return ApiResponse.ok(run_adjust(req))
