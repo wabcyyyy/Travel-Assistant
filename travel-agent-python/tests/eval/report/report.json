@@ -1,0 +1,490 @@
+{
+  "caseCount": 30,
+  "toolCallAccuracy": 1.0,
+  "timeConflictRate": 0.0,
+  "attractionDuplicateRate": 0.0,
+  "budgetDeviationRate": 0.0,
+  "hallucinationRate": 0.0,
+  "details": [
+    {
+      "case": {
+        "city": "北京",
+        "days": 1,
+        "pref": "亲子",
+        "persons": 2
+      },
+      "days": 1,
+      "totalItems": 5,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "北京",
+        "days": 2,
+        "pref": "自然",
+        "persons": 2
+      },
+      "days": 2,
+      "totalItems": 10,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "北京",
+        "days": 1,
+        "pref": "人文",
+        "persons": 2
+      },
+      "days": 1,
+      "totalItems": 5,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "北京",
+        "days": 2,
+        "pref": "网红",
+        "persons": 2
+      },
+      "days": 2,
+      "totalItems": 10,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "北京",
+        "days": 1,
+        "pref": "美食",
+        "persons": 2
+      },
+      "days": 1,
+      "totalItems": 5,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "北京",
+        "days": 3,
+        "pref": "亲子",
+        "persons": 2
+      },
+      "days": 3,
+      "totalItems": 15,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "上海",
+        "days": 3,
+        "pref": "美食",
+        "persons": 2
+      },
+      "days": 3,
+      "totalItems": 15,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "上海",
+        "days": 2,
+        "pref": "亲子",
+        "persons": 2
+      },
+      "days": 2,
+      "totalItems": 10,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "上海",
+        "days": 3,
+        "pref": "自然",
+        "persons": 2
+      },
+      "days": 3,
+      "totalItems": 15,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "上海",
+        "days": 2,
+        "pref": "人文",
+        "persons": 2
+      },
+      "days": 2,
+      "totalItems": 10,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "上海",
+        "days": 3,
+        "pref": "网红",
+        "persons": 2
+      },
+      "days": 3,
+      "totalItems": 15,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "上海",
+        "days": 2,
+        "pref": "美食",
+        "persons": 2
+      },
+      "days": 2,
+      "totalItems": 10,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "广州",
+        "days": 2,
+        "pref": "网红",
+        "persons": 2
+      },
+      "days": 2,
+      "totalItems": 2,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "广州",
+        "days": 1,
+        "pref": "美食",
+        "persons": 2
+      },
+      "days": 1,
+      "totalItems": 1,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "广州",
+        "days": 3,
+        "pref": "亲子",
+        "persons": 2
+      },
+      "days": 3,
+      "totalItems": 3,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "广州",
+        "days": 1,
+        "pref": "自然",
+        "persons": 2
+      },
+      "days": 1,
+      "totalItems": 1,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "广州",
+        "days": 3,
+        "pref": "人文",
+        "persons": 2
+      },
+      "days": 3,
+      "totalItems": 3,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "广州",
+        "days": 1,
+        "pref": "网红",
+        "persons": 2
+      },
+      "days": 1,
+      "totalItems": 1,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "成都",
+        "days": 2,
+        "pref": "人文",
+        "persons": 2
+      },
+      "days": 2,
+      "totalItems": 10,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "成都",
+        "days": 3,
+        "pref": "网红",
+        "persons": 2
+      },
+      "days": 3,
+      "totalItems": 15,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "成都",
+        "days": 2,
+        "pref": "美食",
+        "persons": 2
+      },
+      "days": 2,
+      "totalItems": 10,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "成都",
+        "days": 1,
+        "pref": "亲子",
+        "persons": 2
+      },
+      "days": 1,
+      "totalItems": 5,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "成都",
+        "days": 2,
+        "pref": "自然",
+        "persons": 2
+      },
+      "days": 2,
+      "totalItems": 10,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "成都",
+        "days": 1,
+        "pref": "人文",
+        "persons": 2
+      },
+      "days": 1,
+      "totalItems": 5,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "西安",
+        "days": 1,
+        "pref": "自然",
+        "persons": 2
+      },
+      "days": 1,
+      "totalItems": 5,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "西安",
+        "days": 3,
+        "pref": "人文",
+        "persons": 2
+      },
+      "days": 3,
+      "totalItems": 15,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "西安",
+        "days": 1,
+        "pref": "网红",
+        "persons": 2
+      },
+      "days": 1,
+      "totalItems": 5,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "西安",
+        "days": 3,
+        "pref": "美食",
+        "persons": 2
+      },
+      "days": 3,
+      "totalItems": 15,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "西安",
+        "days": 2,
+        "pref": "亲子",
+        "persons": 2
+      },
+      "days": 2,
+      "totalItems": 10,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    },
+    {
+      "case": {
+        "city": "西安",
+        "days": 3,
+        "pref": "自然",
+        "persons": 2
+      },
+      "days": 3,
+      "totalItems": 15,
+      "toolAccuracy": 1.0,
+      "conflictRate": 0.0,
+      "dupRate": 0.0,
+      "budgetDeviation": 0.0,
+      "hallucinationRate": 0.0,
+      "hallucinations": []
+    }
+  ]
+}
