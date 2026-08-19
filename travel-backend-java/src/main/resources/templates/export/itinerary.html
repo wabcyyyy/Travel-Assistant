@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="${title}">行程单</title>
+    <style type="text/css">
+        body { font-family: SimHei, sans-serif; font-size: 12px; color: #333; }
+        h1 { font-size: 20px; text-align: center; margin: 12px 0 4px; }
+        .meta { text-align: center; color: #666; margin-bottom: 14px; }
+        .day { border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px; page-break-inside: avoid; }
+        .day-title { background: #409eff; color: #fff; padding: 6px 10px; font-weight: bold; }
+        .day-note { padding: 6px 10px; color: #888; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #eee; padding: 5px 8px; text-align: left; }
+        th { background: #f5f7fa; }
+        .budget { border: 1px solid #67c23a; border-radius: 4px; margin-top: 12px; page-break-inside: avoid; }
+        .budget-title { background: #67c23a; color: #fff; padding: 6px 10px; font-weight: bold; }
+        .total { text-align: right; padding: 6px 10px; font-weight: bold; }
+    </style>
+</head>
+<body>
+<h1 th:text="${title}">行程单</h1>
+<div class="meta">
+    <span th:text="'目的地：' + ${city}">目的地</span>
+    <span th:if="${days}" th:text="' ｜ ' + ${days} + ' 天 ' + ${persons} + ' 人'"> ｜ 天数</span>
+    <span th:if="${startDate}" th:text="' ｜ ' + ${startDate} + ' ~ ' + ${endDate}"> ｜ 日期</span>
+    <span th:if="${preferences}" th:text="' ｜ 偏好：' + ${preferences}"> ｜ 偏好</span>
+    <span th:if="${budget}" th:text="' ｜ 预算上限：￥' + ${budget}"> ｜ 预算</span>
+</div>
+
+<div class="day" th:each="day : ${dayList}">
+    <div class="day-title"><span th:text="'第 ' + ${day.dayNo} + ' 天'">第 1 天</span><span th:if="${day.travelDate}" th:text="'（' + ${day.travelDate} + '）'">（日期）</span></div>
+    <div class="day-note" th:if="${day.note}" th:text="${day.note}">备注</div>
+    <table>
+        <thead>
+        <tr>
+            <th>类型</th>
+            <th>名称</th>
+            <th>时间</th>
+            <th>时长(分)</th>
+            <th>费用(￥)</th>
+            <th>备注</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr th:each="item : ${day.items}">
+            <td th:text="${item.itemType}">类型</td>
+            <td th:text="${item.poiName}">名称</td>
+            <td th:text="(${item.startTime} != null ? ${item.startTime} : '') + (${item.endTime} != null ? ' - ' + ${item.endTime} : '')">时间</td>
+            <td th:text="${item.durationMin}">0</td>
+            <td th:text="${item.cost}">0</td>
+            <td th:text="${item.remark}">备注</td>
+        </tr>
+        </tbody>
+    </table>
+</div>
+
+<div class="budget">
+    <div class="budget-title">预算明细（元）</div>
+    <table>
+        <thead>
+        <tr>
+            <th>分类</th>
+            <th>金额</th>
+            <th>项目数</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr th:each="b : ${budgetList}">
+            <td th:text="${b.category}">分类</td>
+            <td th:text="${b.amount}">0</td>
+            <td th:text="${b.itemCount}">0</td>
+        </tr>
+        </tbody>
+    </table>
+    <div class="total" th:text="'合计：￥' + ${totalAmount}">合计</div>
+</div>
+
+<div style="text-align:center;color:#999;margin-top:14px;">本行程由 Travel Assistant 智能生成</div>
+</body>
+</html>

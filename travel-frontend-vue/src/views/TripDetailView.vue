@@ -12,6 +12,13 @@
       <div class="head-actions">
         <el-button @click="$router.back()">返回</el-button>
         <el-button @click="$router.push('/generate')">重新生成</el-button>
+        <el-button
+          :loading="exportingPdf"
+          @click="onExportPdf"
+        >
+          导出 PDF
+        </el-button>
+        <el-button :loading="exportingImg" @click="onExportImage">导出图片</el-button>
       </div>
     </el-card>
 
@@ -173,7 +180,10 @@ import TripMap, { type MapItem } from '../components/TripMap.vue'
 import BudgetPanel from '../components/BudgetPanel.vue'
 import {
   addItem,
+  createPdfExport,
   deleteItem,
+  downloadExportFile,
+  getExportTask,
   getItineraryDetail,
   reorderItems,
   searchPoi,
@@ -181,10 +191,13 @@ import {
   type AmapPoi,
 } from '../api'
 import type { DayPlan, ItineraryDetail, TripItem } from '../types/itinerary'
+import { exportItineraryImage } from '../utils/exportImage'
 
 const route = useRoute()
 const loading = ref(false)
 const saving = ref(false)
+const exportingPdf = ref(false)
+const exportingImg = ref(false)
 const detail = ref<ItineraryDetail | null>(null)
 const activeDays = ref<number[]>([])
 const highlightId = ref<number | null>(null)
@@ -325,6 +338,50 @@ async function onSaveEdit() {
     ElMessage.success('已保存')
   } finally {
     saving.value = false
+  }
+}
+
+async function onExportImage() {
+  if (!detail.value) return
+  exportingImg.value = true
+  try {
+    exportItineraryImage(detail.value)
+    ElMessage.success('图片已导出')
+  } finally {
+    exportingImg.value = false
+  }
+}
+
+async function onExportPdf() {
+  if (!detail.value) return
+  exportingPdf.value = true
+  try {
+    const res = await createPdfExport(detail.value.id)
+    const taskId = res.data.id
+    for (let i = 0; i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 1500))
+      const task = await getExportTask(taskId)
+      if (task.data.status === 'DONE') {
+        const blob = await downloadExportFile(taskId)
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${detail.value!.title}.pdf`
+        a.click()
+        URL.revokeObjectURL(url)
+        ElMessage.success('PDF 导出完成')
+        return
+      }
+      if (task.data.status === 'FAILED') {
+        ElMessage.error(task.data.errorMsg || 'PDF 导出失败')
+        return
+      }
+    }
+    ElMessage.error('导出超时，请稍后在任务列表重试')
+  } catch (e) {
+    // 拦截器已提示
+  } finally {
+    exportingPdf.value = false
   }
 }
 

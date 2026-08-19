@@ -6,6 +6,7 @@ DROP TABLE IF EXISTS itinerary_item;
 DROP TABLE IF EXISTS itinerary_day;
 DROP TABLE IF EXISTS itinerary_main;
 DROP TABLE IF EXISTS sys_user;
+DROP TABLE IF EXISTS export_task;
 DROP TABLE IF EXISTS poi_knowledge;
 DROP TABLE IF EXISTS city_consumption;
 
@@ -126,3 +127,19 @@ CREATE TABLE city_consumption (
     PRIMARY KEY (id),
     UNIQUE KEY uk_city (city)
 ) ENGINE = InnoDB COMMENT '城市消费系数表(预算计算口径来源)';
+
+CREATE TABLE export_task (
+    id           BIGINT       NOT NULL AUTO_INCREMENT,
+    itinerary_id BIGINT       NOT NULL COMMENT '行程ID',
+    user_id      BIGINT       NOT NULL COMMENT '发起用户',
+    task_type    VARCHAR(16)  NOT NULL DEFAULT 'PDF' COMMENT '任务类型',
+    status       VARCHAR(16)  NOT NULL DEFAULT 'RUNNING' COMMENT 'RUNNING/DONE/FAILED',
+    file_path    VARCHAR(512) DEFAULT NULL COMMENT '产物文件路径',
+    error_msg    VARCHAR(512) DEFAULT NULL COMMENT '失败原因',
+    created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at  DATETIME     DEFAULT NULL,
+    deleted      TINYINT      NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    KEY idx_itinerary (itinerary_id),
+    KEY idx_user (user_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT '异步导出任务表';

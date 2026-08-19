@@ -1,4 +1,5 @@
 import { requestDelete, requestGet, requestPost, requestPut } from './request'
+import axios from 'axios'
 import type {
   ItineraryDetail,
   ItinerarySummary,
@@ -80,4 +81,38 @@ export function deleteItem(itemId: number) {
 
 export function reorderItems(id: number | string, dayId: number, itemIds: number[]) {
   return requestPut<ItineraryDetail>(`/itinerary/${id}/days/${dayId}/order`, itemIds)
+}
+
+export interface ExportTaskInfo {
+  id: number
+  itineraryId: number
+  taskType: string
+  status: 'RUNNING' | 'DONE' | 'FAILED'
+  errorMsg: string | null
+  downloadUrl: string | null
+  createdAt: string
+  finishedAt: string | null
+}
+
+export function createPdfExport(itineraryId: number | string) {
+  return requestPost<ExportTaskInfo>(`/export/pdf/${itineraryId}`)
+}
+
+export function getExportTask(taskId: number) {
+  return requestGet<ExportTaskInfo>(`/export/tasks/${taskId}`)
+}
+
+const downloadClient = axios.create({ baseURL: '/api', timeout: 60000 })
+
+downloadClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+export async function downloadExportFile(taskId: number): Promise<Blob> {
+  const resp = await downloadClient.get(`/export/download/${taskId}`, { responseType: 'blob' })
+  return resp.data as Blob
 }

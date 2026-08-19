@@ -48,16 +48,24 @@ def fallback_generate(city: str, days: int, persons: int, preferences: list[str]
 
 
 def llm_generate(city: str, days: int, persons: int, preferences: list[str],
-                 candidates: list[dict], foods: list[dict], consumption: dict | None) -> tuple[list[dict], dict]:
+                 candidates: list[dict], foods: list[dict], consumption: dict | None,
+                 feedback: str = "") -> tuple[list[dict], dict]:
     client = get_llm_client()
     system_prompt = (
         "你是资深旅行规划师。只输出 JSON，不要输出任何其他文字，不要用 markdown 代码块。"
         "景点必须从候选列表中选择，不得编造。每天安排 3 个景点、1 家餐饮、1 家酒店。"
-        "输出结构："
-        '{"daily_plans":[{"day_no":1,"note":"当日备注","items":[{"item_type":"attraction",'
-        '"poi_name":"名称","start_time":"09:00","end_time":"11:30","duration_min":150,'
-        '"cost":60.0,"tag":"标签","remark":null}]}],'
-        '"budget_estimate":{"门票":0,"餐饮":0,"交通":0,"酒店":0}}'
+        "必须严格遵守如下 JSON Schema（字段名、类型、嵌套结构完全一致）："
+        '{"type":"object","properties":{"daily_plans":{"type":"array","items":{"type":"object",'
+        '"properties":{"day_no":{"type":"integer"},"note":{"type":["string","null"]},'
+        '"items":{"type":"array","items":{"type":"object","properties":{'
+        '"item_type":{"type":"string","enum":["attraction","food","hotel","transport"]},'
+        '"poi_name":{"type":"string"},"start_time":{"type":"string","pattern":"HH:mm"},'
+        '"end_time":{"type":"string","pattern":"HH:mm"},"duration_min":{"type":"integer"},'
+        '"cost":{"type":"number"},"tag":{"type":["string","null"]},"remark":{"type":["string","null"]}},'
+        '"required":["item_type","poi_name"]}}}},'
+        '"required":["day_no","items"]}}},'
+        '"budget_estimate":{"type":"object"}},"required":["daily_plans","budget_estimate"]}'
+        " 每天行程需避免相邻项时间重叠，景点开始时间需在其开放时间内。"
     )
     user_prompt = (
         f"目的地：{city}，共 {days} 天，{persons} 人出行，偏好：{'、'.join(preferences) or '无'}\n"
@@ -67,6 +75,8 @@ def llm_generate(city: str, days: int, persons: int, preferences: list[str],
         "预算按人数估算：门票=景点票价×人数，餐饮=人均每餐×2×天数×人数，"
         "交通=人均日交通×天数×人数，酒店=单间价×ceil(人数/2)×天数。"
     )
+    if feedback:
+        user_prompt += f"\n上一轮校验反馈（必须修正）：{feedback}"
     raw = client.complete(user_prompt, system_prompt=system_prompt, temperature=0.3)
     data = _parse_json(raw)
     daily_plans = _validate_plans(data.get("daily_plans"), days)

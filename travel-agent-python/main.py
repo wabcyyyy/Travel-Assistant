@@ -1,4 +1,5 @@
 import json
+import logging
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -6,10 +7,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import agent
+from app.rag.store import warmup_rag
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    warmup_rag()
     with open("openapi.json", "w", encoding="utf-8") as f:
         json.dump(app.openapi(), f, ensure_ascii=False, indent=2)
     yield

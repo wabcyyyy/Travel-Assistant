@@ -443,6 +443,13 @@
             },
             "type": "object",
             "title": "Budgetestimate"
+          },
+          "validationLog": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Validationlog"
           }
         },
         "type": "object",

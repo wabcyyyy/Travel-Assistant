@@ -36,6 +36,18 @@ def search_pois(city: str, category: str | None = None, limit: int = 50) -> list
         return []
 
 
+def list_all_pois() -> list[dict]:
+    sql = "SELECT id, city, name, category, address, latitude, longitude, ticket_price, duration_min, open_time, tags, rating, description FROM poi_knowledge ORDER BY id"
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql)
+                return list(cursor.fetchall())
+    except Exception as e:
+        logger.error("list_all_pois failed: %s", e)
+        return []
+
+
 def get_poi(city: str, name: str) -> dict | None:
     sql = "SELECT id, city, name, category, address, latitude, longitude, ticket_price, duration_min, open_time, tags, rating, description FROM poi_knowledge WHERE city = %s AND name = %s LIMIT 1"
     try:

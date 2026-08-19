@@ -16,13 +16,17 @@ dependencies = [
 
 [project.optional-dependencies]
 rag = [
-    "chromadb==0.5.5",
+    "chromadb==1.5.9",
 ]
 
 [dependency-groups]
 dev = [
     "pytest==8.2.2",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
 
 [tool.uv]
 package = false

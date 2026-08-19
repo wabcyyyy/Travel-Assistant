@@ -1,16 +1,37 @@
 from app.agent import poi_repository
+from app.rag.store import poi_store
 
 
-def search_attractions(city: str, preferences: list[str], limit: int = 30) -> list[dict]:
-    pois = poi_repository.search_pois(city, category="attraction", limit=limit)
+def _build_query(city: str, preferences: list[str]) -> str:
+    parts = [city]
     if preferences:
-        preferred = [p for p in pois if _match_preferences(p, preferences)]
-        if len(preferred) >= 6:
-            pois = preferred + [p for p in pois if p not in preferred]
+        parts.extend(preferences)
+    return " ".join(parts)
+
+
+def _sort_by_preferences(pois: list[dict], preferences: list[str]) -> list[dict]:
+    if not preferences:
+        return pois
+    preferred = [p for p in pois if _match_preferences(p, preferences)]
+    if len(preferred) >= 6:
+        return preferred + [p for p in pois if p not in preferred]
     return pois
 
 
+def search_attractions(city: str, preferences: list[str], limit: int = 30) -> list[dict]:
+    poi_store.ensure_loaded()
+    hits = poi_store.search(_build_query(city, preferences), city=city, category="attraction", limit=limit)
+    if hits:
+        return _sort_by_preferences(hits, preferences)[:limit]
+    pois = poi_repository.search_pois(city, category="attraction", limit=limit)
+    return _sort_by_preferences(pois, preferences)
+
+
 def search_foods(city: str, limit: int = 10) -> list[dict]:
+    poi_store.ensure_loaded()
+    hits = poi_store.search(city, city=city, category="food", limit=limit)
+    if hits:
+        return hits[:limit]
     return poi_repository.search_pois(city, category="food", limit=limit)
 
 

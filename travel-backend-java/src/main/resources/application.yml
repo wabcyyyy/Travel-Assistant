@@ -14,7 +14,7 @@ spring:
   data:
     redis:
       host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
+      port: ${REDIS_PORT:6380}
       password: ${REDIS_PASSWORD:}
       database: 0
   jackson:
@@ -40,6 +40,8 @@ app:
     base-url: ${AGENT_SERVICE_URL:http://localhost:8000}
   amap:
     web-key: ${AMAP_WEB_KEY:}
+  export:
+    dir: ${EXPORT_DIR:data/export}
 
 logging:
   level:

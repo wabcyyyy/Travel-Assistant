@@ -19,6 +19,8 @@ import com.travel.backend.service.BudgetEngine;
 import com.travel.backend.service.ItineraryService;
 import com.travel.backend.vo.ItinerarySummaryVO;
 import com.travel.backend.vo.ItineraryVO;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,6 +51,7 @@ public class ItineraryServiceImpl implements ItineraryService {
     }
 
     @Override
+    @CacheEvict(cacheNames = "itinerary:detail", allEntries = true)
     @Transactional
     public ItineraryVO generate(Long userId, GenerateRequest request) {
         AgentGenerateResponse response = agentService.generate(toAgentRequest(request));
@@ -139,6 +142,7 @@ public class ItineraryServiceImpl implements ItineraryService {
     }
 
     @Override
+    @Cacheable(cacheNames = "itinerary:detail", key = "#id")
     public ItineraryVO detail(Long userId, Long id) {
         ItineraryMain main = findOwnedMain(userId, id);
 
@@ -185,6 +189,7 @@ public class ItineraryServiceImpl implements ItineraryService {
     }
 
     @Override
+    @CacheEvict(cacheNames = "itinerary:detail", allEntries = true)
     @Transactional
     public ItineraryVO addItem(Long userId, Long itineraryId, ItemUpsertRequest request) {
         findOwnedMain(userId, itineraryId);
@@ -227,6 +232,7 @@ public class ItineraryServiceImpl implements ItineraryService {
     }
 
     @Override
+    @CacheEvict(cacheNames = "itinerary:detail", allEntries = true)
     @Transactional
     public ItineraryVO updateItem(Long userId, Long itemId, ItemUpsertRequest request) {
         ItineraryItem item = findOwnedItem(userId, itemId);
@@ -253,6 +259,7 @@ public class ItineraryServiceImpl implements ItineraryService {
     }
 
     @Override
+    @CacheEvict(cacheNames = "itinerary:detail", allEntries = true)
     @Transactional
     public ItineraryVO deleteItem(Long userId, Long itemId) {
         ItineraryItem item = findOwnedItem(userId, itemId);
@@ -262,6 +269,7 @@ public class ItineraryServiceImpl implements ItineraryService {
     }
 
     @Override
+    @CacheEvict(cacheNames = "itinerary:detail", allEntries = true)
     @Transactional
     public ItineraryVO reorderItems(Long userId, Long itineraryId, Long dayId, List<Long> itemIds) {
         findOwnedMain(userId, itineraryId);
