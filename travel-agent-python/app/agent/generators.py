@@ -1,3 +1,4 @@
+import decimal
 import json
 import logging
 from math import ceil
@@ -8,6 +9,12 @@ from app.common.config import settings
 from app.common.llm_client import get_llm_client
 
 logger = logging.getLogger(__name__)
+
+
+def _json_default(o):
+    if isinstance(o, decimal.Decimal):
+        return float(o)
+    return str(o)
 
 ATTRACTIONS_PER_DAY = 3
 TIME_SLOTS = [
@@ -54,6 +61,8 @@ def llm_generate(city: str, days: int, persons: int, preferences: list[str],
     system_prompt = (
         "你是资深旅行规划师。只输出 JSON，不要输出任何其他文字，不要用 markdown 代码块。"
         "景点必须从候选列表中选择，不得编造。每天安排 3 个景点、1 家餐饮、1 家酒店。"
+        "每个行程项的 cost 必须直接取候选数据中的 ticket_price 字段原值（单人单价），"
+        "候选里没有对应字段时用城市消费系数估算，严禁自行编造价格。"
         "必须严格遵守如下 JSON Schema（字段名、类型、嵌套结构完全一致）："
         '{"type":"object","properties":{"daily_plans":{"type":"array","items":{"type":"object",'
         '"properties":{"day_no":{"type":"integer"},"note":{"type":["string","null"]},'
@@ -64,14 +73,14 @@ def llm_generate(city: str, days: int, persons: int, preferences: list[str],
         '"cost":{"type":"number"},"tag":{"type":["string","null"]},"remark":{"type":["string","null"]}},'
         '"required":["item_type","poi_name"]}}}},'
         '"required":["day_no","items"]}}},'
-        '"budget_estimate":{"type":"object"}},"required":["daily_plans","budget_estimate"]}'
+        '"budget_estimate":{"type":"object","additionalProperties":{"type":"number"}}},"required":["daily_plans","budget_estimate"]}'
         " 每天行程需避免相邻项时间重叠，景点开始时间需在其开放时间内。"
     )
     user_prompt = (
         f"目的地：{city}，共 {days} 天，{persons} 人出行，偏好：{'、'.join(preferences) or '无'}\n"
-        f"候选景点：{json.dumps(candidates, ensure_ascii=False)}\n"
-        f"候选餐饮：{json.dumps(foods, ensure_ascii=False)}\n"
-        f"城市消费系数：{json.dumps(consumption, ensure_ascii=False)}\n"
+        f"候选景点：{json.dumps(candidates, ensure_ascii=False, default=_json_default)}\n"
+        f"候选餐饮：{json.dumps(foods, ensure_ascii=False, default=_json_default)}\n"
+        f"城市消费系数：{json.dumps(consumption, ensure_ascii=False, default=_json_default)}\n"
         "预算按人数估算：门票=景点票价×人数，餐饮=人均每餐×2×天数×人数，"
         "交通=人均日交通×天数×人数，酒店=单间价×ceil(人数/2)×天数。"
     )
@@ -80,10 +89,40 @@ def llm_generate(city: str, days: int, persons: int, preferences: list[str],
     raw = client.complete(user_prompt, system_prompt=system_prompt, temperature=0.3)
     data = _parse_json(raw)
     daily_plans = _validate_plans(data.get("daily_plans"), days)
-    budget = data.get("budget_estimate")
-    if not isinstance(budget, dict):
-        budget = {}
+    budget = _normalize_budget(data.get("budget_estimate"))
+    if not budget:
+        budget = _estimate_budget(candidates, foods, consumption, days, persons)
     return daily_plans, budget
+
+
+_BUDGET_KEY_MAP = {
+    "attractions": "门票",
+    "tickets": "门票",
+    "meals": "餐饮",
+    "food": "餐饮",
+    "transport": "交通",
+    "hotels": "酒店",
+    "hotel": "酒店",
+    "accommodation": "酒店",
+    "total": None,
+}
+
+
+def _normalize_budget(budget) -> dict:
+    if not isinstance(budget, dict):
+        return {}
+    if isinstance(budget.get("breakdown"), dict):
+        budget = budget["breakdown"]
+    normalized: dict = {}
+    for k, v in budget.items():
+        if not isinstance(v, (int, float)):
+            continue
+        key = _BUDGET_KEY_MAP.get(str(k).lower())
+        if key is None and str(k).lower() in _BUDGET_KEY_MAP.values():
+            key = str(k)
+        if key:
+            normalized[key] = float(v)
+    return normalized
 
 
 def _validate_plans(plans: list | None, days: int) -> list[dict]:

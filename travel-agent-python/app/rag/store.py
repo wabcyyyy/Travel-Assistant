@@ -97,16 +97,21 @@ class PoIKnowledgeStore:
 
     def search(self, query: str, city: str | None = None, category: str | None = None,
                limit: int = 10) -> list[dict]:
-        where: dict = {}
+        conds: list[dict] = []
         if city:
-            where["city"] = city
+            conds.append({"city": city})
         if category:
-            where["category"] = category
+            conds.append({"category": category})
+        where = None
+        if len(conds) == 1:
+            where = conds[0]
+        elif len(conds) > 1:
+            where = {"$and": conds}
         try:
             result = self._collection.query(
                 query_embeddings=[embed(query)],
                 n_results=max(limit, 1),
-                where=where if where else None,
+                where=where,
                 include=["documents", "metadatas", "distances"],
             )
         except Exception as e:

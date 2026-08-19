@@ -120,7 +120,7 @@ public class AmapServiceImpl implements AmapService {
 
     private JsonNode get(String url) {
         try {
-            String body = restTemplate.getForObject(url, String.class);
+            String body = restTemplate.getForObject(java.net.URI.create(url), String.class);
             JsonNode root = objectMapper.readTree(body);
             String status = root.path("status").asText();
             if (!"1".equals(status)) {

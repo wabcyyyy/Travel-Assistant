@@ -67,6 +67,10 @@ def generate_itinerary(state: AgentState) -> dict:
             return {"daily_plans": plans, "budget_estimate": budget, "error": None}
         except Exception as e:
             logger.warning("llm generate failed (attempt %s): %s", attempts + 1, e)
+            if attempts + 1 >= MAX_FIX_ATTEMPTS:
+                logger.info("LLM 连续失败，降级为确定性兜底生成")
+                plans, budget = fallback_generate(req.city, req.days, req.persons, req.preferences)
+                return {"daily_plans": plans, "budget_estimate": budget, "error": None}
             return {"error": str(e), "attempts": attempts + 1}
     plans, budget = fallback_generate(req.city, req.days, req.persons, req.preferences)
     return {"daily_plans": plans, "budget_estimate": budget, "error": None}

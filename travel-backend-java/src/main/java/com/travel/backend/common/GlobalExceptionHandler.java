@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -25,6 +26,11 @@ public class GlobalExceptionHandler {
         FieldError fieldError = e.getBindingResult().getFieldError();
         String message = fieldError == null ? "参数校验失败" : fieldError.getDefaultMessage();
         return Result.fail(400, message);
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public Result<Void> handleMissingParam(MissingServletRequestParameterException e) {
+        return Result.fail(400, "缺少必填参数：" + e.getParameterName());
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

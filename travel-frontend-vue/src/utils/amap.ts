@@ -12,10 +12,18 @@ export function loadAmap(): Promise<unknown> {
   }
   return AMapLoader.load({
     key,
+    securityJsCode: import.meta.env.VITE_AMAP_SECURITY_CODE,
     version: '2.0',
     plugins: ['AMap.Scale', 'AMap.ToolBar'],
-  }).then((AMap) => {
+  } as AMapLoaderConfig).then((AMap) => {
     cachedAmap = AMap
     return AMap
   })
+}
+
+interface AMapLoaderConfig {
+  key: string
+  securityJsCode?: string
+  version: string
+  plugins?: string[]
 }

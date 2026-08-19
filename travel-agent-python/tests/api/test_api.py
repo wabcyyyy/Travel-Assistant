@@ -184,12 +184,23 @@ class TestExport:
         assert body["code"] == 404
 
 
-class TestAmapGracefulDegradation:
-    def test_poi_search_without_key(self, client):
+class TestAmap:
+    def test_poi_search(self, client):
         u = _uid()
         register(client, u)
         token = login(client, u)
         body = client.get("/api/amap/poi", params={"keywords": "故宫", "city": "北京"},
                           headers=auth_headers(token)).json()
+        if body["code"] == 400 and "未配置" in body.get("message", ""):
+            pytest.skip("未配置 AMAP_WEB_KEY，跳过真实搜索断言")
+        assert body["code"] == 200
+        assert len(body["data"]) > 0
+        assert body["data"][0]["name"]
+        assert body["data"][0]["longitude"]
+
+    def test_poi_search_missing_keyword(self, client):
+        u = _uid()
+        register(client, u)
+        token = login(client, u)
+        body = client.get("/api/amap/poi", params={"city": "北京"}, headers=auth_headers(token)).json()
         assert body["code"] == 400
-        assert "key" in body["message"]

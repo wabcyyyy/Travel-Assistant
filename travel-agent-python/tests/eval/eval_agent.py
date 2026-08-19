@@ -1,8 +1,11 @@
-"""Agent 质量量化评测套件（D4 可复现：fallback 确定性生成，无需 LLM key）。
+"""Agent 质量量化评测套件（可复现：temperature 固定 + 固定 prompt 版本）。
 
 运行方式：
-  uv run python tests/eval/eval_agent.py [case_count] [--full]
+  uv run python tests/eval/eval_agent.py [--full] [--mode fallback|llm|auto]
 默认跑 5 个用例（快速冒烟），--full 跑 30 个用例。
+  --mode fallback：确定性兜底链路（无 LLM key 时可复现，指标应全优）
+  --mode llm     ：真实大模型链路（需 LLM_API_KEY），同一批用例连跑两遍校验一致性
+  --mode auto    ：按服务端是否配置 LLM key 自动选择（默认）
 输出 tests/eval/report/report.json 与 report.md
 指标公式（与开发计划 D4 对齐）：
   工具调用准确率 = 正确检索(景点/餐饮来自知识库) / 全部检索
@@ -10,6 +13,7 @@
   景点重复率     = 重复出现的景点次数 / 全部景点出现次数
   预算偏差率     = |估算预算 - 参考预算| / 参考预算
   幻觉检出率     = 检出虚假景点数 / 输出景点总数
+  结果一致性     = 两遍运行中逐日景点序列完全一致的用例数 / 总用例数（仅 LLM 模式）
 """
 import json
 import sys
@@ -23,6 +27,7 @@ import httpx
 
 from app.agent import poi_repository
 from app.agent.reflect import parse_time, _item_end, _item_start
+from app.common.config import settings
 
 AGENT_URL = "http://127.0.0.1:8000"
 
@@ -30,6 +35,8 @@ CITIES = ["北京", "上海", "广州", "成都", "西安"]
 PREFERENCES = ["亲子", "人文", "美食", "自然", "网红"]
 
 PRICE_DEVIATION_THRESHOLD = 0.30
+
+LLM_MODE = bool(settings.llm_api_key)
 
 
 def reference_budget(city: str, days: int, persons: int) -> dict:
@@ -131,6 +138,7 @@ def evaluate_one(client: httpx.Client, case: dict) -> dict:
 
     return {
         "case": case,
+        "plans": plans,
         "days": len(plans),
         "totalItems": len(items),
         "toolAccuracy": round(tool_accuracy, 4),
@@ -144,27 +152,48 @@ def evaluate_one(client: httpx.Client, case: dict) -> dict:
 
 def main() -> int:
     full = "--full" in sys.argv
+    mode_arg = next((a.split("=")[1] for a in sys.argv if a.startswith("--mode=")), "auto")
+    mode = mode_arg if mode_arg != "auto" else ("llm" if LLM_MODE else "fallback")
     count = 30 if full else 5
     cases = build_cases(count)
     results = []
-    with httpx.Client(base_url=AGENT_URL, timeout=60.0) as client:
+    with httpx.Client(base_url=AGENT_URL, timeout=120.0) as client:
         for i, case in enumerate(cases, 1):
             print(f"[{i}/{len(cases)}] {case['city']} {case['days']}天 {case['pref']} ...", end=" ", flush=True)
             r = evaluate_one(client, case)
             results.append(r)
             print(f"toolAcc={r['toolAccuracy']} conflict={r['conflictRate']} dup={r['dupRate']} "
                   f"budgetDev={r['budgetDeviation']} halluc={r['hallucinationRate']}")
+        consistency_rate = None
+        unstable: list[str] = []
+        if mode == "llm":
+            same = 0
+            for i, case in enumerate(cases, 1):
+                print(f"[RUN-2 {i}/{len(cases)}] {case['city']} {case['days']}天 {case['pref']} ...", end=" ", flush=True)
+                r2 = evaluate_one(client, case)
+                seq1 = _signature(results[i - 1])
+                seq2 = _signature(r2)
+                if seq1 == seq2:
+                    same += 1
+                else:
+                    unstable.append(f"{case['city']}{case['days']}天{case['pref']}")
+                    print(f"不一致: {seq1} vs {seq2}")
+                results[i - 1]["run2"] = r2
+            consistency_rate = round(same / len(cases), 4)
 
     def avg(key):
         return round(sum(r[key] for r in results) / len(results), 4) if results else 0.0
 
     summary = {
+        "mode": mode,
         "caseCount": len(results),
         "toolCallAccuracy": avg("toolAccuracy"),
         "timeConflictRate": avg("conflictRate"),
         "attractionDuplicateRate": avg("dupRate"),
         "budgetDeviationRate": avg("budgetDeviation"),
         "hallucinationRate": avg("hallucinationRate"),
+        "consistencyRate": consistency_rate,
+        "unstableCases": unstable,
         "details": results,
     }
 
@@ -175,12 +204,19 @@ def main() -> int:
     lines = [
         "# Agent 质量评测报告",
         "",
-        f"- 用例数：{len(results)}（fallback 确定性模式，temperature 固定，无 LLM key 可复现）",
+        f"- 模式：{'LLM 真实链路（qwen-plus, temperature=0.3）' if mode == 'llm' else 'fallback 确定性链路'}",
+        f"- 用例数：{len(results)}",
         f"- 工具调用准确率：{summary['toolCallAccuracy']:.2%}",
         f"- 时间冲突率：{summary['timeConflictRate']:.2%}",
         f"- 景点重复率：{summary['attractionDuplicateRate']:.2%}",
         f"- 预算偏差率：{summary['budgetDeviationRate']:.2%}",
         f"- 幻觉检出率：{summary['hallucinationRate']:.2%}",
+    ]
+    if consistency_rate is not None:
+        lines.append(f"- 结果一致性（两遍运行相同）：{consistency_rate:.2%}")
+        if unstable:
+            lines.append(f"- 不稳定用例（两遍结果不一致）：{'、'.join(unstable)}")
+    lines += [
         "",
         "| 用例 | 城市 | 天数 | 偏好 | 工具准确率 | 冲突率 | 重复率 | 预算偏差 | 幻觉率 |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
@@ -196,8 +232,16 @@ def main() -> int:
             lines.append(f"  - 幻觉项：{h['name']}（{h['reason']}）")
     (out_dir / "report.md").write_text("\n".join(lines), encoding="utf-8")
 
-    print(f"\n报告已生成：{out_dir}")
+    print(f"\n报告已生成：{out_dir}（mode={mode}）")
     return 0
+
+
+def _signature(result: dict) -> str:
+    plans = result.get("plans") or []
+    return "|".join(
+        "->".join(i.get("poiName") or "" for i in plan["items"] if i.get("itemType") == "attraction")
+        for plan in plans
+    )
 
 
 if __name__ == "__main__":
