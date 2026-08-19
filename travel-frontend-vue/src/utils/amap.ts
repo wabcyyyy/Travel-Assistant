@@ -1,0 +1,21 @@
+import AMapLoader from '@amap/amap-jsapi-loader'
+
+let cachedAmap: unknown = null
+
+export function loadAmap(): Promise<unknown> {
+  if (cachedAmap) {
+    return Promise.resolve(cachedAmap)
+  }
+  const key = import.meta.env.VITE_AMAP_JS_KEY
+  if (!key) {
+    return Promise.reject(new Error('缺少 VITE_AMAP_JS_KEY，请在 .env 中配置高德 JS key'))
+  }
+  return AMapLoader.load({
+    key,
+    version: '2.0',
+    plugins: ['AMap.Scale', 'AMap.ToolBar'],
+  }).then((AMap) => {
+    cachedAmap = AMap
+    return AMap
+  })
+}

@@ -1,0 +1,66 @@
+from fastapi import APIRouter
+
+from app.agent.workflow import run_generate
+from app.schemas.common import ApiResponse
+from app.schemas.trip import GenerateRequest, GenerateResponse
+
+router = APIRouter()
+
+
+@router.get("/hello")
+def hello() -> ApiResponse[str]:
+    return ApiResponse.ok("hello from travel-agent-python")
+
+
+@router.get("/health")
+def health() -> ApiResponse[dict]:
+    return ApiResponse.ok({"status": "up"})
+
+
+@router.get("/test-generate")
+def test_generate() -> ApiResponse[dict]:
+    return ApiResponse.ok(
+        {
+            "city": "北京",
+            "days": 2,
+            "daily_plans": [
+                {
+                    "day_no": 1,
+                    "items": [
+                        {
+                            "item_type": "attraction",
+                            "poi_name": "故宫博物院",
+                            "start_time": "09:00",
+                            "duration_min": 180,
+                            "cost": 60.0,
+                        },
+                        {
+                            "item_type": "attraction",
+                            "poi_name": "景山公园",
+                            "start_time": "14:00",
+                            "duration_min": 60,
+                            "cost": 2.0,
+                        },
+                    ],
+                },
+                {
+                    "day_no": 2,
+                    "items": [
+                        {
+                            "item_type": "attraction",
+                            "poi_name": "八达岭长城",
+                            "start_time": "08:30",
+                            "duration_min": 240,
+                            "cost": 40.0,
+                        }
+                    ],
+                },
+            ],
+            "budget_estimate": {"门票": 102.0, "餐饮": 180.0, "交通": 100.0, "酒店": 500.0},
+        }
+    )
+
+
+@router.post("/v1/generate")
+def generate(req: GenerateRequest) -> ApiResponse[GenerateResponse]:
+    return ApiResponse.ok(run_generate(req))
