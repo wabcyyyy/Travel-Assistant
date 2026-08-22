@@ -28,17 +28,15 @@ src/main/resources/
 ## 启动
 
 ```bash
-# 8080（生产库 travel_assistant）
-$env:AMAP_WEB_KEY="你的高德Web服务key"
-$env:MYSQL_PASSWORD="数据库密码"
+cp .env.example .env   # 填入 AMAP_WEB_KEY、MYSQL_PASSWORD（spring-dotenv 自动读取，勿提交）
 mvn spring-boot:run -Dspring-boot.run.jvmArguments=-Dfile.encoding=UTF-8
 
-# 8081（测试库 travel_test，接口自动化专用）
-$env:MYSQL_DB="travel_test"
+# 8081 测试实例（连接 travel_test 库）：.env 中加 MYSQL_DB=travel_test 后另开终端执行
 mvn spring-boot:run -Dspring-boot.run.jvmArguments=-Dfile.encoding=UTF-8 -Dspring-boot.run.arguments=--server.port=8081
 ```
 
-> Windows 下务必加 `-Dfile.encoding=UTF-8`，否则中文乱码。
+> - Windows 下务必加 `-Dfile.encoding=UTF-8`，否则中文乱码。
+> - `.env` 通过 `spring-dotenv` 加载，也可改用系统环境变量（优先级更高）。
 
 ## 环境变量
 

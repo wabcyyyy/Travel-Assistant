@@ -72,15 +72,16 @@ mysql -uroot -p < sql/seed_data.sql   # 种子数据：125 条 POI 知识 + 城�
 ### 2. 启动后端（travel-backend-java）
 
 ```bash
-# 8080 生产实例（Windows PowerShell）
-$env:AMAP_WEB_KEY="你的高德Web服务key"
-$env:MYSQL_PASSWORD="数据库密码"
+cd travel-backend-java
+cp .env.example .env   # 填入 AMAP_WEB_KEY、MYSQL_PASSWORD（spring-dotenv 自动读取）
 mvn spring-boot:run -Dspring-boot.run.jvmArguments=-Dfile.encoding=UTF-8
 
 # 8081 测试实例（接口自动化用，连接独立测试库）
-$env:MYSQL_DB="travel_test"
+# 先在 .env 中加一行 MYSQL_DB=travel_test，再另开终端执行：
 mvn spring-boot:run -Dspring-boot.run.jvmArguments=-Dfile.encoding=UTF-8 -Dspring-boot.run.arguments=--server.port=8081
 ```
+
+> 也支持直接用系统环境变量（`AMAP_WEB_KEY` / `MYSQL_*` 等），优先级高于 `.env`。
 
 ### 3. 启动 Agent 服务（travel-agent-python）
 
