@@ -64,12 +64,12 @@ public class ItineraryServiceImpl implements ItineraryService {
 
     @Override
     @CacheEvict(cacheNames = "itinerary:detail", allEntries = true)
-    @Transactional
     public ItineraryVO generate(Long userId, GenerateRequest request) {
-        // 立即建单：主表 status=1(生成中)，预创建 N 个空日，逐日由异步规划器填充
+        // 立即建单：主表 status=1(生成中)，预创建 N 个空日，逐日由异步规划器填充。
+        // 注意：不能加 @Transactional——异步任务必须在壳数据提交后才启动，否则查不到单。
         ItineraryMain main = new ItineraryMain();
         main.setUserId(userId);
-        main.setTitle(request.getCity() + request.getDays() + "日游（生成中）");
+        main.setTitle(request.getCity() + request.getDays() + "日游");
         main.setCity(request.getCity());
         main.setStartDate(request.getStartDate());
         main.setEndDate(request.getEndDate());

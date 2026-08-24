@@ -50,6 +50,11 @@ public class ItineraryAsyncPlanner {
     @Async
     public void planDays(Long userId, Long itineraryId, GenerateRequest request) {
         try {
+            // 等待壳数据可见（generate 无事务，正常已提交；兜底重试）
+            for (int i = 0; i < 10; i++) {
+                if (mainMapper.selectById(itineraryId) != null) break;
+                Thread.sleep(500);
+            }
             JsonNode context = agentService.planContext(request.getCity(), request.getPreferences());
             List<String> usedNames = new ArrayList<>();
             String chosenHotel = null;
@@ -137,6 +142,7 @@ public class ItineraryAsyncPlanner {
         ItineraryMain main = mainMapper.selectById(itineraryId);
         if (main != null) {
             main.setStatus(2);
+            main.setTitle(main.getCity() + main.getDays() + "日游");
             mainMapper.updateById(main);
         }
         evictCache();
