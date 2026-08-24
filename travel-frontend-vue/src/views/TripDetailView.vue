@@ -20,6 +20,14 @@
         </el-button>
         <el-button :loading="exportingImg" @click="onExportImage">导出图片</el-button>
       </div>
+      <div class="nl-edit">
+        <el-input
+          v-model="nlInstruction"
+          placeholder="用一句话修改行程，如：把灵隐寺移到第 2 天 / 删掉楼外楼"
+          @keyup.enter="onNlEdit"
+        />
+        <el-button type="primary" :loading="nlLoading" @click="onNlEdit">AI 修改</el-button>
+      </div>
     </el-card>
 
     <el-row v-if="detail" :gutter="16">
@@ -188,6 +196,7 @@ import {
   reorderItems,
   searchPoi,
   updateItem,
+  nlEditItinerary,
   type AmapPoi,
 } from '../api'
 import type { DayPlan, ItineraryDetail, TripItem } from '../types/itinerary'
@@ -198,8 +207,27 @@ const loading = ref(false)
 const saving = ref(false)
 const exportingPdf = ref(false)
 const exportingImg = ref(false)
+const nlInstruction = ref('')
+const nlLoading = ref(false)
 const detail = ref<ItineraryDetail | null>(null)
 const activeDays = ref<number[]>([])
+
+async function onNlEdit() {
+  const instruction = nlInstruction.value.trim()
+  if (!instruction || !detail.value || nlLoading.value) return
+  nlLoading.value = true
+  try {
+    const res = await nlEditItinerary(detail.value.id, instruction)
+    ElMessage.success(res.data.applied.join('；') || '已完成')
+    nlInstruction.value = ''
+    const fresh = await getItineraryDetail(route.params.id as string)
+    detail.value = fresh.data
+  } catch {
+    // 错误提示已由拦截器处理
+  } finally {
+    nlLoading.value = false
+  }
+}
 const highlightId = ref<number | null>(null)
 const routeDay = ref<number | null>(1)
 const amapReady = ref(!!import.meta.env.VITE_AMAP_JS_KEY)
@@ -405,6 +433,14 @@ onMounted(async () => {
 
 .head {
   margin-bottom: 16px;
+}
+
+.nl-edit {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--lp-border);
 }
 
 .head-info h2 {

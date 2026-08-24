@@ -6,6 +6,7 @@ import com.travel.backend.vo.ItinerarySummaryVO;
 import com.travel.backend.vo.ItineraryVO;
 
 import java.util.List;
+import java.util.Map;
 
 public interface ItineraryService {
 
@@ -24,4 +25,8 @@ public interface ItineraryService {
     ItineraryVO deleteItem(Long userId, Long itemId);
 
     ItineraryVO reorderItems(Long userId, Long itineraryId, Long dayId, List<Long> itemIds);
+
+    Map<String, Object> nlEdit(Long userId, Long itineraryId, String instruction);
+
+    Map<String, Object> clarify(String message, Map<String, Object> slots);
 }

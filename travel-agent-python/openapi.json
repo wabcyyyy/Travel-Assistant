@@ -149,6 +149,88 @@
           }
         }
       }
+    },
+    "/api/agent/v1/clarify": {
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Clarify",
+        "operationId": "clarify_api_agent_v1_clarify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClarifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ClarifyResponse_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/v1/edit-ops": {
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Edit Ops",
+        "operationId": "edit_ops_api_agent_v1_edit_ops_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditOpRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_dict__"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -241,6 +323,34 @@
         ],
         "title": "ApiResponse[AdjustResponse]"
       },
+      "ApiResponse_ClarifyResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClarifyResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ApiResponse[ClarifyResponse]"
+      },
       "ApiResponse_GenerateResponse_": {
         "properties": {
           "code": {
@@ -298,6 +408,38 @@
         ],
         "title": "ApiResponse[dict]"
       },
+      "ApiResponse_list_dict__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ApiResponse[list[dict]]"
+      },
       "ApiResponse_str_": {
         "properties": {
           "code": {
@@ -326,6 +468,57 @@
           "message"
         ],
         "title": "ApiResponse[str]"
+      },
+      "ClarifyRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Message"
+          },
+          "slots": {
+            "type": "object",
+            "title": "Slots"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ClarifyRequest"
+      },
+      "ClarifyResponse": {
+        "properties": {
+          "slots": {
+            "type": "object",
+            "title": "Slots"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ClarifyResponse"
       },
       "DailyPlan": {
         "properties": {
@@ -357,6 +550,37 @@
           "dayNo"
         ],
         "title": "DailyPlan"
+      },
+      "EditOpRequest": {
+        "properties": {
+          "city": {
+            "type": "string",
+            "title": "City"
+          },
+          "days": {
+            "type": "integer",
+            "title": "Days"
+          },
+          "plans": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Plans"
+          },
+          "instruction": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Instruction"
+          }
+        },
+        "type": "object",
+        "required": [
+          "city",
+          "days",
+          "instruction"
+        ],
+        "title": "EditOpRequest"
       },
       "GenerateRequest": {
         "properties": {

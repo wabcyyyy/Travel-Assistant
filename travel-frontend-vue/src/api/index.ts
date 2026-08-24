@@ -103,6 +103,17 @@ export function getExportTask(taskId: number) {
   return requestGet<ExportTaskInfo>(`/export/tasks/${taskId}`)
 }
 
+export function clarifyTrip(data: { message: string; slots?: Record<string, unknown> }) {
+  return requestPost<{ slots: Record<string, unknown>; missing: string[]; question: string | null; ready: boolean }>(
+    '/itinerary/clarify',
+    data,
+  )
+}
+
+export function nlEditItinerary(id: number | string, instruction: string) {
+  return requestPost<{ applied: string[] }>('/itinerary/' + id + '/nl-edit', { instruction })
+}
+
 const downloadClient = axios.create({ baseURL: '/api', timeout: 60000 })
 
 downloadClient.interceptors.request.use((config) => {

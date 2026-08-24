@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/itinerary")
@@ -75,6 +76,21 @@ public class ItineraryController {
                                             @PathVariable Long dayId,
                                             @RequestBody List<Long> itemIds) {
         return Result.ok(itineraryService.reorderItems(currentUserId(), id, dayId, itemIds));
+    }
+
+    @PostMapping("/clarify")
+    public Result<Map<String, Object>> clarify(@RequestBody Map<String, Object> body) {
+        String message = String.valueOf(body.getOrDefault("message", ""));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> slots = (Map<String, Object>) body.getOrDefault("slots", Map.of());
+        return Result.ok(itineraryService.clarify(message, slots));
+    }
+
+    @PostMapping("/{id}/nl-edit")
+    public Result<Map<String, Object>> nlEdit(@PathVariable Long id,
+                                              @RequestBody Map<String, String> body) {
+        return Result.ok(itineraryService.nlEdit(currentUserId(), id,
+                body.getOrDefault("instruction", "")));
     }
 
     private Long currentUserId() {

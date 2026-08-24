@@ -1,8 +1,11 @@
 from fastapi import APIRouter
 
+from app.agent.clarify import run_clarify
+from app.agent.nl_edit import run_edit_ops
 from app.agent.workflow import run_adjust, run_generate
 from app.schemas.common import ApiResponse
-from app.schemas.trip import AdjustRequest, AdjustResponse, GenerateRequest, GenerateResponse
+from app.schemas.trip import (AdjustRequest, AdjustResponse, ClarifyRequest, ClarifyResponse,
+                              EditOp, EditOpRequest, GenerateRequest, GenerateResponse)
 
 router = APIRouter()
 
@@ -72,3 +75,21 @@ def generate(req: GenerateRequest) -> ApiResponse[GenerateResponse]:
 @router.post("/v1/adjust")
 def adjust(req: AdjustRequest) -> ApiResponse[AdjustResponse]:
     return ApiResponse.ok(run_adjust(req))
+
+
+@router.post("/v1/clarify")
+def clarify(req: ClarifyRequest) -> ApiResponse[ClarifyResponse]:
+    try:
+        return ApiResponse.ok(run_clarify(req))
+    except ValueError as e:
+        return ApiResponse.fail(str(e))
+
+
+@router.post("/v1/edit-ops")
+def edit_ops(req: EditOpRequest) -> ApiResponse[list[dict]]:
+    try:
+        ops = run_edit_ops(req)
+        # 输出 snake_case 原始键，避免 WireModel 的 camel 别名影响跨语言消费方
+        return ApiResponse.ok([op.model_dump() for op in ops])
+    except ValueError as e:
+        return ApiResponse.fail(str(e))

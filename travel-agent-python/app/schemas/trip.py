@@ -70,3 +70,29 @@ class AdjustResponse(WireModel):
     city: str
     current: str
     recommendations: list[PoiOption] = Field(default_factory=list)
+
+
+class ClarifyRequest(WireModel):
+    message: str = Field(min_length=1)
+    slots: dict = Field(default_factory=dict)
+
+
+class ClarifyResponse(WireModel):
+    slots: dict = Field(default_factory=dict)
+    missing: list[str] = Field(default_factory=list)
+    question: str | None = None
+    ready: bool = False
+
+
+class EditOpRequest(WireModel):
+    city: str
+    days: int
+    plans: list[dict] = Field(default_factory=list)
+    instruction: str = Field(min_length=1)
+
+
+class EditOp(WireModel):
+    action: str  # delete / add / update_time / move_day
+    day_no: int | None = None
+    poi_name: str | None = None
+    start_time: str | None = None

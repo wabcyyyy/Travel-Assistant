@@ -1,6 +1,7 @@
 package com.travel.backend.serviceImpl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.travel.backend.common.BizException;
 import com.travel.backend.dto.AgentGenerateRequest;
 import com.travel.backend.dto.AgentGenerateResponse;
@@ -10,12 +11,17 @@ import com.travel.backend.entity.BudgetDetail;
 import com.travel.backend.entity.ItineraryDay;
 import com.travel.backend.entity.ItineraryItem;
 import com.travel.backend.entity.ItineraryMain;
+import com.travel.backend.entity.PoiKnowledge;
 import com.travel.backend.mapper.BudgetDetailMapper;
 import com.travel.backend.mapper.ItineraryDayMapper;
 import com.travel.backend.mapper.ItineraryItemMapper;
 import com.travel.backend.mapper.ItineraryMainMapper;
+import com.travel.backend.mapper.PoiKnowledgeMapper;
 import com.travel.backend.service.AgentService;
 import com.travel.backend.service.BudgetEngine;
+
+import java.util.List;
+import java.util.Map;
 import com.travel.backend.service.ItineraryService;
 import com.travel.backend.vo.ItinerarySummaryVO;
 import com.travel.backend.vo.ItineraryVO;
@@ -38,16 +44,19 @@ public class ItineraryServiceImpl implements ItineraryService {
     private final BudgetDetailMapper budgetMapper;
     private final AgentService agentService;
     private final BudgetEngine budgetEngine;
+    private final com.travel.backend.mapper.PoiKnowledgeMapper poiKnowledgeMapper;
 
     public ItineraryServiceImpl(ItineraryMainMapper mainMapper, ItineraryDayMapper dayMapper,
                                 ItineraryItemMapper itemMapper, BudgetDetailMapper budgetMapper,
-                                AgentService agentService, BudgetEngine budgetEngine) {
+                                AgentService agentService, BudgetEngine budgetEngine,
+                                com.travel.backend.mapper.PoiKnowledgeMapper poiKnowledgeMapper) {
         this.mainMapper = mainMapper;
         this.dayMapper = dayMapper;
         this.itemMapper = itemMapper;
         this.budgetMapper = budgetMapper;
         this.agentService = agentService;
         this.budgetEngine = budgetEngine;
+        this.poiKnowledgeMapper = poiKnowledgeMapper;
     }
 
     @Override
@@ -402,5 +411,158 @@ public class ItineraryServiceImpl implements ItineraryService {
         vo.setPreferences(main.getPreferences());
         vo.setStatus(main.getStatus());
         return vo;
+    }
+
+    @Override
+    public Map<String, Object> clarify(String message, Map<String, Object> slots) {
+        JsonNode node = agentService.clarify(message, slots);
+        Map<String, Object> out = new java.util.HashMap<>();
+        out.put("slots", node.get("slots"));
+        out.put("missing", node.get("missing"));
+        out.put("question", node.path("question").asText(null));
+        out.put("ready", node.path("ready").asBoolean(false));
+        return out;
+    }
+
+    @Override
+    @CacheEvict(cacheNames = "itinerary:detail", allEntries = true)
+    @Transactional
+    public Map<String, Object> nlEdit(Long userId, Long itineraryId, String instruction) {
+        ItineraryMain main = findOwnedMain(userId, itineraryId);
+        List<ItineraryDay> days = dayMapper.selectList(new LambdaQueryWrapper<ItineraryDay>()
+                .eq(ItineraryDay::getItineraryId, itineraryId).orderByAsc(ItineraryDay::getDayNo));
+        Map<Long, ItineraryDay> dayById = new java.util.HashMap<>();
+        Map<Integer, ItineraryDay> dayByNo = new java.util.HashMap<>();
+        List<Map<String, Object>> plans = new java.util.ArrayList<>();
+        for (ItineraryDay day : days) {
+            dayById.put(day.getId(), day);
+            dayByNo.put(day.getDayNo(), day);
+            List<ItineraryItem> items = itemMapper.selectList(new LambdaQueryWrapper<ItineraryItem>()
+                    .eq(ItineraryItem::getDayId, day.getId()).orderByAsc(ItineraryItem::getSortNo));
+            List<Map<String, Object>> compact = new java.util.ArrayList<>();
+            for (ItineraryItem item : items) {
+                compact.add(new java.util.LinkedHashMap<>(Map.of(
+                        "item_type", item.getItemType() == null ? "" : item.getItemType(),
+                        "poi_name", item.getPoiName() == null ? "" : item.getPoiName(),
+                        "start_time", item.getStartTime() == null ? "" : item.getStartTime())));
+            }
+            plans.add(new java.util.LinkedHashMap<>(Map.of("day_no", day.getDayNo(), "items", compact)));
+        }
+
+        JsonNode opsNode = agentService.editOps(main.getCity(), main.getDays(), plans, instruction);
+        List<String> applied = new java.util.ArrayList<>();
+        int dayCount = days.size();
+        for (JsonNode op : opsNode) {
+            String action = op.path("action").asText("");
+            Integer dayNo = op.hasNonNull("day_no") ? op.get("day_no").asInt() : null;
+            String poiName = op.path("poi_name").asText(null);
+            String startTime = op.hasNonNull("start_time") ? op.get("start_time").asText() : null;
+
+            if (("update_time".equals(action) || "move_day".equals(action))
+                    && (dayNo == null || poiName == null)) {
+                continue;
+            }
+            if (("delete".equals(action) || "add".equals(action)) && poiName == null) {
+                continue;
+            }
+            ItineraryDay targetDay = dayNo == null ? null : dayByNo.get(dayNo);
+            if (targetDay == null && !"delete".equals(action)) {
+                continue;
+            }
+
+            switch (action) {
+                case "delete" -> {
+                    List<ItineraryItem> scope = targetDay != null
+                            ? itemsOfDay(targetDay)
+                            : itemMapper.selectList(new LambdaQueryWrapper<ItineraryItem>()
+                                    .eq(ItineraryItem::getItineraryId, itineraryId));
+                    ItineraryItem item = findItemByName(scope, poiName);
+                    if (item != null) {
+                        itemMapper.deleteById(item.getId());
+                        applied.add("删除「" + poiName + "」");
+                    }
+                }
+                case "update_time" -> {
+                    if (startTime == null) continue;
+                    ItineraryItem item = findItemByName(itemsOfDay(targetDay), poiName);
+                    if (item != null) {
+                        item.setStartTime(java.time.LocalTime.parse(startTime));
+                        item.setEndTime(null);
+                        itemMapper.updateById(item);
+                        applied.add("第" + dayNo + "天「" + poiName + "」改为 " + startTime);
+                    }
+                }
+                case "move_day" -> {
+                    ItineraryItem item = findItemByName(itemsOfDay(targetDay), poiName);
+                    if (item != null && dayNo != null && targetDay != null) {
+                        Integer destNo = Math.min(dayNo + 1, dayCount);
+                        ItineraryDay dest = dayByNo.get(destNo);
+                        if (dest != null && !dest.getId().equals(targetDay.getId())) {
+                            item.setDayId(dest.getId());
+                            item.setSortNo(nextSort(dest.getId()));
+                            itemMapper.updateById(item);
+                            applied.add("「" + poiName + "」移到第" + destNo + "天");
+                        }
+                    }
+                }
+                case "add" -> {
+                    if (dayNo == null || poiName == null || dayByNo.get(dayNo) == null) continue;
+                    ItineraryDay day = dayByNo.get(dayNo);
+                    PoiKnowledge poi = poiKnowledgeMapper.selectOne(
+                            new LambdaQueryWrapper<PoiKnowledge>()
+                                    .eq(PoiKnowledge::getCity, main.getCity())
+                                    .eq(PoiKnowledge::getName, poiName)
+                                    .last("LIMIT 1"));
+                    ItineraryItem entity = new ItineraryItem();
+                    entity.setDayId(day.getId());
+                    entity.setItineraryId(itineraryId);
+                    entity.setItemType(poi != null ? poi.getCategory() : "attraction");
+                    entity.setPoiName(poiName);
+                    if (poi != null) {
+                        entity.setPoiId(String.valueOf(poi.getId()));
+                        entity.setAddress(poi.getAddress());
+                        entity.setLatitude(poi.getLatitude());
+                        entity.setLongitude(poi.getLongitude());
+                        entity.setCost(poi.getTicketPrice());
+                        entity.setDurationMin(poi.getDurationMin());
+                        entity.setTag(poi.getTags());
+                    }
+                    if (startTime != null) {
+                        entity.setStartTime(java.time.LocalTime.parse(startTime));
+                    }
+                    entity.setSortNo(nextSort(day.getId()));
+                    itemMapper.insert(entity);
+                    applied.add("第" + dayNo + "天新增「" + poiName + "」");
+                }
+                default -> { }
+            }
+        }
+        if (applied.isEmpty()) {
+            throw new BizException(400, "未能从指令中解析出可执行的修改，请换个说法");
+        }
+        budgetEngine.recalculate(itineraryId);
+        ItineraryVO vo = detail(userId, itineraryId);
+        return Map.of("applied", applied, "detail", vo);
+    }
+
+    private List<ItineraryItem> itemsOfDay(ItineraryDay day) {
+        if (day == null) {
+            return List.of();
+        }
+        return itemMapper.selectList(new LambdaQueryWrapper<ItineraryItem>()
+                .eq(ItineraryItem::getDayId, day.getId()));
+    }
+
+    private ItineraryItem findItemByName(List<ItineraryItem> items, String name) {
+        return items.stream()
+                .filter(i -> name.equals(i.getPoiName()))
+                .findFirst().orElse(null);
+    }
+
+    private Integer nextSort(Long dayId) {
+        return itemMapper.selectList(new LambdaQueryWrapper<ItineraryItem>()
+                        .eq(ItineraryItem::getDayId, dayId)).stream()
+                .map(ItineraryItem::getSortNo).filter(s -> s != null)
+                .max(Integer::compareTo).orElse(-1) + 1;
     }
 }

@@ -3,8 +3,21 @@
     <div class="lp-page-head">
       <span class="bar"></span>
       <h2>行程生成</h2>
-      <span class="sub">目的地 · 日期 · 偏好，交给 Agent</span>
+      <span class="sub">直接说需求，或手动填写</span>
     </div>
+    <el-card class="chat-card" shadow="never">
+      <div v-for="(m, i) in chat" :key="i" class="chat-line" :class="m.role">
+        {{ m.text }}
+      </div>
+      <div class="chat-input">
+        <el-input
+          v-model="say"
+          placeholder="例如：想去杭州玩 3 天，2 个人，10 月 1 日出发"
+          @keyup.enter="onSay"
+        />
+        <el-button type="primary" :loading="thinking" @click="onSay">发送</el-button>
+      </div>
+    </el-card>
     <el-card class="generate" shadow="never">
       <el-form
         ref="formRef"
@@ -44,7 +57,7 @@
           <el-option label="美食" value="美食" />
         </el-select>
       </el-form-item>
-      <el-form-item label="酒店档次">
+      <el-form-item label="住宿偏好">
         <el-select v-model="form.hotelTier" placeholder="不限（默认按舒适档推荐）" clearable>
           <el-option label="经济型" value="经济型" />
           <el-option label="舒适型" value="舒适型" />
@@ -76,10 +89,47 @@ import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { type FormInstance, type FormRules } from 'element-plus'
 
-import { generateItinerary } from '../api'
+import { generateItinerary, clarifyTrip } from '../api'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
+
+const chat = ref<{ role: 'user' | 'ai'; text: string }[]>([])
+const say = ref('')
+const thinking = ref(false)
+
+function applySlots(slots: Record<string, unknown>) {
+  if (slots.city) form.city = String(slots.city)
+  if (slots.days) form.days = Number(slots.days)
+  if (slots.persons) form.persons = Number(slots.persons)
+  if (slots.start_date) {
+    const s = String(slots.start_date)
+    const d = new Date(s)
+    d.setDate(d.getDate() + Number(slots.days || form.days) - 1)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    dateRange.value = [s, `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`]
+  }
+}
+
+async function onSay() {
+  const msg = say.value.trim()
+  if (!msg || thinking.value) return
+  chat.value.push({ role: 'user', text: msg })
+  say.value = ''
+  thinking.value = true
+  try {
+    const res = await clarifyTrip({ message: msg })
+    applySlots(res.data.slots || {})
+    chat.value.push({
+      role: 'ai',
+      text: res.data.ready ? '信息齐了！点击下方「生成行程」即可 ✅' : res.data.question || '还有信息需要补充',
+    })
+  } catch {
+    chat.value.push({ role: 'ai', text: '没太理解，换个说法试试？' })
+  } finally {
+    thinking.value = false
+  }
+}
 
 const form = reactive({
   city: '',
@@ -128,6 +178,37 @@ async function onSubmit() {
 .generate-page {
   max-width: 960px;
   margin: 0 auto;
+}
+
+.chat-card {
+  margin-bottom: 16px;
+}
+
+.chat-line {
+  padding: 6px 12px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  max-width: 80%;
+  font-size: 14px;
+}
+
+.chat-line.user {
+  background: var(--lp-ink);
+  color: #fff;
+  margin-left: auto;
+  width: fit-content;
+}
+
+.chat-line.ai {
+  background: var(--lp-sand);
+  color: var(--lp-ink);
+  width: fit-content;
+}
+
+.chat-input {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .submit {
