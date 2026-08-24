@@ -25,6 +25,10 @@ public class GenerateRequest {
     @Max(value = 20, message = "人数最多为 20 人")
     private Integer persons = 1;
 
+    @Min(value = 0, message = "住宿晚数不能为负数")
+    @Max(value = 14, message = "住宿晚数最多为 14 晚")
+    private Integer stayNights;
+
     private LocalDate startDate;
     private LocalDate endDate;
 

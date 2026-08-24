@@ -72,3 +72,22 @@ def get_city_consumption(city: str) -> dict | None:
     except Exception as e:
         logger.error("get_city_consumption failed: %s", e)
         return None
+
+
+def search_hotel_room_types(poi_ids: list[int]) -> list[dict]:
+    if not poi_ids:
+        return []
+    placeholders = ",".join(["%s"] * len(poi_ids))
+    sql = (
+        "SELECT id, poi_id, room_name, base_price, capacity, bed_type, breakfast, "
+        "description, is_default FROM hotel_room_type "
+        f"WHERE poi_id IN ({placeholders}) ORDER BY poi_id, is_default DESC, base_price"
+    )
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, poi_ids)
+                return list(cursor.fetchall())
+    except Exception as e:
+        logger.error("search_hotel_room_types failed: %s", e)
+        return []

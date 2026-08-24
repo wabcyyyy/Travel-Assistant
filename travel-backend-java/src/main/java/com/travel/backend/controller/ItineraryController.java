@@ -3,6 +3,7 @@ package com.travel.backend.controller;
 import com.travel.backend.common.Result;
 import com.travel.backend.common.SecurityUtils;
 import com.travel.backend.dto.GenerateRequest;
+import com.travel.backend.dto.HotelOptionApplyRequest;
 import com.travel.backend.dto.ItemUpsertRequest;
 import com.travel.backend.service.ItineraryService;
 import com.travel.backend.service.UserService;
@@ -91,6 +92,47 @@ public class ItineraryController {
                                               @RequestBody Map<String, String> body) {
         return Result.ok(itineraryService.nlEdit(currentUserId(), id,
                 body.getOrDefault("instruction", "")));
+    }
+
+    @PostMapping("/{id}/chat-edit")
+    public Result<Map<String, Object>> chatEdit(@PathVariable Long id,
+                                                @RequestBody Map<String, Object> body) {
+        String message = String.valueOf(body.getOrDefault("message", ""));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> history =
+                (List<Map<String, Object>>) body.getOrDefault("history", List.of());
+        return Result.ok(itineraryService.chatEdit(currentUserId(), id, message, history));
+    }
+
+    @GetMapping("/{id}/chat-history")
+    public Result<List<Map<String, Object>>> chatHistory(@PathVariable Long id) {
+        return Result.ok(itineraryService.chatHistory(currentUserId(), id));
+    }
+
+    @DeleteMapping("/{id}/chat-history")
+    public Result<Void> clearChatHistory(@PathVariable Long id) {
+        itineraryService.clearChatHistory(currentUserId(), id);
+        return Result.ok();
+    }
+
+    @SuppressWarnings("unchecked")
+    @PostMapping("/{id}/apply-plans")
+    public Result<ItineraryVO> applyPlans(@PathVariable Long id,
+                                          @RequestBody Map<String, Object> body) {
+        List<Map<String, Object>> plans =
+                (List<Map<String, Object>>) body.getOrDefault("plans", List.of());
+        Long actionMessageId = body.get("actionMessageId") instanceof Number number
+                ? number.longValue() : null;
+        String baseRevision = body.get("baseRevision") == null
+                ? null : String.valueOf(body.get("baseRevision"));
+        return Result.ok(itineraryService.applyPlans(
+                currentUserId(), id, plans, actionMessageId, baseRevision));
+    }
+
+    @PostMapping("/{id}/hotel-option")
+    public Result<ItineraryVO> applyHotelOption(@PathVariable Long id,
+                                                @Valid @RequestBody HotelOptionApplyRequest request) {
+        return Result.ok(itineraryService.applyHotelOption(currentUserId(), id, request));
     }
 
     private Long currentUserId() {

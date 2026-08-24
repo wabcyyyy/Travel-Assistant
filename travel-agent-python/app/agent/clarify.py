@@ -1,4 +1,4 @@
-"""意图确认节点：多轮对话收集必填条件（目的地/日期/天数/人数）。"""
+"""意图确认节点：多轮对话收集行程条件与偏好。"""
 
 from datetime import date
 
@@ -10,9 +10,9 @@ from app.schemas.trip import ClarifyRequest, ClarifyResponse
 
 logger = logging.getLogger(__name__)
 
-_REQUIRED = ["city", "start_date", "days", "persons"]
-_LABELS = {"city": "目的地城市", "start_date": "出发日期(YYYY-MM-DD)",
-           "days": "出行天数", "persons": "出行人数"}
+_REQUIRED = ["city", "days", "persons"]
+_KNOWN = _REQUIRED + ["start_date", "stay_nights", "budget", "hotel_tier", "preferences"]
+_LABELS = {"city": "目的地城市", "days": "出行天数", "persons": "出行人数"}
 
 
 def run_clarify(req: ClarifyRequest) -> ClarifyResponse:
@@ -20,7 +20,9 @@ def run_clarify(req: ClarifyRequest) -> ClarifyResponse:
     system = (
         "你是旅行规划的信息收集助手。从用户最新一句话中抽取槽位，与已有槽位合并。"
         "只输出 JSON：{\"city\":\"城市名或null\",\"start_date\":\"YYYY-MM-DD或null\","
-        "\"days\":数字或null,\"persons\":数字或null}。没提到的字段一律 null，不要猜测。"
+        "\"days\":数字或null,\"stay_nights\":数字或null,\"persons\":数字或null,"
+        "\"budget\":数字或null,\"hotel_tier\":\"经济型/舒适型/高档型/豪华型/奢华型或null\","
+        "\"preferences\":[\"偏好\"]或null}。没提到的字段一律 null，不要猜测。"
     )
     raw = client.complete(
         f"今天是 {date.today().isoformat()}。\n"
@@ -34,7 +36,7 @@ def run_clarify(req: ClarifyRequest) -> ClarifyResponse:
         if text.startswith("```"):
             text = text.split("\n", 1)[-1].rsplit("```", 1)[0]
         data = json.loads(text[text.find("{") : text.rfind("}") + 1])
-        for k in _REQUIRED:
+        for k in _KNOWN:
             v = data.get(k)
             if v not in (None, "", "null"):
                 slots[k] = v

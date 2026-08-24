@@ -75,15 +75,33 @@
         ],
         "summary": "Generate",
         "operationId": "generate_api_agent_v1_generate_post",
+        "parameters": [
+          {
+            "name": "x-agent-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Token"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/GenerateRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -116,15 +134,33 @@
         ],
         "summary": "Adjust",
         "operationId": "adjust_api_agent_v1_adjust_post",
+        "parameters": [
+          {
+            "name": "x-agent-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Token"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AdjustRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -157,15 +193,33 @@
         ],
         "summary": "Clarify",
         "operationId": "clarify_api_agent_v1_clarify_post",
+        "parameters": [
+          {
+            "name": "x-agent-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Token"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ClarifyRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -198,15 +252,33 @@
         ],
         "summary": "Edit Ops",
         "operationId": "edit_ops_api_agent_v1_edit_ops_post",
+        "parameters": [
+          {
+            "name": "x-agent-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Token"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/EditOpRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -239,15 +311,33 @@
         ],
         "summary": "Plan Context",
         "operationId": "plan_context_api_agent_v1_plan_context_post",
+        "parameters": [
+          {
+            "name": "x-agent-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Token"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PlanContextRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -280,15 +370,33 @@
         ],
         "summary": "Generate Day",
         "operationId": "generate_day_api_agent_v1_generate_day_post",
+        "parameters": [
+          {
+            "name": "x-agent-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Token"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/GenerateDayRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -297,6 +405,65 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_DailyPlan_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/v1/chat-turn": {
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Chat Turn",
+        "operationId": "chat_turn_api_agent_v1_chat_turn_post",
+        "parameters": [
+          {
+            "name": "x-agent-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatTurnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ChatTurnResponse_"
                 }
               }
             }
@@ -404,6 +571,34 @@
           "message"
         ],
         "title": "ApiResponse[AdjustResponse]"
+      },
+      "ApiResponse_ChatTurnResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatTurnResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ApiResponse[ChatTurnResponse]"
       },
       "ApiResponse_ClarifyResponse_": {
         "properties": {
@@ -579,6 +774,198 @@
         ],
         "title": "ApiResponse[str]"
       },
+      "ChatTurnRequest": {
+        "properties": {
+          "city": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "City"
+          },
+          "days": {
+            "type": "integer",
+            "maximum": 14.0,
+            "minimum": 1.0,
+            "title": "Days"
+          },
+          "persons": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Persons",
+            "default": 1
+          },
+          "budget": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget"
+          },
+          "currentTotal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currenttotal"
+          },
+          "currentHotelTotal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currenthoteltotal"
+          },
+          "startDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startdate"
+          },
+          "endDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enddate"
+          },
+          "preferences": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Preferences"
+          },
+          "hotelTier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hoteltier"
+          },
+          "plans": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 14,
+            "title": "Plans"
+          },
+          "history": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "History"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "city",
+          "days",
+          "message"
+        ],
+        "title": "ChatTurnRequest"
+      },
+      "ChatTurnResponse": {
+        "properties": {
+          "reply": {
+            "type": "string",
+            "title": "Reply"
+          },
+          "plans": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Plans"
+          },
+          "changed": {
+            "type": "boolean",
+            "title": "Changed",
+            "default": false
+          },
+          "hotelOptions": {
+            "items": {
+              "$ref": "#/components/schemas/HotelOption"
+            },
+            "type": "array",
+            "title": "Hoteloptions"
+          },
+          "requiresConfirmation": {
+            "type": "boolean",
+            "title": "Requiresconfirmation",
+            "default": false
+          },
+          "planDocument": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plandocument"
+          },
+          "operations": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Operations"
+          },
+          "pendingAction": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pendingaction"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reply"
+        ],
+        "title": "ChatTurnResponse"
+      },
       "ClarifyRequest": {
         "properties": {
           "message": {
@@ -665,10 +1052,14 @@
         "properties": {
           "city": {
             "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
             "title": "City"
           },
           "days": {
             "type": "integer",
+            "maximum": 14.0,
+            "minimum": 1.0,
             "title": "Days"
           },
           "plans": {
@@ -676,10 +1067,12 @@
               "type": "object"
             },
             "type": "array",
+            "maxItems": 14,
             "title": "Plans"
           },
           "instruction": {
             "type": "string",
+            "maxLength": 2000,
             "minLength": 1,
             "title": "Instruction"
           }
@@ -758,6 +1151,11 @@
               }
             ],
             "title": "Chosenhotel"
+          },
+          "needsHotel": {
+            "type": "boolean",
+            "title": "Needshotel",
+            "default": true
           },
           "context": {
             "type": "object",
@@ -907,6 +1305,279 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HotelOption": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "hotelName": {
+            "type": "string",
+            "title": "Hotelname"
+          },
+          "tier": {
+            "type": "string",
+            "title": "Tier"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "basePrice": {
+            "type": "number",
+            "title": "Baseprice"
+          },
+          "seasonFactor": {
+            "type": "number",
+            "title": "Seasonfactor"
+          },
+          "seasonLabel": {
+            "type": "string",
+            "title": "Seasonlabel"
+          },
+          "nightlyPrice": {
+            "type": "number",
+            "title": "Nightlyprice"
+          },
+          "nights": {
+            "type": "integer",
+            "title": "Nights"
+          },
+          "rooms": {
+            "type": "integer",
+            "title": "Rooms"
+          },
+          "totalPrice": {
+            "type": "number",
+            "title": "Totalprice"
+          },
+          "priceDelta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricedelta"
+          },
+          "withinBudget": {
+            "type": "boolean",
+            "title": "Withinbudget"
+          },
+          "budgetCapacity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budgetcapacity"
+          },
+          "budgetOverage": {
+            "type": "number",
+            "title": "Budgetoverage",
+            "default": 0
+          },
+          "isCurrent": {
+            "type": "boolean",
+            "title": "Iscurrent",
+            "default": false
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "requestedNights": {
+            "type": "integer",
+            "title": "Requestednights",
+            "default": 1
+          },
+          "requestedDayNos": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Requesteddaynos"
+          },
+          "availableDayNos": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Availabledaynos"
+          },
+          "roomTypes": {
+            "items": {
+              "$ref": "#/components/schemas/HotelRoomOption"
+            },
+            "type": "array",
+            "title": "Roomtypes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "hotelName",
+          "tier",
+          "basePrice",
+          "seasonFactor",
+          "seasonLabel",
+          "nightlyPrice",
+          "nights",
+          "rooms",
+          "totalPrice",
+          "withinBudget",
+          "reason"
+        ],
+        "title": "HotelOption"
+      },
+      "HotelRoomOption": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "roomName": {
+            "type": "string",
+            "title": "Roomname"
+          },
+          "basePrice": {
+            "type": "number",
+            "title": "Baseprice"
+          },
+          "nightlyPrice": {
+            "type": "number",
+            "title": "Nightlyprice"
+          },
+          "nights": {
+            "type": "integer",
+            "title": "Nights"
+          },
+          "rooms": {
+            "type": "integer",
+            "title": "Rooms"
+          },
+          "totalPrice": {
+            "type": "number",
+            "title": "Totalprice"
+          },
+          "priceDelta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricedelta"
+          },
+          "projectedHotelTotal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projectedhoteltotal"
+          },
+          "withinBudget": {
+            "type": "boolean",
+            "title": "Withinbudget"
+          },
+          "budgetOverage": {
+            "type": "number",
+            "title": "Budgetoverage",
+            "default": 0
+          },
+          "capacity": {
+            "type": "integer",
+            "title": "Capacity",
+            "default": 2
+          },
+          "bedType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bedtype"
+          },
+          "breakfast": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakfast"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "isDefault": {
+            "type": "boolean",
+            "title": "Isdefault",
+            "default": false
+          },
+          "nightlyBreakdown": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Nightlybreakdown"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "roomName",
+          "basePrice",
+          "nightlyPrice",
+          "nights",
+          "rooms",
+          "totalPrice",
+          "withinBudget"
+        ],
+        "title": "HotelRoomOption"
       },
       "PlanContextRequest": {
         "properties": {

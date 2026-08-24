@@ -12,7 +12,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
@@ -31,6 +33,9 @@ public class AgentServiceImpl implements AgentService {
 
     @Value("${app.agent.base-url}")
     private String agentBaseUrl;
+
+    @Value("${app.agent.internal-token:}")
+    private String agentInternalToken;
 
     public AgentServiceImpl(RestTemplate restTemplate) {
         this.restTemplate = restTemplate;
@@ -56,6 +61,10 @@ public class AgentServiceImpl implements AgentService {
         return postForNode("/api/agent/v1/edit-ops", body, "指令解析服务暂不可用");
     }
 
+    public JsonNode chatTurn(Map<String, Object> payload) {
+        return postForNode("/api/agent/v1/chat-turn", payload, "行程助手暂不可用");
+    }
+
     public JsonNode planContext(String city, List<String> preferences) {
         Map<String, Object> body = Map.of("city", city,
                 "preferences", preferences == null ? List.of() : preferences);
@@ -69,8 +78,13 @@ public class AgentServiceImpl implements AgentService {
     private JsonNode postForNode(String path, Object body, String unavailableMsg) {
         String url = agentBaseUrl + path;
         try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            if (agentInternalToken != null && !agentInternalToken.isBlank()) {
+                headers.set("X-Agent-Token", agentInternalToken);
+            }
             ResponseEntity<Result<JsonNode>> response = restTemplate.exchange(
-                    url, HttpMethod.POST, new HttpEntity<>(body),
+                    url, HttpMethod.POST, new HttpEntity<>(body, headers),
                     new ParameterizedTypeReference<Result<JsonNode>>() {
                     });
             Result<JsonNode> result = response.getBody();

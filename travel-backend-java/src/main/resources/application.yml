@@ -40,6 +40,7 @@ app:
     expire-hours: 24
   agent:
     base-url: ${AGENT_SERVICE_URL:http://localhost:8000}
+    internal-token: ${AGENT_INTERNAL_TOKEN:}
   amap:
     web-key: ${AMAP_WEB_KEY:}
   export:

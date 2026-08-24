@@ -32,6 +32,7 @@ export function generateItinerary(data: {
   city: string
   days: number
   persons: number
+  stayNights: number
   budget?: number
   startDate?: string
   endDate?: string
@@ -112,6 +113,130 @@ export function clarifyTrip(data: { message: string; slots?: Record<string, unkn
 
 export function nlEditItinerary(id: number | string, instruction: string) {
   return requestPost<{ applied: string[] }>('/itinerary/' + id + '/nl-edit', { instruction })
+}
+
+export function chatEditItinerary(
+  id: number | string,
+  message: string,
+  history: { role: string; content: string }[],
+) {
+  return requestPost<{
+    reply: string
+    changed: boolean
+    plans: unknown[]
+    hotelOptions: HotelOption[]
+    requiresConfirmation: boolean
+    planDocument?: Record<string, unknown> | null
+    operations?: Record<string, unknown>[]
+    pendingAction?: Record<string, unknown> | null
+    messageId?: number
+    baseRevision?: string
+  }>(
+    '/itinerary/' + id + '/chat-edit',
+    { message, history },
+  )
+}
+
+export interface ItineraryChatMessage {
+  id?: number
+  role: 'user' | 'ai'
+  content: string
+  plans?: any[]
+  hotelOptions?: HotelOption[]
+  changed?: boolean
+  baseRevision?: string
+  createdAt?: string
+}
+
+export function getItineraryChatHistory(id: number | string) {
+  return requestGet<ItineraryChatMessage[]>(`/itinerary/${id}/chat-history`)
+}
+
+export function clearItineraryChatHistory(id: number | string) {
+  return requestDelete<void>(`/itinerary/${id}/chat-history`)
+}
+
+export interface HotelOption {
+  id: string
+  hotelName: string
+  tier: string
+  address?: string | null
+  rating?: number | null
+  basePrice: number
+  seasonFactor: number
+  seasonLabel: string
+  nightlyPrice: number
+  nights: number
+  rooms: number
+  totalPrice: number
+  priceDelta?: number | null
+  withinBudget: boolean
+  budgetCapacity?: number | null
+  budgetOverage: number
+  isCurrent: boolean
+  reason: string
+  requestedNights: number
+  requestedDayNos: number[]
+  availableDayNos: number[]
+  roomTypes: HotelRoomOption[]
+  baseRevision?: string
+}
+
+export interface HotelRoomOption {
+  id: string
+  roomName: string
+  basePrice: number
+  nightlyPrice: number
+  nights: number
+  rooms: number
+  totalPrice: number
+  priceDelta?: number | null
+  projectedHotelTotal?: number | null
+  withinBudget: boolean
+  budgetOverage: number
+  capacity: number
+  bedType?: string | null
+  breakfast?: string | null
+  description?: string | null
+  isDefault: boolean
+  nightlyBreakdown?: Array<{
+    dayNo: number
+    stayDate?: string | null
+    seasonLabel: string
+    seasonFactor: number
+    nightlyPrice: number
+  }>
+}
+
+export function applyPlans(
+  id: number | string,
+  plans: unknown[],
+  actionMessageId?: number,
+  baseRevision?: string,
+) {
+  return requestPost<ItineraryDetail>('/itinerary/' + id + '/apply-plans', {
+    plans,
+    actionMessageId,
+    baseRevision,
+  })
+}
+
+export function applyHotelOption(
+  id: number | string,
+  option: Pick<HotelOption, 'hotelName' | 'tier'>,
+  roomType: string,
+  dayNos: number[],
+  actionMessageId?: number,
+  baseRevision?: string,
+) {
+  return requestPost<ItineraryDetail>('/itinerary/' + id + '/hotel-option', {
+    hotelName: option.hotelName,
+    tier: option.tier,
+    roomType,
+    dayNos,
+    actionMessageId,
+    baseRevision,
+  })
 }
 
 const downloadClient = axios.create({ baseURL: '/api', timeout: 60000 })

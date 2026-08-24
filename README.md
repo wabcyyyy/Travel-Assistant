@@ -80,6 +80,10 @@ mysql -uroot -p < sql/schema.sql        # 建 8 张表
 mysql -uroot -p < sql/seed_data.sql     # 种子数据：POI 知识 + 城市消费系数（北京/上海/成都/西安/三亚）
 mysql -uroot -p < sql/add_hangzhou.sql  # 追加杭州 POI（幂等）
 mysql -uroot -p < sql/add_hotels.sql    # 追加各城市知识库酒店（经济/舒适/高端三档，幂等）
+mysql -uroot -p < sql/add_hotel_tier.sql # 已有数据库补充住宿偏好字段（幂等）
+mysql -uroot -p < sql/add_hangzhou_hotel_options.sql # 补充杭州各档换房候选（幂等）
+mysql -uroot -p < sql/add_hotel_room_types.sql # 补充酒店房型与每晚参考价（幂等）
+mysql -uroot -p < sql/add_itinerary_chat_message.sql # 持久化行程对话记忆（幂等）
 ```
 
 > 酒店定价三级来源（备注中标注）：① 千问联网搜索实时挂牌价 ② 知识库基准价×季节系数估算。季节系数与出行日期联动：节假日窗口 ×1.8、暑期 ×1.5、淡季 ×0.85、平季 ×1.0，规则见 `app/common/season.py` 与 `common/SeasonPrice.java`。支持按档次筛选：经济型/舒适型/高档型/豪华型/奢华型。
@@ -128,6 +132,7 @@ npm run dev            # http://localhost:5173
 | `MYSQL_HOST/PORT/USER/PASSWORD/DB` | Java/Python | 数据库连接（Java 另有 `REDIS_HOST/PORT`） |
 | `JWT_SECRET` | Java | JWT 密钥（默认 dev 值，生产必改） |
 | `AGENT_SERVICE_URL` | Java | Agent 服务地址，默认 `http://localhost:8000` |
+| `AGENT_INTERNAL_TOKEN` | Java/Python | Java 调用 Agent 的内部认证 token；两端配置相同后启用 |
 | `LLM_API_KEY/BASE_URL/MODEL` | Python | 千问 OpenAI 兼容接口（默认 qwen-plus） |
 | `LIVE_PRICE_SEARCH/MAX_LIVE_QUERIES` | Python | 酒店联网实时定价开关（DashScope 搜索插件）与每次生成最大查询数 |
 | `DEFAULT_BUDGET` | Python | 默认预算，默认 1000 |

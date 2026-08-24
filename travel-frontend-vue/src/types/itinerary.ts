@@ -12,6 +12,7 @@ export interface TripItem {
   cost?: number | null
   tag?: string | null
   remark?: string | null
+  description?: string | null
   sortNo?: number
 }
 
@@ -36,9 +37,11 @@ export interface ItineraryDetail {
   startDate?: string | null
   endDate?: string | null
   days: number
+  stayNights: number
   persons: number
   budget?: number | null
   preferences?: string | null
+  hotelTier?: string | null
   status: number
   dayList: DayPlan[]
   budgetList: BudgetRow[]

@@ -30,7 +30,7 @@
       <div v-for="item in day.items" :key="item.id" class="item-line">
         <span class="item-name">{{ item.poiName }}</span>
         <span class="item-cost">
-          {{ item.cost != null ? `￥${item.cost}/人` : '—' }}
+          {{ item.cost != null ? `￥${item.cost}${item.itemType === 'hotel' ? '/间/晚' : '/人'}` : '—' }}
         </span>
       </div>
     </div>

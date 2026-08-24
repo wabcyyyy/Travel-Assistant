@@ -54,11 +54,12 @@ def search_foods(city: str, limit: int = 10) -> list[dict]:
 
 
 def search_hotels(city: str, limit: int = 6) -> list[dict]:
+    # 酒店换档需要完整、可枚举的候选集；向量召回适合相关性搜索，但可能漏掉当前档次。
+    rows = poi_repository.search_pois(city, category="hotel", limit=limit)
+    if rows:
+        return rows
     poi_store.ensure_loaded()
-    hits = poi_store.search(f"{city} 住宿", city=city, category="hotel", limit=limit)
-    if hits:
-        return hits[:limit]
-    return poi_repository.search_pois(city, category="hotel", limit=limit)
+    return poi_store.search(f"{city} 住宿", city=city, category="hotel", limit=limit)[:limit]
 
 
 def get_poi_detail(city: str, name: str) -> dict | None:
@@ -67,6 +68,10 @@ def get_poi_detail(city: str, name: str) -> dict | None:
 
 def get_consumption(city: str) -> dict | None:
     return poi_repository.get_city_consumption(city)
+
+
+def search_hotel_room_types(poi_ids: list[int]) -> list[dict]:
+    return poi_repository.search_hotel_room_types(poi_ids)
 
 
 def _match_preferences(poi: dict, keywords: list[str]) -> bool:

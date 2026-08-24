@@ -7,7 +7,14 @@
     </div>
     <el-card shadow="never">
       <el-table v-if="list.length" :data="list" style="width: 100%">
-        <el-table-column prop="title" label="标题" min-width="160" />
+        <el-table-column prop="title" label="标题" min-width="150" />
+        <el-table-column label="状态" width="90">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 2 ? 'success' : row.status === 1 ? 'warning' : 'danger'" size="small">
+              {{ row.status === 2 ? '已生成' : row.status === 1 ? '生成中' : '生成失败' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="city" label="目的地" width="100" />
         <el-table-column label="日期" width="180">
           <template #default="{ row }">
@@ -19,6 +26,9 @@
         </el-table-column>
         <el-table-column label="预估总价" width="120">
           <template #default="{ row }">￥{{ row.totalAmount }}</template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="150">
+          <template #default="{ row }">{{ formatCreatedAt(row.createdAt) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="160">
           <template #default="{ row }">
@@ -42,6 +52,10 @@ import { deleteItinerary, getItineraryList } from '../api'
 import type { ItinerarySummary } from '../types/itinerary'
 
 const list = ref<ItinerarySummary[]>([])
+
+function formatCreatedAt(value: string) {
+  return value ? value.replace('T', ' ').slice(0, 16) : '—'
+}
 
 async function load() {
   const res = await getItineraryList()

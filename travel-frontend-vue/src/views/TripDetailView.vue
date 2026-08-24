@@ -14,14 +14,20 @@
       <div class="head-info">
         <h2>{{ detail.title }}</h2>
         <p>
-          {{ detail.city }} · {{ detail.days }} 天 {{ detail.persons }} 人
+          {{ detail.city }} · {{ detail.days }} 天 {{ detail.stayNights }} 晚 · {{ detail.persons }} 人
           <template v-if="detail.preferences"> · 偏好：{{ detail.preferences }}</template>
+          <template v-if="detail.hotelTier"> · 住宿：{{ detail.hotelTier }}</template>
         </p>
-        <p v-if="detail.startDate">日期：{{ detail.startDate }} ~ {{ detail.endDate }}</p>
+        <p v-if="detail.startDate">
+          日期：{{ detail.startDate }} ~ {{ detail.endDate }}
+          <el-tag v-if="dateNightMismatch" type="warning" size="small" style="margin-left: 8px">
+            日期通常对应 {{ expectedDateNights }} 晚，当前计划含 {{ detail.stayNights }} 晚
+          </el-tag>
+        </p>
       </div>
       <div class="head-actions">
         <el-button @click="$router.back()">返回</el-button>
-        <el-button @click="$router.push('/generate')">重新生成</el-button>
+        <el-button @click="$router.push('/generate')">新建相似行程</el-button>
         <el-button
           :loading="exportingPdf"
           @click="onExportPdf"
@@ -31,27 +37,211 @@
         <el-button :loading="exportingImg" @click="onExportImage">导出图片</el-button>
       </div>
       <div class="nl-edit">
-        <el-input
-          v-model="nlInstruction"
-          placeholder="用一句话修改行程，如：把灵隐寺移到第 2 天 / 删掉楼外楼"
-          @keyup.enter="onNlEdit"
-        />
-        <el-button type="primary" :loading="nlLoading" @click="onNlEdit">AI 修改</el-button>
+        <div class="chat-scroll">
+        <div v-for="(m, i) in chatMsgs" :key="m.id || i" class="chat-line" :class="m.role">
+          <div v-if="m.role === 'ai'" class="markdown-body" v-html="renderMarkdown(m.content)"></div>
+          <template v-else>{{ m.content }}</template>
+          <div v-if="m.plans && m.plans.length" class="draft-preview">
+            <div class="draft-summary-title">本次变更</div>
+            <div v-for="change in draftChanges(m)" :key="change" class="draft-change">{{ change }}</div>
+            <div v-for="d in m.plans" :key="d.day_no" class="draft-day">
+              <b>第{{ d.day_no }}天</b>：
+              {{ (d.items || []).map((it: any) => it.poi_name).join(' → ') }}
+            </div>
+          </div>
+          <div v-if="m.hotelOptions && m.hotelOptions.length" class="hotel-options">
+            <div class="hotel-option-title">住宿备选方案（选择后才会应用）</div>
+            <div v-for="option in m.hotelOptions" :key="option.id" class="hotel-option">
+              <div class="hotel-option-main">
+                <div class="hotel-option-name">
+                  {{ option.hotelName }}
+                  <el-tag size="small" type="success">{{ option.tier }}</el-tag>
+                  <el-tag v-if="selectedRoom(m, i, option)?.withinBudget" size="small" type="info">预算内</el-tag>
+                  <el-tag v-else size="small" type="danger">预计超出总预算</el-tag>
+                  <el-tag v-if="option.isCurrent" size="small">当前酒店</el-tag>
+                </div>
+                <div class="hotel-option-config">
+                  <span>房型</span>
+                  <el-select v-model="hotelSelections[selectionKey(m, i, option)].roomTypeId" size="small" style="width: 230px">
+                    <el-option
+                      v-for="room in option.roomTypes"
+                      :key="room.id"
+                      :label="`${room.roomName}（￥${room.nightlyPrice}/晚）`"
+                      :value="room.id"
+                    />
+                  </el-select>
+                  <template v-if="requiresDaySelection(option)">
+                    <span>入住晚次（请选择 {{ option.requestedNights }} 晚）</span>
+                    <el-checkbox-group
+                      v-model="hotelSelections[selectionKey(m, i, option)].dayNos"
+                      :max="option.requestedNights"
+                      size="small"
+                    >
+                      <el-checkbox-button v-for="dayNo in option.availableDayNos" :key="dayNo" :label="dayNo">
+                        第{{ dayNo }}晚
+                      </el-checkbox-button>
+                    </el-checkbox-group>
+                  </template>
+                  <template v-else>
+                    <span>入住晚次</span>
+                    <strong>{{ stayScopeLabel(option) }}</strong>
+                  </template>
+                </div>
+                <div class="hotel-option-meta">
+                  <template v-if="hasVariableNightlyPrice(m, i, option)">
+                    各晚价格按入住日期计算，{{ option.requestedNights }} 晚 × {{ selectedRoom(m, i, option)?.rooms }} 间
+                  </template>
+                  <template v-else>
+                    ￥{{ selectedRoom(m, i, option)?.nightlyPrice }}/晚 × {{ option.requestedNights }} 晚 × {{ selectedRoom(m, i, option)?.rooms }} 间
+                  </template>
+                  = ￥{{ selectedRoom(m, i, option)?.totalPrice }}
+                  <span v-if="selectedRoom(m, i, option)?.priceDelta != null">
+                    （{{ (selectedRoom(m, i, option)?.priceDelta || 0) >= 0 ? '+' : '' }}￥{{ selectedRoom(m, i, option)?.priceDelta }}）
+                  </span>
+                </div>
+                <div class="hotel-option-reason">
+                  {{ selectedRoom(m, i, option)?.description }}；床型：{{ selectedRoom(m, i, option)?.bedType || '以酒店确认为准' }}；
+                  早餐：{{ selectedRoom(m, i, option)?.breakfast || '以酒店确认为准' }}
+                </div>
+                <div class="hotel-option-reason">{{ option.reason }}</div>
+                <div v-if="option.budgetCapacity != null" class="hotel-option-reason">
+                  当前总预算可用于住宿约 ￥{{ option.budgetCapacity }}
+                  <span v-if="(selectedRoom(m, i, option)?.budgetOverage || 0) > 0">
+                    ，替换后预计超出约 ￥{{ selectedRoom(m, i, option)?.budgetOverage }}
+                  </span>
+                </div>
+                <div class="hotel-option-price-note">房价为所选入住日期的估算参考，实际以酒店实时库存和价格方案为准。</div>
+              </div>
+              <el-button type="primary" size="small" :disabled="!canChooseHotel(m, i, option)" :loading="applying" @click="onChooseHotel(m, i, option)">
+                选择此方案
+              </el-button>
+            </div>
+          </div>
+        </div>
+        <div v-if="nlLoading" class="chat-thinking">
+          <el-icon class="is-loading"><Loading /></el-icon>
+          正在理解需求并核对行程、预算与可选方案，请稍候…
+        </div>
+        </div>
+        <div class="chat-input">
+          <el-input
+            v-model="nlInstruction"
+            placeholder="想怎么改？例如：酒店换成奢华的 / 第二天别太赶 / 删掉楼外楼"
+            @keyup.enter="onChatSend"
+          />
+          <el-button :loading="nlLoading" @click="onChatSend">发送</el-button>
+          <el-button :disabled="!chatMsgs.length" @click="onClearChat">清空对话</el-button>
+          <el-button type="primary" :disabled="!draftChanged" :loading="applying" @click="onApply">
+            应用到行程
+          </el-button>
+        </div>
+      </div>
+    </el-card>
+
+    <!-- 日期 Tab 分页 -->
+    <el-card v-if="detail" shadow="never" class="day-tabs-card">
+      <div class="day-tabs">
+        <button
+          v-for="d in detail.dayList"
+          :key="d.dayId"
+          type="button"
+          class="day-tab"
+          :class="{ active: routeDay === d.dayNo }"
+          @click="routeDay = d.dayNo"
+        >
+          <span class="day-tab-title">DAY {{ d.dayNo }}</span>
+          <span class="day-tab-date">{{ d.travelDate || '' }}</span>
+          <span class="day-tab-n">{{ (d.items || []).length }} 个点位</span>
+        </button>
       </div>
     </el-card>
 
     <el-row v-if="detail" :gutter="16">
-      <el-col :span="15">
+      <el-col :span="14">
+        <el-card shadow="never" class="timeline-card">
+          <template #header>
+            <div class="timeline-head">
+              <span class="toolbar-title">第 {{ routeDay }} 天安排</span>
+              <el-button
+                type="primary"
+                size="small"
+                :disabled="!amapReady"
+                @click="openAddDialog"
+              >
+                添加景点
+              </el-button>
+            </div>
+          </template>
+
+          <draggable
+            :list="activeDayItems"
+            item-key="id"
+            handle=".drag-handle"
+            :animation="150"
+            @end="onDragEnd(activeDay!)"
+          >
+            <template #item="{ element }">
+              <div
+                :id="`item-${element.id}`"
+                class="poi-card"
+                :class="{ highlighted: element.id === highlightId }"
+                @click="onItemClick(element)"
+              >
+                <div class="poi-img">
+                  <img
+                    v-if="element.longitude && element.latitude && !imgFailed[element.id!]"
+                    :src="staticMapUrl(element)"
+                    :alt="element.poiName"
+                    loading="lazy"
+                    @error="imgFailed[element.id!] = true"
+                  />
+                  <div v-else class="poi-img-fallback">{{ typeLabel(element.itemType) }}</div>
+                </div>
+                <div class="poi-body">
+                  <div class="poi-top">
+                    <el-icon class="drag-handle"><Rank /></el-icon>
+                    <span class="poi-name">{{ element.poiName }}</span>
+                    <el-tag :type="tagType(element.itemType)" size="small">
+                      {{ typeLabel(element.itemType) }}
+                    </el-tag>
+                    <span v-if="element.startTime" class="poi-time">
+                      {{ element.startTime }}<template v-if="element.endTime"> - {{ element.endTime }}</template>
+                    </span>
+                  </div>
+                  <div class="poi-meta">
+                    <span v-if="element.durationMin">约 {{ element.durationMin }} 分钟</span>
+                    <span v-if="element.cost != null">
+                      ￥{{ element.cost }}{{ element.itemType === 'hotel' ? '/晚/间' : '/人' }}
+                    </span>
+                    <span v-if="element.tag">{{ element.tag }}</span>
+                  </div>
+                  <p v-if="element.description" class="poi-desc">{{ element.description }}</p>
+                  <p v-if="element.remark" class="poi-remark">{{ element.remark }}</p>
+                </div>
+                <div class="poi-actions">
+                  <el-button link type="primary" size="small" @click.stop="openEditDialog(element)">
+                    编辑
+                  </el-button>
+                  <el-button link type="danger" size="small" @click.stop="onDeleteItem(element)">
+                    删除
+                  </el-button>
+                </div>
+              </div>
+            </template>
+          </draggable>
+          <el-empty
+            v-if="!activeDayItems.length"
+            description="当天暂无安排"
+            :image-size="80"
+          />
+        </el-card>
+      </el-col>
+
+      <el-col :span="10">
         <el-card shadow="never" class="map-card">
           <div class="map-toolbar">
-            <span class="toolbar-title">游览路线</span>
-            <el-radio-group v-model="routeDay" size="small">
-              <el-radio-button :label="null">不显示</el-radio-button>
-              <el-radio-button v-for="d in detail.dayList" :key="d.dayId" :label="d.dayNo">
-                第 {{ d.dayNo }} 天
-              </el-radio-button>
-            </el-radio-group>
-            <el-tag v-if="!amapReady" type="warning" size="small" style="margin-left: 8px">
+            <span class="toolbar-title">当日路线</span>
+            <el-tag v-if="!amapReady" type="warning" size="small">
               未配置高德 JS key，地图不可用
             </el-tag>
           </div>
@@ -64,82 +254,17 @@
           />
         </el-card>
       </el-col>
-
-      <el-col :span="9">
-        <el-card shadow="never" class="budget-card">
-          <BudgetPanel
-            :budget-list="detail.budgetList"
-            :total-amount="detail.totalAmount"
-            :budget-limit="detail.budget"
-            :persons="detail.persons"
-            :day-list="detail.dayList"
-          />
-        </el-card>
-
-        <el-card shadow="never" class="days-card">
-          <template #header>
-            <span>行程安排</span>
-            <el-button
-              type="primary"
-              size="small"
-              style="float: right"
-              :disabled="!amapReady"
-              @click="openAddDialog"
-            >
-              搜索添加景点
-            </el-button>
-          </template>
-
-          <el-collapse v-model="activeDays">
-            <el-collapse-item v-for="day in detail.dayList" :key="day.dayId" :name="day.dayNo">
-              <template #title>
-                <span class="day-title">第 {{ day.dayNo }} 天</span>
-              </template>
-              <draggable
-                :list="day.items"
-                item-key="id"
-                handle=".drag-handle"
-                :animation="150"
-                @end="onDragEnd(day)"
-              >
-                <template #item="{ element }">
-                  <div
-                    :id="`item-${element.id}`"
-                    class="item-row"
-                    :class="{ highlighted: element.id === highlightId }"
-                    @click="onItemClick(element)"
-                  >
-                    <el-icon class="drag-handle"><Rank /></el-icon>
-                    <el-tag :type="tagType(element.itemType)" size="small">
-                      {{ typeLabel(element.itemType) }}
-                    </el-tag>
-                    <div class="item-main">
-                      <div class="item-name">{{ element.poiName }}</div>
-                      <div class="item-sub">
-                        <span v-if="element.startTime">{{ element.startTime }}</span>
-                        <span v-if="element.durationMin">约 {{ element.durationMin }} 分钟</span>
-                        <span v-if="element.cost != null">￥{{ element.cost }}/人</span>
-                      </div>
-                    </div>
-                    <el-button
-                      link
-                      type="primary"
-                      size="small"
-                      @click.stop="openEditDialog(element)"
-                    >
-                      编辑
-                    </el-button>
-                    <el-button link type="danger" size="small" @click.stop="onDeleteItem(element)">
-                      删除
-                    </el-button>
-                  </div>
-                </template>
-              </draggable>
-            </el-collapse-item>
-          </el-collapse>
-        </el-card>
-      </el-col>
     </el-row>
+
+    <el-card v-if="detail" shadow="never" class="budget-card">
+      <BudgetPanel
+        :budget-list="detail.budgetList"
+        :total-amount="detail.totalAmount"
+        :budget-limit="detail.budget"
+        :persons="detail.persons"
+        :day-list="detail.dayList"
+      />
+    </el-card>
 
     <el-dialog v-model="addDialogVisible" title="搜索添加景点" width="560px">
       <div class="search-bar">
@@ -188,7 +313,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, Rank } from '@element-plus/icons-vue'
@@ -206,11 +331,18 @@ import {
   reorderItems,
   searchPoi,
   updateItem,
-  nlEditItinerary,
+  chatEditItinerary,
+  applyPlans,
+  applyHotelOption,
+  getItineraryChatHistory,
+  clearItineraryChatHistory,
+  type HotelOption,
+  type ItineraryChatMessage,
   type AmapPoi,
 } from '../api'
 import type { DayPlan, ItineraryDetail, TripItem } from '../types/itinerary'
 import { exportItineraryImage } from '../utils/exportImage'
+import { renderMarkdown } from '../utils/markdown'
 
 const route = useRoute()
 const loading = ref(false)
@@ -219,16 +351,252 @@ const exportingPdf = ref(false)
 const exportingImg = ref(false)
 const nlInstruction = ref('')
 const nlLoading = ref(false)
+const applying = ref(false)
+const chatMsgs = ref<ItineraryChatMessage[]>([])
+const draftChanged = ref(false)
+const draftPlans = ref<any[]>([])
+const hotelSelections = ref<Record<string, { roomTypeId: string; dayNos: number[] }>>({})
 const detail = ref<ItineraryDetail | null>(null)
-const activeDays = ref<number[]>([])
+const selectionStorageKey = computed(() => `trip-hotel-selections:${String(route.params.id)}`)
+const activeActionIndex = computed(() => {
+  for (let i = chatMsgs.value.length - 1; i >= 0; i -= 1) {
+    const message = chatMsgs.value[i]
+    if (message.role === 'ai' && ((message.plans?.length || 0) > 0 || (message.hotelOptions?.length || 0) > 0)) {
+      return i
+    }
+  }
+  return -1
+})
+const expectedDateNights = computed(() => {
+  if (!detail.value?.startDate || !detail.value?.endDate) return null
+  const difference = new Date(detail.value.endDate).getTime() - new Date(detail.value.startDate).getTime()
+  return Math.max(Math.round(difference / 86400000), 0)
+})
+const dateNightMismatch = computed(() => expectedDateNights.value != null
+  && detail.value?.stayNights !== expectedDateNights.value)
+
+watch(hotelSelections, (value) => {
+  localStorage.setItem(selectionStorageKey.value, JSON.stringify(value))
+}, { deep: true })
+
+async function onChatSend() {
+  const message = nlInstruction.value.trim()
+  if (!message || nlLoading.value || !detail.value) return
+  const history = chatMsgs.value.map((m) => ({ role: m.role, content: m.content }))
+  chatMsgs.value.push({ role: 'user', content: message })
+  nlInstruction.value = ''
+  nlLoading.value = true
+  try {
+    const res = await chatEditItinerary(detail.value.id, message, history)
+    const plans = (res.data.plans || []) as any[]
+    const hotelOptions = res.data.hotelOptions || []
+    if (plans.length || hotelOptions.length) {
+      const replacedPending = activeActionIndex.value >= 0
+      for (const previous of chatMsgs.value) {
+        if (previous.role === 'ai') {
+          previous.plans = []
+          previous.hotelOptions = []
+          previous.changed = false
+        }
+      }
+      if (replacedPending) ElMessage.info('本轮建议已替代上一份未应用方案')
+    }
+    const aiMessage: ItineraryChatMessage = {
+      id: res.data.messageId,
+      role: 'ai',
+      content: res.data.reply,
+      plans,
+      hotelOptions,
+      changed: res.data.changed,
+      baseRevision: res.data.baseRevision,
+    }
+    chatMsgs.value.push(aiMessage)
+    prepareHotelOptions(aiMessage, chatMsgs.value.length - 1)
+    draftPlans.value = plans
+    draftChanged.value = res.data.changed
+  } catch (err: any) {
+    const message = err?.response?.data?.message || err?.message
+    chatMsgs.value.push({
+      role: 'ai',
+      content: message ? `处理失败：${message}` : '这条没太理解，换个说法试试？',
+    })
+  } finally {
+    nlLoading.value = false
+  }
+}
+
+async function onClearChat() {
+  if (!detail.value || !chatMsgs.value.length) return
+  try {
+    await ElMessageBox.confirm('确认清空当前行程的全部对话记录？行程本身不会受到影响。', '清空对话', {
+      type: 'warning',
+      confirmButtonText: '确认清空',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  await clearItineraryChatHistory(detail.value.id)
+  chatMsgs.value = []
+  hotelSelections.value = {}
+  localStorage.removeItem(selectionStorageKey.value)
+  draftPlans.value = []
+  draftChanged.value = false
+  ElMessage.success('对话记录已清空')
+}
+
+function selectionKey(message: ItineraryChatMessage, index: number, option: HotelOption) {
+  return `${message.id ?? `local-${index}`}:${option.id}`
+}
+
+function prepareHotelOptions(message: ItineraryChatMessage, index: number) {
+  for (const option of message.hotelOptions || []) {
+    const key = selectionKey(message, index, option)
+    if (hotelSelections.value[key]) continue
+    const defaultRoom = option.roomTypes.find((room) => room.isDefault) || option.roomTypes[0]
+    const presetDays = option.requestedDayNos?.length === option.requestedNights
+      ? [...option.requestedDayNos]
+      : option.requestedNights === option.availableDayNos.length
+        ? [...option.availableDayNos]
+        : []
+    hotelSelections.value[key] = {
+      roomTypeId: defaultRoom?.id || '',
+      dayNos: presetDays,
+    }
+  }
+}
+
+function selectedRoom(message: ItineraryChatMessage, index: number, option: HotelOption) {
+  const selection = hotelSelections.value[selectionKey(message, index, option)]
+  return option.roomTypes.find((room) => room.id === selection?.roomTypeId) || option.roomTypes[0]
+}
+
+function hasVariableNightlyPrice(message: ItineraryChatMessage, index: number, option: HotelOption) {
+  const prices = selectedRoom(message, index, option)?.nightlyBreakdown?.map((row) => row.nightlyPrice) || []
+  return new Set(prices).size > 1
+}
+
+function draftChanges(message: ItineraryChatMessage) {
+  if (!detail.value) return []
+  const changes: string[] = []
+  for (const plan of message.plans || []) {
+    const currentDay = detail.value.dayList.find((day) => day.dayNo === plan.day_no)
+    const currentItems = currentDay?.items || []
+    const nextItems = plan.items || []
+    const currentNames = currentItems.map((item) => item.poiName)
+    const nextNames = nextItems.map((item: any) => item.poi_name)
+    const removed = currentNames.filter((name) => !nextNames.includes(name))
+    const added = nextNames.filter((name: string) => !currentNames.includes(name))
+    if (removed.length) changes.push(`第${plan.day_no}天删除：${removed.join('、')}`)
+    if (added.length) changes.push(`第${plan.day_no}天新增：${added.join('、')}`)
+    if (!removed.length && !added.length && currentNames.join('|') !== nextNames.join('|')) {
+      changes.push(`第${plan.day_no}天调整游览顺序`)
+    }
+    const timeChanged = nextItems.some((item: any) => {
+      const current = currentItems.find((row) => row.poiName === item.poi_name)
+      return current && (current.startTime || '') !== (item.start_time || '')
+    })
+    if (timeChanged) changes.push(`第${plan.day_no}天调整时间安排`)
+  }
+  return changes.length ? changes : ['计划内容已更新，请核对下方完整安排']
+}
+
+function requiresDaySelection(option: HotelOption) {
+  return option.requestedDayNos.length === 0 && option.requestedNights < option.availableDayNos.length
+}
+
+function stayScopeLabel(option: HotelOption) {
+  if (option.requestedDayNos.length) {
+    return option.requestedDayNos.map((dayNo) => `第${dayNo}晚`).join('、')
+  }
+  return `全部${option.availableDayNos.length}晚（默认全选）`
+}
+
+function canChooseHotel(message: ItineraryChatMessage, index: number, option: HotelOption) {
+  const selection = hotelSelections.value[selectionKey(message, index, option)]
+  return index === activeActionIndex.value
+    && !!selectedRoom(message, index, option)
+    && selection?.dayNos.length === option.requestedNights
+}
+
+async function onChooseHotel(message: ItineraryChatMessage, index: number, option: HotelOption) {
+  if (!detail.value || applying.value) return
+  const selection = hotelSelections.value[selectionKey(message, index, option)]
+  const room = selectedRoom(message, index, option)
+  if (!selection || !room || selection.dayNos.length !== option.requestedNights) {
+    ElMessage.warning(`请选择房型和 ${option.requestedNights} 个入住晚次`)
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确认将第 ${selection.dayNos.join('、')} 晚替换为「${option.hotelName} · ${room.roomName}」？本次住宿预计 ￥${room.totalPrice}。`,
+      '确认更换酒店',
+      { type: 'warning', confirmButtonText: '确认应用', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  applying.value = true
+  try {
+    const res = await applyHotelOption(
+      detail.value.id,
+      option,
+      room.roomName,
+      selection.dayNos,
+      message.id,
+      message.baseRevision || option.baseRevision,
+    )
+    detail.value = res.data
+    message.hotelOptions = []
+    draftChanged.value = false
+    ElMessage.success(`已应用「${option.hotelName}」`)
+  } finally {
+    applying.value = false
+  }
+}
+
+async function onApply() {
+  if (!detail.value || !draftChanged.value || applying.value) return
+  const actionMessage = chatMsgs.value[activeActionIndex.value]
+  if (!actionMessage?.id) {
+    ElMessage.warning('该草稿缺少确认信息，请重新生成')
+    return
+  }
+  applying.value = true
+  try {
+    await applyPlans(detail.value.id, draftPlans.value, actionMessage.id, actionMessage.baseRevision)
+    ElMessage.success('已应用到行程')
+    actionMessage.plans = []
+    draftChanged.value = false
+    await loadDetail()
+  } catch {
+    // 错误提示已由拦截器处理
+  } finally {
+    applying.value = false
+  }
+}
 let timer = 0
 
 async function loadDetail() {
   loading.value = true
   try {
-    const res = await getItineraryDetail(route.params.id as string)
+    const [res, historyRes] = await Promise.all([
+      getItineraryDetail(route.params.id as string),
+      getItineraryChatHistory(route.params.id as string),
+    ])
     detail.value = res.data
-    activeDays.value = detail.value.dayList.map((d) => d.dayNo)
+    chatMsgs.value = historyRes.data || []
+    try {
+      hotelSelections.value = JSON.parse(localStorage.getItem(selectionStorageKey.value) || '{}')
+    } catch {
+      hotelSelections.value = {}
+    }
+    for (const [index, message] of chatMsgs.value.entries()) {
+      prepareHotelOptions(message, index)
+    }
+    const actionMessage = chatMsgs.value[activeActionIndex.value]
+    draftPlans.value = actionMessage?.plans || []
+    draftChanged.value = !!actionMessage?.changed
   } finally {
     loading.value = false
   }
@@ -252,28 +620,22 @@ function startPolling() {
   }, 2500)
 }
 
-async function onNlEdit() {
-  const instruction = nlInstruction.value.trim()
-  if (!instruction || !detail.value || nlLoading.value) return
-  nlLoading.value = true
-  try {
-    const res = await nlEditItinerary(detail.value.id, instruction)
-    ElMessage.success(res.data.applied.join('；') || '已完成')
-    nlInstruction.value = ''
-    const fresh = await getItineraryDetail(route.params.id as string)
-    detail.value = fresh.data
-  } catch {
-    // 错误提示已由拦截器处理
-  } finally {
-    nlLoading.value = false
-  }
-}
 const highlightId = ref<number | null>(null)
 const doneDays = computed(
   () => (detail.value?.dayList || []).filter((d) => (d.items || []).length > 0).length,
 )
-const routeDay = ref<number | null>(1)
+const routeDay = ref(1)
 const amapReady = ref(!!import.meta.env.VITE_AMAP_JS_KEY)
+const imgFailed = ref<Record<number, boolean>>({})
+
+const activeDay = computed(
+  () => detail.value?.dayList.find((d) => d.dayNo === routeDay.value) ?? detail.value?.dayList[0],
+)
+const activeDayItems = computed(() => activeDay.value?.items ?? [])
+
+function staticMapUrl(item: TripItem) {
+  return `/api/amap/staticmap?location=${item.longitude},${item.latitude}`
+}
 
 const TYPE_LABEL: Record<string, string> = {
   attraction: '景点',
@@ -491,10 +853,175 @@ onUnmounted(() => {
 
 .nl-edit {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 10px;
   margin-top: 14px;
   padding-top: 14px;
   border-top: 1px dashed var(--lp-border);
+}
+
+.chat-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.chat-line {
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  max-width: 92%;
+}
+
+.chat-line.user {
+  background: var(--lp-ink);
+  color: #fff;
+  margin-left: auto;
+  width: fit-content;
+}
+
+.chat-line.ai {
+  background: var(--lp-sand);
+  width: fit-content;
+}
+
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4) {
+  margin: 10px 0 6px;
+  color: var(--lp-ink);
+  line-height: 1.35;
+}
+
+.markdown-body :deep(h3) {
+  font-size: 16px;
+}
+
+.markdown-body :deep(p) {
+  margin: 5px 0;
+  line-height: 1.7;
+}
+
+.markdown-body :deep(ul) {
+  margin: 6px 0;
+  padding-left: 22px;
+}
+
+.markdown-body :deep(li) {
+  margin: 4px 0;
+  line-height: 1.65;
+}
+
+.markdown-body :deep(code) {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 6%);
+}
+
+.draft-preview {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid var(--lp-border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--lp-ink-soft);
+}
+
+.draft-day {
+  padding: 2px 0;
+}
+
+.chat-thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--lp-sand);
+  color: var(--lp-ink-soft);
+  font-size: 13px;
+}
+
+.draft-summary-title {
+  margin-bottom: 4px;
+  font-weight: 700;
+  color: var(--lp-ink);
+}
+
+.draft-change {
+  margin-bottom: 3px;
+  color: #9f4b32;
+}
+
+.hotel-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid var(--lp-border);
+  border-radius: 8px;
+}
+
+.hotel-option-title {
+  font-weight: 700;
+  color: var(--lp-ink);
+}
+
+.hotel-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--lp-border);
+  border-radius: 8px;
+}
+
+.hotel-option-main {
+  min-width: 0;
+}
+
+.hotel-option-config {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--lp-ink-soft);
+  font-size: 12px;
+}
+
+.hotel-option-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.hotel-option-meta,
+.hotel-option-reason {
+  margin-top: 4px;
+  color: var(--lp-muted);
+  font-size: 12px;
+}
+
+.hotel-option-price-note {
+  margin-top: 5px;
+  color: var(--el-color-warning-dark-2);
+  font-size: 12px;
+}
+
+.chat-input {
+  display: flex;
+  gap: 8px;
 }
 
 .head-info h2 {
@@ -511,6 +1038,188 @@ onUnmounted(() => {
 
 .map-card {
   margin-bottom: 16px;
+}
+
+/* ---------- 日期 Tab ---------- */
+.day-tabs-card {
+  margin-bottom: 16px;
+}
+
+.day-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.day-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 18px;
+  border: 1px solid var(--lp-border);
+  border-radius: 12px;
+  background: var(--lp-surface);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.day-tab:hover {
+  border-color: var(--lp-ink);
+}
+
+.day-tab.active {
+  background: var(--lp-ink);
+  border-color: var(--lp-ink);
+}
+
+.day-tab-title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--lp-ink);
+}
+
+.day-tab-date {
+  font-size: 12px;
+  color: var(--lp-muted);
+}
+
+.day-tab-n {
+  font-size: 12px;
+  color: var(--lp-muted);
+}
+
+.day-tab.active .day-tab-title,
+.day-tab.active .day-tab-date,
+.day-tab.active .day-tab-n {
+  color: #fff;
+}
+
+/* ---------- 当日时间线 ---------- */
+.timeline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.toolbar-title {
+  font-weight: 700;
+}
+
+.poi-card {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--lp-border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.poi-card:hover {
+  border-color: var(--lp-ink);
+  box-shadow: 0 2px 8px rgb(26 26 26 / 8%);
+}
+
+.poi-card.highlighted {
+  border-color: var(--lp-accent);
+  box-shadow: 0 0 0 2px var(--lp-accent-soft);
+}
+
+.poi-img {
+  width: 148px;
+  height: 96px;
+  flex: none;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--lp-sand);
+}
+
+.poi-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.poi-img-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--lp-accent);
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.1em;
+}
+
+.poi-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.poi-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.poi-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--lp-ink);
+}
+
+.poi-time {
+  color: var(--lp-accent);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.poi-meta {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+  color: var(--lp-muted);
+  font-size: 12px;
+}
+
+.poi-desc {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--lp-ink-soft);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.poi-remark {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--lp-muted);
+}
+
+.poi-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  flex: none;
+}
+
+.drag-handle {
+  cursor: grab;
+  color: var(--el-text-color-placeholder);
 }
 
 .map-toolbar {

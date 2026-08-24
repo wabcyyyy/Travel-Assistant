@@ -4,9 +4,11 @@ USE travel_assistant;
 DROP TABLE IF EXISTS budget_detail;
 DROP TABLE IF EXISTS itinerary_item;
 DROP TABLE IF EXISTS itinerary_day;
+DROP TABLE IF EXISTS itinerary_chat_message;
 DROP TABLE IF EXISTS itinerary_main;
 DROP TABLE IF EXISTS sys_user;
 DROP TABLE IF EXISTS export_task;
+DROP TABLE IF EXISTS hotel_room_type;
 DROP TABLE IF EXISTS poi_knowledge;
 DROP TABLE IF EXISTS city_consumption;
 
@@ -35,6 +37,7 @@ CREATE TABLE itinerary_main (
     persons     INT          NOT NULL DEFAULT 1 COMMENT '出行人数',
     budget      DECIMAL(12, 2) DEFAULT NULL COMMENT '用户预算上限',
     preferences VARCHAR(512) DEFAULT NULL COMMENT '偏好标签，逗号分隔',
+    hotel_tier  VARCHAR(16) DEFAULT NULL COMMENT '住宿档次偏好',
     status      TINYINT      NOT NULL DEFAULT 1 COMMENT '1-草稿 2-已生成 3-已取消',
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -43,6 +46,20 @@ CREATE TABLE itinerary_main (
     KEY idx_user (user_id),
     KEY idx_city (city)
 ) ENGINE = InnoDB COMMENT '行程主表';
+
+CREATE TABLE itinerary_chat_message (
+    id                 BIGINT       NOT NULL AUTO_INCREMENT,
+    itinerary_id       BIGINT       NOT NULL,
+    user_id            BIGINT       NOT NULL,
+    role               VARCHAR(16)  NOT NULL COMMENT 'user/ai',
+    content            TEXT         NOT NULL,
+    plans_json         LONGTEXT     DEFAULT NULL,
+    hotel_options_json LONGTEXT     DEFAULT NULL,
+    changed            TINYINT      NOT NULL DEFAULT 0,
+    created_at         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_itinerary_user (itinerary_id, user_id, id)
+) ENGINE = InnoDB COMMENT '行程对话记忆';
 
 CREATE TABLE itinerary_day (
     id            BIGINT      NOT NULL AUTO_INCREMENT,
@@ -71,7 +88,7 @@ CREATE TABLE itinerary_item (
     start_time    TIME           DEFAULT NULL COMMENT '计划开始时间',
     end_time      TIME           DEFAULT NULL COMMENT '计划结束时间',
     duration_min  INT            DEFAULT NULL COMMENT '建议游玩时长(分钟)',
-    cost          DECIMAL(10, 2) DEFAULT NULL COMMENT '预估费用(单人)',
+    cost          DECIMAL(10, 2) DEFAULT NULL COMMENT '预估单价（景点/餐饮按人，酒店按间/晚）',
     tag           VARCHAR(32)    DEFAULT NULL COMMENT '标签：亲子/网红/人文等',
     remark        VARCHAR(255)   DEFAULT NULL,
     sort_no       INT            NOT NULL DEFAULT 0 COMMENT '当日排序',
@@ -116,6 +133,21 @@ CREATE TABLE poi_knowledge (
     KEY idx_city (city),
     KEY idx_tags (tags)
 ) ENGINE = InnoDB COMMENT '景点知识库(种子数据，幻觉检测对照)';
+
+CREATE TABLE hotel_room_type (
+    id          BIGINT         NOT NULL AUTO_INCREMENT,
+    poi_id      BIGINT         NOT NULL COMMENT '关联 poi_knowledge 酒店',
+    room_name   VARCHAR(128)   NOT NULL COMMENT '房型名称',
+    base_price  DECIMAL(10, 2) NOT NULL COMMENT '每晚单间参考基准价',
+    capacity    INT            NOT NULL DEFAULT 2 COMMENT '建议入住人数',
+    bed_type    VARCHAR(64)    DEFAULT NULL,
+    breakfast   VARCHAR(64)    DEFAULT NULL,
+    description VARCHAR(512)   DEFAULT NULL,
+    is_default  TINYINT        NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_hotel_room (poi_id, room_name),
+    KEY idx_hotel (poi_id)
+) ENGINE = InnoDB COMMENT '酒店房型与参考价格';
 
 CREATE TABLE city_consumption (
     id          BIGINT         NOT NULL AUTO_INCREMENT,

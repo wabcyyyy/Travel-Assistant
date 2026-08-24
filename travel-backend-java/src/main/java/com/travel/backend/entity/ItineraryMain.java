@@ -25,6 +25,7 @@ public class ItineraryMain {
     private Integer persons;
     private BigDecimal budget;
     private String preferences;
+    private String hotelTier;
     private Integer status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

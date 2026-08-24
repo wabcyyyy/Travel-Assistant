@@ -14,4 +14,6 @@ public interface AgentService {
     JsonNode clarify(String message, Map<String, Object> slots);
 
     JsonNode editOps(String city, int days, List<Map<String, Object>> plans, String instruction);
+
+    JsonNode chatTurn(Map<String, Object> payload);
 }

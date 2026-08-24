@@ -39,6 +39,10 @@
         <el-form-item label="出行人数" prop="persons">
           <el-input-number v-model="form.persons" :min="1" :max="20" />
         </el-form-item>
+        <el-form-item label="住宿晚数" prop="stayNights">
+          <el-input-number v-model="form.stayNights" :min="0" :max="form.days" />
+          <span class="hint">默认比出行天数少 1 晚；若最后一天仍住宿，可手动增加</span>
+        </el-form-item>
         <el-form-item label="预算上限">
           <el-input-number v-model="form.budget" :min="0" :step="500" />
           <span class="hint">元（可选）</span>
@@ -69,15 +73,14 @@
         </el-form-item>
         <el-form-item label="住宿偏好">
           <el-select
-            v-model="form.hotelTiers"
-            multiple
-            collapse-tags
+            v-model="form.hotelTier"
+            clearable
             placeholder="不限（默认按舒适档推荐）"
             style="width: 100%"
           >
             <el-option v-for="t in HOTEL_TIERS" :key="t" :label="t" :value="t" />
           </el-select>
-          <span class="hint">可多选；不选则由 Agent 推荐</span>
+          <span class="hint">选择一个主要档次；不选则由 Agent 推荐</span>
         </el-form-item>
       </el-form>
     </el-card>
@@ -147,21 +150,32 @@ const form = reactive({
   city: '',
   days: 2,
   persons: 2,
-  budget: 3000,
+  stayNights: 1,
+  budget: null as number | null,
   preferences: [] as string[],
-  hotelTiers: [] as string[],
+  hotelTier: '' as string,
 })
 
 const loading = ref(false)
 const errorMsg = ref('')
 const dateRange = ref<[string, string] | null>(null)
+const clarifySlots = ref<Record<string, unknown>>({})
 
 // 出行天数由所选日期区间自动计算（含头含尾）；未选日期时可手填
 watch(dateRange, (range) => {
   if (!range || !range[0] || !range[1]) return
   const ms = new Date(range[1]).getTime() - new Date(range[0]).getTime()
   const days = Math.round(ms / 86400000) + 1
-  if (days >= 1 && days <= 14) form.days = days
+  if (days >= 1 && days <= 14) {
+    form.days = days
+    form.stayNights = Math.max(days - 1, 0)
+  }
+})
+
+watch(() => form.days, (days, previousDays) => {
+  if (form.stayNights === Math.max(previousDays - 1, 0) || form.stayNights > days) {
+    form.stayNights = Math.max(days - 1, 0)
+  }
 })
 
 function togglePreference(label: string) {
@@ -180,7 +194,8 @@ async function onSay() {
   say.value = ''
   thinking.value = true
   try {
-    const res = await clarifyTrip({ message: msg })
+    const res = await clarifyTrip({ message: msg, slots: clarifySlots.value })
+    clarifySlots.value = res.data.slots || {}
     applySlots(res.data.slots || {})
     chat.value.push({
       role: 'ai',
@@ -196,7 +211,13 @@ async function onSay() {
 function applySlots(slots: Record<string, unknown>) {
   if (slots.city) form.city = String(slots.city)
   if (slots.days) form.days = Number(slots.days)
+  if (slots.stay_nights != null) form.stayNights = Number(slots.stay_nights)
   if (slots.persons) form.persons = Number(slots.persons)
+  if (slots.budget != null) form.budget = Number(slots.budget)
+  if (slots.hotel_tier) form.hotelTier = String(slots.hotel_tier)
+  if (Array.isArray(slots.preferences)) {
+    form.preferences = slots.preferences.map(String).filter((value) => PREFERENCE_TAGS.some((tag) => tag.label === value))
+  }
   if (slots.start_date) {
     const s = String(slots.start_date)
     const d = new Date(s)
@@ -209,6 +230,7 @@ function applySlots(slots: Record<string, unknown>) {
 const rules: FormRules = {
   city: [{ required: true, message: '请输入目的地', trigger: 'blur' }],
   days: [{ required: true, message: '请输入出行天数', trigger: 'change' }],
+  stayNights: [{ required: true, message: '请输入住宿晚数', trigger: 'change' }],
 }
 
 async function onSubmit() {
@@ -221,11 +243,12 @@ async function onSubmit() {
       city: form.city,
       days: form.days,
       persons: form.persons,
-      budget: form.budget,
+      stayNights: form.stayNights,
+      budget: form.budget ?? undefined,
       startDate: dateRange.value?.[0],
       endDate: dateRange.value?.[1],
       preferences: form.preferences,
-      hotelTier: form.hotelTiers.join('、') || undefined,
+      hotelTier: form.hotelTier || undefined,
     })
     router.push({ name: 'trip-detail', params: { id: res.data.id } })
   } catch (err) {

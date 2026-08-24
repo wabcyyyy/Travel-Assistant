@@ -1,15 +1,25 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Header, HTTPException
 
+from app.agent.chat_draft import run_chat_turn
 from app.agent.clarify import run_clarify
 from app.agent.day_stream import run_generate_day, run_plan_context
 from app.agent.nl_edit import run_edit_ops
 from app.agent.workflow import run_adjust, run_generate
 from app.schemas.common import ApiResponse
-from app.schemas.trip import (AdjustRequest, AdjustResponse, ClarifyRequest, ClarifyResponse,
-                              DailyPlan, EditOp, EditOpRequest, GenerateDayRequest,
-                              GenerateRequest, GenerateResponse, PlanContextRequest)
+from app.schemas.trip import (AdjustRequest, AdjustResponse, ChatTurnRequest, ChatTurnResponse,
+                              ClarifyRequest, ClarifyResponse, DailyPlan, EditOp, EditOpRequest,
+                              GenerateDayRequest, GenerateRequest, GenerateResponse,
+                              PlanContextRequest)
+from app.common.config import settings
 
 router = APIRouter()
+
+
+def require_internal_token(x_agent_token: str | None = Header(default=None)) -> None:
+    """Protect expensive mutation/generation endpoints when an internal token is configured."""
+    expected = settings.agent_internal_token
+    if expected and x_agent_token != expected:
+        raise HTTPException(status_code=401, detail="invalid agent token")
 
 
 @router.get("/hello")
@@ -67,7 +77,7 @@ def test_generate() -> ApiResponse[dict]:
 
 
 @router.post("/v1/generate")
-def generate(req: GenerateRequest) -> ApiResponse[GenerateResponse]:
+def generate(req: GenerateRequest, _auth: None = Depends(require_internal_token)) -> ApiResponse[GenerateResponse]:
     try:
         return ApiResponse.ok(run_generate(req))
     except ValueError as e:
@@ -75,12 +85,12 @@ def generate(req: GenerateRequest) -> ApiResponse[GenerateResponse]:
 
 
 @router.post("/v1/adjust")
-def adjust(req: AdjustRequest) -> ApiResponse[AdjustResponse]:
+def adjust(req: AdjustRequest, _auth: None = Depends(require_internal_token)) -> ApiResponse[AdjustResponse]:
     return ApiResponse.ok(run_adjust(req))
 
 
 @router.post("/v1/clarify")
-def clarify(req: ClarifyRequest) -> ApiResponse[ClarifyResponse]:
+def clarify(req: ClarifyRequest, _auth: None = Depends(require_internal_token)) -> ApiResponse[ClarifyResponse]:
     try:
         return ApiResponse.ok(run_clarify(req))
     except ValueError as e:
@@ -88,7 +98,7 @@ def clarify(req: ClarifyRequest) -> ApiResponse[ClarifyResponse]:
 
 
 @router.post("/v1/edit-ops")
-def edit_ops(req: EditOpRequest) -> ApiResponse[list[dict]]:
+def edit_ops(req: EditOpRequest, _auth: None = Depends(require_internal_token)) -> ApiResponse[list[dict]]:
     try:
         ops = run_edit_ops(req)
         # 输出 snake_case 原始键，避免 WireModel 的 camel 别名影响跨语言消费方
@@ -98,13 +108,21 @@ def edit_ops(req: EditOpRequest) -> ApiResponse[list[dict]]:
 
 
 @router.post("/v1/plan-context")
-def plan_context(req: PlanContextRequest) -> ApiResponse[dict]:
+def plan_context(req: PlanContextRequest, _auth: None = Depends(require_internal_token)) -> ApiResponse[dict]:
     return ApiResponse.ok(run_plan_context(req.city, req.preferences))
 
 
 @router.post("/v1/generate-day")
-def generate_day(req: GenerateDayRequest) -> ApiResponse[DailyPlan]:
+def generate_day(req: GenerateDayRequest, _auth: None = Depends(require_internal_token)) -> ApiResponse[DailyPlan]:
     try:
         return ApiResponse.ok(run_generate_day(req))
+    except ValueError as e:
+        return ApiResponse.fail(str(e))
+
+
+@router.post("/v1/chat-turn")
+def chat_turn(req: ChatTurnRequest, _auth: None = Depends(require_internal_token)) -> ApiResponse[ChatTurnResponse]:
+    try:
+        return ApiResponse.ok(run_chat_turn(req))
     except ValueError as e:
         return ApiResponse.fail(str(e))

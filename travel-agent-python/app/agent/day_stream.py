@@ -7,6 +7,7 @@ from app.agent import tools
 from app.agent.generators import fallback_generate, llm_generate, _pick_hotels
 from app.agent.tools import search_attractions, search_foods, search_hotels
 from app.common.season import season_factor, season_label
+from app.common.config import settings
 from app.schemas.trip import DailyPlan, GenerateDayRequest, TripItem
 
 logger = logging.getLogger(__name__)
@@ -36,30 +37,60 @@ def run_generate_day(req: GenerateDayRequest) -> DailyPlan:
     feedback = ""
     if req.chosen_hotel:
         feedback = f"酒店必须沿用「{req.chosen_hotel}」，不得更换。"
-    try:
-        plans, _budget = llm_generate(
-            req.city, 1, req.persons, [],
-            candidates, foods, consumption,
-            feedback=feedback, hotels=hotels or None,
+    if settings.llm_api_key:
+        try:
+            plans, _budget = llm_generate(
+                req.city, 1, req.persons, [],
+                candidates, foods, consumption,
+                feedback=feedback, hotels=hotels or None,
+            )
+            plan = plans[0]
+            source = "llm"
+        except Exception as e:  # noqa: BLE001
+            logger.warning("day %s llm failed: %s", req.day_no, e)
+            plans, _budget = fallback_generate(
+                req.city, 1, req.persons, [], hotels or None, req.hotel_tier,
+                attractions=candidates, foods=foods, consumption=consumption,
+            )
+            plan = plans[0]
+            source = "fallback"
+    else:
+        plans, _budget = fallback_generate(
+            req.city, 1, req.persons, [], hotels or None, req.hotel_tier,
+            attractions=candidates, foods=foods, consumption=consumption,
         )
-        plan = plans[0]
-        source = "llm"
-    except Exception as e:  # noqa: BLE001
-        logger.warning("day %s llm failed: %s", req.day_no, e)
-        plans, _budget = fallback_generate(req.city, 1, req.persons, [], hotels or None, req.hotel_tier)
         plan = plans[0]
         source = "fallback"
 
     lookup: dict[str, dict] = {}
-    for poi in (candidates or []) + (foods or []):
+    for poi in (candidates or []) + (foods or []) + (hotels or []):
         if poi.get("name"):
             lookup[poi["name"]] = poi
+
+    raw_items = list(plan.get("items") or [])
+    if not req.needs_hotel:
+        raw_items = [item for item in raw_items if item.get("item_type") != "hotel"]
+    elif not any(item.get("item_type") == "hotel" for item in raw_items) and hotels:
+        selected = next((hotel for hotel in hotels if hotel.get("name") == req.chosen_hotel), hotels[0])
+        raw_items.append({
+            "item_type": "hotel",
+            "poi_name": selected.get("name"),
+            "poi_id": str(selected.get("id") or ""),
+            "address": selected.get("address"),
+            "latitude": selected.get("latitude"),
+            "longitude": selected.get("longitude"),
+            "start_time": "20:00",
+            "duration_min": 30,
+            "cost": float(selected.get("ticket_price") or 0),
+            "tag": selected.get("tags"),
+            "remark": "系统补全当晚住宿",
+        })
 
     factor = season_factor(_parse_date(req.start_date))
     label = season_label(_parse_date(req.start_date))
 
     items: list[TripItem] = []
-    for item in plan.get("items") or []:
+    for item in raw_items:
         poi = lookup.get(item.get("poi_name"))
         if poi:
             if item.get("latitude") is None and poi.get("latitude") is not None:

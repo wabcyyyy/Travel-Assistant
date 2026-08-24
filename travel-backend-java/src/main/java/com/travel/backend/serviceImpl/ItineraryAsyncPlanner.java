@@ -66,11 +66,12 @@ public class ItineraryAsyncPlanner {
                 payload.put("budget", request.getBudget() == null ? null
                         : request.getBudget().doubleValue());
                 payload.put("start_date", request.getStartDate() == null ? null
-                        : request.getStartDate().toString());
+                        : request.getStartDate().plusDays(dayNo - 1L).toString());
                 payload.put("day_no", dayNo);
                 payload.put("used_names", usedNames);
                 payload.put("hotel_tier", request.getHotelTier());
                 payload.put("chosen_hotel", chosenHotel);
+                payload.put("needs_hotel", dayNo <= request.getStayNights());
                 payload.put("context", context);
 
                 JsonNode node = agentService.generateDay(payload);
@@ -108,6 +109,9 @@ public class ItineraryAsyncPlanner {
 
         int sortNo = 0;
         for (AgentGenerateResponse.Item item : plan.getItems()) {
+            if ("hotel".equals(item.getItemType()) && dayNo > request.getStayNights()) {
+                continue;
+            }
             ItineraryItem entity = new ItineraryItem();
             entity.setDayId(day.getId());
             entity.setItineraryId(itineraryId);

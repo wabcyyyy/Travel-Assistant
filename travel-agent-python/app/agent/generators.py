@@ -53,10 +53,13 @@ def _pick_hotels(hotels: list[dict] | None, tier: str | None, count: int) -> lis
 
 def fallback_generate(city: str, days: int, persons: int, preferences: list[str],
                       hotels: list[dict] | None = None,
-                      hotel_tier: str | None = None) -> tuple[list[dict], dict]:
-    attractions = tools.search_attractions(city, preferences)
-    foods = tools.search_foods(city)
-    consumption = tools.get_consumption(city)
+                      hotel_tier: str | None = None,
+                      attractions: list[dict] | None = None,
+                      foods: list[dict] | None = None,
+                      consumption: dict | None = None) -> tuple[list[dict], dict]:
+    attractions = attractions if attractions is not None else tools.search_attractions(city, preferences)
+    foods = foods if foods is not None else tools.search_foods(city)
+    consumption = consumption if consumption is not None else tools.get_consumption(city)
 
     daily_plans: list[dict] = []
     cursor = 0

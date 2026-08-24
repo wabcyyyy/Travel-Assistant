@@ -1,6 +1,7 @@
 package com.travel.backend.service;
 
 import com.travel.backend.dto.GenerateRequest;
+import com.travel.backend.dto.HotelOptionApplyRequest;
 import com.travel.backend.dto.ItemUpsertRequest;
 import com.travel.backend.vo.ItinerarySummaryVO;
 import com.travel.backend.vo.ItineraryVO;
@@ -29,4 +30,16 @@ public interface ItineraryService {
     Map<String, Object> nlEdit(Long userId, Long itineraryId, String instruction);
 
     Map<String, Object> clarify(String message, Map<String, Object> slots);
+
+    Map<String, Object> chatEdit(Long userId, Long itineraryId, String message,
+                                 List<Map<String, Object>> history);
+
+    List<Map<String, Object>> chatHistory(Long userId, Long itineraryId);
+
+    void clearChatHistory(Long userId, Long itineraryId);
+
+    ItineraryVO applyPlans(Long userId, Long itineraryId, List<Map<String, Object>> plans,
+                           Long actionMessageId, String baseRevision);
+
+    ItineraryVO applyHotelOption(Long userId, Long itineraryId, HotelOptionApplyRequest request);
 }

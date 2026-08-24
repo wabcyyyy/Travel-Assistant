@@ -49,6 +49,7 @@ mvn spring-boot:run -Dspring-boot.run.jvmArguments=-Dfile.encoding=UTF-8 -Dsprin
 | `REDIS_HOST/PORT/PASSWORD` | `localhost:6380/空` | Redis |
 | `JWT_SECRET` | dev 默认值 | 生产必改 |
 | `AGENT_SERVICE_URL` | `http://localhost:8000` | Agent 服务地址 |
+| `AGENT_INTERNAL_TOKEN` | 空 | 与 Agent 服务配置相同后启用内部调用认证 |
 | `AMAP_WEB_KEY` | 空 | 高德 Web 服务 key，未配置时 POI 接口返回 400 |
 | `EXPORT_DIR` | `data/export` | PDF 导出目录 |
 

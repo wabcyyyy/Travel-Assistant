@@ -97,11 +97,19 @@ function openInfoWindow(item: MapItem, marker: any) {
   if (!infoWindow) {
     infoWindow = new AMap.InfoWindow({ offset: new AMap.Pixel(0, -28) })
   }
+  const escapeHtml = (value: string) => {
+    const entities: Record<string, string> = {
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }
+    return value.replace(/[&<>"']/g, (ch) => entities[ch])
+  }
+  const name = escapeHtml(item.poiName || '')
+  const address = item.address ? escapeHtml(item.address) : ''
   const html = [
     `<div style="padding:4px 8px;min-width:160px">`,
-    `<div style="font-weight:700;margin-bottom:4px">${item.poiName}</div>`,
+    `<div style="font-weight:700;margin-bottom:4px">${name}</div>`,
     `<div style="color:#666;font-size:12px">${TYPE_LABEL[item.itemType] || item.itemType} · 第${item.dayNo}天</div>`,
-    item.address ? `<div style="color:#666;font-size:12px;margin-top:2px">${item.address}</div>` : '',
+    address ? `<div style="color:#666;font-size:12px;margin-top:2px">${address}</div>` : '',
     `</div>`,
   ].join('')
   infoWindow.setContent(html)

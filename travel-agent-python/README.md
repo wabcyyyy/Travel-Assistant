@@ -51,7 +51,7 @@ uv sync                # 安装依赖（uv sync --extra rag 安装向量库）
 uv run python main.py  # 0.0.0.0:8000，reload 模式
 ```
 
-环境变量（`.env`）：`LLM_BASE_URL`（默认 dashscope 兼容模式）、`LLM_API_KEY`、`LLM_MODEL`（默认 qwen-plus）、`LLM_TIMEOUT`、`DEFAULT_BUDGET`、`DB_*`。
+环境变量（`.env`）：`LLM_BASE_URL`（默认 dashscope 兼容模式）、`LLM_API_KEY`、`LLM_MODEL`（默认 qwen-plus）、`LLM_TIMEOUT`、`DEFAULT_BUDGET`、`DB_*`、`AGENT_INTERNAL_TOKEN`（配置后保护生成/编辑接口）。
 
 ## 接口
 
