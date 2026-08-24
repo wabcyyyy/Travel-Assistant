@@ -1,11 +1,13 @@
 from fastapi import APIRouter
 
 from app.agent.clarify import run_clarify
+from app.agent.day_stream import run_generate_day, run_plan_context
 from app.agent.nl_edit import run_edit_ops
 from app.agent.workflow import run_adjust, run_generate
 from app.schemas.common import ApiResponse
 from app.schemas.trip import (AdjustRequest, AdjustResponse, ClarifyRequest, ClarifyResponse,
-                              EditOp, EditOpRequest, GenerateRequest, GenerateResponse)
+                              DailyPlan, EditOp, EditOpRequest, GenerateDayRequest,
+                              GenerateRequest, GenerateResponse, PlanContextRequest)
 
 router = APIRouter()
 
@@ -91,5 +93,18 @@ def edit_ops(req: EditOpRequest) -> ApiResponse[list[dict]]:
         ops = run_edit_ops(req)
         # 输出 snake_case 原始键，避免 WireModel 的 camel 别名影响跨语言消费方
         return ApiResponse.ok([op.model_dump() for op in ops])
+    except ValueError as e:
+        return ApiResponse.fail(str(e))
+
+
+@router.post("/v1/plan-context")
+def plan_context(req: PlanContextRequest) -> ApiResponse[dict]:
+    return ApiResponse.ok(run_plan_context(req.city, req.preferences))
+
+
+@router.post("/v1/generate-day")
+def generate_day(req: GenerateDayRequest) -> ApiResponse[DailyPlan]:
+    try:
+        return ApiResponse.ok(run_generate_day(req))
     except ValueError as e:
         return ApiResponse.fail(str(e))

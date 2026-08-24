@@ -96,3 +96,20 @@ class EditOp(WireModel):
     day_no: int | None = None
     poi_name: str | None = None
     start_time: str | None = None
+
+
+class PlanContextRequest(WireModel):
+    city: str = Field(min_length=1)
+    preferences: list[str] = Field(default_factory=list)
+
+
+class GenerateDayRequest(WireModel):
+    city: str
+    persons: int = 1
+    budget: float | None = None
+    start_date: str | None = None
+    day_no: int = 1
+    used_names: list[str] = Field(default_factory=list)
+    hotel_tier: str | None = None
+    chosen_hotel: str | None = None
+    context: dict = Field(default_factory=dict)

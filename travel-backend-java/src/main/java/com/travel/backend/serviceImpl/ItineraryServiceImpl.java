@@ -45,11 +45,13 @@ public class ItineraryServiceImpl implements ItineraryService {
     private final AgentService agentService;
     private final BudgetEngine budgetEngine;
     private final com.travel.backend.mapper.PoiKnowledgeMapper poiKnowledgeMapper;
+    private final ItineraryAsyncPlanner planner;
 
     public ItineraryServiceImpl(ItineraryMainMapper mainMapper, ItineraryDayMapper dayMapper,
                                 ItineraryItemMapper itemMapper, BudgetDetailMapper budgetMapper,
                                 AgentService agentService, BudgetEngine budgetEngine,
-                                com.travel.backend.mapper.PoiKnowledgeMapper poiKnowledgeMapper) {
+                                com.travel.backend.mapper.PoiKnowledgeMapper poiKnowledgeMapper,
+                                ItineraryAsyncPlanner planner) {
         this.mainMapper = mainMapper;
         this.dayMapper = dayMapper;
         this.itemMapper = itemMapper;
@@ -57,18 +59,17 @@ public class ItineraryServiceImpl implements ItineraryService {
         this.agentService = agentService;
         this.budgetEngine = budgetEngine;
         this.poiKnowledgeMapper = poiKnowledgeMapper;
+        this.planner = planner;
     }
 
     @Override
     @CacheEvict(cacheNames = "itinerary:detail", allEntries = true)
     @Transactional
     public ItineraryVO generate(Long userId, GenerateRequest request) {
-        AgentGenerateResponse response = agentService.generate(toAgentRequest(request));
-
+        // 立即建单：主表 status=1(生成中)，预创建 N 个空日，逐日由异步规划器填充
         ItineraryMain main = new ItineraryMain();
         main.setUserId(userId);
-        main.setTitle(response.getTitle() == null || response.getTitle().isBlank()
-                ? request.getCity() + request.getDays() + "日游" : response.getTitle());
+        main.setTitle(request.getCity() + request.getDays() + "日游（生成中）");
         main.setCity(request.getCity());
         main.setStartDate(request.getStartDate());
         main.setEndDate(request.getEndDate());
@@ -76,53 +77,21 @@ public class ItineraryServiceImpl implements ItineraryService {
         main.setPersons(request.getPersons());
         main.setBudget(request.getBudget());
         main.setPreferences(request.getPreferences() == null ? null : String.join(",", request.getPreferences()));
-        main.setStatus(2);
+        main.setStatus(1);
         mainMapper.insert(main);
 
-        List<ItineraryVO.DayVO> dayVOList = new ArrayList<>();
-        if (response.getDailyPlans() != null) {
-            for (AgentGenerateResponse.DailyPlan plan : response.getDailyPlans()) {
-                ItineraryDay day = new ItineraryDay();
-                day.setItineraryId(main.getId());
-                day.setDayNo(plan.getDayNo());
-                day.setCity(request.getCity());
-                day.setNote(plan.getNote());
-                day.setTravelDate(request.getStartDate() == null ? null
-                        : request.getStartDate().plusDays(plan.getDayNo() - 1));
-                dayMapper.insert(day);
-
-                ItineraryVO.DayVO dayVO = new ItineraryVO.DayVO();
-                dayVO.setDayId(day.getId());
-                dayVO.setDayNo(day.getDayNo());
-                dayVO.setTravelDate(day.getTravelDate());
-                dayVO.setNote(day.getNote());
-                dayVO.setItems(new ArrayList<>());
-
-                if (plan.getItems() != null) {
-                    int sortNo = 0;
-                    for (AgentGenerateResponse.Item item : plan.getItems()) {
-                        ItineraryItem entity = toEntity(day.getId(), main.getId(), item, sortNo++);
-                        itemMapper.insert(entity);
-                        dayVO.getItems().add(toItemVO(entity));
-                    }
-                }
-                dayVOList.add(dayVO);
-            }
+        for (int dayNo = 1; dayNo <= request.getDays(); dayNo++) {
+            ItineraryDay day = new ItineraryDay();
+            day.setItineraryId(main.getId());
+            day.setDayNo(dayNo);
+            day.setCity(request.getCity());
+            day.setTravelDate(request.getStartDate() == null ? null
+                    : request.getStartDate().plusDays(dayNo - 1));
+            dayMapper.insert(day);
         }
 
-        List<ItineraryVO.BudgetVO> budgetVOList = new ArrayList<>();
-        for (BudgetDetail budget : budgetEngine.recalculate(main.getId())) {
-            budgetVOList.add(toBudgetVO(budget));
-        }
-
-        ItineraryVO vo = toVO(main);
-        vo.setDayList(dayVOList);
-        vo.setBudgetList(budgetVOList);
-        vo.setTotalAmount(budgetVOList.stream()
-                .map(ItineraryVO.BudgetVO::getAmount)
-                .filter(amount -> amount != null)
-                .reduce(BigDecimal.ZERO, BigDecimal::add));
-        return vo;
+        planner.planDays(userId, main.getId(), request);
+        return detail(userId, main.getId());
     }
 
     @Override

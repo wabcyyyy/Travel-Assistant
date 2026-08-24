@@ -56,6 +56,16 @@ public class AgentServiceImpl implements AgentService {
         return postForNode("/api/agent/v1/edit-ops", body, "指令解析服务暂不可用");
     }
 
+    public JsonNode planContext(String city, List<String> preferences) {
+        Map<String, Object> body = Map.of("city", city,
+                "preferences", preferences == null ? List.of() : preferences);
+        return postForNode("/api/agent/v1/plan-context", body, "行程上下文构建失败");
+    }
+
+    public JsonNode generateDay(Map<String, Object> payload) {
+        return postForNode("/api/agent/v1/generate-day", payload, "当日行程生成失败");
+    }
+
     private JsonNode postForNode(String path, Object body, String unavailableMsg) {
         String url = agentBaseUrl + path;
         try {

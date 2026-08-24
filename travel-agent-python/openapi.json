@@ -231,6 +231,88 @@
           }
         }
       }
+    },
+    "/api/agent/v1/plan-context": {
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Plan Context",
+        "operationId": "plan_context_api_agent_v1_plan_context_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanContextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/v1/generate-day": {
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Generate Day",
+        "operationId": "generate_day_api_agent_v1_generate_day_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateDayRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_DailyPlan_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -350,6 +432,34 @@
           "message"
         ],
         "title": "ApiResponse[ClarifyResponse]"
+      },
+      "ApiResponse_DailyPlan_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DailyPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ApiResponse[DailyPlan]"
       },
       "ApiResponse_GenerateResponse_": {
         "properties": {
@@ -582,6 +692,84 @@
         ],
         "title": "EditOpRequest"
       },
+      "GenerateDayRequest": {
+        "properties": {
+          "city": {
+            "type": "string",
+            "title": "City"
+          },
+          "persons": {
+            "type": "integer",
+            "title": "Persons",
+            "default": 1
+          },
+          "budget": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget"
+          },
+          "startDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startdate"
+          },
+          "dayNo": {
+            "type": "integer",
+            "title": "Dayno",
+            "default": 1
+          },
+          "usedNames": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Usednames"
+          },
+          "hotelTier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hoteltier"
+          },
+          "chosenHotel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chosenhotel"
+          },
+          "context": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "city"
+        ],
+        "title": "GenerateDayRequest"
+      },
       "GenerateRequest": {
         "properties": {
           "city": {
@@ -719,6 +907,27 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "PlanContextRequest": {
+        "properties": {
+          "city": {
+            "type": "string",
+            "minLength": 1,
+            "title": "City"
+          },
+          "preferences": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Preferences"
+          }
+        },
+        "type": "object",
+        "required": [
+          "city"
+        ],
+        "title": "PlanContextRequest"
       },
       "PoiOption": {
         "properties": {

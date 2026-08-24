@@ -1,6 +1,16 @@
 <template>
   <div class="trip-detail" v-loading="loading">
     <el-card v-if="detail" shadow="never" class="head">
+      <div
+        v-if="detail.status === 1"
+        class="gen-banner"
+      >
+        <el-icon class="is-loading"><Loading /></el-icon>
+        <span>
+          AI 正在规划行程，已完成 {{ doneDays }} / {{ detail.days }} 天…
+          {{ doneDays >= 1 ? '已生成部分可在下方查看' : '' }}
+        </span>
+      </div>
       <div class="head-info">
         <h2>{{ detail.title }}</h2>
         <p>
@@ -178,10 +188,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Rank } from '@element-plus/icons-vue'
+import { Loading, Rank } from '@element-plus/icons-vue'
 import draggable from 'vuedraggable'
 
 import TripMap, { type MapItem } from '../components/TripMap.vue'
@@ -211,6 +221,36 @@ const nlInstruction = ref('')
 const nlLoading = ref(false)
 const detail = ref<ItineraryDetail | null>(null)
 const activeDays = ref<number[]>([])
+let timer = 0
+
+async function loadDetail() {
+  loading.value = true
+  try {
+    const res = await getItineraryDetail(route.params.id as string)
+    detail.value = res.data
+    activeDays.value = detail.value.dayList.map((d) => d.dayNo)
+  } finally {
+    loading.value = false
+  }
+}
+
+function startPolling() {
+  timer = window.setInterval(async () => {
+    try {
+      const res = await getItineraryDetail(route.params.id as string)
+      detail.value = res.data
+      if (detail.value.status !== 1) {
+        window.clearInterval(timer)
+        timer = 0
+        ElMessage[detail.value.status === 2 ? 'success' : 'warning'](
+          detail.value.status === 2 ? '行程生成完成' : '生成失败',
+        )
+      }
+    } catch {
+      /* 忽略轮询错误 */
+    }
+  }, 2500)
+}
 
 async function onNlEdit() {
   const instruction = nlInstruction.value.trim()
@@ -229,6 +269,9 @@ async function onNlEdit() {
   }
 }
 const highlightId = ref<number | null>(null)
+const doneDays = computed(
+  () => (detail.value?.dayList || []).filter((d) => (d.items || []).length > 0).length,
+)
 const routeDay = ref<number | null>(1)
 const amapReady = ref(!!import.meta.env.VITE_AMAP_JS_KEY)
 
@@ -414,14 +457,12 @@ async function onExportPdf() {
 }
 
 onMounted(async () => {
-  loading.value = true
-  try {
-    const res = await getItineraryDetail(route.params.id as string)
-    detail.value = res.data
-    activeDays.value = detail.value.dayList.map((d) => d.dayNo)
-  } finally {
-    loading.value = false
-  }
+  await loadDetail()
+  if (detail.value && detail.value.status === 1) startPolling()
+})
+
+onUnmounted(() => {
+  if (timer) window.clearInterval(timer)
 })
 </script>
 
@@ -433,6 +474,19 @@ onMounted(async () => {
 
 .head {
   margin-bottom: 16px;
+}
+
+.gen-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--lp-border);
+  border-left: 4px solid var(--lp-accent);
+  border-radius: 8px;
+  background: var(--lp-sand);
+  font-weight: 600;
 }
 
 .nl-edit {
