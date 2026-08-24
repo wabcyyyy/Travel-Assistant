@@ -1,4 +1,5 @@
 import logging
+from datetime import date
 from typing import TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -6,8 +7,9 @@ from langgraph.graph import END, StateGraph
 from app.agent import tools
 from app.agent.generators import fallback_generate, llm_generate
 from app.agent.reflect import build_feedback, validate_plans
-from app.agent.tools import search_attractions, search_foods
+from app.agent.tools import search_attractions, search_foods, search_hotels
 from app.common.config import settings
+from app.common.season import season_factor, season_label
 from app.schemas.trip import AdjustRequest, AdjustResponse, DailyPlan, GenerateRequest, GenerateResponse, PoiOption, TripItem
 
 logger = logging.getLogger(__name__)
@@ -20,6 +22,7 @@ class AgentState(TypedDict):
     requirements: dict
     candidates: list[dict]
     foods: list[dict]
+    hotels: list[dict]
     consumption: dict | None
     daily_plans: list[dict]
     budget_estimate: dict
@@ -49,8 +52,10 @@ def search_pois(state: AgentState) -> dict:
     req: GenerateRequest = state["request"]
     candidates = tools.search_attractions(req.city, req.preferences)
     foods = tools.search_foods(req.city)
+    hotels = search_hotels(req.city)
     consumption = tools.get_consumption(req.city)
-    return {"candidates": candidates, "foods": foods, "consumption": consumption}
+    return {"candidates": candidates, "foods": foods, "hotels": hotels,
+            "consumption": consumption}
 
 
 def generate_itinerary(state: AgentState) -> dict:
@@ -67,17 +72,19 @@ def generate_itinerary(state: AgentState) -> dict:
             plans, budget = llm_generate(
                 req.city, req.days, req.persons, req.preferences,
                 state["candidates"], state["foods"], state["consumption"],
-                feedback=feedback,
+                feedback=feedback, hotels=state.get("hotels"),
             )
             return {"daily_plans": plans, "budget_estimate": budget, "error": None}
         except Exception as e:
             logger.warning("llm generate failed (attempt %s): %s", attempts + 1, e)
             if attempts + 1 >= MAX_FIX_ATTEMPTS:
                 logger.info("LLM 连续失败，降级为确定性兜底生成")
-                plans, budget = fallback_generate(req.city, req.days, req.persons, req.preferences)
+                plans, budget = fallback_generate(req.city, req.days, req.persons,
+                                                  req.preferences, state.get("hotels"))
                 return {"daily_plans": plans, "budget_estimate": budget, "error": None}
             return {"error": str(e), "attempts": attempts + 1}
-    plans, budget = fallback_generate(req.city, req.days, req.persons, req.preferences)
+    plans, budget = fallback_generate(req.city, req.days, req.persons,
+                                      req.preferences, state.get("hotels"))
     return {"daily_plans": plans, "budget_estimate": budget, "error": None}
 
 
@@ -114,6 +121,14 @@ def format_output(state: AgentState) -> dict:
         if name and name not in lookup:
             lookup[name] = poi
     daily_plans = []
+    trip_date: date | None = None
+    if req.start_date:
+        try:
+            trip_date = date.fromisoformat(req.start_date)
+        except ValueError:
+            trip_date = None
+    factor = season_factor(trip_date)
+    label = season_label(trip_date)
     for plan in state["daily_plans"]:
         items = []
         for item in plan["items"]:
@@ -127,15 +142,26 @@ def format_output(state: AgentState) -> dict:
                     item["poi_id"] = str(poi.get("id") or "")
                 if item.get("cost") is None and poi.get("ticket_price") is not None:
                     item["cost"] = float(poi["ticket_price"])
+            if item.get("item_type") == "hotel" and factor != 1.0 and item.get("cost"):
+                base = float(item["cost"])
+                item["cost"] = round(base * factor, 2)
+                remark = f"{label}价格系数×{factor}（基准价￥{base:g}）"
+                item["remark"] = f"{item['remark']}；{remark}" if item.get("remark") else remark
             items.append(TripItem(**item))
         daily_plans.append(DailyPlan(day_no=plan["day_no"], note=plan.get("note"), items=items))
+    budget_estimate = dict(state["budget_estimate"] or {})
+    if factor != 1.0 and budget_estimate.get("酒店"):
+        budget_estimate["酒店"] = round(float(budget_estimate["酒店"]) * factor, 2)
+    price_note = f"酒店已按{label}系数×{factor}调整（基于出行日期 {req.start_date}）" \
+        if factor != 1.0 else None
     result = GenerateResponse(
         city=req.city,
         days=req.days,
         title=f"{req.city}{req.days}日游",
         daily_plans=daily_plans,
-        budget_estimate=state["budget_estimate"],
+        budget_estimate=budget_estimate,
         validation_log=state.get("validation_log") or [],
+        price_note=price_note,
     )
     return {"result": result}
 
@@ -165,6 +191,7 @@ def run_generate(req: GenerateRequest) -> GenerateResponse:
         "requirements": {},
         "candidates": [],
         "foods": [],
+        "hotels": [],
         "consumption": None,
         "daily_plans": [],
         "budget_estimate": {},

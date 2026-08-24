@@ -47,11 +47,16 @@ class BudgetEngineImplTest {
     }
 
     private ItineraryMain main(int persons, int days) {
+        return main(persons, days, null);
+    }
+
+    private ItineraryMain main(int persons, int days, java.time.LocalDate startDate) {
         ItineraryMain main = new ItineraryMain();
         main.setId(1L);
         main.setCity("北京");
         main.setPersons(persons);
         main.setDays(days);
+        main.setStartDate(startDate);
         return main;
     }
 
@@ -71,6 +76,7 @@ class BudgetEngineImplTest {
                 item("attraction", "故宫", new BigDecimal("60"), null),
                 item("attraction", "天坛", new BigDecimal("40"), null),
                 item("food", "全聚德", new BigDecimal("50"), null),
+                item("hotel", "酒店", new BigDecimal("300"), null),
                 item("hotel", "酒店", new BigDecimal("300"), null)));
         CityConsumption consumption = new CityConsumption();
         consumption.setCity("北京");
@@ -100,7 +106,28 @@ class BudgetEngineImplTest {
         List<BudgetDetail> result = engine.recalculate(1L);
 
         assertEquals(new BigDecimal("140.00"), amount(result, "交通"));
-        assertEquals(new BigDecimal("600.00"), amount(result, "酒店"));
+        // 单条酒店记录代表一晚：不再重复乘天数（旧实现会得到 600）
+        assertEquals(new BigDecimal("300.00"), amount(result, "酒店"));
+    }
+
+    @Test
+    void seasonalFactorAppliedToPoiFallbackHotel() {
+        ItineraryMain m = main(2, 2, java.time.LocalDate.of(2026, 10, 2));
+        when(mainMapper.selectById(1L)).thenReturn(m);
+        when(itemMapper.selectList(any(Wrapper.class))).thenReturn(List.of(
+                item("hotel", "全季王府井店", null, null)));
+        when(poiMapper.selectOne(any(Wrapper.class))).thenReturn(poiWithPrice("480"));
+        when(consumptionMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+        when(budgetMapper.delete(any(Wrapper.class))).thenReturn(1);
+        when(budgetMapper.insert(any(BudgetDetail.class))).thenReturn(1);
+
+        List<BudgetDetail> result = engine.recalculate(1L);
+
+        // 国庆窗口系数 1.8：480×1.8×rooms(1)=864
+        assertEquals(new BigDecimal("864.00"), amount(result, "酒店"));
+        assertEquals("知识库基准价已按节假日旺季系数×1.8调整",
+                result.stream().filter(b -> "酒店".equals(b.getCategory()))
+                        .map(BudgetDetail::getRemark).findFirst().orElse(""));
     }
 
     @Test

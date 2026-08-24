@@ -40,6 +40,7 @@ class GenerateResponse(WireModel):
     daily_plans: list[DailyPlan]
     budget_estimate: dict[str, float] = Field(default_factory=dict)
     validation_log: list[str] = Field(default_factory=list)
+    price_note: str | None = None
 
 
 class AdjustRequest(WireModel):

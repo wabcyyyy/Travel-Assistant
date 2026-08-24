@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -62,10 +63,21 @@ public class BudgetEngineImpl implements BudgetEngine {
         int ticketCount = 0;
         int mealCount = 0;
         int hotelCount = 0;
+        boolean hotelFromPoiFallback = false;
 
         for (ItineraryItem item : items) {
             String type = item.getItemType();
-            BigDecimal unit = unitCost(item, main.getCity());
+            BigDecimal unit;
+            if (item.getCost() != null) {
+                unit = item.getCost();
+            } else {
+                unit = poiUnitCost(item, main.getCity());
+                if (unit != null && "hotel".equals(type)) {
+                    // 知识库基准价按出行日期做季节调整（与 agent 端 season.py 同规则）
+                    unit = com.travel.backend.common.SeasonPrice.apply(unit, main.getStartDate());
+                    hotelFromPoiFallback = true;
+                }
+            }
             if (unit == null) {
                 continue;
             }
@@ -82,7 +94,8 @@ public class BudgetEngineImpl implements BudgetEngine {
         }
         ticket = ticket.multiply(BigDecimal.valueOf(persons));
         meal = meal.multiply(BigDecimal.valueOf(persons));
-        hotel = hotel.multiply(BigDecimal.valueOf(rooms)).multiply(BigDecimal.valueOf(days));
+        // 每天的酒店条目即一晚房费，直接乘房间数，不再重复乘天数
+        hotel = hotel.multiply(BigDecimal.valueOf(rooms));
 
         CityConsumption consumption = consumptionMapper.selectOne(
                 new LambdaQueryWrapper<CityConsumption>().eq(CityConsumption::getCity, main.getCity()));
@@ -100,17 +113,20 @@ public class BudgetEngineImpl implements BudgetEngine {
         result.add(build(itineraryId, "门票", ticket, ticketCount, "按景点票价×人数"));
         result.add(build(itineraryId, "餐饮", meal, mealCount, "按餐饮单价×人数"));
         result.add(build(itineraryId, "交通", transport, days, "按城市系数×天数×人数"));
-        result.add(build(itineraryId, "酒店", hotel, hotelCount, "按单间价×房间数×晚数"));
+        String hotelRemark = "按每晚房费×房间数合计";
+        if (hotelFromPoiFallback && hotelCount > 0) {
+            LocalDate sd = main.getStartDate();
+            hotelRemark = "知识库基准价已按" + com.travel.backend.common.SeasonPrice.label(sd)
+                    + "系数×" + com.travel.backend.common.SeasonPrice.factor(sd) + "调整";
+        }
+        result.add(build(itineraryId, "酒店", hotel, hotelCount, hotelRemark));
         for (BudgetDetail detail : result) {
             budgetMapper.insert(detail);
         }
         return result;
     }
 
-    private BigDecimal unitCost(ItineraryItem item, String city) {
-        if (item.getCost() != null) {
-            return item.getCost();
-        }
+    private BigDecimal poiUnitCost(ItineraryItem item, String city) {
         PoiKnowledge poi = null;
         if (item.getPoiId() != null && !item.getPoiId().isBlank()) {
             poi = poiMapper.selectOne(new LambdaQueryWrapper<PoiKnowledge>()

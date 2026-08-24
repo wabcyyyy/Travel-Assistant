@@ -35,6 +35,14 @@ def search_foods(city: str, limit: int = 10) -> list[dict]:
     return poi_repository.search_pois(city, category="food", limit=limit)
 
 
+def search_hotels(city: str, limit: int = 6) -> list[dict]:
+    poi_store.ensure_loaded()
+    hits = poi_store.search(f"{city} 住宿", city=city, category="hotel", limit=limit)
+    if hits:
+        return hits[:limit]
+    return poi_repository.search_pois(city, category="hotel", limit=limit)
+
+
 def get_poi_detail(city: str, name: str) -> dict | None:
     return poi_repository.get_poi(city, name)
 

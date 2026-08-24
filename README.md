@@ -79,7 +79,10 @@ stop-all.cmd    # 一键全停（加参数 /I 连 Redis 一起停：stop-all.cmd
 mysql -uroot -p < sql/schema.sql        # 建 8 张表
 mysql -uroot -p < sql/seed_data.sql     # 种子数据：POI 知识 + 城市消费系数（北京/上海/成都/西安/三亚）
 mysql -uroot -p < sql/add_hangzhou.sql  # 追加杭州 POI（幂等）
+mysql -uroot -p < sql/add_hotels.sql    # 追加各城市知识库酒店（经济/舒适/高端三档，幂等）
 ```
+
+> 酒店价格支持季节系数（与出行日期联动）：节假日窗口 ×1.8、暑期 ×1.5、淡季 ×0.85、平季 ×1.0，规则见 `app/common/season.py` 与 `common/SeasonPrice.java`。
 
 ### 2. 启动后端（travel-backend-java）
 
