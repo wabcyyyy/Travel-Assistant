@@ -28,7 +28,7 @@ request.interceptors.response.use(
       ElMessage.error(res.message || '请求失败')
       return Promise.reject(new Error(res.message || '请求失败'))
     }
-    return response
+    return res as unknown as typeof response
   },
   (error) => {
     if (error.response?.status === 401) {
