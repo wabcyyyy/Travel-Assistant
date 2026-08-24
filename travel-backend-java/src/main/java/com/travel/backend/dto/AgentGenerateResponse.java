@@ -1,5 +1,6 @@
 package com.travel.backend.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -7,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class AgentGenerateResponse {
 
     private String city;
@@ -14,9 +16,11 @@ public class AgentGenerateResponse {
     private String title;
     private List<DailyPlan> dailyPlans;
     private Map<String, BigDecimal> budgetEstimate;
+    private List<String> validationLog;
     private String priceNote;
 
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class DailyPlan {
         private Integer dayNo;
         private String note;
@@ -24,6 +28,7 @@ public class AgentGenerateResponse {
     }
 
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Item {
         private String itemType;
         private String poiName;
