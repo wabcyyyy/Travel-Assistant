@@ -15,4 +15,5 @@ public class AgentGenerateRequest {
     private BigDecimal budget;
     private LocalDate startDate;
     private List<String> preferences;
+    private String hotelTier;
 }

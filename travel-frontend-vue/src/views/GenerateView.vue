@@ -41,6 +41,15 @@
           <el-option label="美食" value="美食" />
         </el-select>
       </el-form-item>
+      <el-form-item label="酒店档次">
+        <el-select v-model="form.hotelTier" placeholder="不限（默认按舒适档推荐）" clearable>
+          <el-option label="经济型" value="经济型" />
+          <el-option label="舒适型" value="舒适型" />
+          <el-option label="高档型" value="高档型" />
+          <el-option label="豪华型" value="豪华型" />
+          <el-option label="奢华型" value="奢华型" />
+        </el-select>
+      </el-form-item>
       <el-form-item>
         <el-button type="primary" :loading="loading" @click="onSubmit">生成行程</el-button>
       </el-form-item>
@@ -72,6 +81,7 @@ const form = reactive({
   persons: 2,
   budget: 3000,
   preferences: [] as string[],
+  hotelTier: '' as string,
 })
 
 const dateRange = ref<[string, string] | null>(null)
@@ -97,6 +107,7 @@ async function onSubmit() {
       startDate: dateRange.value?.[0],
       endDate: dateRange.value?.[1],
       preferences: form.preferences,
+      hotelTier: form.hotelTier || undefined,
     })
     router.push({ name: 'trip-detail', params: { id: res.data.id } })
   } catch (err) {

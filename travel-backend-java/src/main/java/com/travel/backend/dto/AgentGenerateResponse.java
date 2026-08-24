@@ -14,6 +14,7 @@ public class AgentGenerateResponse {
     private String title;
     private List<DailyPlan> dailyPlans;
     private Map<String, BigDecimal> budgetEstimate;
+    private String priceNote;
 
     @Data
     public static class DailyPlan {

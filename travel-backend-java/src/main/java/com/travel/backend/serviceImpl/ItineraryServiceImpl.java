@@ -327,6 +327,7 @@ public class ItineraryServiceImpl implements ItineraryService {
         agentRequest.setBudget(request.getBudget());
         agentRequest.setStartDate(request.getStartDate());
         agentRequest.setPreferences(request.getPreferences());
+        agentRequest.setHotelTier(request.getHotelTier());
         return agentRequest;
     }
 

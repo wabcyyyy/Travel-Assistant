@@ -12,7 +12,8 @@ class LLMClient:
         self._model = settings.llm_model
         self._timeout = settings.llm_timeout
 
-    def chat(self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 2048) -> str:
+    def chat(self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 2048,
+             enable_search: bool = False) -> str:
         url = self._base_url.rstrip("/") + "/chat/completions"
         headers = {
             "Authorization": f"Bearer {self._api_key}",
@@ -24,6 +25,9 @@ class LLMClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if enable_search:
+            # dashscope 兼容层：顶层 enable_search 开启百炼联网搜索插件
+            payload["enable_search"] = True
         resp = httpx.post(url, json=payload, headers=headers, timeout=self._timeout)
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]

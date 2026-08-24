@@ -32,4 +32,6 @@ public class GenerateRequest {
     private BigDecimal budget;
 
     private List<String> preferences;
+
+    private String hotelTier;
 }

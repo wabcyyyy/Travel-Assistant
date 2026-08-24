@@ -82,7 +82,7 @@ mysql -uroot -p < sql/add_hangzhou.sql  # 追加杭州 POI（幂等）
 mysql -uroot -p < sql/add_hotels.sql    # 追加各城市知识库酒店（经济/舒适/高端三档，幂等）
 ```
 
-> 酒店价格支持季节系数（与出行日期联动）：节假日窗口 ×1.8、暑期 ×1.5、淡季 ×0.85、平季 ×1.0，规则见 `app/common/season.py` 与 `common/SeasonPrice.java`。
+> 酒店定价三级来源（备注中标注）：① 千问联网搜索实时挂牌价 ② 知识库基准价×季节系数估算。季节系数与出行日期联动：节假日窗口 ×1.8、暑期 ×1.5、淡季 ×0.85、平季 ×1.0，规则见 `app/common/season.py` 与 `common/SeasonPrice.java`。支持按档次筛选：经济型/舒适型/高档型/豪华型/奢华型。
 
 ### 2. 启动后端（travel-backend-java）
 
@@ -129,6 +129,7 @@ npm run dev            # http://localhost:5173
 | `JWT_SECRET` | Java | JWT 密钥（默认 dev 值，生产必改） |
 | `AGENT_SERVICE_URL` | Java | Agent 服务地址，默认 `http://localhost:8000` |
 | `LLM_API_KEY/BASE_URL/MODEL` | Python | 千问 OpenAI 兼容接口（默认 qwen-plus） |
+| `LIVE_PRICE_SEARCH/MAX_LIVE_QUERIES` | Python | 酒店联网实时定价开关（DashScope 搜索插件）与每次生成最大查询数 |
 | `DEFAULT_BUDGET` | Python | 默认预算，默认 1000 |
 | `VITE_AMAP_JS_KEY/SECURITY_CODE` | 前端 | 高德 JS key 与安全码 |
 

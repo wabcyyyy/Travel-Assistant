@@ -1,3 +1,7 @@
-﻿data/
+data/
 .idea/
 .vscode/
+.env
+!.env.example
+logs/
+*.log

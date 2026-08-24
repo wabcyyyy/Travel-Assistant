@@ -1,11 +1,13 @@
 import logging
 from datetime import date
+from math import ceil
 from typing import TypedDict
 
 from langgraph.graph import END, StateGraph
 
 from app.agent import tools
 from app.agent.generators import fallback_generate, llm_generate
+from app.agent.pricing import query_live_price
 from app.agent.reflect import build_feedback, validate_plans
 from app.agent.tools import search_attractions, search_foods, search_hotels
 from app.common.config import settings
@@ -72,7 +74,7 @@ def generate_itinerary(state: AgentState) -> dict:
             plans, budget = llm_generate(
                 req.city, req.days, req.persons, req.preferences,
                 state["candidates"], state["foods"], state["consumption"],
-                feedback=feedback, hotels=state.get("hotels"),
+                feedback=feedback, hotels=state.get("hotels"), hotel_tier=req.hotel_tier,
             )
             return {"daily_plans": plans, "budget_estimate": budget, "error": None}
         except Exception as e:
@@ -80,11 +82,12 @@ def generate_itinerary(state: AgentState) -> dict:
             if attempts + 1 >= MAX_FIX_ATTEMPTS:
                 logger.info("LLM 连续失败，降级为确定性兜底生成")
                 plans, budget = fallback_generate(req.city, req.days, req.persons,
-                                                  req.preferences, state.get("hotels"))
+                                                  req.preferences, state.get("hotels"),
+                                                  req.hotel_tier)
                 return {"daily_plans": plans, "budget_estimate": budget, "error": None}
             return {"error": str(e), "attempts": attempts + 1}
     plans, budget = fallback_generate(req.city, req.days, req.persons,
-                                      req.preferences, state.get("hotels"))
+                                      req.preferences, state.get("hotels"), req.hotel_tier)
     return {"daily_plans": plans, "budget_estimate": budget, "error": None}
 
 
@@ -129,6 +132,37 @@ def format_output(state: AgentState) -> dict:
             trip_date = None
     factor = season_factor(trip_date)
     label = season_label(trip_date)
+
+    # 酒店定价链：联网实时价 → 知识库基准价×季节系数（估算）
+    live_cache: dict[str, dict | None] = {}
+    remaining = {"n": settings.max_live_queries if settings.live_price_search else 0}
+
+    def price_hotel(item: dict) -> None:
+        name = item.get("poi_name") or ""
+        if name not in live_cache:
+            if remaining["n"] > 0 and settings.llm_api_key:
+                remaining["n"] -= 1
+                live_cache[name] = query_live_price(req.city, name, req.start_date)
+            else:
+                live_cache[name] = None
+        live = live_cache.get(name)
+        if item.get("item_type") != "hotel" or not item.get("cost"):
+            return
+        base = float(item["cost"])
+        if live:
+            # 联网拿到的是"当前挂牌价"，未来日期的季节差异再叠系数
+            adjusted = live["price"] * factor
+            item["cost"] = round(adjusted, 2)
+            remark = f"联网实时价￥{live['price']:g}：{live['note']}"
+            if factor != 1.0:
+                remark += f"；按{label}系数×{factor}调整"
+            item["remark"] = f"{item['remark']}；{remark}" if item.get("remark") else remark
+        elif factor != 1.0:
+            item["cost"] = round(base * factor, 2)
+            remark = f"{label}估算：系数×{factor}（知识库基准价￥{base:g}）"
+            item["remark"] = f"{item['remark']}；{remark}" if item.get("remark") else remark
+
+    hotel_total = 0.0
     for plan in state["daily_plans"]:
         items = []
         for item in plan["items"]:
@@ -142,18 +176,22 @@ def format_output(state: AgentState) -> dict:
                     item["poi_id"] = str(poi.get("id") or "")
                 if item.get("cost") is None and poi.get("ticket_price") is not None:
                     item["cost"] = float(poi["ticket_price"])
-            if item.get("item_type") == "hotel" and factor != 1.0 and item.get("cost"):
-                base = float(item["cost"])
-                item["cost"] = round(base * factor, 2)
-                remark = f"{label}价格系数×{factor}（基准价￥{base:g}）"
-                item["remark"] = f"{item['remark']}；{remark}" if item.get("remark") else remark
+            if item.get("item_type") == "hotel":
+                price_hotel(item)
+                hotel_total += float(item.get("cost") or 0)
             items.append(TripItem(**item))
         daily_plans.append(DailyPlan(day_no=plan["day_no"], note=plan.get("note"), items=items))
+
     budget_estimate = dict(state["budget_estimate"] or {})
-    if factor != 1.0 and budget_estimate.get("酒店"):
-        budget_estimate["酒店"] = round(float(budget_estimate["酒店"]) * factor, 2)
-    price_note = f"酒店已按{label}系数×{factor}调整（基于出行日期 {req.start_date}）" \
-        if factor != 1.0 else None
+    rooms = ceil(max(req.persons, 1) / 2)
+    if hotel_total > 0:
+        budget_estimate["酒店"] = round(hotel_total * rooms, 2)
+    sources = [v["note"] for v in live_cache.values() if v]
+    price_note = (
+        "酒店价格来源：" + "；".join(dict.fromkeys(sources))
+        if sources else
+        (f"酒店为{label}估算（系数×{factor}），未获取到联网实时价" if factor != 1.0 else None)
+    )
     result = GenerateResponse(
         city=req.city,
         days=req.days,

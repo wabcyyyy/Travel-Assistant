@@ -10,6 +10,7 @@ class GenerateRequest(WireModel):
     budget: float | None = None
     start_date: str | None = None
     preferences: list[str] = Field(default_factory=list)
+    hotel_tier: str | None = Field(default=None)  # 经济型/舒适型/高档型/豪华型/奢华型
 
 
 class TripItem(WireModel):

@@ -10,7 +10,7 @@ export interface ApiResult<T = unknown> {
 
 const request = axios.create({
   baseURL: '/api',
-  timeout: 60000,
+  timeout: 180000, // 生成行程含联网搜索，放宽超时
 })
 
 request.interceptors.request.use((config) => {

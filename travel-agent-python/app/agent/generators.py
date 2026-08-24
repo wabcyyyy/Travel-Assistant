@@ -24,8 +24,29 @@ TIME_SLOTS = [
 ]
 
 
+_TIER_KEYWORDS = {
+    "经济型": ("经济",),
+    "舒适型": ("舒适", "中端"),
+    "高档型": ("高端", "高档"),
+    "豪华型": ("高端", "五星", "国宾", "地标"),
+    "奢华型": ("国宾", "地标", "五星", "百年"),
+}
+
+
+def _pick_hotels(hotels: list[dict] | None, tier: str | None, count: int) -> list[dict]:
+    """按档次关键词优先挑选，凑不满则用其余补齐。"""
+    if not hotels:
+        return []
+    keywords = _TIER_KEYWORDS.get(tier or "", ())
+    matched = [h for h in hotels
+               if any(k in (h.get("description") or "") + (h.get("tags") or "") for k in keywords)]
+    picked = matched + [h for h in hotels if h not in matched]
+    return picked[:count]
+
+
 def fallback_generate(city: str, days: int, persons: int, preferences: list[str],
-                      hotels: list[dict] | None = None) -> tuple[list[dict], dict]:
+                      hotels: list[dict] | None = None,
+                      hotel_tier: str | None = None) -> tuple[list[dict], dict]:
     attractions = tools.search_attractions(city, preferences)
     foods = tools.search_foods(city)
     consumption = tools.get_consumption(city)
@@ -47,7 +68,8 @@ def fallback_generate(city: str, days: int, persons: int, preferences: list[str]
         if foods:
             food = foods[day_no % len(foods)]
             items.append(_to_item(food, "18:00", "19:00"))
-        items.append(_hotel_item(city, consumption, (hotels or []), day_no))
+        tier_hotels = _pick_hotels(hotels, hotel_tier, 2)
+        items.append(_hotel_item(city, consumption, tier_hotels or hotels, day_no))
         daily_plans.append({"day_no": day_no, "note": f"{city}第{day_no}天行程", "items": items})
 
     budget = _estimate_budget(attractions, foods, consumption, days, persons)
@@ -56,7 +78,8 @@ def fallback_generate(city: str, days: int, persons: int, preferences: list[str]
 
 def llm_generate(city: str, days: int, persons: int, preferences: list[str],
                  candidates: list[dict], foods: list[dict], consumption: dict | None,
-                 feedback: str = "", hotels: list[dict] | None = None) -> tuple[list[dict], dict]:
+                 feedback: str = "", hotels: list[dict] | None = None,
+                 hotel_tier: str | None = None) -> tuple[list[dict], dict]:
     client = get_llm_client()
     system_prompt = (
         "你是资深旅行规划师。只输出 JSON，不要输出任何其他文字，不要用 markdown 代码块。"
@@ -87,6 +110,8 @@ def llm_generate(city: str, days: int, persons: int, preferences: list[str],
     )
     if feedback:
         user_prompt += f"\n上一轮校验反馈（必须修正）：{feedback}"
+    if hotel_tier:
+        user_prompt += f"\n酒店档次要求：{hotel_tier}，请从候选酒店中选择符合该档次的酒店。"
     raw = client.complete(user_prompt, system_prompt=system_prompt, temperature=0.3)
     try:
         data = _parse_json(raw)

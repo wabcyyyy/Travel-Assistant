@@ -408,6 +408,17 @@
             },
             "type": "array",
             "title": "Preferences"
+          },
+          "hotelTier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hoteltier"
           }
         },
         "type": "object",
@@ -450,6 +461,17 @@
             },
             "type": "array",
             "title": "Validationlog"
+          },
+          "priceNote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricenote"
           }
         },
         "type": "object",
