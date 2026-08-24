@@ -1,18 +1,36 @@
 from app.agent import poi_repository
 from app.rag.store import poi_store
 
+# 前端展示标签 → 知识库 tags 关键词（匹配用）
+PREFERENCE_KEYWORDS = {
+    "人文历史": ("人文", "历史", "文化"),
+    "自然风光": ("自然",),
+    "美食": ("美食",),
+    "网红出片": ("网红", "地标"),
+    "主题娱乐": ("娱乐", "乐园", "亲子", "演出"),
+    "购物": ("购物", "商圈", "街区"),
+}
+
+
+def _expand(preferences: list[str]) -> list[str]:
+    """把前端展示标签展开为知识库关键词；未映射的原样保留。"""
+    out: list[str] = []
+    for p in preferences or []:
+        out.extend(PREFERENCE_KEYWORDS.get(p, (p,)))
+    return out
+
 
 def _build_query(city: str, preferences: list[str]) -> str:
     parts = [city]
-    if preferences:
-        parts.extend(preferences)
+    parts.extend(_expand(preferences))
     return " ".join(parts)
 
 
 def _sort_by_preferences(pois: list[dict], preferences: list[str]) -> list[dict]:
     if not preferences:
         return pois
-    preferred = [p for p in pois if _match_preferences(p, preferences)]
+    keywords = _expand(preferences)
+    preferred = [p for p in pois if _match_preferences(p, keywords)]
     if len(preferred) >= 6:
         return preferred + [p for p in pois if p not in preferred]
     return pois
@@ -51,6 +69,6 @@ def get_consumption(city: str) -> dict | None:
     return poi_repository.get_city_consumption(city)
 
 
-def _match_preferences(poi: dict, preferences: list[str]) -> bool:
+def _match_preferences(poi: dict, keywords: list[str]) -> bool:
     tags = poi.get("tags") or ""
-    return any(pref in tags for pref in preferences)
+    return any(k in tags for k in keywords)

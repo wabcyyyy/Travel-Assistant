@@ -62,7 +62,7 @@
               :class="{ active: form.preferences.includes(t.label) }"
               @click="togglePreference(t.label)"
             >
-              <el-icon><component :is="t.icon" /></el-icon>
+              <Icon :icon="t.icon" width="20" />
               {{ t.label }}
             </button>
           </div>
@@ -121,17 +121,7 @@
 import { reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { type FormInstance, type FormRules } from 'element-plus'
-import {
-  Camera,
-  Clock,
-  Collection,
-  ForkSpoon,
-  Lollipop,
-  Moon,
-  Reading,
-  ShoppingBag,
-  Sunny,
-} from '@element-plus/icons-vue'
+import { Icon } from '@iconify/vue'
 
 import { generateItinerary, clarifyTrip } from '../api'
 
@@ -139,15 +129,12 @@ const router = useRouter()
 const formRef = ref<FormInstance>()
 
 const PREFERENCE_TAGS = [
-  { label: '亲子', icon: Lollipop },
-  { label: '人文', icon: Reading },
-  { label: '自然', icon: Sunny },
-  { label: '美食', icon: ForkSpoon },
-  { label: '文化', icon: Collection },
-  { label: '历史', icon: Clock },
-  { label: '网红', icon: Camera },
-  { label: '购物', icon: ShoppingBag },
-  { label: '夜游', icon: Moon },
+  { label: '人文历史', icon: 'fluent-emoji:classical-building' },
+  { label: '自然风光', icon: 'fluent-emoji:national-park' },
+  { label: '美食', icon: 'fluent-emoji:fork-and-knife-with-plate' },
+  { label: '网红出片', icon: 'fluent-emoji:camera-with-flash' },
+  { label: '主题娱乐', icon: 'fluent-emoji:ferris-wheel' },
+  { label: '购物', icon: 'fluent-emoji:shopping-bags' },
 ]
 
 const HOTEL_TIERS = ['经济型', '舒适型', '高档型', '豪华型', '奢华型']
