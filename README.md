@@ -54,7 +54,18 @@ Travel-Assistant/
 
 ## 快速开始
 
-### 前置依赖
+### 一键启停（推荐）
+
+```bash
+start-all.cmd   # 双击即可：自动拉起 Redis + 后端 + Agent + 前端（各自独立窗口），已启动的自动跳过，最后做健康检查
+stop-all.cmd    # 一键全停（加参数 /I 连 Redis 一起停：stop-all.cmd -IncludeRedis）
+```
+
+> 服务窗口需保持打开，关窗即停该服务。前置条件仅两个：MySQL 已运行、首次使用前完成下方「初始化数据库」与各端 `.env` 配置。
+
+### 手动启动
+
+#### 前置依赖
 
 - JDK 17+、Maven 3.8+
 - MySQL 8.0+（本地 3306）
