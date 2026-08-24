@@ -52,10 +52,10 @@ const props = defineProps<{
 }>()
 
 const CATEGORY_COLORS: Record<string, string> = {
-  门票: '#5470c6',
-  餐饮: '#91cc75',
-  交通: '#fac858',
-  酒店: '#ee6666',
+  门票: '#b4532a',
+  餐饮: '#8a9a5b',
+  交通: '#d9c7a7',
+  酒店: '#4a4a4a',
 }
 
 const chartRef = ref<HTMLDivElement>()

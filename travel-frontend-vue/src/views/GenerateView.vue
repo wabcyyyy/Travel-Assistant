@@ -1,15 +1,18 @@
 <template>
-  <el-card class="generate" shadow="never">
-    <template #header>
-      <span>行程生成</span>
-    </template>
-    <el-form
-      ref="formRef"
-      :model="form"
-      :rules="rules"
-      label-width="100px"
-      style="max-width: 560px"
-    >
+  <div class="generate-page">
+    <div class="lp-page-head">
+      <span class="bar"></span>
+      <h2>行程生成</h2>
+      <span class="sub">目的地 · 日期 · 偏好，交给 Agent</span>
+    </div>
+    <el-card class="generate" shadow="never">
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-width="100px"
+        style="max-width: 560px"
+      >
       <el-form-item label="目的地" prop="city">
         <el-input v-model="form.city" placeholder="例如：北京" />
       </el-form-item>
@@ -51,7 +54,9 @@
         </el-select>
       </el-form-item>
       <el-form-item>
-        <el-button type="primary" :loading="loading" @click="onSubmit">生成行程</el-button>
+        <el-button type="primary" size="large" class="submit" :loading="loading" @click="onSubmit">
+          生成行程
+        </el-button>
       </el-form-item>
     </el-form>
     <el-alert
@@ -63,6 +68,7 @@
       style="margin-bottom: 12px"
     />
   </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -119,8 +125,13 @@ async function onSubmit() {
 </script>
 
 <style scoped>
-.generate {
-  max-width: 720px;
+.generate-page {
+  max-width: 960px;
   margin: 0 auto;
+}
+
+.submit {
+  min-width: 160px;
+  font-weight: 700;
 }
 </style>

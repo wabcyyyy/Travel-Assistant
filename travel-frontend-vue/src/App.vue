@@ -1,7 +1,11 @@
 <template>
   <el-container class="layout">
-    <el-header class="header">
-      <div class="logo" @click="$router.push('/')">旅行助手 Travel Assistant</div>
+    <el-header class="header lp-header" height="60px">
+      <div class="logo lp-logo" @click="$router.push('/')">
+        <span class="mark"></span>
+        <span class="zh">旅行助手</span>
+        <span class="en">Travel Assistant</span>
+      </div>
       <el-menu
         mode="horizontal"
         :ellipsis="false"
@@ -26,7 +30,7 @@
           </template>
         </el-dropdown>
       </div>
-      <el-button v-else type="primary" @click="$router.push('/login')">登录</el-button>
+      <el-button v-else type="primary" plain @click="$router.push('/login')">登录</el-button>
     </el-header>
     <el-main>
       <router-view />
@@ -60,18 +64,29 @@ function onCommand(command: string) {
   display: flex;
   align-items: center;
   gap: 24px;
-  border-bottom: 1px solid var(--el-border-color-light);
-}
-
-.logo {
-  font-size: 18px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
 }
 
 .menu {
   flex: 1;
+  border-bottom: none !important;
+  background: transparent;
+}
+
+.menu :deep(.el-menu-item) {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--lp-ink-soft);
+  border-bottom: 2px solid transparent;
+}
+
+.menu :deep(.el-menu-item.is-active) {
+  color: var(--lp-ink);
+  border-bottom-color: var(--lp-accent);
+}
+
+.menu :deep(.el-menu-item:hover) {
+  background: var(--lp-sand);
+  color: var(--lp-ink);
 }
 
 .user-name {
@@ -79,5 +94,7 @@ function onCommand(command: string) {
   display: flex;
   align-items: center;
   gap: 4px;
+  font-weight: 600;
+  color: var(--lp-ink);
 }
 </style>

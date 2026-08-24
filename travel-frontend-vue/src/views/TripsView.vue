@@ -1,29 +1,36 @@
 <template>
   <div class="trips">
-    <el-table v-if="list.length" :data="list" style="width: 100%">
-      <el-table-column prop="title" label="标题" min-width="160" />
-      <el-table-column prop="city" label="目的地" width="100" />
-      <el-table-column label="日期" width="180">
-        <template #default="{ row }">
-          {{ row.startDate ? row.startDate : '—' }} ~ {{ row.endDate ? row.endDate : '—' }}
-        </template>
-      </el-table-column>
-      <el-table-column label="天数/人数" width="110">
-        <template #default="{ row }">{{ row.days }} 天 / {{ row.persons }} 人</template>
-      </el-table-column>
-      <el-table-column label="预估总价" width="120">
-        <template #default="{ row }">￥{{ row.totalAmount }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="160">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="$router.push(`/trips/${row.id}`)">查看</el-button>
-          <el-button link type="danger" @click="onDelete(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <el-empty v-else description="暂无行程，先去生成一个吧">
-      <el-button type="primary" @click="$router.push('/generate')">去生成行程</el-button>
-    </el-empty>
+    <div class="lp-page-head">
+      <span class="bar"></span>
+      <h2>我的行程</h2>
+      <span class="sub">共 {{ list.length }} 个行程</span>
+    </div>
+    <el-card shadow="never">
+      <el-table v-if="list.length" :data="list" style="width: 100%">
+        <el-table-column prop="title" label="标题" min-width="160" />
+        <el-table-column prop="city" label="目的地" width="100" />
+        <el-table-column label="日期" width="180">
+          <template #default="{ row }">
+            {{ row.startDate ? row.startDate : '—' }} ~ {{ row.endDate ? row.endDate : '—' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="天数/人数" width="110">
+          <template #default="{ row }">{{ row.days }} 天 / {{ row.persons }} 人</template>
+        </el-table-column>
+        <el-table-column label="预估总价" width="120">
+          <template #default="{ row }">￥{{ row.totalAmount }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="160">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="$router.push(`/trips/${row.id}`)">查看</el-button>
+            <el-button link type="danger" @click="onDelete(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-else description="暂无行程，先去生成一个吧">
+        <el-button type="primary" @click="$router.push('/generate')">去生成行程</el-button>
+      </el-empty>
+    </el-card>
   </div>
 </template>
 

@@ -1,16 +1,17 @@
 <template>
   <div class="home">
     <el-card class="hero" shadow="never">
-      <h1>智能旅行行程助手</h1>
-      <p>提交目的地与偏好，Agent 自动为你规划每日行程、预算与地图路线</p>
-      <el-button type="primary" size="large" @click="$router.push('/generate')">
+      <p class="kicker">AI TRAVEL PLANNER</p>
+      <h1>把下一次旅行，<br />交给一次生成。</h1>
+      <p class="lede">提交目的地与偏好，Agent 自动规划每日行程、预算与地图路线</p>
+      <el-button type="primary" size="large" class="cta" @click="$router.push('/generate')">
         开始生成行程
       </el-button>
     </el-card>
 
     <el-card class="conn">
       <template #header>
-        <span>服务连通性自检（阶段 0）</span>
+        <span>服务连通性自检</span>
       </template>
       <el-space direction="vertical" :size="12" style="width: 100%">
         <el-alert
@@ -81,15 +82,33 @@ onMounted(checkConnectivity)
 
 .hero {
   text-align: center;
-  padding: 48px 24px;
+  padding: 64px 24px;
+}
+
+.kicker {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.28em;
+  color: var(--lp-accent);
 }
 
 .hero h1 {
-  margin: 0 0 8px;
+  margin: 0 0 14px;
+  font-size: 40px;
+  line-height: 1.25;
+  font-weight: 800;
+  letter-spacing: 0.01em;
 }
 
-.hero p {
-  color: var(--el-text-color-secondary);
-  margin: 0 0 24px;
+.lede {
+  color: var(--lp-muted);
+  margin: 0 0 28px;
+  font-size: 15px;
+}
+
+.cta {
+  min-width: 200px;
+  font-weight: 700;
 }
 </style>

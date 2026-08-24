@@ -409,6 +409,9 @@ onMounted(async () => {
 
 .head-info h2 {
   margin: 0 0 8px;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
 .head-info p {

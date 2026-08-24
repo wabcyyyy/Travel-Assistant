@@ -2,6 +2,7 @@
   <div class="login-page">
     <el-card class="login-card">
       <h2 class="title">{{ isRegister ? '注册' : '登录' }}</h2>
+      <p class="subtitle">Travel Assistant</p>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="0" size="large">
         <el-form-item prop="username">
           <el-input v-model="form.username" placeholder="用户名" :prefix-icon="User" />
@@ -99,16 +100,29 @@ async function onSubmit() {
 .login-page {
   display: flex;
   justify-content: center;
-  padding-top: 80px;
+  padding-top: 72px;
 }
 
 .login-card {
-  width: 380px;
+  width: 400px;
+  padding: 8px 6px;
 }
 
 .title {
+  margin: 0 0 4px;
   text-align: center;
-  margin: 0 0 24px;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.subtitle {
+  text-align: center;
+  color: var(--lp-muted);
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  margin: 0 0 20px;
+  text-transform: uppercase;
 }
 
 .switch {

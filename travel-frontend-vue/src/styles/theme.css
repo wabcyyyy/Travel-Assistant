@@ -1,0 +1,147 @@
+/* ============================================================
+   Lonely Planet 风格主题：白色 / 大地色 / 黑白为主
+   - 主色：墨黑 #1A1A1A（按钮、链接、激活态）
+   - 点缀：赤陶橙 #B4532A（品牌强调）
+   - 背景：暖沙白 #FAF7F2；卡片：纯白 + 暖灰细边框
+   ============================================================ */
+
+:root {
+  /* LP 设计令牌 */
+  --lp-bg: #faf7f2;
+  --lp-surface: #ffffff;
+  --lp-ink: #1a1a1a;
+  --lp-ink-soft: #4d4a46;
+  --lp-muted: #8a837b;
+  --lp-border: #e8e2d9;
+  --lp-accent: #b4532a;
+  --lp-accent-soft: #f3e4da;
+  --lp-sand: #efe9df;
+
+  /* Element Plus 主色 → 墨黑 */
+  --el-color-primary: #1a1a1a;
+  --el-color-primary-light-3: #484442;
+  --el-color-primary-light-5: #7c7671;
+  --el-color-primary-light-7: #bdb6ae;
+  --el-color-primary-light-8: #d8d2ca;
+  --el-color-primary-light-9: #efeae2;
+  --el-color-primary-dark-2: #000000;
+
+  /* 圆角与边框 */
+  --el-border-radius-base: 8px;
+  --el-border-color: var(--lp-border);
+  --el-border-color-light: var(--lp-border);
+  --el-border-color-lighter: var(--lp-border);
+  --el-fill-color-light: var(--lp-sand);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--lp-bg);
+  color: var(--lp-ink);
+  font-family:
+    'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--lp-ink);
+  letter-spacing: 0.02em;
+}
+
+/* ---------- 卡片：白底细边框，弱阴影 ---------- */
+.el-card {
+  border: 1px solid var(--lp-border);
+  border-radius: 14px !important;
+  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04) !important;
+}
+
+.el-card__header {
+  border-bottom: 1px solid var(--lp-border);
+  font-weight: 700;
+}
+
+/* ---------- 表格：编辑风细线 ---------- */
+.el-table {
+  --el-table-border-color: var(--lp-border);
+  --el-table-header-bg-color: transparent;
+  --el-table-row-hover-bg-color: var(--lp-sand);
+}
+
+.el-table th.el-table__cell {
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--lp-muted);
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+/* ---------- 菜单 / 头部 ---------- */
+.lp-header {
+  background: var(--lp-surface);
+  border-bottom: 1px solid var(--lp-border);
+}
+
+.lp-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.lp-logo .mark {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--lp-accent);
+  flex: none;
+}
+
+.lp-logo .zh {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--lp-ink);
+  letter-spacing: 0.04em;
+}
+
+.lp-logo .en {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--lp-muted);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* ---------- 页面标题 ---------- */
+.lp-page-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 4px 0 16px;
+}
+
+.lp-page-head .bar {
+  width: 22px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--lp-accent);
+  align-self: center;
+}
+
+.lp-page-head h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.lp-page-head .sub {
+  color: var(--lp-muted);
+  font-size: 13px;
+}
