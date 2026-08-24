@@ -34,10 +34,17 @@ _TIER_KEYWORDS = {
 
 
 def _pick_hotels(hotels: list[dict] | None, tier: str | None, count: int) -> list[dict]:
-    """按档次关键词优先挑选，凑不满则用其余补齐。"""
+    """按档次关键词优先挑选（tier 可为「经济型、豪华型」多选拼接），凑不满则用其余补齐。"""
     if not hotels:
         return []
-    keywords = _TIER_KEYWORDS.get(tier or "", ())
+    keywords: tuple[str, ...] = ()
+    for part in (tier or "").replace("，", "、").split("、"):
+        if not part:
+            continue
+        if part in _TIER_KEYWORDS:
+            keywords = keywords + _TIER_KEYWORDS[part]
+        else:
+            keywords = keywords + (part,)
     matched = [h for h in hotels
                if any(k in (h.get("description") or "") + (h.get("tags") or "") for k in keywords)]
     picked = matched + [h for h in hotels if h not in matched]

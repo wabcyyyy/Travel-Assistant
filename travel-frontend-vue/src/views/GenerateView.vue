@@ -16,7 +16,7 @@
         :model="form"
         :rules="rules"
         label-width="100px"
-        style="max-width: 560px"
+        style="max-width: 620px"
       >
         <el-form-item label="目的地" prop="city">
           <el-input v-model="form.city" placeholder="例如：北京" />
@@ -51,51 +51,43 @@
       <template #header>
         <span class="group-title">偏好设置</span>
       </template>
-      <el-form label-width="100px" style="max-width: 560px">
+      <el-form label-width="100px" style="max-width: 720px">
         <el-form-item label="旅行偏好">
-          <el-checkbox-group v-model="form.preferences">
-            <el-checkbox value="亲子">亲子</el-checkbox>
-            <el-checkbox value="人文">人文</el-checkbox>
-            <el-checkbox value="自然">自然</el-checkbox>
-            <el-checkbox value="美食">美食</el-checkbox>
-            <el-checkbox value="文化">文化</el-checkbox>
-            <el-checkbox value="网红">网红</el-checkbox>
-          </el-checkbox-group>
+          <div class="tag-grid">
+            <button
+              v-for="t in PREFERENCE_TAGS"
+              :key="t.label"
+              type="button"
+              class="pref-tag"
+              :class="{ active: form.preferences.includes(t.label) }"
+              @click="togglePreference(t.label)"
+            >
+              <el-icon><component :is="t.icon" /></el-icon>
+              {{ t.label }}
+            </button>
+          </div>
         </el-form-item>
         <el-form-item label="住宿偏好">
-          <el-radio-group v-model="form.hotelTier">
-            <el-radio value="">不限</el-radio>
-            <el-radio value="经济型">经济型</el-radio>
-            <el-radio value="舒适型">舒适型</el-radio>
-            <el-radio value="高档型">高档型</el-radio>
-            <el-radio value="豪华型">豪华型</el-radio>
-            <el-radio value="奢华型">奢华型</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item>
-          <el-checkbox v-model="agreeTerms">信息无误，直接生成</el-checkbox>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" size="large" class="submit" :loading="loading" @click="onSubmit">
-            生成行程
-          </el-button>
+          <el-select
+            v-model="form.hotelTiers"
+            multiple
+            collapse-tags
+            placeholder="不限（默认按舒适档推荐）"
+            style="width: 100%"
+          >
+            <el-option v-for="t in HOTEL_TIERS" :key="t" :label="t" :value="t" />
+          </el-select>
+          <span class="hint">可多选；不选则由 Agent 推荐</span>
         </el-form-item>
       </el-form>
-      <el-alert
-        v-if="errorMsg"
-        :title="errorMsg"
-        type="error"
-        :closable="false"
-        show-icon
-      />
     </el-card>
 
-    <!-- 对话框放最底下，作为额外补充 -->
+    <!-- 第三栏：额外要求 + 生成按钮 -->
     <el-card shadow="never" class="chat-card">
       <template #header>
-        <span class="group-title">补充说明（可选）</span>
+        <span class="group-title">额外要求</span>
       </template>
-      <p class="chat-tip">有特别要求？用一句话告诉我们，AI 会帮你补全或调整上面的表单。</p>
+      <p class="chat-tip">有特别安排？用一句话告诉我们，AI 会帮你补全或调整上面的表单。</p>
       <div v-for="(m, i) in chat" :key="i" class="chat-line" :class="m.role">
         {{ m.text }}
       </div>
@@ -107,6 +99,20 @@
         />
         <el-button type="primary" plain :loading="thinking" @click="onSay">发送</el-button>
       </div>
+
+      <el-divider />
+      <div class="submit-row">
+        <el-button type="primary" size="large" class="submit" :loading="loading" @click="onSubmit">
+          生成行程
+        </el-button>
+      </div>
+      <el-alert
+        v-if="errorMsg"
+        :title="errorMsg"
+        type="error"
+        :closable="false"
+        show-icon
+      />
     </el-card>
   </div>
 </template>
@@ -114,17 +120,41 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { type FormInstance, type FormRules } from 'element-plus'
+import {
+  Camera,
+  Clock,
+  Collection,
+  ForkSpoon,
+  Lollipop,
+  Moon,
+  Reading,
+  ShoppingBag,
+  Sunny,
+} from '@element-plus/icons-vue'
 
 import { generateItinerary, clarifyTrip } from '../api'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
 
+const PREFERENCE_TAGS = [
+  { label: '亲子', icon: Lollipop },
+  { label: '人文', icon: Reading },
+  { label: '自然', icon: Sunny },
+  { label: '美食', icon: ForkSpoon },
+  { label: '文化', icon: Collection },
+  { label: '历史', icon: Clock },
+  { label: '网红', icon: Camera },
+  { label: '购物', icon: ShoppingBag },
+  { label: '夜游', icon: Moon },
+]
+
+const HOTEL_TIERS = ['经济型', '舒适型', '高档型', '豪华型', '奢华型']
+
 const chat = ref<{ role: 'user' | 'ai'; text: string }[]>([])
 const say = ref('')
 const thinking = ref(false)
-const agreeTerms = ref(true)
 
 const form = reactive({
   city: '',
@@ -132,7 +162,7 @@ const form = reactive({
   persons: 2,
   budget: 3000,
   preferences: [] as string[],
-  hotelTier: '' as string,
+  hotelTiers: [] as string[],
 })
 
 const loading = ref(false)
@@ -146,6 +176,15 @@ watch(dateRange, (range) => {
   const days = Math.round(ms / 86400000) + 1
   if (days >= 1 && days <= 14) form.days = days
 })
+
+function togglePreference(label: string) {
+  const idx = form.preferences.indexOf(label)
+  if (idx >= 0) {
+    form.preferences.splice(idx, 1)
+  } else {
+    form.preferences.push(label)
+  }
+}
 
 async function onSay() {
   const msg = say.value.trim()
@@ -188,10 +227,6 @@ const rules: FormRules = {
 async function onSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
-  if (!agreeTerms.value) {
-    ElMessage.warning('请先勾选确认')
-    return
-  }
   loading.value = true
   errorMsg.value = ''
   try {
@@ -203,7 +238,7 @@ async function onSubmit() {
       startDate: dateRange.value?.[0],
       endDate: dateRange.value?.[1],
       preferences: form.preferences,
-      hotelTier: form.hotelTier || undefined,
+      hotelTier: form.hotelTiers.join('、') || undefined,
     })
     router.push({ name: 'trip-detail', params: { id: res.data.id } })
   } catch (err) {
@@ -232,6 +267,44 @@ async function onSubmit() {
   margin-left: 10px;
   color: var(--lp-muted);
   font-size: 12px;
+}
+
+/* ---------- 偏好标签 ---------- */
+.tag-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pref-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border: 1px solid var(--lp-border);
+  border-radius: 999px;
+  background: var(--lp-surface);
+  color: var(--lp-ink-soft);
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.pref-tag:hover {
+  border-color: var(--lp-ink);
+}
+
+.pref-tag.active {
+  background: var(--lp-ink);
+  border-color: var(--lp-ink);
+  color: #fff;
+}
+
+.pref-tag .el-icon {
+  font-size: 15px;
 }
 
 .chat-tip {
@@ -267,8 +340,14 @@ async function onSubmit() {
   margin-top: 4px;
 }
 
+.submit-row {
+  display: flex;
+  justify-content: center;
+}
+
 .submit {
-  min-width: 160px;
+  min-width: 220px;
   font-weight: 700;
+  letter-spacing: 0.08em;
 }
 </style>
