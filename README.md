@@ -76,8 +76,9 @@ stop-all.cmd    # 一键全停（加参数 /I 连 Redis 一起停：stop-all.cmd
 ### 1. 初始化数据库
 
 ```bash
-mysql -uroot -p < sql/schema.sql      # 建 8 张表
-mysql -uroot -p < sql/seed_data.sql   # 种子数据：125 条 POI 知识 + 城市消费系数
+mysql -uroot -p < sql/schema.sql        # 建 8 张表
+mysql -uroot -p < sql/seed_data.sql     # 种子数据：POI 知识 + 城市消费系数（北京/上海/成都/西安/三亚）
+mysql -uroot -p < sql/add_hangzhou.sql  # 追加杭州 POI（幂等）
 ```
 
 ### 2. 启动后端（travel-backend-java）

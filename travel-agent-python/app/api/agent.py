@@ -63,7 +63,10 @@ def test_generate() -> ApiResponse[dict]:
 
 @router.post("/v1/generate")
 def generate(req: GenerateRequest) -> ApiResponse[GenerateResponse]:
-    return ApiResponse.ok(run_generate(req))
+    try:
+        return ApiResponse.ok(run_generate(req))
+    except ValueError as e:
+        return ApiResponse.fail(str(e))
 
 
 @router.post("/v1/adjust")

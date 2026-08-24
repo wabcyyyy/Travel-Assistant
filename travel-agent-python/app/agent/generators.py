@@ -87,8 +87,17 @@ def llm_generate(city: str, days: int, persons: int, preferences: list[str],
     if feedback:
         user_prompt += f"\n上一轮校验反馈（必须修正）：{feedback}"
     raw = client.complete(user_prompt, system_prompt=system_prompt, temperature=0.3)
-    data = _parse_json(raw)
-    daily_plans = _validate_plans(data.get("daily_plans"), days)
+    try:
+        data = _parse_json(raw)
+    except Exception:
+        logger.warning("LLM JSON 解析失败，原始输出片段：%s", raw[:300])
+        raise
+    try:
+        daily_plans = _validate_plans(data.get("daily_plans"), days)
+    except Exception:
+        keys = list(data.keys()) if isinstance(data, dict) else type(data).__name__
+        logger.warning("LLM 行程结构无效，顶层内容：%s", keys)
+        raise
     budget = _normalize_budget(data.get("budget_estimate"))
     if not budget:
         budget = _estimate_budget(candidates, foods, consumption, days, persons)

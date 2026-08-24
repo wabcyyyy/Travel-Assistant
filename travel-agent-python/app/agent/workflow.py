@@ -55,6 +55,11 @@ def search_pois(state: AgentState) -> dict:
 
 def generate_itinerary(state: AgentState) -> dict:
     req: GenerateRequest = state["request"]
+    if not state.get("candidates"):
+        raise ValueError(
+            f"知识库暂无 {req.city} 的景点数据，请选择已支持的城市"
+            "（北京/上海/杭州/成都/西安/三亚）"
+        )
     attempts = state.get("attempts", 0)
     feedback = state.get("feedback", "")
     if settings.llm_api_key and attempts < MAX_FIX_ATTEMPTS:
@@ -103,14 +108,27 @@ def needs_fix(state: AgentState) -> str:
 
 def format_output(state: AgentState) -> dict:
     req: GenerateRequest = state["request"]
-    daily_plans = [
-        DailyPlan(
-            day_no=plan["day_no"],
-            note=plan.get("note"),
-            items=[TripItem(**item) for item in plan["items"]],
-        )
-        for plan in state["daily_plans"]
-    ]
+    lookup: dict[str, dict] = {}
+    for poi in (state.get("candidates") or []) + (state.get("foods") or []):
+        name = poi.get("name")
+        if name and name not in lookup:
+            lookup[name] = poi
+    daily_plans = []
+    for plan in state["daily_plans"]:
+        items = []
+        for item in plan["items"]:
+            poi = lookup.get(item.get("poi_name"))
+            if poi:
+                if item.get("latitude") is None and poi.get("latitude") is not None:
+                    item["latitude"] = float(poi["latitude"])
+                if item.get("longitude") is None and poi.get("longitude") is not None:
+                    item["longitude"] = float(poi["longitude"])
+                if not item.get("poi_id"):
+                    item["poi_id"] = str(poi.get("id") or "")
+                if item.get("cost") is None and poi.get("ticket_price") is not None:
+                    item["cost"] = float(poi["ticket_price"])
+            items.append(TripItem(**item))
+        daily_plans.append(DailyPlan(day_no=plan["day_no"], note=plan.get("note"), items=items))
     result = GenerateResponse(
         city=req.city,
         days=req.days,
