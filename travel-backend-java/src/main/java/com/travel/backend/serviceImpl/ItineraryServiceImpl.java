@@ -125,13 +125,8 @@ public class ItineraryServiceImpl implements ItineraryService {
             dayMapper.insert(day);
         }
 
-        // 入口前置校验：候选为空立即友好拒绝，避免建单后异步失败
+        // 上下文一次构建（知识库城市有候选；未知城市走开放模式由 LLM 安排）
         JsonNode context = agentService.planContext(request.getCity(), request.getPreferences());
-        if (context.path("candidates").isArray() && context.path("candidates").size() == 0) {
-            throw new BizException(400,
-                    "知识库暂无 " + request.getCity() + " 的景点数据，请选择已支持的城市"
-                            + "（北京/上海/杭州/成都/西安/三亚）");
-        }
 
         planner.planDays(userId, main.getId(), request, context);
         return detail(userId, main.getId());
