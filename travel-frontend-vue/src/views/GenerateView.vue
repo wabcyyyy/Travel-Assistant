@@ -1,5 +1,5 @@
 <template>
-  <div class="generate-page" :style="{ transform: guideVisible ? 'translateX(-200px)' : 'none' }">
+  <div class="generate-page" :style="{ transform: guideVisible ? 'translateX(-100px)' : 'none' }">
     <div class="lp-page-head">
       <span class="bar"></span>
       <h2>行程生成</h2>
@@ -296,7 +296,7 @@ const guideCity = ref('')
 let guideHistory: { role: string; content: string }[] = []
 
 function openGuide() {
-  guideVisible.value = true
+  guideVisible.value = !guideVisible.value // 点击可开可收
   if (!guideMsgs.value.length) {
     guideMsgs.value.push({ role: 'ai', text: '告诉我你的想法，我帮你锁定目的地城市～' })
   }
