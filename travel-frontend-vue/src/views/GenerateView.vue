@@ -161,7 +161,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Icon } from '@iconify/vue'
 
-import { generateItinerary, clarifyTrip, cityGuide } from '../api'
+import { generateItinerary, clarifyTrip, cityGuide, getSupportedCities } from '../api'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
@@ -223,13 +223,11 @@ function togglePreference(label: string) {
   }
 }
 
-async function guideIfUnsupported() {
-  try {
-    const res = await clarifyTrip({ message: form.city })
-    if (res.data.ready) return // 城市受支持
-  } catch { /* 忽略，走后端最终校验 */ }
+async function guideIfUnsupported(): Promise<boolean> {
+  if (supportedCities.value.includes(form.city.trim())) return false
   openGuide()
   await sendGuideInput(form.city)
+  return true
 }
 
 async function sendGuideInput(input: string) {
@@ -293,6 +291,8 @@ const guideInput = ref('')
 const guideLoading = ref(false)
 const guideSugs = ref<{ name: string; reason: string }[]>([])
 const guideCity = ref('')
+const supportedCities = ref<string[]>([])
+getSupportedCities().then((res) => { supportedCities.value = res.data }).catch(() => {})
 let guideHistory: { role: string; content: string }[] = []
 
 function openGuide() {
@@ -315,10 +315,11 @@ function pickSug(s: string) {
   sendGuide()
 }
 
-function confirmGuideCity() {
+async function confirmGuideCity() {
   form.city = guideCity.value
   guideVisible.value = false
-  ElMessage.success('已选择目的地：' + guideCity.value)
+  ElMessage.success('已选择目的地：' + guideCity.value + '，开始生成…')
+  await onSubmit()
 }
 
 const rules: FormRules = {
@@ -330,7 +331,8 @@ const rules: FormRules = {
 async function onSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
-  await guideIfUnsupported()
+  const blocked = await guideIfUnsupported()
+  if (blocked) return
   loading.value = true
   errorMsg.value = ''
   try {
