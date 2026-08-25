@@ -457,6 +457,13 @@ public class ItineraryServiceImpl implements ItineraryService {
     }
 
     @Override
+    public List<String> supportedCities() {
+        return poiKnowledgeMapper.selectList(new LambdaQueryWrapper<PoiKnowledge>()
+                        .select(true, PoiKnowledge::getCity))
+                .stream().map(PoiKnowledge::getCity).distinct().sorted().toList();
+    }
+
+    @Override
     public Map<String, Object> clarify(String message, Map<String, Object> slots) {
         JsonNode node = agentService.clarify(message, slots);
         Map<String, Object> out = new java.util.HashMap<>();

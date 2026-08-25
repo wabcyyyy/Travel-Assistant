@@ -42,4 +42,6 @@ public interface ItineraryService {
                            Long actionMessageId, String baseRevision);
 
     ItineraryVO applyHotelOption(Long userId, Long itineraryId, HotelOptionApplyRequest request);
+
+    List<String> supportedCities();
 }

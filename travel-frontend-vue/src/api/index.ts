@@ -28,6 +28,10 @@ export function getUserInfo() {
   return requestGet<UserInfo>('/user/info')
 }
 
+export function getSupportedCities() {
+  return requestGet<string[]>('/itinerary/supported-cities')
+}
+
 export function generateItinerary(data: {
   city: string
   days: number

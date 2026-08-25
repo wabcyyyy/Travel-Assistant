@@ -19,7 +19,9 @@
         style="max-width: 620px"
       >
         <el-form-item label="目的地" prop="city">
-          <el-input v-model="form.city" placeholder="例如：北京" />
+          <el-select v-model="form.city" filterable placeholder="选择目的地城市" style="width: 100%">
+            <el-option v-for="ct in supportedCities" :key="ct" :label="ct" :value="ct" />
+          </el-select>
         </el-form-item>
         <el-form-item label="出行日期">
           <el-date-picker
@@ -126,10 +128,11 @@ import { useRouter } from 'vue-router'
 import { type FormInstance, type FormRules } from 'element-plus'
 import { Icon } from '@iconify/vue'
 
-import { generateItinerary, clarifyTrip } from '../api'
+import { generateItinerary, clarifyTrip, getSupportedCities } from '../api'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
+
 
 const PREFERENCE_TAGS = [
   { label: '人文历史', icon: 'fluent-emoji:classical-building' },
@@ -142,6 +145,8 @@ const PREFERENCE_TAGS = [
 
 const HOTEL_TIERS = ['经济型', '舒适型', '高档型', '豪华型', '奢华型']
 
+const supportedCities = ref<string[]>([])
+getSupportedCities().then((res) => { supportedCities.value = res.data }).catch(() => {})
 const chat = ref<{ role: 'user' | 'ai'; text: string }[]>([])
 const say = ref('')
 const thinking = ref(false)

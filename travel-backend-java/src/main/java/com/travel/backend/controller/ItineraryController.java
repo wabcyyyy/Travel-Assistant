@@ -34,6 +34,11 @@ public class ItineraryController {
         this.userService = userService;
     }
 
+    @GetMapping("/supported-cities")
+    public Result<List<String>> supportedCities() {
+        return Result.ok(itineraryService.supportedCities());
+    }
+
     @PostMapping("/generate")
     public Result<ItineraryVO> generate(@Valid @RequestBody GenerateRequest request) {
         return Result.ok(itineraryService.generate(currentUserId(), request));
