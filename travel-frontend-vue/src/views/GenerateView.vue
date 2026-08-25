@@ -1,5 +1,5 @@
 <template>
-  <div class="generate-page" :style="{ marginRight: guideVisible ? '400px' : '0' }">
+  <div class="generate-page" :style="{ transform: guideVisible ? 'translateX(-200px)' : 'none' }">
     <div class="lp-page-head">
       <span class="bar"></span>
       <h2>行程生成</h2>
@@ -361,7 +361,7 @@ async function onSubmit() {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  transition: margin-right 0.3s ease;
+  transition: transform 0.3s ease;
 }
 
 .form-tips {
