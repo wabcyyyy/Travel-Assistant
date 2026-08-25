@@ -137,7 +137,7 @@
     </el-card>
 
     <!-- 城市引导侧边抽屉 -->
-    <el-drawer v-model="guideVisible" title="🧭 目的地引导" size="380px" :modal="false">
+    <el-drawer v-model="guideVisible" title="🧭 目的地引导" size="380px" :modal="false" append-to-body>
       <div class="guide-chat">
         <div v-for="(m, i) in guideMsgs" :key="i" class="chat-line" :class="m.role">{{ m.text }}</div>
         <div v-if="guideSugs.length" class="guide-sugs">
