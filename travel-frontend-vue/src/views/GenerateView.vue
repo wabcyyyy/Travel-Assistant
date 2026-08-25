@@ -16,7 +16,7 @@
         :model="form"
         :rules="rules"
         label-width="90px"
-        style="max-width: 680px"
+        style="max-width: 100%"
       >
         <el-row :gutter="12">
           <el-col :span="14">
@@ -63,7 +63,7 @@
         </el-row>
         <div class="form-tips">
           <span class="hint">天数随日期自动计算；住宿默认少 1 晚</span>
-          <el-button link type="primary" @click="openGuide">🧭 拿不准去哪？AI 帮我选</el-button>
+          <el-button link type="primary" @click="guideVisible = !guideVisible">🧭 拿不准去哪？AI 帮我选</el-button>
         </div>
       </el-form>
     </el-card>
@@ -356,7 +356,7 @@ async function onSubmit() {
 
 <style scoped>
 .generate-page {
-  max-width: 960px;
+  max-width: 840px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
