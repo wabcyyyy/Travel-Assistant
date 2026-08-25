@@ -116,7 +116,7 @@
         <el-input
           v-model="say"
           placeholder="例如：想去杭州玩 3 天，2 个人，10 月 1 日出发"
-          @keyup.enter="onSay"
+          @keydown.enter="onSayEnter"
         />
         <el-button type="primary" plain :loading="thinking" @click="onSay">发送</el-button>
       </div>
@@ -145,7 +145,7 @@
         </div>
       </div>
       <div class="chat-input" style="margin-top: 12px">
-        <el-input v-model="guideInput" placeholder="回复你的偏好…" @keyup.enter="sendGuide" />
+        <el-input v-model="guideInput" placeholder="回复你的偏好…" @keydown.enter="onGuideEnter" />
         <el-button type="primary" :loading="guideLoading" @click="sendGuide">发送</el-button>
       </div>
       <div v-if="guideCity" class="guide-confirm">
@@ -245,6 +245,11 @@ async function sendGuideInput(input: string) {
   }
 }
 
+function onSayEnter(e: KeyboardEvent) {
+  if ((e as any).isComposing) return
+  onSay()
+}
+
 async function onSay() {
   const msg = say.value.trim()
   if (!msg || thinking.value) return
@@ -302,9 +307,16 @@ function openGuide() {
   }
 }
 
+function onGuideEnter(e: KeyboardEvent) {
+  if ((e as any).isComposing) return
+  sendGuide()
+}
+
 async function sendGuide() {
   const msg = guideInput.value.trim()
   if (!msg || guideLoading.value) return
+  const last = guideHistory[guideHistory.length - 1]
+  if (last?.role === 'user' && last.content === msg) return // 防连击重复
   guideMsgs.value.push({ role: 'user', text: msg })
   guideInput.value = ''
   await sendGuideInput(msg)
