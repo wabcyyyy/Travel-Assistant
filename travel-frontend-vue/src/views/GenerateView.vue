@@ -141,7 +141,7 @@
       <div class="guide-chat">
         <div v-for="(m, i) in guideMsgs" :key="i" class="chat-line" :class="m.role">{{ m.text }}</div>
         <div v-if="guideSugs.length" class="guide-sugs">
-          <button v-for="s in guideSugs" :key="s" type="button" class="guide-sug" @click="pickSug(s)">{{ s }}</button>
+          <button v-for="s in guideSugs" :key="s.name" type="button" class="guide-sug" :title="s.reason" @click="pickSug(s.name)">{{ s.name }}</button>
         </div>
       </div>
       <div class="chat-input" style="margin-top: 12px">
@@ -239,7 +239,7 @@ async function sendGuideInput(input: string) {
     const res = await cityGuide(input, guideHistory)
     guideSugs.value = res.data.suggestions || []
     guideCity.value = res.data.city || ''
-    const text = res.data.city ? `去 ${res.data.city} 正合适！` : res.data.question || '说说你想玩的类型？'
+    const text = res.data.message
     guideMsgs.value.push({ role: 'ai', text })
     guideHistory.push({ role: 'assistant', content: text })
   } finally {
@@ -291,7 +291,7 @@ const guideVisible = ref(false)
 const guideMsgs = ref<{ role: 'user' | 'ai'; text: string }[]>([])
 const guideInput = ref('')
 const guideLoading = ref(false)
-const guideSugs = ref<string[]>([])
+const guideSugs = ref<{ name: string; reason: string }[]>([])
 const guideCity = ref('')
 let guideHistory: { role: string; content: string }[] = []
 

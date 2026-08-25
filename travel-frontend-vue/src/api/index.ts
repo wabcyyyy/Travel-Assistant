@@ -216,8 +216,8 @@ export function cityGuide(input: string, history: { role: string; content: strin
   return requestPost<{
     kind: 'province' | 'city' | 'unclear'
     city: string | null
-    question: string | null
-    suggestions: string[]
+    message: string
+    suggestions: { name: string; reason: string }[]
   }>('/itinerary/city-guide', { input, history })
 }
 

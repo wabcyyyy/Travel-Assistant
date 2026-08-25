@@ -467,9 +467,14 @@ public class ItineraryServiceImpl implements ItineraryService {
         Map<String, Object> out = new java.util.HashMap<>();
         out.put("kind", node.path("kind").asText("unclear"));
         out.put("city", node.hasNonNull("city") ? node.get("city").asText() : null);
-        out.put("question", node.path("question").asText(null));
-        List<String> sugs = new java.util.ArrayList<>();
-        node.path("suggestions").forEach(s -> sugs.add(s.asText()));
+        out.put("message", node.path("message").asText("想去哪里玩？说说你的想法～"));
+        List<Map<String, Object>> sugs = new java.util.ArrayList<>();
+        node.path("suggestions").forEach(s -> {
+            if (s.hasNonNull("name")) {
+                sugs.add(Map.of("name", s.get("name").asText(),
+                        "reason", s.path("reason").asText("")));
+            }
+        });
         out.put("suggestions", sugs);
         return out;
     }
