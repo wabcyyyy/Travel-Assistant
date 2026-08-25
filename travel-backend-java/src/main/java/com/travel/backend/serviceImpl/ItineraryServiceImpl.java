@@ -125,7 +125,15 @@ public class ItineraryServiceImpl implements ItineraryService {
             dayMapper.insert(day);
         }
 
-        planner.planDays(userId, main.getId(), request);
+        // 入口前置校验：候选为空立即友好拒绝，避免建单后异步失败
+        JsonNode context = agentService.planContext(request.getCity(), request.getPreferences());
+        if (context.path("candidates").isArray() && context.path("candidates").size() == 0) {
+            throw new BizException(400,
+                    "知识库暂无 " + request.getCity() + " 的景点数据，请选择已支持的城市"
+                            + "（北京/上海/杭州/成都/西安/三亚）");
+        }
+
+        planner.planDays(userId, main.getId(), request, context);
         return detail(userId, main.getId());
     }
 
@@ -147,7 +155,6 @@ public class ItineraryServiceImpl implements ItineraryService {
             vo.setPersons(main.getPersons());
             vo.setBudget(main.getBudget());
             vo.setStatus(main.getStatus());
-        vo.setPlanNote(main.getPlanNote());
             vo.setCreatedAt(main.getCreatedAt());
             vo.setTotalAmount(sumAmount(findBudgetList(main.getId())));
             result.add(vo);

@@ -2,6 +2,13 @@
   <div class="trip-detail" v-loading="loading">
     <el-card v-if="detail" shadow="never" class="head">
       <div
+        v-if="detail.status === 3"
+        class="gen-banner"
+        style="border-left-color: #c0392b"
+      >
+        <span>❌ {{ detail.planNote || '行程生成失败，请重新生成' }}</span>
+      </div>
+      <div
         v-if="detail.status === 1"
         class="gen-banner"
       >

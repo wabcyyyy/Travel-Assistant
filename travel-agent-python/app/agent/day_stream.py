@@ -30,6 +30,11 @@ def _filter_used(items: list[dict], used: set[str]) -> list[dict]:
 def run_generate_day(req: GenerateDayRequest) -> DailyPlan:
     ctx = req.context or {}
     candidates = _filter_used(ctx.get("candidates") or [], set(req.used_names))
+    if not candidates and not req.used_names:
+        raise ValueError(
+            f"知识库暂无 {req.city} 的景点数据，请选择已支持的城市"
+            "（北京/上海/杭州/成都/西安/三亚）"
+        )
     foods = _filter_used(ctx.get("foods") or [], set(req.used_names))
     hotels = _pick_hotels(ctx.get("hotels") or [], req.hotel_tier, 3)
     consumption = ctx.get("consumption")
