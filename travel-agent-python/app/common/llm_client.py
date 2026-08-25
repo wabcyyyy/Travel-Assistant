@@ -33,13 +33,16 @@ class LLMClient:
         return resp.json()["choices"][0]["message"]["content"]
 
     def complete(self, user_prompt: str, system_prompt: str = DEFAULT_SYSTEM_PROMPT,
-                 temperature: float = 0.7) -> str:
+                 temperature: float = 0.7, max_tokens: int = 2048,
+                 enable_search: bool = False) -> str:
         return self.chat(
             [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             temperature=temperature,
+            max_tokens=max_tokens,
+            enable_search=enable_search,
         )
 
 

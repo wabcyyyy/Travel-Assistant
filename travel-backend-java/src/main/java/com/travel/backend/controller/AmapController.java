@@ -1,5 +1,7 @@
 package com.travel.backend.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.travel.backend.common.Result;
 import com.travel.backend.service.AmapService;
 import com.travel.backend.vo.AmapGeocodeVO;
@@ -15,6 +17,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/amap")
@@ -22,6 +25,7 @@ public class AmapController {
 
     private final AmapService amapService;
     private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${app.amap.web-key:}")
     private String amapKey;
@@ -38,6 +42,36 @@ public class AmapController {
                 + "&zoom=16&size=480*280&key=" + amapKey;
         byte[] image = restTemplate.getForObject(URI.create(url), byte[].class);
         return ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).body(image);
+    }
+
+    private final Map<String, String> photoCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** 高德 POI 实景照片：302 跳转到真实图片 URL；无图返回 404（前端降级静态图）。 */
+    @GetMapping("/poi-photo")
+    public ResponseEntity<Void> poiPhoto(@RequestParam String name, @RequestParam String city) {
+        String cacheKey = city + ":" + name;
+        String photoUrl = photoCache.get(cacheKey);
+        if (photoUrl == null) {
+            try {
+                String url = "https://restapi.amap.com/v3/place/text?keywords=" + name
+                        + "&city=" + city + "&citylimit=true&offset=1&page=1&key=" + amapKey;
+                ResponseEntity<String> resp =
+                        restTemplate.getForEntity(URI.create(url), String.class);
+                JsonNode poi = objectMapper.readTree(resp.getBody())
+                        .path("pois").path(0);
+                JsonNode photos = poi.path("photos");
+                if (photos.isArray() && photos.size() > 0) {
+                    photoUrl = photos.get(0).path("url").asText(null);
+                }
+            } catch (Exception e) {
+                photoUrl = "";
+            }
+            photoCache.put(cacheKey, photoUrl == null ? "" : photoUrl);
+        }
+        if (photoUrl == null || photoUrl.isBlank()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.status(302).location(URI.create(photoUrl)).build();
     }
 
     @GetMapping("/geocode")

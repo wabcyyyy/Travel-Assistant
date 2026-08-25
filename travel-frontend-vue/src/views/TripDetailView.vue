@@ -11,6 +11,10 @@
           {{ doneDays >= 1 ? '已生成部分可在下方查看' : '' }}
         </span>
       </div>
+      <el-card v-if="detail.planNote" shadow="never" class="butler-card">
+        <div class="butler-head">🧳 AI 管家说</div>
+        <p class="butler-text">{{ detail.planNote }}</p>
+      </el-card>
       <div class="head-info">
         <h2>{{ detail.title }}</h2>
         <p>
@@ -189,11 +193,11 @@
               >
                 <div class="poi-img">
                   <img
-                    v-if="element.longitude && element.latitude && !imgFailed[element.id!]"
-                    :src="staticMapUrl(element)"
+                    v-if="element.longitude && element.latitude && imgFailed[element.id!] !== true"
+                    :src="imgFailed[element.id!] === false ? staticMapUrl(element) : poiImgUrl(element)"
                     :alt="element.poiName"
                     loading="lazy"
-                    @error="imgFailed[element.id!] = true"
+                    @error="onImgError(element)"
                   />
                   <div v-else class="poi-img-fallback">{{ typeLabel(element.itemType) }}</div>
                 </div>
@@ -215,7 +219,7 @@
                     </span>
                     <span v-if="element.tag">{{ element.tag }}</span>
                   </div>
-                  <p v-if="element.description" class="poi-desc">{{ element.description }}</p>
+                  <p v-if="(element.intro || element.description)" class="poi-desc">{{ element.intro || element.description }}</p>
                   <p v-if="element.remark" class="poi-remark">{{ element.remark }}</p>
                 </div>
                 <div class="poi-actions">
@@ -633,13 +637,29 @@ const activeDay = computed(
 )
 const activeDayItems = computed(() => activeDay.value?.items ?? [])
 
+function poiImgUrl(item: TripItem) {
+  return `/api/amap/poi-photo?name=${encodeURIComponent(item.poiName)}&city=${encodeURIComponent(detail.value?.city ?? '')}`
+}
+
 function staticMapUrl(item: TripItem) {
   return `/api/amap/staticmap?location=${item.longitude},${item.latitude}`
 }
 
+function onImgError(item: TripItem) {
+  const id = item.id!
+  const state = imgFailed.value[id]
+  if (state === undefined) {
+    // 第一级(实景图)失败 → 降级静态地图
+    imgFailed.value[id] = false
+  } else if (state === false) {
+    // 第二级(静态图)失败 → 占位块
+    imgFailed.value[id] = true
+  }
+}
+
 const TYPE_LABEL: Record<string, string> = {
   attraction: '景点',
-  food: '餐饮',
+  food: '美食',
   hotel: '酒店',
   transport: '交通',
 }
@@ -653,7 +673,7 @@ const TYPE_TAG: Record<string, string> = {
 
 const mapItems = computed<MapItem[]>(() => {
   if (!detail.value) return []
-  return detail.value.dayList.flatMap((day) =>
+  return (activeDay.value ? [activeDay.value] : detail.value.dayList).flatMap((day) =>
     day.items.map((it) => ({ ...it, dayNo: day.dayNo }))
   )
 })
@@ -1038,6 +1058,24 @@ onUnmounted(() => {
 
 .map-card {
   margin-bottom: 16px;
+}
+.butler-card {
+  margin-bottom: 16px;
+  border-left: 4px solid var(--lp-accent) !important;
+}
+
+.butler-head {
+  font-weight: 800;
+  margin-bottom: 6px;
+  color: var(--lp-ink);
+}
+
+.butler-text {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.75;
+  color: var(--lp-ink-soft);
+  font-size: 14px;
 }
 
 /* ---------- 日期 Tab ---------- */

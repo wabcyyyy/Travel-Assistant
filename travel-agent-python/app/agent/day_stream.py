@@ -89,6 +89,9 @@ def run_generate_day(req: GenerateDayRequest) -> DailyPlan:
     factor = season_factor(_parse_date(req.start_date))
     label = season_label(_parse_date(req.start_date))
 
+    def _norm(t):
+        return t.replace("24:", "00:") if isinstance(t, str) else t
+
     items: list[TripItem] = []
     for item in raw_items:
         poi = lookup.get(item.get("poi_name"))

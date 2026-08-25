@@ -42,6 +42,7 @@ export interface ItineraryDetail {
   budget?: number | null
   preferences?: string | null
   hotelTier?: string | null
+  planNote?: string | null
   status: number
   dayList: DayPlan[]
   budgetList: BudgetRow[]

@@ -147,6 +147,7 @@ public class ItineraryServiceImpl implements ItineraryService {
             vo.setPersons(main.getPersons());
             vo.setBudget(main.getBudget());
             vo.setStatus(main.getStatus());
+        vo.setPlanNote(main.getPlanNote());
             vo.setCreatedAt(main.getCreatedAt());
             vo.setTotalAmount(sumAmount(findBudgetList(main.getId())));
             result.add(vo);
@@ -189,9 +190,15 @@ public class ItineraryServiceImpl implements ItineraryService {
         poiKnowledgeMapper.selectList(new LambdaQueryWrapper<PoiKnowledge>()
                         .eq(PoiKnowledge::getCity, main.getCity()))
                 .forEach(p -> descMap.put(p.getName(), p.getDescription()));
+        Map<String, ItineraryItem> introSource = new java.util.HashMap<>();
+        itemMapper.selectList(new LambdaQueryWrapper<ItineraryItem>()
+                        .eq(ItineraryItem::getItineraryId, id))
+                .forEach(i -> introSource.put(i.getPoiName(), i));
         for (ItineraryVO.DayVO dayVO : dayVOList) {
             for (ItineraryVO.TripItemVO itemVO : dayVO.getItems()) {
                 itemVO.setDescription(descMap.get(itemVO.getPoiName()));
+                ItineraryItem src = introSource.get(itemVO.getPoiName());
+                itemVO.setIntro(src != null ? src.getIntro() : null);
             }
         }
 
@@ -438,6 +445,7 @@ public class ItineraryServiceImpl implements ItineraryService {
         vo.setPreferences(main.getPreferences());
         vo.setHotelTier(main.getHotelTier());
         vo.setStatus(main.getStatus());
+        vo.setPlanNote(main.getPlanNote());
         return vo;
     }
 

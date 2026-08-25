@@ -30,6 +30,7 @@ public class ItineraryItem {
     private BigDecimal cost;
     private String tag;
     private String remark;
+    private String intro;
     private Integer sortNo;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

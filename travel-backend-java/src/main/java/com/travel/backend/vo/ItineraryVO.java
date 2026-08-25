@@ -22,6 +22,7 @@ public class ItineraryVO {
     private String preferences;
     private String hotelTier;
     private Integer status;
+    private String planNote;
     private List<DayVO> dayList;
     private List<BudgetVO> budgetList;
     private BigDecimal totalAmount;
@@ -50,6 +51,7 @@ public class ItineraryVO {
         private BigDecimal cost;
         private String tag;
         private String remark;
+        private String intro;
         private String description;
         private Integer sortNo;
     }

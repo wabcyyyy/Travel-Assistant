@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, Header, HTTPException
 
+from app.agent.butler import run_butler_note, run_poi_intros
 from app.agent.chat_draft import run_chat_turn
 from app.agent.clarify import run_clarify
 from app.agent.day_stream import run_generate_day, run_plan_context
@@ -121,8 +122,25 @@ def generate_day(req: GenerateDayRequest, _auth: None = Depends(require_internal
 
 
 @router.post("/v1/chat-turn")
-def chat_turn(req: ChatTurnRequest, _auth: None = Depends(require_internal_token)) -> ApiResponse[ChatTurnResponse]:
+def chat_turn(req: ChatTurnRequest) -> ApiResponse[ChatTurnResponse]:
     try:
         return ApiResponse.ok(run_chat_turn(req))
     except ValueError as e:
         return ApiResponse.fail(str(e))
+
+
+@router.post("/v1/butler-note")
+def butler_note(req: dict) -> ApiResponse[dict]:
+    try:
+        return ApiResponse.ok({"note": run_butler_note(req)})
+    except Exception:
+        return ApiResponse.ok({"note": ""})
+
+
+@router.post("/v1/poi-intros")
+def poi_intros(req: dict) -> ApiResponse[dict]:
+    try:
+        names = [n for n in (req.get("names") or []) if isinstance(n, str) and n]
+        return ApiResponse.ok({"intros": run_poi_intros(req.get("city", ""), names)})
+    except Exception:
+        return ApiResponse.ok({"intros": {}})

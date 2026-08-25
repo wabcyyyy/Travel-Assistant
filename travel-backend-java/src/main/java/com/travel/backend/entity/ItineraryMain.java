@@ -27,6 +27,7 @@ public class ItineraryMain {
     private String preferences;
     private String hotelTier;
     private Integer status;
+    private String planNote;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     @TableLogic

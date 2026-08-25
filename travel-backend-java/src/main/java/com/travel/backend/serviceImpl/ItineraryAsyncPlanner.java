@@ -87,7 +87,7 @@ public class ItineraryAsyncPlanner {
                 }
                 evictCache();
             }
-            finish(itineraryId);
+            finish(userId, itineraryId);
         } catch (Exception e) {
             log.error("async planning failed for itinerary {}", itineraryId, e);
             fail(itineraryId, e.getMessage());
@@ -121,10 +121,8 @@ public class ItineraryAsyncPlanner {
             entity.setAddress(item.getAddress());
             entity.setLatitude(item.getLatitude());
             entity.setLongitude(item.getLongitude());
-            entity.setStartTime(item.getStartTime() == null ? null
-                    : java.time.LocalTime.parse(item.getStartTime()));
-            entity.setEndTime(item.getEndTime() == null ? null
-                    : java.time.LocalTime.parse(item.getEndTime()));
+            entity.setStartTime(parseTimeSafe(item.getStartTime()));
+            entity.setEndTime(parseTimeSafe(item.getEndTime()));
             entity.setDurationMin(item.getDurationMin());
             entity.setCost(item.getCost());
             entity.setTag(item.getTag());
@@ -135,6 +133,21 @@ public class ItineraryAsyncPlanner {
         budgetEngine.recalculate(itineraryId);
     }
 
+    private java.time.LocalTime parseTimeSafe(String t) {
+        if (t == null || t.isBlank()) {
+            return null;
+        }
+        String norm = t.trim();
+        if (norm.startsWith("24:")) {
+            norm = "00:" + norm.substring(3);
+        }
+        try {
+            return java.time.LocalTime.parse(norm);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private void evictCache() {
         var cache = cacheManager.getCache("itinerary:detail");
         if (cache != null) {
@@ -142,12 +155,65 @@ public class ItineraryAsyncPlanner {
         }
     }
 
-    private void finish(Long itineraryId) {
+    private void finish(Long userId, Long itineraryId) {
         ItineraryMain main = mainMapper.selectById(itineraryId);
-        if (main != null) {
-            main.setStatus(2);
-            main.setTitle(main.getCity() + main.getDays() + "日游");
-            mainMapper.updateById(main);
+        if (main == null) {
+            evictCache();
+            return;
+        }
+        main.setStatus(2);
+        main.setTitle(main.getCity() + main.getDays() + "日游");
+
+        // 管家讲解：基于最终行程生成安排思路
+        try {
+            List<Map<String, Object>> plans = new ArrayList<>();
+            for (ItineraryDay day : dayMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ItineraryDay>()
+                    .eq(ItineraryDay::getItineraryId, itineraryId).orderByAsc(ItineraryDay::getDayNo))) {
+                List<String> names = itemMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ItineraryItem>()
+                                .eq(ItineraryItem::getDayId, day.getId()).orderByAsc(ItineraryItem::getSortNo))
+                        .stream().map(ItineraryItem::getPoiName).toList();
+                plans.add(Map.of("day_no", day.getDayNo(), "items", names));
+            }
+            Map<String, Object> payload = Map.of(
+                    "city", main.getCity(),
+                    "days", main.getDays(),
+                    "persons", main.getPersons() == null ? 1 : main.getPersons(),
+                    "preferences", main.getPreferences() == null ? "" : main.getPreferences(),
+                    "hotel_tier", main.getHotelTier() == null ? "" : main.getHotelTier(),
+                    "budget", main.getBudget() == null ? "" : main.getBudget(),
+                    "plans", plans);
+            JsonNode noteNode = agentService.butlerNote(payload);
+            String note = noteNode.path("note").asText("");
+            if (!note.isBlank()) {
+                main.setPlanNote(note);
+            }
+        } catch (Exception e) {
+            log.warn("butler note failed for {}: {}", itineraryId, e.getMessage());
+        }
+        mainMapper.updateById(main);
+
+        // 景点详细介绍：批量生成后逐条回填
+        try {
+            List<ItineraryItem> allItems = itemMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ItineraryItem>()
+                    .eq(ItineraryItem::getItineraryId, itineraryId));
+            List<String> names = allItems.stream().map(ItineraryItem::getPoiName)
+                    .filter(n -> n != null && !n.isBlank()).distinct().toList();
+            if (!names.isEmpty()) {
+                JsonNode introNode = agentService.poiIntros(
+                        Map.of("city", main.getCity(), "names", names));
+                JsonNode intros = introNode.get("intros");
+                if (intros != null && intros.isObject()) {
+                    for (ItineraryItem item : allItems) {
+                        JsonNode intro = intros.get(item.getPoiName());
+                        if (intro != null && !intro.asText().isBlank()) {
+                            item.setIntro(intro.asText());
+                            itemMapper.updateById(item);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("poi intros failed for {}: {}", itineraryId, e.getMessage());
         }
         evictCache();
     }
