@@ -161,7 +161,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Icon } from '@iconify/vue'
 
-import { generateItinerary, clarifyTrip, cityGuide, getSupportedCities } from '../api'
+import { generateItinerary, clarifyTrip, cityGuide } from '../api'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
@@ -225,21 +225,18 @@ function togglePreference(label: string) {
 
 async function guideIfUnsupported(): Promise<boolean> {
   const input = form.city.trim()
-  if (supportedCities.value.includes(input)) return false
-  // 省份/未知区域：静默让 LLM 锁定热门代表城市，直接继续生成（跳过对话步骤）
+  if (!input) return false
   try {
     const res = await cityGuide(input, [{ role: 'user', content: input }])
-    if (res.data.kind === 'city' && res.data.city) {
+    if (res.data.kind === 'city' && res.data.city && res.data.city !== input) {
       provinceHint.value = input
       form.city = res.data.city
-      ElMessage.success(`已为您锁定 ${res.data.city}（${input} 的热门目的地），开始生成…`)
-      return false
+      ElMessage.info(`已为您锁定 ${res.data.city}（${input} 的热门目的地）`)
+    } else if (res.data.kind === 'unclear') {
+      ElMessage.info(res.data.message || '可以直接生成，开放模式为您安排行程')
     }
-  } catch { /* 无法锁定时走人工引导 */ }
-  provinceHint.value = input
-  openGuide()
-  await sendGuideInput(input)
-  return true
+  } catch { /* 静默继续生成，后端开放模式兜底 */ }
+  return false
 }
 
 async function sendGuideInput(input: string) {
@@ -310,7 +307,6 @@ const guideSugs = ref<{ name: string; reason: string }[]>([])
 const guideCity = ref('')
 const provinceHint = ref('')
 const supportedCities = ref<string[]>([])
-getSupportedCities().then((res) => { supportedCities.value = res.data }).catch(() => {})
 let guideHistory: { role: string; content: string }[] = []
 
 function openGuide() {
