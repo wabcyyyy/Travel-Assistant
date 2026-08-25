@@ -212,6 +212,15 @@ export interface HotelRoomOption {
   }>
 }
 
+export function cityGuide(input: string, history: { role: string; content: string }[]) {
+  return requestPost<{
+    kind: 'province' | 'city' | 'unclear'
+    city: string | null
+    question: string | null
+    suggestions: string[]
+  }>('/itinerary/city-guide', { input, history })
+}
+
 export function applyPlans(
   id: number | string,
   plans: unknown[],

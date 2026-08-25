@@ -464,6 +464,22 @@ public class ItineraryServiceImpl implements ItineraryService {
     }
 
     @Override
+    public Map<String, Object> cityGuide(String input, List<Map<String, Object>> history) {
+        JsonNode node = agentService.cityGuide(Map.of(
+                "input", input == null ? "" : input,
+                "supported", supportedCities(),
+                "history", history == null ? List.of() : history));
+        Map<String, Object> out = new java.util.HashMap<>();
+        out.put("kind", node.path("kind").asText("unclear"));
+        out.put("city", node.hasNonNull("city") ? node.get("city").asText() : null);
+        out.put("question", node.path("question").asText(null));
+        List<String> sugs = new java.util.ArrayList<>();
+        node.path("suggestions").forEach(s -> sugs.add(s.asText()));
+        out.put("suggestions", sugs);
+        return out;
+    }
+
+    @Override
     public Map<String, Object> clarify(String message, Map<String, Object> slots) {
         JsonNode node = agentService.clarify(message, slots);
         Map<String, Object> out = new java.util.HashMap<>();

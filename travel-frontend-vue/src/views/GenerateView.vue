@@ -19,9 +19,7 @@
         style="max-width: 620px"
       >
         <el-form-item label="目的地" prop="city">
-          <el-select v-model="form.city" filterable placeholder="选择目的地城市" style="width: 100%">
-            <el-option v-for="ct in supportedCities" :key="ct" :label="ct" :value="ct" />
-          </el-select>
+          <el-input v-model="form.city" placeholder="输入城市，如：北京（省份亦可，AI 会帮你选）" />
         </el-form-item>
         <el-form-item label="出行日期">
           <el-date-picker
@@ -119,16 +117,33 @@
         show-icon
       />
     </el-card>
+
+    <!-- 城市引导侧边抽屉 -->
+    <el-drawer v-model="guideVisible" title="🧭 目的地引导" size="380px">
+      <div class="guide-chat">
+        <div v-for="(m, i) in guideMsgs" :key="i" class="chat-line" :class="m.role">{{ m.text }}</div>
+        <div v-if="guideSugs.length" class="guide-sugs">
+          <button v-for="s in guideSugs" :key="s" type="button" class="guide-sug" @click="pickSug(s)">{{ s }}</button>
+        </div>
+      </div>
+      <div class="chat-input" style="margin-top: 12px">
+        <el-input v-model="guideInput" placeholder="回复你的偏好…" @keyup.enter="sendGuide" />
+        <el-button type="primary" :loading="guideLoading" @click="sendGuide">发送</el-button>
+      </div>
+      <div v-if="guideCity" class="guide-confirm">
+        <el-button type="primary" style="width: 100%" @click="confirmGuideCity">去 {{ guideCity }}</el-button>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Icon } from '@iconify/vue'
 
-import { generateItinerary, clarifyTrip, getSupportedCities } from '../api'
+import { generateItinerary, clarifyTrip, cityGuide } from '../api'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
@@ -145,8 +160,6 @@ const PREFERENCE_TAGS = [
 
 const HOTEL_TIERS = ['经济型', '舒适型', '高档型', '豪华型', '奢华型']
 
-const supportedCities = ref<string[]>([])
-getSupportedCities().then((res) => { supportedCities.value = res.data }).catch(() => {})
 const chat = ref<{ role: 'user' | 'ai'; text: string }[]>([])
 const say = ref('')
 const thinking = ref(false)
@@ -192,6 +205,30 @@ function togglePreference(label: string) {
   }
 }
 
+async function guideIfUnsupported() {
+  try {
+    const res = await clarifyTrip({ message: form.city })
+    if (res.data.ready) return // 城市受支持
+  } catch { /* 忽略，走后端最终校验 */ }
+  openGuide()
+  await sendGuideInput(form.city)
+}
+
+async function sendGuideInput(input: string) {
+  guideHistory.push({ role: 'user', content: input })
+  guideLoading.value = true
+  try {
+    const res = await cityGuide(input, guideHistory)
+    guideSugs.value = res.data.suggestions || []
+    guideCity.value = res.data.city || ''
+    const text = res.data.city ? `去 ${res.data.city} 正合适！` : res.data.question || '说说你想玩的类型？'
+    guideMsgs.value.push({ role: 'ai', text })
+    guideHistory.push({ role: 'assistant', content: text })
+  } finally {
+    guideLoading.value = false
+  }
+}
+
 async function onSay() {
   const msg = say.value.trim()
   if (!msg || thinking.value) return
@@ -232,6 +269,40 @@ function applySlots(slots: Record<string, unknown>) {
   }
 }
 
+const guideVisible = ref(false)
+const guideMsgs = ref<{ role: 'user' | 'ai'; text: string }[]>([])
+const guideInput = ref('')
+const guideLoading = ref(false)
+const guideSugs = ref<string[]>([])
+const guideCity = ref('')
+let guideHistory: { role: string; content: string }[] = []
+
+function openGuide() {
+  guideVisible.value = true
+  if (!guideMsgs.value.length) {
+    guideMsgs.value.push({ role: 'ai', text: '告诉我你的想法，我帮你锁定目的地城市～' })
+  }
+}
+
+async function sendGuide() {
+  const msg = guideInput.value.trim()
+  if (!msg || guideLoading.value) return
+  guideMsgs.value.push({ role: 'user', text: msg })
+  guideInput.value = ''
+  await sendGuideInput(msg)
+}
+
+function pickSug(s: string) {
+  guideInput.value = '我想去' + s
+  sendGuide()
+}
+
+function confirmGuideCity() {
+  form.city = guideCity.value
+  guideVisible.value = false
+  ElMessage.success('已选择目的地：' + guideCity.value)
+}
+
 const rules: FormRules = {
   city: [{ required: true, message: '请输入目的地', trigger: 'blur' }],
   days: [{ required: true, message: '请输入出行天数', trigger: 'change' }],
@@ -241,6 +312,7 @@ const rules: FormRules = {
 async function onSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
+  await guideIfUnsupported()
   loading.value = true
   errorMsg.value = ''
   try {
@@ -358,6 +430,36 @@ async function onSubmit() {
 .submit-row {
   display: flex;
   justify-content: center;
+}
+
+.guide-sugs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.guide-sug {
+  padding: 6px 14px;
+  border: 1px solid var(--lp-border);
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.guide-sug:hover {
+  border-color: var(--lp-ink);
+}
+
+.guide-confirm {
+  margin-top: 14px;
+}
+
+.guide-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .submit {

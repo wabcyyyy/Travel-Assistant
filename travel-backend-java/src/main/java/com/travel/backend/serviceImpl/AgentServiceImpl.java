@@ -73,6 +73,10 @@ public class AgentServiceImpl implements AgentService {
         return postForNode("/api/agent/v1/poi-intros", payload, "景点介绍生成失败");
     }
 
+    public JsonNode cityGuide(Map<String, Object> payload) {
+        return postForNode("/api/agent/v1/city-guide", payload, "城市引导服务暂不可用");
+    }
+
     public JsonNode planContext(String city, List<String> preferences) {
         Map<String, Object> body = Map.of("city", city,
                 "preferences", preferences == null ? List.of() : preferences);

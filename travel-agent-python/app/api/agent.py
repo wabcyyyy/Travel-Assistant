@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app.agent.butler import run_butler_note, run_poi_intros
 from app.agent.chat_draft import run_chat_turn
+from app.agent.city_guide import run_city_guide
 from app.agent.clarify import run_clarify
 from app.agent.day_stream import run_generate_day, run_plan_context
 from app.agent.nl_edit import run_edit_ops
@@ -144,3 +145,10 @@ def poi_intros(req: dict) -> ApiResponse[dict]:
         return ApiResponse.ok({"intros": run_poi_intros(req.get("city", ""), names)})
     except Exception:
         return ApiResponse.ok({"intros": {}})
+
+@router.post("/v1/city-guide")
+def city_guide(req: dict) -> ApiResponse[dict]:
+    try:
+        return ApiResponse.ok(run_city_guide(req))
+    except Exception:
+        return ApiResponse.fail("城市引导服务暂不可用")

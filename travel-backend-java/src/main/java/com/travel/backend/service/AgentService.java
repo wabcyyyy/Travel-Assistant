@@ -17,6 +17,8 @@ public interface AgentService {
 
     JsonNode chatTurn(Map<String, Object> payload);
 
+    JsonNode cityGuide(Map<String, Object> payload);
+
     JsonNode planContext(String city, List<String> preferences);
 
     JsonNode generateDay(Map<String, Object> payload);

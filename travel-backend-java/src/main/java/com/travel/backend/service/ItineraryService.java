@@ -44,4 +44,6 @@ public interface ItineraryService {
     ItineraryVO applyHotelOption(Long userId, Long itineraryId, HotelOptionApplyRequest request);
 
     List<String> supportedCities();
+
+    Map<String, Object> cityGuide(String input, List<Map<String, Object>> history);
 }

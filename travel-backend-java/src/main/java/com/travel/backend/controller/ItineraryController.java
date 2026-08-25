@@ -39,6 +39,15 @@ public class ItineraryController {
         return Result.ok(itineraryService.supportedCities());
     }
 
+    @PostMapping("/city-guide")
+    public Result<Map<String, Object>> cityGuide(@RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> history =
+                (List<Map<String, Object>>) body.getOrDefault("history", List.of());
+        return Result.ok(itineraryService.cityGuide(
+                String.valueOf(body.getOrDefault("input", "")), history));
+    }
+
     @PostMapping("/generate")
     public Result<ItineraryVO> generate(@Valid @RequestBody GenerateRequest request) {
         return Result.ok(itineraryService.generate(currentUserId(), request));
