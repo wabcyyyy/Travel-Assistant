@@ -1,5 +1,5 @@
 <template>
-  <div class="generate-page">
+  <div class="generate-page" :style="{ marginRight: guideVisible ? '400px' : '0' }">
     <div class="lp-page-head">
       <span class="bar"></span>
       <h2>行程生成</h2>
@@ -15,38 +15,56 @@
         ref="formRef"
         :model="form"
         :rules="rules"
-        label-width="100px"
-        style="max-width: 620px"
+        label-width="90px"
+        style="max-width: 680px"
       >
-        <el-form-item label="目的地" prop="city">
-          <el-input v-model="form.city" placeholder="输入城市，如：北京（省份亦可，AI 会帮你选）" />
-        </el-form-item>
-        <el-form-item label="出行日期">
-          <el-date-picker
-            v-model="dateRange"
-            type="daterange"
-            value-format="YYYY-MM-DD"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            style="width: 100%"
-          />
-          <span class="hint">选填；不选则由 Agent 灵活安排</span>
-        </el-form-item>
-        <el-form-item label="出行天数" prop="days">
-          <el-input-number v-model="form.days" :min="1" :max="14" />
-          <span class="hint">{{ dateRange ? '已按日期自动计算' : '未选日期时手动填写' }}</span>
-        </el-form-item>
-        <el-form-item label="出行人数" prop="persons">
-          <el-input-number v-model="form.persons" :min="1" :max="20" />
-        </el-form-item>
-        <el-form-item label="住宿晚数" prop="stayNights">
-          <el-input-number v-model="form.stayNights" :min="0" :max="form.days" />
-          <span class="hint">默认比出行天数少 1 晚；若最后一天仍住宿，可手动增加</span>
-        </el-form-item>
-        <el-form-item label="预算上限">
-          <el-input-number v-model="form.budget" :min="0" :step="500" />
-          <span class="hint">元（可选）</span>
-        </el-form-item>
+        <el-row :gutter="12">
+          <el-col :span="14">
+            <el-form-item label="目的地" prop="city">
+              <el-input v-model="form.city" placeholder="城市或省份" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="10">
+            <el-form-item label="人数" prop="persons">
+              <el-input-number v-model="form.persons" :min="1" :max="20" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="12">
+          <el-col :span="14">
+            <el-form-item label="出行日期">
+              <el-date-picker
+                v-model="dateRange"
+                type="daterange"
+                value-format="YYYY-MM-DD"
+                start-placeholder="开始"
+                end-placeholder="结束"
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="10">
+            <el-form-item label="天数" prop="days">
+              <el-input-number v-model="form.days" :min="1" :max="14" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="12">
+          <el-col :span="9">
+            <el-form-item label="住宿晚数" prop="stayNights">
+              <el-input-number v-model="form.stayNights" :min="0" :max="form.days" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="15">
+            <el-form-item label="预算上限">
+              <el-input-number v-model="form.budget" :min="0" :step="500" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <div class="form-tips">
+          <span class="hint">天数随日期自动计算；住宿默认少 1 晚</span>
+          <el-button link type="primary" @click="openGuide">🧭 拿不准去哪？AI 帮我选</el-button>
+        </div>
       </el-form>
     </el-card>
 
@@ -119,7 +137,7 @@
     </el-card>
 
     <!-- 城市引导侧边抽屉 -->
-    <el-drawer v-model="guideVisible" title="🧭 目的地引导" size="380px">
+    <el-drawer v-model="guideVisible" title="🧭 目的地引导" size="380px" :modal="false">
       <div class="guide-chat">
         <div v-for="(m, i) in guideMsgs" :key="i" class="chat-line" :class="m.role">{{ m.text }}</div>
         <div v-if="guideSugs.length" class="guide-sugs">
@@ -343,6 +361,14 @@ async function onSubmit() {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  transition: margin-right 0.3s ease;
+}
+
+.form-tips {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: -6px 0 0 90px;
 }
 
 .group-title {
