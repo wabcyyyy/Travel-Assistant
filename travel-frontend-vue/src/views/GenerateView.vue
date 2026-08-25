@@ -224,9 +224,21 @@ function togglePreference(label: string) {
 }
 
 async function guideIfUnsupported(): Promise<boolean> {
-  if (supportedCities.value.includes(form.city.trim())) return false
+  const input = form.city.trim()
+  if (supportedCities.value.includes(input)) return false
+  // 省份/未知区域：静默让 LLM 锁定热门代表城市，直接继续生成（跳过对话步骤）
+  try {
+    const res = await cityGuide(input, [{ role: 'user', content: input }])
+    if (res.data.kind === 'city' && res.data.city) {
+      provinceHint.value = input
+      form.city = res.data.city
+      ElMessage.success(`已为您锁定 ${res.data.city}（${input} 的热门目的地），开始生成…`)
+      return false
+    }
+  } catch { /* 无法锁定时走人工引导 */ }
+  provinceHint.value = input
   openGuide()
-  await sendGuideInput(form.city)
+  await sendGuideInput(input)
   return true
 }
 
@@ -296,6 +308,7 @@ const guideInput = ref('')
 const guideLoading = ref(false)
 const guideSugs = ref<{ name: string; reason: string }[]>([])
 const guideCity = ref('')
+const provinceHint = ref('')
 const supportedCities = ref<string[]>([])
 getSupportedCities().then((res) => { supportedCities.value = res.data }).catch(() => {})
 let guideHistory: { role: string; content: string }[] = []
@@ -358,6 +371,7 @@ async function onSubmit() {
       endDate: dateRange.value?.[1],
       preferences: form.preferences,
       hotelTier: form.hotelTier || undefined,
+      regionHint: provinceHint.value || undefined,
     })
     router.push({ name: 'trip-detail', params: { id: res.data.id } })
   } catch (err) {

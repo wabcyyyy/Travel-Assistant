@@ -16,4 +16,5 @@ public class AgentGenerateRequest {
     private LocalDate startDate;
     private List<String> preferences;
     private String hotelTier;
+    private String regionHint;
 }

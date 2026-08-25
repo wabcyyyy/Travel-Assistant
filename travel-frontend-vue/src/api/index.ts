@@ -42,6 +42,7 @@ export function generateItinerary(data: {
   endDate?: string
   preferences: string[]
   hotelTier?: string
+  regionHint?: string
 }) {
   return requestPost<ItineraryDetail>('/itinerary/generate', data)
 }

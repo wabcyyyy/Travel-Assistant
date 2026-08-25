@@ -13,10 +13,12 @@ def run_butler_note(req: dict) -> str:
     preferences = "、".join(req.get("preferences") or []) or "无特别偏好"
     system = (
         "你是一对一专属旅游管家。行程已按用户偏好安排完毕，请用管家的口吻向用户讲解你的安排思路："
-        "为什么根据TA的偏好选这些点、节奏如何张弛、酒店怎么考虑、以及一条实用贴士。"
+        "为什么根据TA的偏好选这些点（若用户最初输入的是省份，先自然说明为什么首选该城市，"
+        "并提到想去省内其他城市可随时调整）、节奏如何张弛、酒店怎么考虑、以及一条实用贴士。"
         "亲切专业，250 字以内，分段用 \\n，不要用 markdown 标题符号。"
     )
     user = (
+        f"用户最初输入的区域：{req.get('region_hint') or '同目的地'}。\n"
         f"用户画像：{req.get('city')} {req.get('days')} 天 {req.get('persons')} 人，"
         f"偏好：{preferences}，住宿档次：{req.get('hotel_tier') or '未指定'}，"
         f"预算：{req.get('budget') or '未设'}\n"

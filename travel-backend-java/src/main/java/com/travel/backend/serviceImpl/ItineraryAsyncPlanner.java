@@ -179,6 +179,7 @@ public class ItineraryAsyncPlanner {
                     "persons", main.getPersons() == null ? 1 : main.getPersons(),
                     "preferences", main.getPreferences() == null ? "" : main.getPreferences(),
                     "hotel_tier", main.getHotelTier() == null ? "" : main.getHotelTier(),
+                    "region_hint", request.getRegionHint() == null ? "" : request.getRegionHint(),
                     "budget", main.getBudget() == null ? "" : main.getBudget(),
                     "plans", plans);
             JsonNode noteNode = agentService.butlerNote(payload);

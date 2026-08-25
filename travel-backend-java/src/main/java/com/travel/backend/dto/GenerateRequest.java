@@ -38,4 +38,6 @@ public class GenerateRequest {
     private List<String> preferences;
 
     private String hotelTier;
+
+    private String regionHint;
 }
