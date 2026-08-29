@@ -3,6 +3,7 @@ package com.travel.backend.serviceImpl;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.travel.backend.entity.BudgetDetail;
 import com.travel.backend.entity.CityConsumption;
+import com.travel.backend.entity.HotelRoomType;
 import com.travel.backend.entity.ItineraryItem;
 import com.travel.backend.entity.ItineraryMain;
 import com.travel.backend.entity.PoiKnowledge;
@@ -11,6 +12,7 @@ import com.travel.backend.mapper.CityConsumptionMapper;
 import com.travel.backend.mapper.ItineraryItemMapper;
 import com.travel.backend.mapper.ItineraryMainMapper;
 import com.travel.backend.mapper.PoiKnowledgeMapper;
+import com.travel.backend.mapper.HotelRoomTypeMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,12 +40,15 @@ class BudgetEngineImplTest {
     private CityConsumptionMapper consumptionMapper;
     @Mock
     private PoiKnowledgeMapper poiMapper;
+    @Mock
+    private HotelRoomTypeMapper hotelRoomTypeMapper;
 
     private BudgetEngineImpl engine;
 
     @BeforeEach
     void setUp() {
-        engine = new BudgetEngineImpl(mainMapper, itemMapper, budgetMapper, consumptionMapper, poiMapper);
+        engine = new BudgetEngineImpl(
+                mainMapper, itemMapper, budgetMapper, consumptionMapper, poiMapper, hotelRoomTypeMapper);
     }
 
     private ItineraryMain main(int persons, int days) {
@@ -128,6 +133,27 @@ class BudgetEngineImplTest {
         assertEquals("知识库基准价已按节假日旺季系数×1.8调整",
                 result.stream().filter(b -> "酒店".equals(b.getCategory()))
                         .map(BudgetDetail::getRemark).findFirst().orElse(""));
+    }
+
+    @Test
+    void hotelRoomCapacityDeterminesRequiredRoomCount() {
+        when(mainMapper.selectById(1L)).thenReturn(main(5, 1));
+        ItineraryItem hotel = item("hotel", "家庭酒店", new BigDecimal("600"), "88");
+        hotel.setRemark("房型：家庭套房；床型：两张大床");
+        when(itemMapper.selectList(any(Wrapper.class))).thenReturn(List.of(hotel));
+        HotelRoomType roomType = new HotelRoomType();
+        roomType.setPoiId(88L);
+        roomType.setRoomName("家庭套房");
+        roomType.setCapacity(4);
+        when(hotelRoomTypeMapper.selectOne(any(Wrapper.class))).thenReturn(roomType);
+        when(consumptionMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+        when(budgetMapper.delete(any(Wrapper.class))).thenReturn(1);
+        when(budgetMapper.insert(any(BudgetDetail.class))).thenReturn(1);
+
+        List<BudgetDetail> result = engine.recalculate(1L);
+
+        // 5人入住容量4人的家庭套房需要2间，而不是按每间2人计算成3间。
+        assertEquals(new BigDecimal("1200.00"), amount(result, "酒店"));
     }
 
     @Test

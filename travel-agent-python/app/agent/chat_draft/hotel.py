@@ -1,27 +1,43 @@
-"""草稿式行程对话：LLM 直接改写结构化行程草稿，应用时零 LLM 确定性落库。"""
+"""酒店子系统：意图识别、档次解析、候选生成与签名校验。
 
-import json
-import logging
+职责：
+- 识别“换酒店/升级/降价/指定品牌”等住宿类意图（_is_hotel_request / _understand_hotel_intent）；
+- 把口语映射到档次与入住晚次（_hotel_tier / _with_stay_scope / _resolve_hotel_names）；
+- 生成可展示的酒店/房型候选卡片（_hotel_options / _explain_hotel_options）；
+- 用 _hotel_signature 校验草稿中的酒店是否被偷偷改动。
+
+实现要点：
+- 酒店是高风险操作，必须走独立确认流程（hotel_proposal），绝不直接进 plan_document；
+- 品牌别名（_HOTEL_BRAND_ALIASES）、档次关键词（_TIER_KEYWORDS）等做口语归一；
+- 本模块相对独立，是 chat_draft 中体量最大的部分，单独成文件便于维护。
+
+依赖：document（读取行程投影）；被 decide 层在酒店分支调用。HotelIntent 为 @dataclass。
+"""
+
 import re
-from dataclasses import dataclass
-from difflib import SequenceMatcher
-from math import ceil
+import json
+from copy import deepcopy
 from datetime import date, timedelta
+from difflib import SequenceMatcher
+import logging
 
 from app.agent import tools
+from app.agent.day_stream import run_generate_day, run_plan_context
+from app.common.config import settings
 from app.common.llm_client import get_llm_client
 from app.common.season import season_factor, season_label
-from app.schemas.trip import ChatTurnRequest, ChatTurnResponse, HotelOption, HotelRoomOption
+from app.schemas.trip import (
+    ChatTurnRequest, ChatTurnResponse, GenerateDayRequest, HotelOption, HotelRoomOption,
+)
 
 logger = logging.getLogger(__name__)
 
-_PLAN_SCHEMA = (
-    '{"plans":[{"day_no":1,"note":"当天主题","items":[{"item_type":"attraction|food|hotel|transport",'
-    '"poi_name":"名称","start_time":"HH:mm","end_time":"HH:mm","duration_min":数字或null,'
-    '"cost":数字或null,"tag":"标签或null","remark":"备注或null"}]}]}'
-)
+
+from .intent import (_cn_number)
+from .document import (_trip_plan_document)
 
 _TIER_RANK = {"经济型": 1, "舒适型": 2, "高档型": 3, "豪华型": 4, "奢华型": 5}
+
 _TIER_KEYWORDS = {
     "经济型": ("经济", "连锁"),
     "舒适型": ("舒适", "中端", "亚朵", "全季"),
@@ -29,6 +45,7 @@ _TIER_KEYWORDS = {
     "豪华型": ("豪华", "五星", "国宾", "地标"),
     "奢华型": ("奢华", "国宾", "传奇", "地标", "私享"),
 }
+
 _TIER_ALIASES = {
     "经济": "经济型", "舒适": "舒适型", "中端": "舒适型",
     "高端": "高档型", "高档": "高档型", "豪华": "豪华型",
@@ -49,7 +66,10 @@ _HOTEL_BRAND_ALIASES = (
 )
 
 
-@dataclass(frozen=True)
+from dataclasses import dataclass
+
+
+@dataclass
 class HotelIntent:
     action: str
     target_tier: str
@@ -57,14 +77,13 @@ class HotelIntent:
     requested_nights: int = 0
     requested_day_nos: tuple[int, ...] = ()
     requested_hotel_names: tuple[str, ...] = ()
-
+    invalid_scope: bool = False
 
 def _parse_date(value: str | None) -> date | None:
     try:
         return date.fromisoformat(value) if value else None
     except ValueError:
         return None
-
 
 def _tiers_in_text(value: str | None) -> list[str]:
     text = value or ""
@@ -74,11 +93,9 @@ def _tiers_in_text(value: str | None) -> list[str]:
             found.add(tier)
     return sorted(found, key=lambda tier: _TIER_RANK[tier])
 
-
 def _preference_tier(value: str | None) -> str:
     tiers = _tiers_in_text(value)
     return tiers[-1] if tiers else "舒适型"
-
 
 def _hotel_tier(hotel: dict) -> str:
     text = (hotel.get("name") or "") + (hotel.get("description") or "") + (hotel.get("tags") or "")
@@ -88,7 +105,6 @@ def _hotel_tier(hotel: dict) -> str:
     matched = [tier for tier, keywords in _TIER_KEYWORDS.items()
                if any(keyword in text for keyword in keywords)]
     return max(matched, key=lambda tier: _TIER_RANK[tier], default="舒适型")
-
 
 def _mentioned_hotel_names(message: str, hotels: list[dict]) -> tuple[str, ...]:
     normalized = message.replace("安曼", "安缦")
@@ -102,13 +118,18 @@ def _mentioned_hotel_names(message: str, hotels: list[dict]) -> tuple[str, ...]:
             matched.append(name)
     return tuple(matched)
 
-
 def _is_hotel_request(req: ChatTurnRequest, hotels: list[dict] | None = None) -> bool:
     normalized_message = req.message.replace("安曼", "安缦")
+    # 当前轮明确谈景点/餐饮/行程时，不能被前几轮酒店上下文中的“其他、便宜”等词劫持。
+    if (re.search(r"景点|景区|餐厅|餐饮|美食|行程|安排|路线|路线", normalized_message)
+            and not re.search(r"酒店|住宿|宾馆|客栈|房型|入住|住一晚|住几晚", normalized_message)):
+        return False
     if _mentioned_hotel_names(normalized_message, hotels or []):
         return True
     if re.search(
-        r"酒店|住宿|宾馆|客栈|换个住|升级|降一档|便宜点|便宜一点|更好|好一点|"
+        r"酒店|住宿|宾馆|客栈|民宿|旅馆|住处|住的地方|下榻|过夜|换个住|换住宿|"
+        r"升级|降一档|档次低|低一点|低些|便宜点|便宜一点|便宜些|省钱|预算友好|"
+        r"更好|好一点|好些|贵一点|贵些|高级些|档次高|"
         r"高端|高档|豪华|奢华|五星|顶级|顶配|最屌|最高级|最牛",
         req.message,
     ):
@@ -119,14 +140,12 @@ def _is_hotel_request(req: ChatTurnRequest, hotels: list[dict] | None = None) ->
         and re.search(r"其他|其它|别的|还有|换一个|换一家|便宜|贵点|好点|更好|同档|同级", req.message)
     )
 
-
 def _current_hotel_names(req: ChatTurnRequest) -> set[str]:
     return {
         str(item.get("poi_name")) for plan in req.plans
         for item in (plan.get("items") or [])
         if item.get("item_type") == "hotel" and item.get("poi_name")
     }
-
 
 def _available_hotel_day_nos(req: ChatTurnRequest) -> list[int]:
     return sorted({
@@ -135,29 +154,44 @@ def _available_hotel_day_nos(req: ChatTurnRequest) -> list[int]:
         and any(item.get("item_type") == "hotel" for item in (plan.get("items") or []))
     })
 
-
-def _cn_number(value: str) -> int | None:
-    if value.isdigit():
-        return int(value)
-    numbers = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
-               "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
-    return numbers.get(value)
-
+def _has_explicit_stay_scope(message: str) -> bool:
+    return bool(re.search(
+        r"最后(?:一)?(?:天|晚)|末(?:天|晚)|第\s*[0-9一二两三四五六七八九十]+\s*(?:天|晚)|"
+        r"[0-9一二两三四五六七八九十]+\s*晚",
+        message or "",
+    ))
 
 def _with_stay_scope(intent: HotelIntent, req: ChatTurnRequest, hotels: list[dict]) -> HotelIntent:
     available = _available_hotel_day_nos(req)
-    day_nos = []
-    if available and re.search(r"最后(?:一)?(?:天|晚)|末(?:天|晚)", req.message):
-        day_nos.append(available[-1])
-    for value in re.findall(r"第\s*([0-9一二两三四五六七八九十]+)\s*(?:天|晚)", req.message):
+    valid_day_nos = set(range(1, req.days + 1))
+    scope_mentioned = _has_explicit_stay_scope(req.message)
+    # 入住范围只认用户本轮原话：未提晚次时默认当前全部住宿晚次；明确说
+    # “住一晚”但没说哪晚时留空供前端选择；“第 N 晚/最后一晚”则精确选中。
+    day_nos = [] if scope_mentioned else list(available)
+    invalid_scope = False
+    if re.search(r"最后(?:一)?天|末天", req.message):
+        day_nos.append(req.days)
+    elif re.search(r"最后(?:一)?晚|末晚", req.message):
+        day_nos.append(available[-1] if available else req.days)
+    day_values = re.findall(r"第\s*([0-9一二两三四五六七八九十]+)\s*(?:天|晚)", req.message)
+    for value in day_values:
         day_no = _cn_number(value)
-        if day_no in available and day_no not in day_nos:
+        if day_no in valid_day_nos and day_no not in day_nos:
             day_nos.append(day_no)
+        elif day_no is not None and day_no not in valid_day_nos:
+            invalid_scope = True
     night_match = re.search(r"([0-9一二两三四五六七八九十]+)\s*晚", req.message)
-    requested_nights = _cn_number(night_match.group(1)) if night_match else None
+    if night_match and re.search(r"第\s*$", req.message[:night_match.start()]):
+        night_match = None
+    requested_nights = _cn_number(night_match.group(1)) if night_match else (
+        len(available) if not scope_mentioned and available else intent.requested_nights
+    )
+    if requested_nights and requested_nights > len(valid_day_nos):
+        invalid_scope = True
     if day_nos:
         requested_nights = len(day_nos)
-    requested_nights = max(1, min(requested_nights or len(available) or req.days, len(available) or req.days))
+    max_scope_nights = req.days if scope_mentioned else (len(available) or req.days)
+    requested_nights = max(1, min(requested_nights or len(available) or req.days, max_scope_nights))
 
     named = _mentioned_hotel_names(req.message, hotels)
     if named:
@@ -171,8 +205,8 @@ def _with_stay_scope(intent: HotelIntent, req: ChatTurnRequest, hotels: list[dic
         requested_nights=requested_nights,
         requested_day_nos=tuple(day_nos),
         requested_hotel_names=named,
+        invalid_scope=invalid_scope,
     )
-
 
 def _current_hotel_tier(req: ChatTurnRequest, hotels: list[dict]) -> str:
     current_names = _current_hotel_names(req)
@@ -181,15 +215,32 @@ def _current_hotel_tier(req: ChatTurnRequest, hotels: list[dict]) -> str:
         return max(known, key=lambda tier: _TIER_RANK[tier])
     return _preference_tier(req.hotel_tier)
 
+def _previous_proposed_hotel_tier(req: ChatTurnRequest) -> str | None:
+    for turn in reversed(req.history or []):
+        if turn.get("role") not in {"ai", "assistant"}:
+            continue
+        content = str(turn.get("content") or "").replace("*", "")
+        match = re.search(
+            r"本次提供\s*\d+\s*家\s*(经济型|舒适型|高档型|豪华型|奢华型)酒店",
+            content,
+        )
+        if match:
+            return match.group(1)
+    return None
+
+def _hotel_comparison_base_tier(req: ChatTurnRequest, hotels: list[dict]) -> str:
+    if re.search(r"再|继续|还要更|还想更", req.message):
+        return _previous_proposed_hotel_tier(req) or _current_hotel_tier(req, hotels)
+    return _current_hotel_tier(req, hotels)
 
 def _fallback_hotel_intent(message: str, base_tier: str) -> HotelIntent:
     if re.search(r"最屌|最好|最贵|最高级|最高档|顶级|顶配|天花板|最牛", message):
         action = "best"
-    elif re.search(r"便宜|省钱|实惠|降一档|低一档|降低|少花", message):
+    elif re.search(r"便宜|省钱|实惠|预算友好|降一档|低一档|档次低|低一点|低些|降低|少花", message):
         action = "cheaper"
-    elif re.search(r"其他|其它|别的|换一家|换一个|同档|同级|类似", message):
+    elif re.search(r"其他|其它|别的|换一家|换一个|换(?:个|一家)?酒店|换住宿|换住处|同档|同级|类似", message):
         action = "same"
-    elif re.search(r"更好|好一点|好点|升级|升一档|高一档|贵一点|高级一点", message):
+    elif re.search(r"更好|好一点|好点|好些|升级|升一档|高一档|贵一点|贵些|高级一点|高级些|档次高", message):
         action = "better"
     else:
         explicit = _tiers_in_text(message)
@@ -209,6 +260,15 @@ def _fallback_hotel_intent(message: str, base_tier: str) -> HotelIntent:
         target = base_tier
     return HotelIntent(action=action, target_tier=target, base_tier=base_tier)
 
+def _has_explicit_hotel_comparison(message: str) -> bool:
+    return bool(re.search(
+        r"便宜|省钱|实惠|预算友好|降一档|低一档|档次低|低一点|低些|降低|少花|"
+        r"其他|其它|别的|换一家|换一个|换(?:个|一家)?酒店|换住宿|换住处|"
+        r"同档|同级|类似|更好|好一点|好点|好些|升级|升一档|高一档|贵一点|贵些|高级一点|高级些|档次高|"
+        r"最屌|最好|最贵|最高级|最高档|顶级|顶配|天花板|最牛|安缦|安曼|四季|希尔顿|"
+        r"香格里拉|亚朵|汉庭|如家",
+        message,
+    ))
 
 def _normalized_hotel_intent(action: str, target: str, base_tier: str) -> HotelIntent:
     """不信任模型计算档次，只采纳语义动作；档次移动由代码确定，避免跨错档。"""
@@ -226,10 +286,9 @@ def _normalized_hotel_intent(action: str, target: str, base_tier: str) -> HotelI
     normalized = next(tier for tier, rank in _TIER_RANK.items() if rank == target_rank)
     return HotelIntent(action=action, target_tier=normalized, base_tier=base_tier)
 
-
 def _understand_hotel_intent(req: ChatTurnRequest, hotels: list[dict]) -> HotelIntent:
     """先理解相对当前酒店的换房意图，再把它收敛为一个明确目标档次。"""
-    base_tier = _current_hotel_tier(req, hotels)
+    base_tier = _hotel_comparison_base_tier(req, hotels)
     fallback = _fallback_hotel_intent(req.message, base_tier)
     history = [
         {"role": item.get("role"), "content": str(item.get("content") or "")[:500]}
@@ -258,14 +317,14 @@ def _understand_hotel_intent(req: ChatTurnRequest, hotels: list[dict]) -> HotelI
         target = str(data.get("target_tier") or "")
         if action in _INTENT_LABELS and target in _TIER_RANK:
             expected = _fallback_hotel_intent(req.message, base_tier)
-            # 明确的边界词优先服从确定性规则，避免分类模型把“最屌”弱化为普通升级。
-            if expected.action in {"best", "specific"}:
+            # 明确比较词优先服从确定性规则，避免模型把“看看其他酒店”错误继承成
+            # 上一轮的“便宜一点”，或把“最好的”弱化为普通升级。
+            if _has_explicit_hotel_comparison(req.message):
                 return _with_stay_scope(expected, req, hotels)
             return _with_stay_scope(_normalized_hotel_intent(action, target, base_tier), req, hotels)
     except Exception as exc:  # noqa: BLE001
         logger.warning("hotel intent classification failed: %s", exc)
     return _with_stay_scope(fallback, req, hotels)
-
 
 def _hotel_options(req: ChatTurnRequest, hotels: list[dict], intent: HotelIntent) -> list[HotelOption]:
     if not hotels:
@@ -274,9 +333,13 @@ def _hotel_options(req: ChatTurnRequest, hotels: list[dict], intent: HotelIntent
     current_costs = [float(item.get("cost")) for plan in req.plans
                      for item in (plan.get("items") or [])
                      if item.get("item_type") == "hotel" and isinstance(item.get("cost"), (int, float))]
-    available_day_nos = list(dict.fromkeys(
-        _available_hotel_day_nos(req) + list(intent.requested_day_nos)
-    ))
+    existing_hotel_day_nos = _available_hotel_day_nos(req)
+    if intent.requested_day_nos:
+        available_day_nos = list(dict.fromkeys(existing_hotel_day_nos + list(intent.requested_day_nos)))
+    elif _has_explicit_stay_scope(req.message):
+        available_day_nos = list(range(1, req.days + 1))
+    else:
+        available_day_nos = existing_hotel_day_nos
     rooms = ceil(req.persons / 2)
     start_date = _parse_date(req.start_date)
     factor = season_factor(start_date)
@@ -308,6 +371,23 @@ def _hotel_options(req: ChatTurnRequest, hotels: list[dict], intent: HotelIntent
     for room in room_rows:
         rooms_by_hotel.setdefault(int(room["poi_id"]), []).append(room)
     priced_day_nos = list(intent.requested_day_nos) or available_day_nos[:intent.requested_nights]
+    # 泛化“换个酒店”优先保持当前档次；若该档次没有除当前酒店外的可报价候选，
+    # 自动退到最近档次，避免只返回一段没有卡片的空话。
+    non_current_tiers = set()
+    for hotel in hotels:
+        try:
+            has_price = float(hotel.get("ticket_price") or 0) > 0
+        except (TypeError, ValueError):
+            has_price = False
+        if (has_price and hotel.get("name") not in current_names
+                and hotel.get("name") not in intent.requested_hotel_names):
+            non_current_tiers.add(_hotel_tier(hotel))
+    allowed_tiers = {intent.target_tier}
+    if not intent.requested_hotel_names and intent.target_tier not in non_current_tiers:
+        target_rank = _TIER_RANK[intent.target_tier]
+        nearest = sorted(non_current_tiers, key=lambda tier: abs(_TIER_RANK[tier] - target_rank))
+        if nearest:
+            allowed_tiers.add(nearest[0])
     candidates = []
     for hotel in hotels:
         base = hotel.get("ticket_price")
@@ -318,7 +398,7 @@ def _hotel_options(req: ChatTurnRequest, hotels: list[dict], intent: HotelIntent
         if base_price <= 0:
             continue
         tier = _hotel_tier(hotel)
-        if tier != intent.target_tier:
+        if tier not in allowed_tiers:
             continue
         if hotel.get("name") in current_names and not intent.requested_hotel_names:
             continue
@@ -401,7 +481,6 @@ def _hotel_options(req: ChatTurnRequest, hotels: list[dict], intent: HotelIntent
     ))
     return candidates[:3]
 
-
 def _explain_hotel_options(
     req: ChatTurnRequest, options: list[HotelOption], intent: HotelIntent,
 ) -> str:
@@ -465,26 +544,6 @@ def _explain_hotel_options(
     ])
     return "\n".join(lines)
 
-
-def _trip_plan_document(req: ChatTurnRequest) -> dict:
-    """每轮都把关系型行程投影成一份完整 JSON，作为 LLM 唯一可编辑的计划状态。"""
-    return {
-        "schema_version": 1,
-        "trip": {
-            "city": req.city,
-            "days": req.days,
-            "persons": req.persons,
-            "budget": req.budget,
-            "start_date": req.start_date,
-            "end_date": req.end_date,
-            "preferences": req.preferences,
-            "hotel_tier": req.hotel_tier,
-        },
-        "days": req.plans,
-        "pending_action": None,
-    }
-
-
 def _hotel_catalog(hotels: list[dict]) -> list[dict]:
     return [{
         "id": str(hotel.get("id") or ""),
@@ -492,59 +551,6 @@ def _hotel_catalog(hotels: list[dict]) -> list[dict]:
         "tier": _hotel_tier(hotel),
         "description": hotel.get("description"),
     } for hotel in hotels]
-
-
-def _parse_json_object(raw: str) -> dict:
-    text = raw.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[-1].rsplit("```", 1)[0]
-    start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end < start:
-        raise ValueError("LLM 未返回 JSON 对象")
-    data = json.loads(text[start:end + 1])
-    if not isinstance(data, dict):
-        raise ValueError("LLM 决策不是 JSON 对象")
-    return data
-
-
-def _decide_plan_change(req: ChatTurnRequest, hotels: list[dict]) -> dict:
-    document = _trip_plan_document(req)
-    system = (
-        "你是旅行计划 JSON 编辑器。你必须先理解用户自然语言，再从四种模式中选择一种，且只输出JSON。"
-        "mode只能是 hotel_proposal、plan_update、clarify、no_change。"
-        "凡是涉及住宿、酒店、宾馆、房型或某个酒店品牌，无论用户如何措辞，都必须使用hotel_proposal，"
-        "绝不能直接修改days里的hotel项目。hotel_proposal时填写hotel_request，不修改plan_document。"
-        "普通景点、餐饮、时间、顺序修改使用plan_update，并返回修改后的完整plan_document；"
-        "只改用户要求的部分，其余字段逐字保留，禁止修改trip元数据，禁止自行计算或改写cost。"
-        "信息不足且无法安全推断时使用clarify。酒店名称必须优先从hotel_catalog中选择完整名称。"
-        "day_numbers必须把‘最后一天、返程前一晚、第二晚’等自然语言换算成当前计划中的具体日序号。"
-        "hotel_request.action只能是specific、cheaper、same、better、best；"
-        "candidate_mode只能是exact或recommend，明确指定酒店时用exact，否则用recommend。"
-        "输出结构："
-        '{"mode":"hotel_proposal|plan_update|clarify|no_change","reply":"中文Markdown",'
-        '"hotel_request":{"action":"specific","hotel_names":["目录完整名称"],"hotel_query":"用户说法",'
-        '"target_tier":"经济型|舒适型|高档型|豪华型|奢华型|null","day_numbers":[4],'
-        '"night_count":1,"candidate_mode":"exact|recommend","candidate_count":3},'
-        '"operations":[{"action":"动作","day_numbers":[1],"summary":"说明"}],'
-        '"plan_document":{"schema_version":1,"trip":{},"days":[],"pending_action":null}}'
-    )
-    messages = [{"role": "system", "content": system}]
-    for item in (req.history or [])[-6:]:
-        role = "user" if item.get("role") == "user" else "assistant"
-        content = str(item.get("content") or "")[:1500]
-        if content:
-            messages.append({"role": role, "content": content})
-    messages.append({
-        "role": "user",
-        "content": (
-            f"当前计划JSON：{json.dumps(document, ensure_ascii=False)}\n"
-            f"hotel_catalog：{json.dumps(_hotel_catalog(hotels), ensure_ascii=False)}\n"
-            f"用户本轮要求：{req.message}"
-        ),
-    })
-    raw = get_llm_client().chat(messages, temperature=0.1, max_tokens=5000)
-    return _parse_json_object(raw)
-
 
 def _resolve_hotel_names(values: list, query: str, hotels: list[dict]) -> tuple[str, ...]:
     known = [str(hotel.get("name")) for hotel in hotels if hotel.get("name")]
@@ -564,7 +570,6 @@ def _resolve_hotel_names(values: list, query: str, hotels: list[dict]) -> tuple[
         reverse=True,
     )
     return (scored[0][1],) if scored and scored[0][0] >= 0.35 else ()
-
 
 def _hotel_intent_from_decision(req: ChatTurnRequest, hotels: list[dict], data: dict) -> HotelIntent:
     hotel_request = data.get("hotel_request") if isinstance(data.get("hotel_request"), dict) else {}
@@ -605,7 +610,7 @@ def _hotel_intent_from_decision(req: ChatTurnRequest, hotels: list[dict], data: 
     if day_numbers:
         night_count = len(day_numbers)
     night_count = max(1, min(night_count or len(available) or req.days, len(available) or req.days))
-    return HotelIntent(
+    intent = HotelIntent(
         action=intent.action,
         target_tier=intent.target_tier,
         base_tier=base_tier,
@@ -613,28 +618,9 @@ def _hotel_intent_from_decision(req: ChatTurnRequest, hotels: list[dict], data: 
         requested_day_nos=day_numbers,
         requested_hotel_names=names,
     )
-
-
-def _extract_document_plans(data: dict, req: ChatTurnRequest) -> list[dict] | None:
-    document = data.get("plan_document")
-    if not isinstance(document, dict) or document.get("schema_version") != 1:
-        return None
-    trip = document.get("trip")
-    if not isinstance(trip, dict):
-        return None
-    # 行程元数据由业务系统维护，模型不得借修改内容之名改变预算、人数或城市。
-    expected = _trip_plan_document(req)["trip"]
-    if any(trip.get(key) != value for key, value in expected.items()):
-        return None
-    plans = document.get("days")
-    if not isinstance(plans, list) or len(plans) != req.days:
-        return None
-    valid_days = {int(plan.get("day_no")) for plan in plans if isinstance(plan, dict)
-                  and isinstance(plan.get("day_no"), int)}
-    if valid_days != set(range(1, req.days + 1)):
-        return None
-    return plans
-
+    # 入住晚次以用户本轮原话为准，不信任模型可能臆测的 day_numbers；同时
+    # 统一检查“最后一晚/第 N 晚/住 N 晚”是否落在实际有住宿安排的晚次内。
+    return _with_stay_scope(intent, req, hotels)
 
 def _hotel_signature(plans: list[dict]) -> list[tuple[int, str]]:
     return sorted(
@@ -643,73 +629,48 @@ def _hotel_signature(plans: list[dict]) -> list[tuple[int, str]]:
         for item in (plan.get("items") or []) if item.get("item_type") == "hotel"
     )
 
-
-def run_chat_turn(req: ChatTurnRequest) -> ChatTurnResponse:
-    hotels = tools.search_hotels(req.city, limit=30)
-    try:
-        decision = _decide_plan_change(req, hotels)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("unified plan decision failed: %s", exc)
-        # 仅在模型不可用时启用旧规则兜底；正常语义路由不依赖关键词。
-        if _is_hotel_request(req, hotels):
-            intent = _understand_hotel_intent(req, hotels)
-            options = _hotel_options(req, hotels, intent)
-            return ChatTurnResponse(
-                reply=_explain_hotel_options(req, options, intent) if options else "暂无可用酒店候选。",
-                plans=[], changed=False, hotel_options=options,
-                requires_confirmation=bool(options),
-                plan_document=_trip_plan_document(req),
-            )
-        raise
-
-    mode = str(decision.get("mode") or "no_change")
-    operations = decision.get("operations") if isinstance(decision.get("operations"), list) else []
-    if mode == "hotel_proposal":
-        intent = _hotel_intent_from_decision(req, hotels, decision)
-        options = _hotel_options(req, hotels, intent)
-        pending_action = {
-            "type": "replace_hotel",
-            "hotel_names": list(intent.requested_hotel_names),
-            "target_tier": intent.target_tier,
-            "day_numbers": list(intent.requested_day_nos),
-            "night_count": intent.requested_nights,
-            "requires_confirmation": True,
-        }
+def _hotel_proposal_response(
+    req: ChatTurnRequest, hotels: list[dict], intent: HotelIntent,
+    operations: list[dict] | None = None, fallback_reply: str | None = None,
+) -> ChatTurnResponse:
+    # 最终边界：无论意图来自 LLM 还是确定性兜底，都再次用本轮原话校正
+    # 入住晚次，防止模型输出的 day_numbers 覆盖“最后一晚/第 N 晚”等明确表达。
+    intent = _with_stay_scope(intent, req, hotels)
+    if not _available_hotel_day_nos(req) and not _has_explicit_stay_scope(req.message):
         return ChatTurnResponse(
-            reply=_explain_hotel_options(req, options, intent) if options
-            else str(decision.get("reply") or "没有找到符合条件的酒店候选。"),
-            plans=[], changed=False, hotel_options=options,
-            requires_confirmation=bool(options),
-            plan_document=_trip_plan_document(req),
-            operations=operations,
-            pending_action=pending_action,
+            reply=("### 当前没有可替换的住宿\n\n"
+                   "当前行程中没有已安排的住宿晚次，因此无法直接执行换酒店。"
+                   "请先补充入住日期或延长行程，本次没有修改。"),
+            plans=[], changed=False, hotel_options=[], requires_confirmation=False,
+            plan_document=_trip_plan_document(req), operations=operations or [],
         )
-
-    if mode == "plan_update":
-        plans = _extract_document_plans(decision, req)
-        if plans is None:
-            return ChatTurnResponse(
-                reply="### 无法生成安全草稿\n\n模型返回的计划结构或行程元数据不合法，本次未修改任何内容。",
-                plans=[], changed=False, plan_document=_trip_plan_document(req),
-            )
-        if _hotel_signature(plans) != _hotel_signature(req.plans):
-            return ChatTurnResponse(
-                reply="### 需要先确认住宿\n\n检测到酒店发生变化。请选择酒店和房型后再应用，本次没有直接修改行程。",
-                plans=[], changed=False, plan_document=_trip_plan_document(req),
-            )
-        updated_document = _trip_plan_document(req)
-        updated_document["days"] = plans
+    if intent.invalid_scope:
         return ChatTurnResponse(
-            reply=str(decision.get("reply") or "### 行程草稿已更新\n\n请确认后应用。"),
-            plans=plans,
-            changed=plans != req.plans,
-            plan_document=updated_document,
-            operations=operations,
+            reply=("### 入住晚次超出当前行程\n\n"
+                   f"当前行程只有 **{len(_available_hotel_day_nos(req))} 晚住宿安排**，"
+                   "请先延长行程，或改为当前行程中的具体入住晚次。行程没有被修改。"),
+            plans=[], changed=False, hotel_options=[], requires_confirmation=False,
+            plan_document=_trip_plan_document(req), operations=operations or [],
         )
-
+    options = _hotel_options(req, hotels, intent)
+    pending_action = {
+        "type": "replace_hotel",
+        "hotel_names": list(intent.requested_hotel_names),
+        "target_tier": intent.target_tier,
+        "day_numbers": list(intent.requested_day_nos),
+        "night_count": intent.requested_nights,
+        "requires_confirmation": True,
+    }
+    if options:
+        reply = _explain_hotel_options(req, options, intent)
+    else:
+        reply = fallback_reply or (
+            "### 暂时没有可展示的酒店候选\n\n"
+            "当前城市的酒店参考数据不足，暂时无法生成可选择的酒店和房型卡片；"
+            "行程没有被修改，请稍后重试或换一个住宿档次。"
+        )
     return ChatTurnResponse(
-        reply=str(decision.get("reply") or "本次没有需要修改的内容。"),
-        plans=[], changed=False,
-        plan_document=_trip_plan_document(req),
-        operations=operations,
+        reply=reply, plans=[], changed=False, hotel_options=options,
+        requires_confirmation=bool(options), plan_document=_trip_plan_document(req),
+        operations=operations or [], pending_action=pending_action,
     )

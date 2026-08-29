@@ -1,8 +1,22 @@
 # Travel Assistant one-click launcher
 # Starts redis(6380), backend-java(8080), agent-python(8000), frontend-vue(5173).
-# Services already running are skipped. Each service opens in its own console window.
+# Services already running are skipped. Background services run without extra console windows.
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# 使用项目级 uv 缓存，避免用户全局缓存路径异常导致 Agent 无法启动。
+$env:UV_CACHE_DIR = Join-Path $root ".uv-cache"
+
+# 加载根目录共享 .env 到当前进程环境变量，子服务自动继承（模块本地 .env / 真实环境变量仍可覆盖）
+$rootEnv = Join-Path $root ".env"
+if (Test-Path $rootEnv) {
+    Get-Content $rootEnv | ForEach-Object {
+        if ($_ -match '^\s*([^#=\s]+)\s*=\s*(.*)\s*$') {
+            Set-Item -Path "env:$($Matches[1])" -Value $Matches[2]
+        }
+    }
+    Write-Host "[env   ] loaded $rootEnv"
+}
 
 function Test-Port([int]$p) {
     return [bool](Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue)
@@ -10,7 +24,7 @@ function Test-Port([int]$p) {
 
 function Start-ServiceWindow([string]$title, [string]$workdir, [string]$cmdline) {
     $args_ = "/k title $title && cd /d `"$workdir`" && $cmdline"
-    Start-Process -FilePath "cmd.exe" -ArgumentList $args_
+    Start-Process -FilePath "cmd.exe" -ArgumentList $args_ -WindowStyle Hidden
 }
 
 Write-Host "=== Travel Assistant launcher ==="
@@ -19,7 +33,7 @@ Write-Host "=== Travel Assistant launcher ==="
 if (-not (Test-Port 6380)) {
     $redisExe = Join-Path $env:LOCALAPPDATA "Temp\opencode\redis\redis-server.exe"
     if (Test-Path $redisExe) {
-        Start-Process -FilePath $redisExe -ArgumentList "--port 6380" -WindowStyle Minimized
+        Start-Process -FilePath $redisExe -ArgumentList "--bind 127.0.0.1 --protected-mode yes --port 6380" -WindowStyle Minimized
         Write-Host "[start] redis      :6380"
     } else {
         Write-Warning "redis-server.exe not found at $redisExe - cache-dependent APIs will fail"
@@ -31,7 +45,7 @@ if (-not (Test-Port 6380)) {
 # --- backend java :8080 ---
 if (-not (Test-Port 8080)) {
     Start-ServiceWindow "backend-java" "$root\travel-backend-java" `
-        "mvn spring-boot:run -Dspring-boot.run.jvmArguments=-Dfile.encoding=UTF-8"
+        "mvn spring-boot:run `"-Dspring-boot.run.jvmArguments=-Dfile.encoding=UTF-8`""
     Write-Host "[start] backend-java :8080"
 } else {
     Write-Host "[skip ] backend-java :8080 already running"
@@ -78,4 +92,4 @@ while ($pending.Count -gt 0 -and (Get-Date) -lt $deadline) {
 foreach ($t in $pending) { Write-Host "[TIMEOUT] $($t.Name) not responding yet - check its window for errors" }
 
 Write-Host ""
-Write-Host "Done. Web UI: http://localhost:5173  (dev/dev123)"
+Write-Host "Done. Web UI: http://localhost:5173  (首次使用请先注册账号)"

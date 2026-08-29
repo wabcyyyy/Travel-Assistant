@@ -149,6 +149,11 @@ public class ItineraryController {
         return Result.ok(itineraryService.applyHotelOption(currentUserId(), id, request));
     }
 
+    @GetMapping("/preferences")
+    public Result<List<String>> topPreferences() {
+        return Result.ok(itineraryService.topPreferences(currentUserId(), 5));
+    }
+
     private Long currentUserId() {
         return userService.getByUsername(SecurityUtils.currentUsername()).getId();
     }

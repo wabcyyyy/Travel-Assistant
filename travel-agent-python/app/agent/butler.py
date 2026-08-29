@@ -15,7 +15,8 @@ def run_butler_note(req: dict) -> str:
         "你是一对一专属旅游管家。行程已按用户偏好安排完毕，请用管家的口吻向用户讲解你的安排思路："
         "为什么根据TA的偏好选这些点（若用户最初输入的是省份，先自然说明为什么首选该城市，"
         "并提到想去省内其他城市可随时调整）、节奏如何张弛、酒店怎么考虑、以及一条实用贴士。"
-        "亲切专业，250 字以内，分段用 \\n，不要用 markdown 标题符号。"
+        "亲切专业，250 字以内，分成 3~4 个自然段（段与段之间空一行），"
+        "不要用 markdown 标题符号，不要输出字面的反斜杠n或转义符。"
     )
     user = (
         f"用户最初输入的区域：{req.get('region_hint') or '同目的地'}。\n"
@@ -26,7 +27,8 @@ def run_butler_note(req: dict) -> str:
         f"系统校验日志：{json.dumps(req.get('validation_log') or [], ensure_ascii=False)}"
     )
     raw = client.complete(user, system_prompt=system, temperature=0.5, max_tokens=800)
-    return raw.strip()
+    # 兜底：模型仍可能输出字面 "\n"，统一还原为真实换行
+    return raw.strip().replace("\\n", "\n")
 
 
 def run_poi_intros(city: str, names: list[str]) -> dict:

@@ -47,13 +47,32 @@
         }
       }
     },
-    "/api/agent/test-generate": {
+    "/api/agent/v1/metrics": {
       "get": {
         "tags": [
           "agent"
         ],
-        "summary": "Test Generate",
-        "operationId": "test_generate_api_agent_test_generate_get",
+        "summary": "Agent Metrics",
+        "description": "返回进程内聚合指标；生产环境应替换为 Prometheus/OTel exporter。",
+        "operationId": "agent_metrics_api_agent_v1_metrics_get",
+        "parameters": [
+          {
+            "name": "x-agent-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Token"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -61,6 +80,125 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_dict_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/v1/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Agent Run Trace",
+        "description": "查询最近一次运行的脱敏轨迹；轨迹过期后返回 404。",
+        "operationId": "agent_run_trace_api_agent_v1_runs__run_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "x-agent-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/test-generate": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Test Generate",
+        "description": "开发联通性样例；配置内部 token 后不允许匿名访问。",
+        "operationId": "test_generate_api_agent_test_generate_get",
+        "parameters": [
+          {
+            "name": "x-agent-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_dict_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -429,15 +567,33 @@
         ],
         "summary": "Chat Turn",
         "operationId": "chat_turn_api_agent_v1_chat_turn_post",
+        "parameters": [
+          {
+            "name": "x-agent-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Token"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ChatTurnRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -470,7 +626,26 @@
         ],
         "summary": "Butler Note",
         "operationId": "butler_note_api_agent_v1_butler_note_post",
+        "parameters": [
+          {
+            "name": "x-agent-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Token"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -478,8 +653,7 @@
                 "title": "Req"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -512,7 +686,26 @@
         ],
         "summary": "Poi Intros",
         "operationId": "poi_intros_api_agent_v1_poi_intros_post",
+        "parameters": [
+          {
+            "name": "x-agent-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Token"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -520,8 +713,7 @@
                 "title": "Req"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -554,7 +746,26 @@
         ],
         "summary": "City Guide",
         "operationId": "city_guide_api_agent_v1_city_guide_post",
+        "parameters": [
+          {
+            "name": "x-agent-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Agent-Token"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
@@ -562,8 +773,7 @@
                 "title": "Req"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -1231,6 +1441,17 @@
             "title": "Dayno",
             "default": 1
           },
+          "days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days"
+          },
           "usedNames": {
             "items": {
               "type": "string"
@@ -1264,6 +1485,12 @@
             "type": "boolean",
             "title": "Needshotel",
             "default": true
+          },
+          "feedback": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Feedback",
+            "default": ""
           },
           "context": {
             "type": "object",
@@ -1390,6 +1617,27 @@
               }
             ],
             "title": "Pricenote"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "degraded",
+              "failed"
+            ],
+            "title": "Status",
+            "default": "success"
+          },
+          "statusReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statusreason"
           }
         },
         "type": "object",
@@ -1931,6 +2179,17 @@
             ],
             "title": "Durationmin"
           },
+          "openTime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opentime"
+          },
           "cost": {
             "anyOf": [
               {
@@ -1963,6 +2222,17 @@
               }
             ],
             "title": "Remark"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
           }
         },
         "type": "object",

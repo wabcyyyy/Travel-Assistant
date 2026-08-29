@@ -20,7 +20,7 @@
       </div>
       <el-card v-if="detail.planNote" shadow="never" class="butler-card">
         <div class="butler-head">🧳 AI 管家说</div>
-        <p class="butler-text">{{ detail.planNote }}</p>
+        <p class="butler-text">{{ butlerNote }}</p>
       </el-card>
       <div class="head-info">
         <h2>{{ detail.title }}</h2>
@@ -131,13 +131,13 @@
         </div>
         <div v-if="nlLoading" class="chat-thinking">
           <el-icon class="is-loading"><Loading /></el-icon>
-          正在理解需求并核对行程、预算与可选方案，请稍候…
+          {{ nlLoadingHint }}
         </div>
         </div>
         <div class="chat-input">
           <el-input
             v-model="nlInstruction"
-            placeholder="想怎么改？例如：酒店换成奢华的 / 第二天别太赶 / 删掉楼外楼"
+            placeholder="想怎么改？例如：换个酒店档次 / 调整某天节奏 / 删掉或替换某个景点"
             @keyup.enter="onChatSend"
           />
           <el-button :loading="nlLoading" @click="onChatSend">发送</el-button>
@@ -200,8 +200,8 @@
               >
                 <div class="poi-img">
                   <img
-                    v-if="element.longitude && element.latitude && imgFailed[element.id!] !== true"
-                    :src="imgFailed[element.id!] === false ? staticMapUrl(element) : poiImgUrl(element)"
+                    v-if="element.longitude && element.latitude && imgLevel(element) < 2"
+                    :src="imgSrc(element)"
                     :alt="element.poiName"
                     loading="lazy"
                     @error="onImgError(element)"
@@ -226,7 +226,23 @@
                     </span>
                     <span v-if="element.tag">{{ element.tag }}</span>
                   </div>
-                  <p v-if="(element.intro || element.description)" class="poi-desc">{{ element.intro || element.description }}</p>
+                  <p
+                    v-if="(element.intro || element.description)"
+                    class="poi-desc"
+                    :class="{ expanded: descExpanded[element.id!] }"
+                  >
+                    {{ element.intro || element.description }}
+                  </p>
+                  <el-button
+                    v-if="(element.intro || element.description) && descLong(element)"
+                    class="poi-desc-toggle"
+                    link
+                    type="primary"
+                    size="small"
+                    @click.stop="toggleDesc(element)"
+                  >
+                    {{ descExpanded[element.id!] ? '收起' : '展开全部' }}
+                  </el-button>
                   <p v-if="element.remark" class="poi-remark">{{ element.remark }}</p>
                 </div>
                 <div class="poi-actions">
@@ -362,6 +378,7 @@ const exportingPdf = ref(false)
 const exportingImg = ref(false)
 const nlInstruction = ref('')
 const nlLoading = ref(false)
+const nlLoadingHint = ref('正在理解需求并核对当前行程，请稍候…')
 const applying = ref(false)
 const chatMsgs = ref<ItineraryChatMessage[]>([])
 const draftChanged = ref(false)
@@ -397,8 +414,15 @@ async function onChatSend() {
   chatMsgs.value.push({ role: 'user', content: message })
   nlInstruction.value = ''
   nlLoading.value = true
+  nlLoadingHint.value = '正在理解需求并核对当前行程，请稍候…'
+  const controller = new AbortController()
+  // Agent 自身最多等待模型 60 秒，再为服务间返回预留 10 秒，避免页面无限转圈。
+  const hintTimer = window.setTimeout(() => {
+    nlLoadingHint.value = '正在生成结构化修改草稿，复杂行程可能需要几十秒…'
+  }, 12000)
+  const timeout = window.setTimeout(() => controller.abort(), 70000)
   try {
-    const res = await chatEditItinerary(detail.value.id, message, history)
+    const res = await chatEditItinerary(detail.value.id, message, history, controller.signal)
     const plans = (res.data.plans || []) as any[]
     const hotelOptions = res.data.hotelOptions || []
     if (plans.length || hotelOptions.length) {
@@ -426,12 +450,17 @@ async function onChatSend() {
     draftPlans.value = plans
     draftChanged.value = res.data.changed
   } catch (err: any) {
-    const message = err?.response?.data?.message || err?.message
+    const aborted = err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError'
+    const errorMessage = err?.response?.data?.message || err?.message
     chatMsgs.value.push({
       role: 'ai',
-      content: message ? `处理失败：${message}` : '这条没太理解，换个说法试试？',
+      content: aborted
+        ? '### 本次处理超时\n\n行程没有被修改。请稍后重试，或把要求拆成更短的一步再发送。'
+        : (errorMessage ? `处理失败：${errorMessage}` : '这条没太理解，换个说法试试？'),
     })
   } finally {
+    clearTimeout(hintTimer)
+    clearTimeout(timeout)
     nlLoading.value = false
   }
 }
@@ -637,32 +666,49 @@ const doneDays = computed(
 )
 const routeDay = ref(1)
 const amapReady = ref(!!import.meta.env.VITE_AMAP_JS_KEY)
-const imgFailed = ref<Record<number, boolean>>({})
+// 图片降级等级：0=实景图(行程自带/后端检索) → 1=地图位置图(保底) → 2=占位块
+const imgFailed = ref<Record<number, number>>({})
+
+function imgLevel(item: TripItem) {
+  return imgFailed.value[item.id!] ?? 0
+}
+
+function imgSrc(item: TripItem) {
+  if (imgLevel(item) >= 1) {
+    // 保底：高德静态地图位置图
+    return `/api/amap/staticmap?location=${item.longitude},${item.latitude}`
+  }
+  // 优先行程自带的实景图（维基/Unsplash），回退后端 Unsplash/高德实景检索
+  return (
+    item.image ||
+    `/api/amap/poi-photo?name=${encodeURIComponent(item.poiName)}&city=${encodeURIComponent(detail.value?.city ?? '')}`
+  )
+}
+
+function onImgError(item: TripItem) {
+  const id = item.id!
+  imgFailed.value[id] = (imgFailed.value[id] ?? 0) + 1
+}
+
+// 景点介绍长文本展开/收起
+const descExpanded = ref<Record<number, boolean>>({})
+
+function toggleDesc(item: TripItem) {
+  const id = item.id!
+  descExpanded.value[id] = !descExpanded.value[id]
+}
+
+function descLong(item: TripItem) {
+  return (item.intro || item.description || '').length > 60
+}
+
+// 管家讲解：把历史数据里字面的 "\n" 还原为真实换行
+const butlerNote = computed(() => (detail.value?.planNote || '').replace(/\\n/g, '\n'))
 
 const activeDay = computed(
   () => detail.value?.dayList.find((d) => d.dayNo === routeDay.value) ?? detail.value?.dayList[0],
 )
 const activeDayItems = computed(() => activeDay.value?.items ?? [])
-
-function poiImgUrl(item: TripItem) {
-  return `/api/amap/poi-photo?name=${encodeURIComponent(item.poiName)}&city=${encodeURIComponent(detail.value?.city ?? '')}`
-}
-
-function staticMapUrl(item: TripItem) {
-  return `/api/amap/staticmap?location=${item.longitude},${item.latitude}`
-}
-
-function onImgError(item: TripItem) {
-  const id = item.id!
-  const state = imgFailed.value[id]
-  if (state === undefined) {
-    // 第一级(实景图)失败 → 降级静态地图
-    imgFailed.value[id] = false
-  } else if (state === false) {
-    // 第二级(静态图)失败 → 占位块
-    imgFailed.value[id] = true
-  }
-}
 
 const TYPE_LABEL: Record<string, string> = {
   attraction: '景点',
@@ -787,7 +833,15 @@ async function onSaveEdit() {
   saving.value = true
   try {
     const res = await updateItem(editTarget.value.id!, {
+      // PUT 接口按完整地点信息更新；一并带回不可见字段，避免编辑时间后丢失地图坐标。
+      itemType: editTarget.value.itemType,
+      poiName: editTarget.value.poiName,
+      poiId: editTarget.value.poiId,
+      address: editTarget.value.address,
+      latitude: editTarget.value.latitude,
+      longitude: editTarget.value.longitude,
       startTime: editForm.value.startTime || undefined,
+      endTime: editTarget.value.endTime,
       durationMin: editForm.value.durationMin ?? undefined,
       cost: editForm.value.cost ?? undefined,
       tag: editForm.value.tag || undefined,
@@ -1156,8 +1210,8 @@ onUnmounted(() => {
 
 .poi-card {
   display: flex;
-  gap: 12px;
-  padding: 12px;
+  gap: 14px;
+  padding: 14px;
   margin-bottom: 12px;
   border: 1px solid var(--lp-border);
   border-radius: 12px;
@@ -1178,8 +1232,8 @@ onUnmounted(() => {
 }
 
 .poi-img {
-  width: 148px;
-  height: 96px;
+  width: 160px;
+  height: 104px;
   flex: none;
   border-radius: 8px;
   overflow: hidden;
@@ -1231,16 +1285,17 @@ onUnmounted(() => {
 .poi-meta {
   display: flex;
   gap: 12px;
-  margin-top: 4px;
+  margin-top: 6px;
   color: var(--lp-muted);
   font-size: 12px;
 }
 
 .poi-desc {
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.7;
   color: var(--lp-ink-soft);
+  word-break: break-word;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
@@ -1248,8 +1303,21 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.poi-desc.expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  overflow: visible;
+}
+
+.poi-desc-toggle {
+  height: auto;
+  padding: 0;
+  margin-top: 4px;
+}
+
 .poi-remark {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   font-size: 12px;
   color: var(--lp-muted);
 }
@@ -1258,8 +1326,14 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: center;
   gap: 2px;
   flex: none;
+}
+
+/* 竖排按钮去掉 Element Plus 相邻按钮的默认左外边距，保证上下对齐 */
+.poi-actions .el-button + .el-button {
+  margin-left: 0;
 }
 
 .drag-handle {

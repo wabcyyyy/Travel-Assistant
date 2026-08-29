@@ -8,68 +8,8 @@
         开始生成行程
       </el-button>
     </el-card>
-
-    <el-card class="conn">
-      <template #header>
-        <span>服务连通性自检</span>
-      </template>
-      <el-space direction="vertical" :size="12" style="width: 100%">
-        <el-alert
-          v-if="helloMsg"
-          :title="`Java 后端：${helloMsg}`"
-          type="success"
-          :closable="false"
-        />
-        <el-alert
-          v-if="agentMsg"
-          :title="`Python Agent：${agentMsg}`"
-          type="success"
-          :closable="false"
-        />
-        <el-alert
-          v-else-if="failed"
-          title="自检失败，请确认 MySQL / Java 后端 / Python Agent 均已启动"
-          type="error"
-          :closable="false"
-        />
-        <el-button :loading="checking" @click="checkConnectivity">重新自检</el-button>
-      </el-space>
-    </el-card>
   </div>
 </template>
-
-<script setup lang="ts">
-import { onMounted, ref } from 'vue'
-
-import { callAgent, getHello } from '../api'
-
-const checking = ref(false)
-const helloMsg = ref('')
-const agentMsg = ref('')
-const failed = ref(false)
-
-async function checkConnectivity() {
-  checking.value = true
-  failed.value = false
-  helloMsg.value = ''
-  agentMsg.value = ''
-  try {
-    const hello = await getHello()
-    helloMsg.value = hello.data
-  } catch {
-    failed.value = true
-  }
-  try {
-    const agent = await callAgent()
-    agentMsg.value = JSON.stringify(agent.data)
-  } catch {
-    failed.value = true
-  }
-  checking.value = false
-}
-
-onMounted(checkConnectivity)
-</script>
 
 <style scoped>
 .home {

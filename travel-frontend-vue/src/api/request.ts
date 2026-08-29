@@ -2,6 +2,11 @@ import axios, { type AxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '../router'
 
+export type ApiRequestConfig = AxiosRequestConfig & {
+  /** Optional background calls can fail without interrupting the current page. */
+  skipErrorMessage?: boolean
+}
+
 export interface ApiResult<T = unknown> {
   code: number
   message: string
@@ -31,26 +36,34 @@ request.interceptors.response.use(
     return res as unknown as typeof response
   },
   (error) => {
+    // 由具体页面展示更友好的超时说明，避免额外弹出英文 "canceled"。
+    if (axios.isCancel(error)) {
+      return Promise.reject(error)
+    }
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('username')
       router.push({ name: 'login' })
+      ElMessage.warning('登录已过期，请重新登录')
+      return Promise.reject(error)
     }
-    const message = error.response?.data?.message || error.message || '网络错误'
-    ElMessage.error(message)
+    if (!error.config?.skipErrorMessage) {
+      const message = error.response?.data?.message || error.message || '网络错误'
+      ElMessage.error(message)
+    }
     return Promise.reject(error)
   }
 )
 
-export function requestGet<T>(url: string, config?: AxiosRequestConfig): Promise<ApiResult<T>> {
+export function requestGet<T>(url: string, config?: ApiRequestConfig): Promise<ApiResult<T>> {
   return request.get<unknown, ApiResult<T>>(url, config)
 }
 
-export function requestPost<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiResult<T>> {
+export function requestPost<T>(url: string, data?: unknown, config?: ApiRequestConfig): Promise<ApiResult<T>> {
   return request.post<unknown, ApiResult<T>>(url, data, config)
 }
 
-export function requestDelete<T>(url: string, config?: AxiosRequestConfig): Promise<ApiResult<T>> {
+export function requestDelete<T>(url: string, config?: ApiRequestConfig): Promise<ApiResult<T>> {
   return request.delete<unknown, ApiResult<T>>(url, config)
 }
 

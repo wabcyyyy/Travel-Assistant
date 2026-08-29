@@ -9,6 +9,8 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -16,36 +18,46 @@ public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(BizException.class)
-    public Result<Void> handleBizException(BizException e) {
+    public ResponseEntity<Result<Void>> handleBizException(BizException e) {
         log.warn("business exception: {}", e.getMessage());
-        return Result.fail(e.getCode(), e.getMessage());
+        return ResponseEntity.status(httpStatus(e.getCode()))
+                .body(Result.fail(e.getCode(), e.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public Result<Void> handleValidationException(MethodArgumentNotValidException e) {
+    public ResponseEntity<Result<Void>> handleValidationException(MethodArgumentNotValidException e) {
         FieldError fieldError = e.getBindingResult().getFieldError();
         String message = fieldError == null ? "参数校验失败" : fieldError.getDefaultMessage();
-        return Result.fail(400, message);
+        return ResponseEntity.badRequest().body(Result.fail(400, message));
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
-    public Result<Void> handleMissingParam(MissingServletRequestParameterException e) {
-        return Result.fail(400, "缺少必填参数：" + e.getParameterName());
+    public ResponseEntity<Result<Void>> handleMissingParam(MissingServletRequestParameterException e) {
+        return ResponseEntity.badRequest().body(Result.fail(400, "缺少必填参数：" + e.getParameterName()));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    public Result<Void> handleMessageNotReadable(HttpMessageNotReadableException e) {
-        return Result.fail(400, "请求体格式错误");
+    public ResponseEntity<Result<Void>> handleMessageNotReadable(HttpMessageNotReadableException e) {
+        return ResponseEntity.badRequest().body(Result.fail(400, "请求体格式错误"));
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
-    public Result<Void> handleNoResourceFound(NoResourceFoundException e) {
-        return Result.fail(404, "接口不存在");
+    public ResponseEntity<Result<Void>> handleNoResourceFound(NoResourceFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Result.fail(404, "接口不存在"));
     }
 
     @ExceptionHandler(Exception.class)
-    public Result<Void> handleException(Exception e) {
+    public ResponseEntity<Result<Void>> handleException(Exception e) {
         log.error("unexpected error", e);
-        return Result.fail("系统繁忙，请稍后重试");
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Result.fail("系统繁忙，请稍后重试"));
+    }
+
+    private HttpStatus httpStatus(int code) {
+        try {
+            return HttpStatus.valueOf(code);
+        } catch (IllegalArgumentException e) {
+            return HttpStatus.INTERNAL_SERVER_ERROR;
+        }
     }
 }

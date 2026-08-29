@@ -46,4 +46,8 @@ public interface ItineraryService {
     List<String> supportedCities();
 
     Map<String, Object> cityGuide(String input, List<Map<String, Object>> history);
+
+    List<String> topPreferences(Long userId, int limit);
+
+    void recordPreferences(Long userId, List<String> preferences);
 }

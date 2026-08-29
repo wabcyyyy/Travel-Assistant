@@ -13,6 +13,8 @@ export interface TripItem {
   tag?: string | null
   remark?: string | null
   description?: string | null
+  intro?: string | null
+  image?: string | null
   sortNo?: number
 }
 

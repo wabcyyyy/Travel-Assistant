@@ -1,0 +1,271 @@
+{
+  "mode": "offline-fixture-fallback",
+  "case_count": 6,
+  "metrics": {
+    "poi_authority_rate": 1.0,
+    "field_reference_rate": 1.0,
+    "time_conflict_rate": 0.0,
+    "route_violation_rate": 0.0,
+    "attraction_duplicate_rate": 0.0,
+    "budget_deviation_rate": 0.0,
+    "success_status_rate": 0.0,
+    "degraded_status_rate": 1.0,
+    "failed_status_rate": 0.0,
+    "fallback_success_rate": 1.0,
+    "trace_complete_rate": 1.0
+  },
+  "details": [
+    {
+      "case": {
+        "city": "北京",
+        "days": 1,
+        "persons": 2,
+        "preferences": [
+          "人文历史"
+        ]
+      },
+      "status": "degraded",
+      "status_reason": "未配置 LLM，使用确定性 fallback",
+      "days": 1,
+      "total_items": 5,
+      "poi_authority_rate": 1.0,
+      "field_reference_rate": 1.0,
+      "time_conflict_rate": 0.0,
+      "route_violation_rate": 0.0,
+      "attraction_duplicate_rate": 0.0,
+      "budget_deviation_rate": 0.0,
+      "fallback_success": true,
+      "trace": {
+        "node_count": 5,
+        "tool_count": 4,
+        "nodes": [
+          "parse",
+          "search",
+          "generate",
+          "reflect",
+          "format"
+        ],
+        "tools": [
+          "fixture.search_attractions",
+          "fixture.search_foods",
+          "fixture.search_hotels",
+          "fixture.get_consumption"
+        ],
+        "routes": [
+          "fallback",
+          "pass"
+        ]
+      }
+    },
+    {
+      "case": {
+        "city": "上海",
+        "days": 2,
+        "persons": 2,
+        "preferences": [
+          "网红出片"
+        ]
+      },
+      "status": "degraded",
+      "status_reason": "未配置 LLM，使用确定性 fallback",
+      "days": 2,
+      "total_items": 10,
+      "poi_authority_rate": 1.0,
+      "field_reference_rate": 1.0,
+      "time_conflict_rate": 0.0,
+      "route_violation_rate": 0.0,
+      "attraction_duplicate_rate": 0.0,
+      "budget_deviation_rate": 0.0,
+      "fallback_success": true,
+      "trace": {
+        "node_count": 5,
+        "tool_count": 4,
+        "nodes": [
+          "parse",
+          "search",
+          "generate",
+          "reflect",
+          "format"
+        ],
+        "tools": [
+          "fixture.search_attractions",
+          "fixture.search_foods",
+          "fixture.search_hotels",
+          "fixture.get_consumption"
+        ],
+        "routes": [
+          "fallback",
+          "pass"
+        ]
+      }
+    },
+    {
+      "case": {
+        "city": "杭州",
+        "days": 3,
+        "persons": 3,
+        "preferences": [
+          "自然风光"
+        ]
+      },
+      "status": "degraded",
+      "status_reason": "未配置 LLM，使用确定性 fallback",
+      "days": 3,
+      "total_items": 15,
+      "poi_authority_rate": 1.0,
+      "field_reference_rate": 1.0,
+      "time_conflict_rate": 0.0,
+      "route_violation_rate": 0.0,
+      "attraction_duplicate_rate": 0.0,
+      "budget_deviation_rate": 0.0,
+      "fallback_success": true,
+      "trace": {
+        "node_count": 5,
+        "tool_count": 4,
+        "nodes": [
+          "parse",
+          "search",
+          "generate",
+          "reflect",
+          "format"
+        ],
+        "tools": [
+          "fixture.search_attractions",
+          "fixture.search_foods",
+          "fixture.search_hotels",
+          "fixture.get_consumption"
+        ],
+        "routes": [
+          "fallback",
+          "pass"
+        ]
+      }
+    },
+    {
+      "case": {
+        "city": "成都",
+        "days": 4,
+        "persons": 2,
+        "preferences": [
+          "美食"
+        ]
+      },
+      "status": "degraded",
+      "status_reason": "未配置 LLM，使用确定性 fallback",
+      "days": 4,
+      "total_items": 16,
+      "poi_authority_rate": 1.0,
+      "field_reference_rate": 1.0,
+      "time_conflict_rate": 0.0,
+      "route_violation_rate": 0.0,
+      "attraction_duplicate_rate": 0.0,
+      "budget_deviation_rate": 0.0,
+      "fallback_success": true,
+      "trace": {
+        "node_count": 5,
+        "tool_count": 4,
+        "nodes": [
+          "parse",
+          "search",
+          "generate",
+          "reflect",
+          "format"
+        ],
+        "tools": [
+          "fixture.search_attractions",
+          "fixture.search_foods",
+          "fixture.search_hotels",
+          "fixture.get_consumption"
+        ],
+        "routes": [
+          "fallback",
+          "pass"
+        ]
+      }
+    },
+    {
+      "case": {
+        "city": "西安",
+        "days": 2,
+        "persons": 4,
+        "preferences": [
+          "人文历史"
+        ]
+      },
+      "status": "degraded",
+      "status_reason": "未配置 LLM，使用确定性 fallback",
+      "days": 2,
+      "total_items": 10,
+      "poi_authority_rate": 1.0,
+      "field_reference_rate": 1.0,
+      "time_conflict_rate": 0.0,
+      "route_violation_rate": 0.0,
+      "attraction_duplicate_rate": 0.0,
+      "budget_deviation_rate": 0.0,
+      "fallback_success": true,
+      "trace": {
+        "node_count": 5,
+        "tool_count": 4,
+        "nodes": [
+          "parse",
+          "search",
+          "generate",
+          "reflect",
+          "format"
+        ],
+        "tools": [
+          "fixture.search_attractions",
+          "fixture.search_foods",
+          "fixture.search_hotels",
+          "fixture.get_consumption"
+        ],
+        "routes": [
+          "fallback",
+          "pass"
+        ]
+      }
+    },
+    {
+      "case": {
+        "city": "三亚",
+        "days": 5,
+        "persons": 2,
+        "preferences": [
+          "自然风光"
+        ]
+      },
+      "status": "degraded",
+      "status_reason": "未配置 LLM，使用确定性 fallback",
+      "days": 5,
+      "total_items": 19,
+      "poi_authority_rate": 1.0,
+      "field_reference_rate": 1.0,
+      "time_conflict_rate": 0.0,
+      "route_violation_rate": 0.0,
+      "attraction_duplicate_rate": 0.0,
+      "budget_deviation_rate": 0.0,
+      "fallback_success": true,
+      "trace": {
+        "node_count": 5,
+        "tool_count": 4,
+        "nodes": [
+          "parse",
+          "search",
+          "generate",
+          "reflect",
+          "format"
+        ],
+        "tools": [
+          "fixture.search_attractions",
+          "fixture.search_foods",
+          "fixture.search_hotels",
+          "fixture.get_consumption"
+        ],
+        "routes": [
+          "fallback",
+          "pass"
+        ]
+      }
+    }
+  ]
+}

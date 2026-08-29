@@ -1,3 +1,21 @@
+"""行程相关业务模型（请求/响应 Schema）。
+
+职责：
+- 定义生成、调整、澄清、编辑、对话、酒店等接口的入参与返回结构。
+
+实现要点：
+- 全部继承 WireModel，自动支持 camelCase 序列化；
+- GenerateRequest/GenerateResponse 描述整段行程生成；
+  ChatTurnRequest/ChatTurnResponse 承载对话式草稿编辑；
+  EditOp 描述结构化编辑操作（delete/add/update_time/move_day/upgrade_hotel）；
+- HotelOption/HotelRoomOption 封装酒店候选与预算判定结果。
+
+依赖：
+- app.schemas.common.WireModel。
+"""
+
+from typing import Literal
+
 from pydantic import Field
 
 from app.schemas.common import WireModel
@@ -23,10 +41,11 @@ class TripItem(WireModel):
     start_time: str | None = None
     end_time: str | None = None
     duration_min: int | None = None
+    open_time: str | None = None
     cost: float | None = None
     tag: str | None = None
     remark: str | None = None
-
+    image: str | None = None  # POI 图片 URL（高德检索，可选）
 
 class DailyPlan(WireModel):
     day_no: int
@@ -42,6 +61,8 @@ class GenerateResponse(WireModel):
     budget_estimate: dict[str, float] = Field(default_factory=dict)
     validation_log: list[str] = Field(default_factory=list)
     price_note: str | None = None
+    status: Literal["success", "degraded", "failed"] = "success"
+    status_reason: str | None = None
 
 
 class AdjustRequest(WireModel):
@@ -110,10 +131,12 @@ class GenerateDayRequest(WireModel):
     budget: float | None = None
     start_date: str | None = None
     day_no: int = 1
+    days: int | None = None  # 整个行程总天数，用于按总时长调整当日节奏；不传则按单日处理
     used_names: list[str] = Field(default_factory=list)
     hotel_tier: str | None = None
     chosen_hotel: str | None = None
     needs_hotel: bool = True
+    feedback: str = Field(default="", max_length=4000)
     context: dict = Field(default_factory=dict)
 
 

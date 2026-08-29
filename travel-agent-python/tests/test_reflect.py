@@ -1,4 +1,4 @@
-from app.agent.reflect import build_feedback, parse_time, validate_plans
+from app.agent.reflect import build_feedback, estimate_transfer_minutes, parse_time, validate_plans
 from app.rag.embeddings import embed
 
 
@@ -42,6 +42,36 @@ def test_validate_conflict_and_open_time():
     issues, _ = validate_plans(plans)
     assert any("时间冲突" in i for i in issues)
     assert any("开放时间不符" in i for i in issues)
+
+
+def test_validate_requires_full_opening_window():
+    plans = [{"day_no": 1, "items": [{
+        "item_type": "attraction", "poi_name": "闭馆前进不去",
+        "start_time": "16:00", "end_time": "18:00", "open_time": "09:00-17:00",
+    }]}]
+    issues, _ = validate_plans(plans)
+    assert any("开放时间不符" in i for i in issues)
+
+
+def test_route_constraint_uses_coordinates_and_reports_tolerant_gap():
+    far = [{"day_no": 1, "items": [
+        {"item_type": "attraction", "poi_name": "远点A", "start_time": "09:00", "end_time": "10:00",
+         "latitude": 30.0, "longitude": 120.0},
+        {"item_type": "attraction", "poi_name": "远点B", "start_time": "10:30", "end_time": "12:00",
+         "latitude": 30.2, "longitude": 120.0},
+    ]}]
+    issues, _ = validate_plans(far)
+    assert any("路线时间不足" in i for i in issues)
+    assert estimate_transfer_minutes(far[0]["items"][0], far[0]["items"][1]) > 30
+
+    close = [{"day_no": 1, "items": [
+        {"item_type": "attraction", "poi_name": "近点A", "start_time": "09:00", "end_time": "10:00",
+         "latitude": 30.0, "longitude": 120.0},
+        {"item_type": "attraction", "poi_name": "近点B", "start_time": "10:20", "end_time": "12:00",
+         "latitude": 30.005, "longitude": 120.005},
+    ]}]
+    close_issues, _ = validate_plans(close)
+    assert not any("路线时间不足" in i for i in close_issues)
 
 
 def test_validate_saturation_hotel_excluded():

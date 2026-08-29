@@ -7,8 +7,6 @@ import json
 import logging
 from datetime import date
 
-import httpx
-
 from app.agent import tools
 from app.agent.generators import (
     _parse_json,
@@ -16,10 +14,16 @@ from app.agent.generators import (
     llm_generate,
     _pick_hotels,
 )
-from app.agent.tools import search_attractions, search_foods, search_hotels
+from app.agent.tools import (
+    attach_poi_images,
+    search_attractions,
+    search_foods,
+    search_hotels,
+)
 from app.common.config import settings
 from app.common.llm_client import get_llm_client
 from app.common.season import season_factor, season_label
+from app.agent.trace import traced
 from app.schemas.trip import DailyPlan, GenerateDayRequest, TripItem
 
 logger = logging.getLogger(__name__)
@@ -48,24 +52,35 @@ def _parse_date(s: str | None) -> date | None:
         return None
 
 
+@traced("llm", "llm.open_day")
 def _llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
     """开放模式：LLM 凭自身知识为任意城市/省份安排一天行程。"""
     client = get_llm_client()
-    if req.chosen_hotel:
-        hotel_hint = f"酒店固定为「{req.chosen_hotel}」，不得更换。"
+    total_days = req.days or 1
+    if total_days <= 3:
+        pace = "可安排 2-3 个景点"
     else:
+        pace = "安排 1-2 个景点（长途慢节奏，避免赶场）"
+    if req.chosen_hotel:
+        hotel_hint = f"酒店必须沿用「{req.chosen_hotel}」，不得更换。"
+    elif req.needs_hotel:
         hotel_hint = "选一家当地知名舒适型酒店。"
+    else:
+        hotel_hint = ""
+    hotel_clause = "安排 1 家酒店；" if req.needs_hotel else "今日无需安排酒店；"
     system = (
         "你是资深当地导游。基于你的目的地知识为用户安排一天行程，只输出 JSON："
         '{"note":"当天主题","items":[{"item_type":"attraction|food|hotel","poi_name":"真实存在的地点名称",'
         '"start_time":"HH:mm","end_time":"HH:mm","duration_min":数字,"cost":人均人民币估算数字,"tag":"标签",'
         '"remark":"参考价"}]}。'
         "硬性要求：poi_name 必须是简洁的正式地点名（≤10 字，如「龙门石窟」「开封府」），"
-        "禁止写成描述性句子；安排 3 个景点+1 家餐饮+1 家酒店；"
+        f"禁止写成描述性句子；{pace}（依景点游玩时长与地理位置远近灵活调整，不赶场）+1 家餐饮+{hotel_clause}"
         f"{hotel_hint}"
         f"避开已去过的地点：{json.dumps(sorted(used), ensure_ascii=False)}。"
         "免费景点 cost 写 0；其余 cost 为合理人民币估算，不要写 0。"
     )
+    if req.feedback:
+        system += f"上一轮确定性校验发现以下问题，本轮必须修正：{req.feedback}"
     raw = client.complete(
         f"目的地：{req.city}（第 {req.day_no} 天，{req.persons} 人）",
         system_prompt=system,
@@ -78,8 +93,8 @@ def _llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
 
 
 def _amap_ground(item: dict, city: str, cache: dict) -> None:
-    """高德 POI 检索落坐标/地址（省份等模糊 city 自动降级重试）。"""
-    if not settings.amap_web_key or item.get("latitude") is not None:
+    """通过高德 MCP/兼容适配器检索 POI，落坐标与地址。"""
+    if item.get("latitude") is not None:
         return
     key = f"{city}:{item.get('poi_name')}"
     if key in cache:
@@ -88,34 +103,23 @@ def _amap_ground(item: dict, city: str, cache: dict) -> None:
             item["latitude"] = hit["lat"]
             item["longitude"] = hit["lng"]
             item["address"] = hit.get("address")
+            if hit.get("photo"):
+                item["image"] = hit["photo"]
         return
     try:
-        def _search(params):
-            r = httpx.get("https://restapi.amap.com/v3/place/text",
-                          params=params, timeout=10)
-            return r.json().get("pois") or []
-
-        base = {"keywords": (item.get("poi_name") or "")[:12], "offset": 1,
-                "key": settings.amap_web_key}
-        pois = _search({**base, "city": city, "citylimit": "true"})
-        if not pois:
-            pois = _search({**base, "city": city})
-        if not pois:
-            pois = _search(base)
+        pois = tools.search_amap_poi(city, item.get("poi_name") or "")
         if pois:
-            loc = (pois[0].get("location") or "").split(",")
-            if len(loc) == 2:
-                item["longitude"] = float(loc[0])
-                item["latitude"] = float(loc[1])
-                item["address"] = pois[0].get("address") or None
-                cost = pois[0].get("cost")
-                if cost and not item.get("cost"):
-                    try:
-                        item["cost"] = float(cost)
-                    except (TypeError, ValueError):
-                        pass
+            hit = pois[0]
+            if hit.get("longitude") is not None and hit.get("latitude") is not None:
+                item["longitude"] = float(hit["longitude"])
+                item["latitude"] = float(hit["latitude"])
+                item["address"] = hit.get("address") or None
+                if hit.get("ticket_price") is not None and not item.get("cost"):
+                    item["cost"] = float(hit["ticket_price"])
+                if hit.get("image"):
+                    item["image"] = hit["image"]
                 cache[key] = {"lat": item["latitude"], "lng": item["longitude"],
-                              "address": item.get("address")}
+                              "address": item.get("address"), "photo": hit.get("image")}
                 return
         cache[key] = None
     except Exception as e:  # noqa: BLE001
@@ -123,35 +127,99 @@ def _amap_ground(item: dict, city: str, cache: dict) -> None:
         cache[key] = None
 
 
-def run_generate_day(req: GenerateDayRequest) -> DailyPlan:
+def _canonicalize_known_plan(
+    plan: dict,
+    candidates: list[dict],
+    foods: list[dict],
+    hotels: list[dict],
+) -> dict:
+    """验证已知城市的模型结果，并用候选数据覆盖事实字段。
+
+    Prompt 只能降低幻觉概率，不能成为安全边界。这里把名称作为引用键，
+    不在候选池中的非交通项目直接拒绝；价格、坐标和营业时间不接受模型自填。
+    """
+    authority: dict[str, dict] = {}
+    for poi in candidates + foods + hotels:
+        name = str(poi.get("name") or "").strip()
+        if name and name not in authority:
+            authority[name] = poi
+
+    normalized_items: list[dict] = []
+    for raw_item in plan.get("items") or []:
+        if not isinstance(raw_item, dict) or not str(raw_item.get("poi_name") or "").strip():
+            raise ValueError("LLM 返回了缺少地点名称的行程项")
+        item = dict(raw_item)
+        name = str(item["poi_name"]).strip()
+        item["poi_name"] = name
+        if item.get("item_type") == "transport":
+            # 交通是行程中的合成项，不要求对应 POI，但仍保留结构化时间字段。
+            normalized_items.append(item)
+            continue
+        poi = authority.get(name)
+        if poi is None:
+            raise ValueError(f"行程项「{name}」不在候选 POI 白名单中")
+        item["item_type"] = poi.get("category") or item.get("item_type") or "attraction"
+        item["poi_id"] = str(poi.get("id") or "") or None
+        item["address"] = poi.get("address")
+        item["latitude"] = poi.get("latitude")
+        item["longitude"] = poi.get("longitude")
+        item["duration_min"] = poi.get("duration_min")
+        item["open_time"] = poi.get("open_time")
+        item["tag"] = poi.get("tags")
+        if poi.get("ticket_price") is not None:
+            item["cost"] = float(poi["ticket_price"])
+        elif item["item_type"] in {"attraction", "food"}:
+            # 知识库 NULL 表示暂无门票/餐饮单价，不能让模型偷偷写入价格。
+            item["cost"] = 0.0
+            item["remark"] = "知识库未提供价格，按0计，实际以现场为准"
+        else:
+            item["cost"] = 0.0
+            item["remark"] = "知识库未提供房价，需现场核实"
+        normalized_items.append(item)
+    normalized = dict(plan)
+    normalized["items"] = normalized_items
+    return normalized
+
+
+def _generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False) -> tuple[DailyPlan, str]:
+    """执行一次单日生成。
+
+    该函数只负责一次候选生成和确定性补水，反思/重试由 day_workflow 统一编排，
+    避免 Java 逐日调用时绕过 Agent 的质量闭环。
+    """
     ctx = req.context or {}
     candidates = _filter_used(ctx.get("candidates") or [], set(req.used_names))
     foods = _filter_used(ctx.get("foods") or [], set(req.used_names))
     hotels = _pick_hotels(ctx.get("hotels") or [], req.hotel_tier, 3)
     consumption = ctx.get("consumption")
 
-    feedback = ""
+    feedback = req.feedback or ""
     if req.chosen_hotel:
-        feedback = f"酒店必须沿用「{req.chosen_hotel}」，不得更换。"
+        hotel_feedback = f"酒店必须沿用「{req.chosen_hotel}」，不得更换。"
+        feedback = f"{feedback}；{hotel_feedback}" if feedback else hotel_feedback
 
     if not candidates:
+        if force_fallback:
+            raise ValueError(f"{req.city} 没有可用于确定性兜底的候选景点")
         # 开放模式：知识库无该城市，LLM 凭自身知识安排，坐标由高德落点
         plan = _llm_open_day(req, set(req.used_names))
         source = "open"
-    elif settings.llm_api_key:
+    elif settings.llm_api_key and not force_fallback:
         try:
             plans, _budget = llm_generate(
                 req.city, 1, req.persons, [],
                 candidates, foods, consumption,
                 feedback=feedback, hotels=hotels or None,
+                pace_days=req.days,
             )
-            plan = plans[0]
+            plan = _canonicalize_known_plan(plans[0], candidates, foods, hotels)
             source = "llm"
         except Exception as e:  # noqa: BLE001
             logger.warning("day %s llm failed: %s", req.day_no, e)
             plans, _budget = fallback_generate(
                 req.city, 1, req.persons, [], hotels or None, req.hotel_tier,
                 attractions=candidates, foods=foods, consumption=consumption,
+                pace_days=req.days,
             )
             plan = plans[0]
             source = "fallback"
@@ -159,9 +227,13 @@ def run_generate_day(req: GenerateDayRequest) -> DailyPlan:
         plans, _budget = fallback_generate(
             req.city, 1, req.persons, [], hotels or None, req.hotel_tier,
             attractions=candidates, foods=foods, consumption=consumption,
+            pace_days=req.days,
         )
         plan = plans[0]
         source = "fallback"
+
+    if source != "open":
+        attach_poi_images([plan], req.city)
 
     lookup: dict[str, dict] = {}
     for poi in (candidates or []) + (foods or []):
@@ -185,6 +257,8 @@ def run_generate_day(req: GenerateDayRequest) -> DailyPlan:
                 item["poi_id"] = str(poi.get("id") or "")
             if item.get("cost") is None and poi.get("ticket_price") is not None:
                 item["cost"] = float(poi["ticket_price"])
+            if item.get("open_time") is None:
+                item["open_time"] = poi.get("open_time")
         if source == "open":
             _amap_ground(item, req.city, ground_cache)
 
@@ -204,4 +278,12 @@ def run_generate_day(req: GenerateDayRequest) -> DailyPlan:
     note = plan.get("note") or f"第 {req.day_no} 天行程"
     if source == "open":
         note = (note + "（开放模式，价格供参考）").strip()
-    return DailyPlan(day_no=req.day_no, note=note, items=items)
+    return DailyPlan(day_no=req.day_no, note=note, items=items), source
+
+
+def run_generate_day(req: GenerateDayRequest) -> DailyPlan:
+    """通过 LangGraph 执行单日生成闭环，保持原有 HTTP 契约不变。"""
+    # 延迟导入是为了让 day_workflow 复用本模块的单次执行函数时不形成循环导入。
+    from app.agent.day_workflow import run_day_agent
+
+    return run_day_agent(req)

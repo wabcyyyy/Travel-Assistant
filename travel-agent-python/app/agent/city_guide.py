@@ -49,9 +49,13 @@ def run_city_guide(req: dict) -> dict:
         elif isinstance(s, str):
             suggestions.append({"name": s, "reason": ""})
 
+    city = data.get("city")
+    kind = str(data.get("kind") or "unclear")
+    if city and kind in {"province", "city"}:
+        kind = "city"
     return {
-        "kind": str(data.get("kind") or "unclear"),
-        "city": data.get("city"),
+        "kind": kind,
+        "city": city,
         "message": str(data.get("message") or "想去哪里玩？说说你的想法～"),
         "suggestions": suggestions[:3],
     }

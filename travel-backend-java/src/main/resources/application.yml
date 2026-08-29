@@ -1,5 +1,6 @@
 server:
   port: 8080
+  address: ${SERVER_ADDRESS:127.0.0.1}
 
 spring:
   application:
@@ -8,7 +9,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DB:travel_assistant}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: ${MYSQL_USER:root}
-    password: ${MYSQL_PASSWORD:root}
+    password: ${MYSQL_PASSWORD:}
     hikari:
       connection-init-sql: SET NAMES utf8mb4
   data:
@@ -36,13 +37,17 @@ mybatis-plus:
 
 app:
   jwt:
-    secret: ${JWT_SECRET:travel-assistant-jwt-secret-key-for-dev-0123456789abcdef}
+    secret: ${JWT_SECRET:}
     expire-hours: 24
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   agent:
     base-url: ${AGENT_SERVICE_URL:http://localhost:8000}
     internal-token: ${AGENT_INTERNAL_TOKEN:}
   amap:
     web-key: ${AMAP_WEB_KEY:}
+  unsplash:
+    access-key: ${UNSPLASH_ACCESS_KEY:}
   export:
     dir: ${EXPORT_DIR:data/export}
 

@@ -1,3 +1,19 @@
+"""行程内容的生成器：同时提供 LLM 生成与确定性兜底两条路线。
+
+职责：
+- llm_generate：调用 LLM 按 JSON Schema 生成每日计划与预算，带结构校验与解析修复；
+- fallback_generate：LLM 不可用时的确定性兜底，按时间槽 + 最近邻顺序排布景点/餐饮/酒店；
+- dedupe_daily_plans：去除跨天重复景点/餐饮（优先用候选池替换，酒店不动）；
+- 预算估算与 LLM 输出 JSON 解析等工具函数。
+
+实现要点：
+- LLM 只能从候选列表里选 POI，价格取候选原值或城市消费系数估算，严禁编造；
+- fallback_generate 用 geo.nearest_neighbor_order 串路线，生成后统一走 dedupe_daily_plans；
+- 两条路线对外返回相同的 (daily_plans, budget) 结构，供 workflow 统一消费。
+
+依赖：tools（检索候选）、geo（最近邻排序）、llm_client。
+"""
+
 import decimal
 import json
 import logging
@@ -5,6 +21,7 @@ from math import ceil
 
 from app.agent import tools
 from app.agent.geo import nearest_neighbor_order
+from app.agent.trace import traced
 from app.common.config import settings
 from app.common.llm_client import get_llm_client
 
@@ -16,12 +33,37 @@ def _json_default(o):
         return float(o)
     return str(o)
 
-ATTRACTIONS_PER_DAY = 3
 TIME_SLOTS = [
     ("09:00", "11:30"),
     ("13:30", "16:00"),
     ("19:00", "20:30"),
 ]
+THREE_ATTRACTION_SLOTS = [
+    ("09:00", "11:00"),
+    ("13:30", "15:30"),
+    ("16:00", "18:00"),
+]
+
+
+def _daily_attraction_target(days: int) -> int:
+    """确定性兜底的每日景点数：总天数越长，每日安排越精简、节奏越舒适。"""
+    # 两个景点能为跨城移动和用餐保留足够缓冲；短途也不以堆景点换取数量。
+    return 2
+
+
+def _pace_guidance(days: int) -> tuple[str, str]:
+    """根据总行程天数给 LLM 的每日景点数量节奏建议：行程越长越慢。
+
+    返回 (每日景点数量建议, 节奏说明)。短途可紧凑多打卡，长途以舒适慢节奏为主，
+    具体数量仍由模型结合景点时长与距离灵活调整。
+    """
+    if days <= 2:
+        return "3 个景点", "短途行程可紧凑多打卡"
+    if days <= 4:
+        return "2-3 个景点", "中等节奏"
+    if days <= 7:
+        return "2 个景点", "放缓节奏，留出用餐与休息"
+    return "1-2 个景点", "长途旅行以舒适慢节奏为主，避免赶场"
 
 
 _TIER_KEYWORDS = {
@@ -56,7 +98,8 @@ def fallback_generate(city: str, days: int, persons: int, preferences: list[str]
                       hotel_tier: str | None = None,
                       attractions: list[dict] | None = None,
                       foods: list[dict] | None = None,
-                      consumption: dict | None = None) -> tuple[list[dict], dict]:
+                      consumption: dict | None = None,
+                      pace_days: int | None = None) -> tuple[list[dict], dict]:
     attractions = attractions if attractions is not None else tools.search_attractions(city, preferences)
     foods = foods if foods is not None else tools.search_foods(city)
     consumption = consumption if consumption is not None else tools.get_consumption(city)
@@ -68,16 +111,20 @@ def fallback_generate(city: str, days: int, persons: int, preferences: list[str]
         ordered = attractions
     for day_no in range(1, days + 1):
         items: list[dict] = []
-        for slot_index in range(ATTRACTIONS_PER_DAY):
+        for slot_index in range(_daily_attraction_target(pace_days or days)):
             poi = ordered[cursor % len(ordered)] if ordered else None
             cursor += 1
             if poi is None:
                 continue
-            start, end = TIME_SLOTS[slot_index]
+            slots = THREE_ATTRACTION_SLOTS if _daily_attraction_target(pace_days or days) >= 3 else TIME_SLOTS
+            start, end = slots[slot_index]
             items.append(_to_item(poi, start, end))
         if foods:
             food = foods[day_no % len(foods)]
-            items.append(_to_item(food, "18:00", "19:00"))
+            # 三景点日的 19:00 槽已经是最后一个景点，晚餐若紧接其后会
+            # 没有任何换乘余量；放到午间空档，给下午/晚间景点留出路线缓冲。
+            meal_start, meal_end = ("11:30", "12:30") if len(items) >= 3 else ("18:00", "19:00")
+            items.append(_to_item(food, meal_start, meal_end))
         tier_hotels = _pick_hotels(hotels, hotel_tier, 2)
         items.append(_hotel_item(city, consumption, tier_hotels or hotels, day_no))
         daily_plans.append({"day_no": day_no, "note": f"{city}第{day_no}天行程", "items": items})
@@ -86,14 +133,25 @@ def fallback_generate(city: str, days: int, persons: int, preferences: list[str]
     return daily_plans, budget
 
 
+@traced("llm", "llm.generate")
 def llm_generate(city: str, days: int, persons: int, preferences: list[str],
                  candidates: list[dict], foods: list[dict], consumption: dict | None,
                  feedback: str = "", hotels: list[dict] | None = None,
-                 hotel_tier: str | None = None) -> tuple[list[dict], dict]:
+                 hotel_tier: str | None = None,
+                 pace_days: int | None = None) -> tuple[list[dict], dict]:
     client = get_llm_client()
+    pace_days = pace_days or days
+    pace_target, pace_note = _pace_guidance(pace_days)
+    pace_clause = (
+        f"每天景点数量不固定为 3 个：整体行程共 {pace_days} 天，建议每天安排 {pace_target}（{pace_note}）。"
+        "具体数量请结合候选景点的游玩时长（duration_min）与相邻景点间的距离（候选含经纬度）灵活调整："
+        "单点耗时较长或景点间距离较远时，适当减少当日景点数，保证不赶场。"
+    )
     system_prompt = (
         "你是资深旅行规划师。只输出 JSON，不要输出任何其他文字，不要用 markdown 代码块。"
-        "景点和酒店必须从候选列表中选择，不得编造。每天安排 3 个景点、1 家餐饮、1 家酒店（同一酒店可多晚连住）。"
+        "景点和酒店必须从候选列表中选择，不得编造。"
+        + pace_clause +
+        "每天仍需安排 1 家餐饮、1 家酒店（同一酒店可多晚连住）。"
         "每个行程项的 cost 必须直接取候选数据中的 ticket_price 字段原值（单人单价；酒店为每晚单间基准价），"
         "候选里没有对应字段时用城市消费系数估算，严禁自行编造价格。"
         "必须严格遵守如下 JSON Schema（字段名、类型、嵌套结构完全一致）："
@@ -191,6 +249,49 @@ def _validate_plans(plans: list | None, days: int) -> list[dict]:
     return valid[:days]
 
 
+def dedupe_daily_plans(plans: list[dict], candidates: list[dict] | None = None,
+                       foods: list[dict] | None = None) -> list[dict]:
+    """去除整个行程中跨天重复的景点/餐饮。
+
+    重复项优先用候选池里尚未使用的同名类型 POI 替换，保持每日密度；候选用尽时直接丢弃。
+    酒店不被去重，避免破坏住宿安排。
+    """
+    if not plans:
+        return plans
+    used: set[str] = set()
+    attr_pool = [c for c in (candidates or []) if c.get("name")]
+    food_pool = [f for f in (foods or []) if f.get("name")]
+
+    def _take(pool: list[dict], idx: int):
+        while idx < len(pool):
+            cand = pool[idx]
+            idx += 1
+            if cand.get("name") not in used:
+                return cand, idx
+        return None, idx
+
+    attr_idx = food_idx = 0
+    for plan in plans:
+        kept: list[dict] = []
+        for item in plan.get("items") or []:
+            name = item.get("poi_name")
+            itype = item.get("item_type")
+            if itype in ("attraction", "food") and name:
+                if name in used:
+                    if itype == "attraction":
+                        repl, attr_idx = _take(attr_pool, attr_idx)
+                    else:
+                        repl, food_idx = _take(food_pool, food_idx)
+                    if repl:
+                        used.add(repl.get("name"))
+                        kept.append(_to_item(repl, item.get("start_time"), item.get("end_time")))
+                    continue
+                used.add(name)
+            kept.append(item)
+        plan["items"] = kept
+    return plans
+
+
 def _parse_json(raw: str) -> dict:
     text = raw.strip()
     if text.startswith("```"):
@@ -214,9 +315,11 @@ def _to_item(poi: dict, start: str, end: str) -> dict:
         "start_time": start,
         "end_time": end,
         "duration_min": poi.get("duration_min"),
+        "open_time": poi.get("open_time"),
         "cost": poi.get("ticket_price"),
         "tag": poi.get("tags"),
         "remark": None,
+        "image": poi.get("image"),
     }
 
 

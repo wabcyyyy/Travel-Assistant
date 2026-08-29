@@ -86,7 +86,7 @@ public class ItineraryAsyncPlanner {
                 }
                 evictCache();
             }
-            finish(userId, itineraryId);
+            finish(userId, itineraryId, request);
         } catch (Exception e) {
             log.error("async planning failed for itinerary {}", itineraryId, e);
             fail(itineraryId, e.getMessage());
@@ -154,7 +154,7 @@ public class ItineraryAsyncPlanner {
         }
     }
 
-    private void finish(Long userId, Long itineraryId) {
+    private void finish(Long userId, Long itineraryId, GenerateRequest request) {
         ItineraryMain main = mainMapper.selectById(itineraryId);
         if (main == null) {
             evictCache();
@@ -162,6 +162,8 @@ public class ItineraryAsyncPlanner {
         }
         main.setStatus(2);
         main.setTitle(main.getCity() + main.getDays() + "日游");
+        // 行程主体已经完成，先落定状态；管家讲解和景点介绍属于可选增强，不能阻塞完成状态。
+        mainMapper.updateById(main);
 
         // 管家讲解：基于最终行程生成安排思路
         try {

@@ -6,4 +6,5 @@ data/
 logs/
 *.log
 .pnpm-store/
+.uv-cache/
 node_modules/

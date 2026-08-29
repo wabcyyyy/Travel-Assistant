@@ -1,3 +1,17 @@
+"""知识库数据访问层（MySQL）：POI、城市消费、酒店房型查询。
+
+职责：
+- 对 poi_knowledge（景点/餐饮/酒店）、city_consumption、hotel_room_type 等表做查询；
+- 提供按城市/类别/名称/多城市/全量的检索，以及城市消费系数与酒店房型查询。
+
+实现要点：
+- 用 pymysql 直连 settings 配置的数据库，统一 try/except 吞掉异常并记日志，
+  查询失败返回空列表/None 而非抛错，保证上游检索链路不中断；
+- 是 tools 层（RAG + 知识库混合检索）最终回退到的权威数据来源。
+
+依赖：app.common.config.settings。
+"""
+
 import logging
 
 import pymysql
@@ -5,6 +19,24 @@ import pymysql
 from app.common.config import settings
 
 logger = logging.getLogger(__name__)
+
+_POI_COLUMNS = (
+    "id, city, name, category, address, latitude, longitude, ticket_price, duration_min, "
+    "open_time, tags, rating, description, source, source_updated_at"
+)
+
+
+def list_all_pois_with_status() -> tuple[list[dict], bool]:
+    """返回 POI 与查询是否成功，区分“空表”和“数据库暂不可用”。"""
+    sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge ORDER BY id"
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql)
+                return list(cursor.fetchall()), True
+    except Exception as e:
+        logger.error("list_all_pois failed: %s", e)
+        return [], False
 
 
 def _connect():
@@ -20,7 +52,7 @@ def _connect():
 
 
 def search_pois(city: str, category: str | None = None, limit: int = 50) -> list[dict]:
-    sql = "SELECT id, city, name, category, address, latitude, longitude, ticket_price, duration_min, open_time, tags, rating, description FROM poi_knowledge WHERE city = %s"
+    sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge WHERE city = %s"
     params: list = [city]
     if category:
         sql += " AND category = %s"
@@ -36,20 +68,87 @@ def search_pois(city: str, category: str | None = None, limit: int = 50) -> list
         return []
 
 
-def list_all_pois() -> list[dict]:
-    sql = "SELECT id, city, name, category, address, latitude, longitude, ticket_price, duration_min, open_time, tags, rating, description FROM poi_knowledge ORDER BY id"
+def search_pois_by_cities(cities: list[str], category: str | None = None, limit: int = 50) -> list[dict]:
+    """按多个规范化城市检索 POI，供省级目的地复用省内热门城市数据。"""
+    normalized = [str(city).strip() for city in cities if str(city).strip()]
+    if not normalized:
+        return []
+    placeholders = ",".join(["%s"] * len(normalized))
+    sql = (
+        f"SELECT {_POI_COLUMNS} FROM poi_knowledge "
+        f"WHERE city IN ({placeholders})"
+    )
+    params: list = list(normalized)
+    if category:
+        sql += " AND category = %s"
+        params.append(category)
+    sql += f" ORDER BY rating DESC LIMIT {int(limit)}"
     try:
         with _connect() as conn:
             with conn.cursor() as cursor:
-                cursor.execute(sql)
+                cursor.execute(sql, params)
                 return list(cursor.fetchall())
     except Exception as e:
-        logger.error("list_all_pois failed: %s", e)
+        logger.error("search_pois_by_cities failed: %s", e)
+        return []
+
+
+def search_poi_by_name(name: str, category: str | None = None) -> dict | None:
+    """在知识库中按名称兜底查询，名称仍需匹配候选/用户明确指定的酒店。"""
+    sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge WHERE name = %s"
+    params: list = [name]
+    if category:
+        sql += " AND category = %s"
+        params.append(category)
+    sql += " ORDER BY rating DESC LIMIT 1"
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params)
+                row = cursor.fetchone()
+                return row if row else None
+    except Exception as e:
+        logger.error("search_poi_by_name failed: %s", e)
+        return None
+
+
+def list_all_pois() -> list[dict]:
+    rows, _available = list_all_pois_with_status()
+    return rows
+
+
+def list_hotel_pois(city: str) -> list[dict]:
+    """完整枚举城市酒店，供档次/价格/房型比较使用，不使用 Top-K 截断。"""
+    sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge WHERE city = %s AND category = 'hotel' ORDER BY rating DESC, id"
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, (city,))
+                return list(cursor.fetchall())
+    except Exception as e:
+        logger.error("list_hotel_pois failed: %s", e)
+        return []
+
+
+def list_hotel_pois_by_cities(cities: list[str]) -> list[dict]:
+    """完整枚举多个城市的酒店，不做 Top-K 截断。"""
+    normalized = [str(city).strip() for city in cities if str(city).strip()]
+    if not normalized:
+        return []
+    placeholders = ",".join(["%s"] * len(normalized))
+    sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge WHERE city IN ({placeholders}) AND category = 'hotel' ORDER BY rating DESC, id"
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, normalized)
+                return list(cursor.fetchall())
+    except Exception as e:
+        logger.error("list_hotel_pois_by_cities failed: %s", e)
         return []
 
 
 def get_poi(city: str, name: str) -> dict | None:
-    sql = "SELECT id, city, name, category, address, latitude, longitude, ticket_price, duration_min, open_time, tags, rating, description FROM poi_knowledge WHERE city = %s AND name = %s LIMIT 1"
+    sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge WHERE city = %s AND name = %s LIMIT 1"
     try:
         with _connect() as conn:
             with conn.cursor() as cursor:

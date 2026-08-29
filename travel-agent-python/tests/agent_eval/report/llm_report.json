@@ -1,0 +1,5219 @@
+{
+  "mode": "real-llm",
+  "model": "qwen-plus",
+  "temperature": 0.3,
+  "prompt_version": "workflow-v2-authority-route-20260828",
+  "case_count": 6,
+  "run_count": 12,
+  "consistency_rate": 1.0,
+  "status_counts": {
+    "success": 0,
+    "degraded": 12,
+    "failed": 0
+  },
+  "aggregate_stats": {
+    "llm_calls": 60,
+    "retry_count": 26,
+    "fallback_count": 12,
+    "prompt_tokens": 383133,
+    "completion_tokens": 51388,
+    "total_tokens": 434521
+  },
+  "failed_cases": [],
+  "degraded_cases": [
+    {
+      "city": "北京",
+      "days": 1,
+      "persons": 2,
+      "preferences": [
+        "人文历史"
+      ]
+    },
+    {
+      "city": "上海",
+      "days": 2,
+      "persons": 2,
+      "preferences": [
+        "网红出片"
+      ]
+    },
+    {
+      "city": "杭州",
+      "days": 3,
+      "persons": 3,
+      "preferences": [
+        "自然风光"
+      ]
+    },
+    {
+      "city": "成都",
+      "days": 4,
+      "persons": 2,
+      "preferences": [
+        "美食"
+      ]
+    },
+    {
+      "city": "西安",
+      "days": 2,
+      "persons": 4,
+      "preferences": [
+        "人文历史"
+      ]
+    },
+    {
+      "city": "三亚",
+      "days": 5,
+      "persons": 2,
+      "preferences": [
+        "自然风光"
+      ]
+    }
+  ],
+  "details": [
+    {
+      "case": {
+        "city": "北京",
+        "days": 1,
+        "persons": 2,
+        "preferences": [
+          "人文历史"
+        ]
+      },
+      "consistent": true,
+      "signature1": "恭王府>南锣鼓巷",
+      "signature2": "恭王府>南锣鼓巷",
+      "run1": {
+        "run_id": "llm-北京-1-run1",
+        "status": "degraded",
+        "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+        "stats": {
+          "llm_calls": 4,
+          "tool_calls": 4,
+          "retry_count": 2,
+          "fallback_count": 1,
+          "prompt_tokens": 28422,
+          "completion_tokens": 2008,
+          "total_tokens": 30430
+        },
+        "trace": {
+          "run_id": "llm-北京-1-run1",
+          "events": [
+            {
+              "kind": "node",
+              "name": "parse",
+              "status": "ok",
+              "duration_ms": 0.01,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "北京 人文 历史 文化",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 22,
+                "lexical_count": 22,
+                "fused_count": 22,
+                "candidate_count": 22,
+                "top_k": 30,
+                "fallback": false,
+                "selected_poi_ids": {
+                  "type": "list",
+                  "size": 22
+                },
+                "duration_ms": 4.11
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_attractions",
+              "status": "ok",
+              "duration_ms": 136.91,
+              "metadata": {
+                "arg_count": 2,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "北京",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 3,
+                "lexical_count": 3,
+                "fused_count": 3,
+                "candidate_count": 3,
+                "top_k": 10,
+                "fallback": false,
+                "selected_poi_ids": [
+                  23,
+                  24,
+                  21
+                ],
+                "duration_ms": 1.59
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_foods",
+              "status": "ok",
+              "duration_ms": 1.62,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_hotels",
+              "status": "ok",
+              "duration_ms": 37.11,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.get_consumption",
+              "status": "ok",
+              "duration_ms": 29.74,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "node",
+              "name": "search",
+              "status": "ok",
+              "duration_ms": 205.47,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9344,
+                "completion_tokens": 566
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 13465.19,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 13465.27,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 3,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.57,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9522,
+                "completion_tokens": 696
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 16304.11,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 16304.17,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 2,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.07,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9453,
+                "completion_tokens": 713
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 16275.57,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 16275.63,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 2,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.1,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "pass",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_pass"
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fallback",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_retry_exhausted"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 103,
+                "completion_tokens": 33
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "run_status",
+              "status": "ok",
+              "metadata": {
+                "status": "degraded",
+                "final_issue_count": 0
+              }
+            },
+            {
+              "kind": "node",
+              "name": "format",
+              "status": "ok",
+              "duration_ms": 25475.53,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            }
+          ]
+        },
+        "quality": {
+          "case": {
+            "city": "北京",
+            "days": 1,
+            "persons": 2,
+            "preferences": [
+              "人文历史"
+            ]
+          },
+          "status": "degraded",
+          "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+          "days": 1,
+          "total_items": 4,
+          "poi_authority_rate": 1.0,
+          "field_reference_rate": 0.6667,
+          "time_conflict_rate": 0.0,
+          "route_violation_rate": 0.0,
+          "attraction_duplicate_rate": 0.0,
+          "budget_deviation_rate": 0.0,
+          "fallback_success": true,
+          "trace": {
+            "node_count": 9,
+            "tool_count": 4,
+            "nodes": [
+              "parse",
+              "search",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "format"
+            ],
+            "tools": [
+              "poi.search_attractions",
+              "poi.search_foods",
+              "poi.search_hotels",
+              "poi.get_consumption"
+            ],
+            "routes": [
+              "fix",
+              "fix",
+              "pass",
+              "fallback"
+            ]
+          }
+        }
+      },
+      "run2": {
+        "run_id": "llm-北京-1-run2",
+        "status": "degraded",
+        "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+        "stats": {
+          "llm_calls": 4,
+          "tool_calls": 4,
+          "retry_count": 2,
+          "fallback_count": 1,
+          "prompt_tokens": 28463,
+          "completion_tokens": 1992,
+          "total_tokens": 30455
+        },
+        "trace": {
+          "run_id": "llm-北京-1-run2",
+          "events": [
+            {
+              "kind": "node",
+              "name": "parse",
+              "status": "ok",
+              "duration_ms": 0.0,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "北京 人文 历史 文化",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 22,
+                "lexical_count": 22,
+                "fused_count": 22,
+                "candidate_count": 22,
+                "top_k": 30,
+                "fallback": false,
+                "selected_poi_ids": {
+                  "type": "list",
+                  "size": 22
+                },
+                "duration_ms": 4.63
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_attractions",
+              "status": "ok",
+              "duration_ms": 4.73,
+              "metadata": {
+                "arg_count": 2,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "北京",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 3,
+                "lexical_count": 3,
+                "fused_count": 3,
+                "candidate_count": 3,
+                "top_k": 10,
+                "fallback": false,
+                "selected_poi_ids": [
+                  23,
+                  24,
+                  21
+                ],
+                "duration_ms": 2.15
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_foods",
+              "status": "ok",
+              "duration_ms": 2.18,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_hotels",
+              "status": "ok",
+              "duration_ms": 41.15,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.get_consumption",
+              "status": "ok",
+              "duration_ms": 42.29,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "node",
+              "name": "search",
+              "status": "ok",
+              "duration_ms": 90.47,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9344,
+                "completion_tokens": 646
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 14812.68,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 14812.74,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 5,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.07,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9601,
+                "completion_tokens": 706
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 16625.06,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 16625.18,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 1,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.15,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9415,
+                "completion_tokens": 607
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 13942.95,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 13943.01,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 2,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.19,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "pass",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_pass"
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fallback",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_retry_exhausted"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 103,
+                "completion_tokens": 33
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "run_status",
+              "status": "ok",
+              "metadata": {
+                "status": "degraded",
+                "final_issue_count": 0
+              }
+            },
+            {
+              "kind": "node",
+              "name": "format",
+              "status": "ok",
+              "duration_ms": 1508.47,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            }
+          ]
+        },
+        "quality": {
+          "case": {
+            "city": "北京",
+            "days": 1,
+            "persons": 2,
+            "preferences": [
+              "人文历史"
+            ]
+          },
+          "status": "degraded",
+          "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+          "days": 1,
+          "total_items": 4,
+          "poi_authority_rate": 1.0,
+          "field_reference_rate": 0.6667,
+          "time_conflict_rate": 0.0,
+          "route_violation_rate": 0.0,
+          "attraction_duplicate_rate": 0.0,
+          "budget_deviation_rate": 0.0,
+          "fallback_success": true,
+          "trace": {
+            "node_count": 9,
+            "tool_count": 4,
+            "nodes": [
+              "parse",
+              "search",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "format"
+            ],
+            "tools": [
+              "poi.search_attractions",
+              "poi.search_foods",
+              "poi.search_hotels",
+              "poi.get_consumption"
+            ],
+            "routes": [
+              "fix",
+              "fix",
+              "pass",
+              "fallback"
+            ]
+          }
+        }
+      },
+      "failure_reasons": [
+        "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+        "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题"
+      ]
+    },
+    {
+      "case": {
+        "city": "上海",
+        "days": 2,
+        "persons": 2,
+        "preferences": [
+          "网红出片"
+        ]
+      },
+      "consistent": true,
+      "signature1": "上海迪士尼乐园>上海博物馆|世纪公园>田子坊",
+      "signature2": "上海迪士尼乐园>上海博物馆|世纪公园>田子坊",
+      "run1": {
+        "run_id": "llm-上海-2-run1",
+        "status": "degraded",
+        "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+        "stats": {
+          "llm_calls": 5,
+          "tool_calls": 4,
+          "retry_count": 2,
+          "fallback_count": 1,
+          "prompt_tokens": 28677,
+          "completion_tokens": 3187,
+          "total_tokens": 31864
+        },
+        "trace": {
+          "run_id": "llm-上海-2-run1",
+          "events": [
+            {
+              "kind": "node",
+              "name": "parse",
+              "status": "ok",
+              "duration_ms": 0.0,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "上海 网红 地标",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 21,
+                "lexical_count": 21,
+                "fused_count": 21,
+                "candidate_count": 21,
+                "top_k": 30,
+                "fallback": false,
+                "selected_poi_ids": {
+                  "type": "list",
+                  "size": 21
+                },
+                "duration_ms": 5.62
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_attractions",
+              "status": "ok",
+              "duration_ms": 5.71,
+              "metadata": {
+                "arg_count": 2,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "上海",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 4,
+                "lexical_count": 4,
+                "fused_count": 4,
+                "candidate_count": 4,
+                "top_k": 10,
+                "fallback": false,
+                "selected_poi_ids": [
+                  47,
+                  48,
+                  50,
+                  46
+                ],
+                "duration_ms": 3.12
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_foods",
+              "status": "ok",
+              "duration_ms": 3.17,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_hotels",
+              "status": "ok",
+              "duration_ms": 37.21,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.get_consumption",
+              "status": "ok",
+              "duration_ms": 25.04,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "node",
+              "name": "search",
+              "status": "ok",
+              "duration_ms": 71.22,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9305,
+                "completion_tokens": 846
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 19833.46,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 19833.84,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 5,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.11,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9573,
+                "completion_tokens": 1188
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 27133.62,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 27133.69,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 5,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.09,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9592,
+                "completion_tokens": 1086
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 24975.48,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 24975.55,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 5,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.1,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "pass",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_pass"
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fallback",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_retry_exhausted"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 102,
+                "completion_tokens": 33
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 105,
+                "completion_tokens": 34
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "run_status",
+              "status": "ok",
+              "metadata": {
+                "status": "degraded",
+                "final_issue_count": 0
+              }
+            },
+            {
+              "kind": "node",
+              "name": "format",
+              "status": "ok",
+              "duration_ms": 34697.39,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            }
+          ]
+        },
+        "quality": {
+          "case": {
+            "city": "上海",
+            "days": 2,
+            "persons": 2,
+            "preferences": [
+              "网红出片"
+            ]
+          },
+          "status": "degraded",
+          "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+          "days": 2,
+          "total_items": 8,
+          "poi_authority_rate": 1.0,
+          "field_reference_rate": 0.6667,
+          "time_conflict_rate": 0.0,
+          "route_violation_rate": 0.0,
+          "attraction_duplicate_rate": 0.0,
+          "budget_deviation_rate": 0.0,
+          "fallback_success": true,
+          "trace": {
+            "node_count": 9,
+            "tool_count": 4,
+            "nodes": [
+              "parse",
+              "search",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "format"
+            ],
+            "tools": [
+              "poi.search_attractions",
+              "poi.search_foods",
+              "poi.search_hotels",
+              "poi.get_consumption"
+            ],
+            "routes": [
+              "fix",
+              "fix",
+              "pass",
+              "fallback"
+            ]
+          }
+        }
+      },
+      "run2": {
+        "run_id": "llm-上海-2-run2",
+        "status": "degraded",
+        "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+        "stats": {
+          "llm_calls": 5,
+          "tool_calls": 4,
+          "retry_count": 2,
+          "fallback_count": 1,
+          "prompt_tokens": 28732,
+          "completion_tokens": 2931,
+          "total_tokens": 31663
+        },
+        "trace": {
+          "run_id": "llm-上海-2-run2",
+          "events": [
+            {
+              "kind": "node",
+              "name": "parse",
+              "status": "ok",
+              "duration_ms": 0.0,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "上海 网红 地标",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 21,
+                "lexical_count": 21,
+                "fused_count": 21,
+                "candidate_count": 21,
+                "top_k": 30,
+                "fallback": false,
+                "selected_poi_ids": {
+                  "type": "list",
+                  "size": 21
+                },
+                "duration_ms": 3.04
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_attractions",
+              "status": "ok",
+              "duration_ms": 3.1,
+              "metadata": {
+                "arg_count": 2,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "上海",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 4,
+                "lexical_count": 4,
+                "fused_count": 4,
+                "candidate_count": 4,
+                "top_k": 10,
+                "fallback": false,
+                "selected_poi_ids": [
+                  47,
+                  48,
+                  50,
+                  46
+                ],
+                "duration_ms": 1.16
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_foods",
+              "status": "ok",
+              "duration_ms": 1.19,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_hotels",
+              "status": "ok",
+              "duration_ms": 40.59,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.get_consumption",
+              "status": "ok",
+              "duration_ms": 27.17,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "node",
+              "name": "search",
+              "status": "ok",
+              "duration_ms": 72.13,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9305,
+                "completion_tokens": 815
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 18534.15,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 18534.24,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 5,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.11,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9573,
+                "completion_tokens": 1018
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 24726.05,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 24726.13,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 6,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.1,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9647,
+                "completion_tokens": 1031
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 23312.27,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 23312.35,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 2,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.09,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "pass",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_pass"
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fallback",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_retry_exhausted"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 102,
+                "completion_tokens": 33
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 105,
+                "completion_tokens": 34
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "run_status",
+              "status": "ok",
+              "metadata": {
+                "status": "degraded",
+                "final_issue_count": 0
+              }
+            },
+            {
+              "kind": "node",
+              "name": "format",
+              "status": "ok",
+              "duration_ms": 2460.75,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            }
+          ]
+        },
+        "quality": {
+          "case": {
+            "city": "上海",
+            "days": 2,
+            "persons": 2,
+            "preferences": [
+              "网红出片"
+            ]
+          },
+          "status": "degraded",
+          "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+          "days": 2,
+          "total_items": 8,
+          "poi_authority_rate": 1.0,
+          "field_reference_rate": 0.6667,
+          "time_conflict_rate": 0.0,
+          "route_violation_rate": 0.0,
+          "attraction_duplicate_rate": 0.0,
+          "budget_deviation_rate": 0.0,
+          "fallback_success": true,
+          "trace": {
+            "node_count": 9,
+            "tool_count": 4,
+            "nodes": [
+              "parse",
+              "search",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "format"
+            ],
+            "tools": [
+              "poi.search_attractions",
+              "poi.search_foods",
+              "poi.search_hotels",
+              "poi.get_consumption"
+            ],
+            "routes": [
+              "fix",
+              "fix",
+              "pass",
+              "fallback"
+            ]
+          }
+        }
+      },
+      "failure_reasons": [
+        "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+        "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题"
+      ]
+    },
+    {
+      "case": {
+        "city": "杭州",
+        "days": 3,
+        "persons": 3,
+        "preferences": [
+          "自然风光"
+        ]
+      },
+      "consistent": true,
+      "signature1": "杭州动物园>虎跑公园|花港观鱼>太子湾公园|苏堤春晓>西湖风景名胜区",
+      "signature2": "杭州动物园>虎跑公园|花港观鱼>太子湾公园|苏堤春晓>西湖风景名胜区",
+      "run1": {
+        "run_id": "llm-杭州-3-run1",
+        "status": "degraded",
+        "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+        "stats": {
+          "llm_calls": 5,
+          "tool_calls": 4,
+          "retry_count": 2,
+          "fallback_count": 1,
+          "prompt_tokens": 38295,
+          "completion_tokens": 3728,
+          "total_tokens": 42023
+        },
+        "trace": {
+          "run_id": "llm-杭州-3-run1",
+          "events": [
+            {
+              "kind": "node",
+              "name": "parse",
+              "status": "ok",
+              "duration_ms": 0.0,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "杭州 自然",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 21,
+                "lexical_count": 21,
+                "fused_count": 21,
+                "candidate_count": 21,
+                "top_k": 30,
+                "fallback": false,
+                "selected_poi_ids": {
+                  "type": "list",
+                  "size": 21
+                },
+                "duration_ms": 4.07
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_attractions",
+              "status": "ok",
+              "duration_ms": 4.14,
+              "metadata": {
+                "arg_count": 2,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "杭州",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 4,
+                "lexical_count": 4,
+                "fused_count": 4,
+                "candidate_count": 4,
+                "top_k": 10,
+                "fallback": false,
+                "selected_poi_ids": [
+                  148,
+                  147,
+                  150,
+                  149
+                ],
+                "duration_ms": 1.87
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_foods",
+              "status": "ok",
+              "duration_ms": 1.9,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_hotels",
+              "status": "ok",
+              "duration_ms": 37.84,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.get_consumption",
+              "status": "ok",
+              "duration_ms": 17.87,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "node",
+              "name": "search",
+              "status": "ok",
+              "duration_ms": 61.83,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 12546,
+                "completion_tokens": 1231
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 28395.98,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 28396.06,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 6,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.11,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 12884,
+                "completion_tokens": 1197
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 27517.14,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 27517.23,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 2,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.1,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 12655,
+                "completion_tokens": 1235
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 28333.6,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 28333.68,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 7,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.12,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "pass",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_pass"
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fallback",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_retry_exhausted"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 105,
+                "completion_tokens": 32
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 105,
+                "completion_tokens": 33
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "run_status",
+              "status": "ok",
+              "metadata": {
+                "status": "degraded",
+                "final_issue_count": 0
+              }
+            },
+            {
+              "kind": "node",
+              "name": "format",
+              "status": "ok",
+              "duration_ms": 46889.61,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            }
+          ]
+        },
+        "quality": {
+          "case": {
+            "city": "杭州",
+            "days": 3,
+            "persons": 3,
+            "preferences": [
+              "自然风光"
+            ]
+          },
+          "status": "degraded",
+          "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+          "days": 3,
+          "total_items": 12,
+          "poi_authority_rate": 1.0,
+          "field_reference_rate": 0.5556,
+          "time_conflict_rate": 0.0,
+          "route_violation_rate": 0.0,
+          "attraction_duplicate_rate": 0.0,
+          "budget_deviation_rate": 0.0,
+          "fallback_success": true,
+          "trace": {
+            "node_count": 9,
+            "tool_count": 4,
+            "nodes": [
+              "parse",
+              "search",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "format"
+            ],
+            "tools": [
+              "poi.search_attractions",
+              "poi.search_foods",
+              "poi.search_hotels",
+              "poi.get_consumption"
+            ],
+            "routes": [
+              "fix",
+              "fix",
+              "pass",
+              "fallback"
+            ]
+          }
+        }
+      },
+      "run2": {
+        "run_id": "llm-杭州-3-run2",
+        "status": "degraded",
+        "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+        "stats": {
+          "llm_calls": 5,
+          "tool_calls": 4,
+          "retry_count": 2,
+          "fallback_count": 1,
+          "prompt_tokens": 38195,
+          "completion_tokens": 3825,
+          "total_tokens": 42020
+        },
+        "trace": {
+          "run_id": "llm-杭州-3-run2",
+          "events": [
+            {
+              "kind": "node",
+              "name": "parse",
+              "status": "ok",
+              "duration_ms": 0.0,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "杭州 自然",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 21,
+                "lexical_count": 21,
+                "fused_count": 21,
+                "candidate_count": 21,
+                "top_k": 30,
+                "fallback": false,
+                "selected_poi_ids": {
+                  "type": "list",
+                  "size": 21
+                },
+                "duration_ms": 3.71
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_attractions",
+              "status": "ok",
+              "duration_ms": 3.77,
+              "metadata": {
+                "arg_count": 2,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "杭州",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 4,
+                "lexical_count": 4,
+                "fused_count": 4,
+                "candidate_count": 4,
+                "top_k": 10,
+                "fallback": false,
+                "selected_poi_ids": [
+                  148,
+                  147,
+                  150,
+                  149
+                ],
+                "duration_ms": 1.33
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_foods",
+              "status": "ok",
+              "duration_ms": 1.35,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_hotels",
+              "status": "ok",
+              "duration_ms": 29.58,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.get_consumption",
+              "status": "ok",
+              "duration_ms": 30.94,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "node",
+              "name": "search",
+              "status": "ok",
+              "duration_ms": 65.72,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 12546,
+                "completion_tokens": 1232
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 28059.3,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 28059.38,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 4,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.1,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 12784,
+                "completion_tokens": 1187
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 26737.8,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 26737.88,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 2,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.11,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 12655,
+                "completion_tokens": 1341
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 30782.54,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 30782.62,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 6,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.11,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "pass",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_pass"
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fallback",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_retry_exhausted"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 105,
+                "completion_tokens": 32
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 105,
+                "completion_tokens": 33
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "run_status",
+              "status": "ok",
+              "metadata": {
+                "status": "degraded",
+                "final_issue_count": 0
+              }
+            },
+            {
+              "kind": "node",
+              "name": "format",
+              "status": "ok",
+              "duration_ms": 2299.47,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            }
+          ]
+        },
+        "quality": {
+          "case": {
+            "city": "杭州",
+            "days": 3,
+            "persons": 3,
+            "preferences": [
+              "自然风光"
+            ]
+          },
+          "status": "degraded",
+          "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+          "days": 3,
+          "total_items": 12,
+          "poi_authority_rate": 1.0,
+          "field_reference_rate": 0.5556,
+          "time_conflict_rate": 0.0,
+          "route_violation_rate": 0.0,
+          "attraction_duplicate_rate": 0.0,
+          "budget_deviation_rate": 0.0,
+          "fallback_success": true,
+          "trace": {
+            "node_count": 9,
+            "tool_count": 4,
+            "nodes": [
+              "parse",
+              "search",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "format"
+            ],
+            "tools": [
+              "poi.search_attractions",
+              "poi.search_foods",
+              "poi.search_hotels",
+              "poi.get_consumption"
+            ],
+            "routes": [
+              "fix",
+              "fix",
+              "pass",
+              "fallback"
+            ]
+          }
+        }
+      },
+      "failure_reasons": [
+        "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+        "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题"
+      ]
+    },
+    {
+      "case": {
+        "city": "成都",
+        "days": 4,
+        "persons": 2,
+        "preferences": [
+          "美食"
+        ]
+      },
+      "consistent": true,
+      "signature1": "锦里古街>人民公园|东郊记忆>都江堰景区|成都欢乐谷>文殊院|青城山>洛带古镇",
+      "signature2": "锦里古街>人民公园|东郊记忆>都江堰景区|成都欢乐谷>文殊院|青城山>洛带古镇",
+      "run1": {
+        "run_id": "llm-成都-4-run1",
+        "status": "degraded",
+        "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+        "stats": {
+          "llm_calls": 5,
+          "tool_calls": 4,
+          "retry_count": 2,
+          "fallback_count": 1,
+          "prompt_tokens": 28884,
+          "completion_tokens": 5698,
+          "total_tokens": 34582
+        },
+        "trace": {
+          "run_id": "llm-成都-4-run1",
+          "events": [
+            {
+              "kind": "node",
+              "name": "parse",
+              "status": "ok",
+              "duration_ms": 0.0,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "成都 美食",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 20,
+                "lexical_count": 20,
+                "fused_count": 20,
+                "candidate_count": 20,
+                "top_k": 30,
+                "fallback": false,
+                "selected_poi_ids": [
+                  52,
+                  66,
+                  64,
+                  59,
+                  70,
+                  53,
+                  56,
+                  54,
+                  55,
+                  57,
+                  51,
+                  58,
+                  62,
+                  63,
+                  61,
+                  65,
+                  60,
+                  67,
+                  69,
+                  68
+                ],
+                "duration_ms": 3.32
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_attractions",
+              "status": "ok",
+              "duration_ms": 3.37,
+              "metadata": {
+                "arg_count": 2,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "成都",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 5,
+                "lexical_count": 5,
+                "fused_count": 5,
+                "candidate_count": 5,
+                "top_k": 10,
+                "fallback": false,
+                "selected_poi_ids": [
+                  71,
+                  74,
+                  72,
+                  73,
+                  75
+                ],
+                "duration_ms": 1.53
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_foods",
+              "status": "ok",
+              "duration_ms": 1.55,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_hotels",
+              "status": "ok",
+              "duration_ms": 40.41,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.get_consumption",
+              "status": "ok",
+              "duration_ms": 38.45,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "node",
+              "name": "search",
+              "status": "ok",
+              "duration_ms": 83.86,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9251,
+                "completion_tokens": 1790
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 40326.15,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 40326.24,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 8,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.12,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9740,
+                "completion_tokens": 1929
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 43402.08,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 43402.16,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 7,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.13,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9684,
+                "completion_tokens": 1914
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 43383.51,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 43383.65,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 5,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.14,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "pass",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_pass"
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fallback",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_retry_exhausted"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 103,
+                "completion_tokens": 33
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 106,
+                "completion_tokens": 32
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "run_status",
+              "status": "ok",
+              "metadata": {
+                "status": "degraded",
+                "final_issue_count": 0
+              }
+            },
+            {
+              "kind": "node",
+              "name": "format",
+              "status": "ok",
+              "duration_ms": 96692.19,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            }
+          ]
+        },
+        "quality": {
+          "case": {
+            "city": "成都",
+            "days": 4,
+            "persons": 2,
+            "preferences": [
+              "美食"
+            ]
+          },
+          "status": "degraded",
+          "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+          "days": 4,
+          "total_items": 16,
+          "poi_authority_rate": 1.0,
+          "field_reference_rate": 0.5833,
+          "time_conflict_rate": 0.0,
+          "route_violation_rate": 0.0,
+          "attraction_duplicate_rate": 0.0,
+          "budget_deviation_rate": 0.0,
+          "fallback_success": true,
+          "trace": {
+            "node_count": 9,
+            "tool_count": 4,
+            "nodes": [
+              "parse",
+              "search",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "format"
+            ],
+            "tools": [
+              "poi.search_attractions",
+              "poi.search_foods",
+              "poi.search_hotels",
+              "poi.get_consumption"
+            ],
+            "routes": [
+              "fix",
+              "fix",
+              "pass",
+              "fallback"
+            ]
+          }
+        }
+      },
+      "run2": {
+        "run_id": "llm-成都-4-run2",
+        "status": "degraded",
+        "status_reason": "LLM 连续失败，已使用确定性 fallback",
+        "stats": {
+          "llm_calls": 6,
+          "tool_calls": 4,
+          "retry_count": 3,
+          "fallback_count": 1,
+          "prompt_tokens": 38654,
+          "completion_tokens": 8180,
+          "total_tokens": 46834
+        },
+        "trace": {
+          "run_id": "llm-成都-4-run2",
+          "events": [
+            {
+              "kind": "node",
+              "name": "parse",
+              "status": "ok",
+              "duration_ms": 0.0,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "成都 美食",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 20,
+                "lexical_count": 20,
+                "fused_count": 20,
+                "candidate_count": 20,
+                "top_k": 30,
+                "fallback": false,
+                "selected_poi_ids": [
+                  52,
+                  66,
+                  64,
+                  59,
+                  70,
+                  53,
+                  56,
+                  54,
+                  55,
+                  57,
+                  51,
+                  58,
+                  62,
+                  63,
+                  61,
+                  65,
+                  60,
+                  67,
+                  69,
+                  68
+                ],
+                "duration_ms": 3.56
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_attractions",
+              "status": "ok",
+              "duration_ms": 3.62,
+              "metadata": {
+                "arg_count": 2,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "成都",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 5,
+                "lexical_count": 5,
+                "fused_count": 5,
+                "candidate_count": 5,
+                "top_k": 10,
+                "fallback": false,
+                "selected_poi_ids": [
+                  71,
+                  74,
+                  72,
+                  73,
+                  75
+                ],
+                "duration_ms": 1.57
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_foods",
+              "status": "ok",
+              "duration_ms": 1.6,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_hotels",
+              "status": "ok",
+              "duration_ms": 34.97,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.get_consumption",
+              "status": "ok",
+              "duration_ms": 39.82,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "node",
+              "name": "search",
+              "status": "ok",
+              "duration_ms": 80.09,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9251,
+                "completion_tokens": 1973
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 44004.11,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 44004.2,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 10,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.12,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9868,
+                "completion_tokens": 2046
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 45609.76,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 45609.9,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 7,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.16,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9663,
+                "completion_tokens": 2048
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "error",
+              "duration_ms": 45973.2,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              },
+              "error": "Expecting ',' delimiter: line 204 column 10 (char 5436)"
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 45973.39,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.0,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "generation_error"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9663,
+                "completion_tokens": 2048
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "error",
+              "duration_ms": 45609.75,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              },
+              "error": "Expecting ',' delimiter: line 204 column 10 (char 5416)"
+            },
+            {
+              "kind": "route",
+              "name": "fallback",
+              "status": "ok",
+              "metadata": {
+                "reason": "llm_error"
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 45610.17,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 0,
+                "needs_fix": false
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.12,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "pass",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_pass"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 103,
+                "completion_tokens": 33
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 106,
+                "completion_tokens": 32
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "run_status",
+              "status": "ok",
+              "metadata": {
+                "status": "degraded",
+                "final_issue_count": 0
+              }
+            },
+            {
+              "kind": "node",
+              "name": "format",
+              "status": "ok",
+              "duration_ms": 2806.84,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            }
+          ]
+        },
+        "quality": {
+          "case": {
+            "city": "成都",
+            "days": 4,
+            "persons": 2,
+            "preferences": [
+              "美食"
+            ]
+          },
+          "status": "degraded",
+          "status_reason": "LLM 连续失败，已使用确定性 fallback",
+          "days": 4,
+          "total_items": 16,
+          "poi_authority_rate": 1.0,
+          "field_reference_rate": 0.5833,
+          "time_conflict_rate": 0.0,
+          "route_violation_rate": 0.0,
+          "attraction_duplicate_rate": 0.0,
+          "budget_deviation_rate": 0.0,
+          "fallback_success": true,
+          "trace": {
+            "node_count": 11,
+            "tool_count": 4,
+            "nodes": [
+              "parse",
+              "search",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "format"
+            ],
+            "tools": [
+              "poi.search_attractions",
+              "poi.search_foods",
+              "poi.search_hotels",
+              "poi.get_consumption"
+            ],
+            "routes": [
+              "fix",
+              "fix",
+              "fix",
+              "fallback",
+              "pass"
+            ]
+          }
+        }
+      },
+      "failure_reasons": [
+        "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+        "LLM 连续失败，已使用确定性 fallback"
+      ]
+    },
+    {
+      "case": {
+        "city": "西安",
+        "days": 2,
+        "persons": 4,
+        "preferences": [
+          "人文历史"
+        ]
+      },
+      "consistent": true,
+      "signature1": "陕西历史博物馆>西安城墙|大雁塔>骊山国家森林公园",
+      "signature2": "陕西历史博物馆>西安城墙|大雁塔>骊山国家森林公园",
+      "run1": {
+        "run_id": "llm-西安-2-run1",
+        "status": "degraded",
+        "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+        "stats": {
+          "llm_calls": 5,
+          "tool_calls": 4,
+          "retry_count": 2,
+          "fallback_count": 1,
+          "prompt_tokens": 28660,
+          "completion_tokens": 3340,
+          "total_tokens": 32000
+        },
+        "trace": {
+          "run_id": "llm-西安-2-run1",
+          "events": [
+            {
+              "kind": "node",
+              "name": "parse",
+              "status": "ok",
+              "duration_ms": 0.0,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "西安 人文 历史 文化",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 20,
+                "lexical_count": 20,
+                "fused_count": 20,
+                "candidate_count": 20,
+                "top_k": 30,
+                "fallback": false,
+                "selected_poi_ids": [
+                  84,
+                  81,
+                  77,
+                  78,
+                  76,
+                  79,
+                  85,
+                  83,
+                  80,
+                  93,
+                  90,
+                  91,
+                  94,
+                  87,
+                  92,
+                  86,
+                  88,
+                  89,
+                  82,
+                  95
+                ],
+                "duration_ms": 3.33
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_attractions",
+              "status": "ok",
+              "duration_ms": 3.39,
+              "metadata": {
+                "arg_count": 2,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "西安",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 5,
+                "lexical_count": 5,
+                "fused_count": 5,
+                "candidate_count": 5,
+                "top_k": 10,
+                "fallback": false,
+                "selected_poi_ids": [
+                  100,
+                  99,
+                  97,
+                  98,
+                  96
+                ],
+                "duration_ms": 1.33
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_foods",
+              "status": "ok",
+              "duration_ms": 1.35,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_hotels",
+              "status": "ok",
+              "duration_ms": 39.64,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.get_consumption",
+              "status": "ok",
+              "duration_ms": 35.08,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "node",
+              "name": "search",
+              "status": "ok",
+              "duration_ms": 79.56,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9333,
+                "completion_tokens": 1131
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 26203.85,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 26203.92,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 6,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.09,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9623,
+                "completion_tokens": 1150
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 26523.8,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 26523.87,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 4,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.09,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9494,
+                "completion_tokens": 992
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 22386.92,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 22386.99,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 4,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.08,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "pass",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_pass"
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fallback",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_retry_exhausted"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 105,
+                "completion_tokens": 33
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 105,
+                "completion_tokens": 34
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "run_status",
+              "status": "ok",
+              "metadata": {
+                "status": "degraded",
+                "final_issue_count": 0
+              }
+            },
+            {
+              "kind": "node",
+              "name": "format",
+              "status": "ok",
+              "duration_ms": 43920.42,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            }
+          ]
+        },
+        "quality": {
+          "case": {
+            "city": "西安",
+            "days": 2,
+            "persons": 4,
+            "preferences": [
+              "人文历史"
+            ]
+          },
+          "status": "degraded",
+          "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+          "days": 2,
+          "total_items": 8,
+          "poi_authority_rate": 1.0,
+          "field_reference_rate": 0.8333,
+          "time_conflict_rate": 0.0,
+          "route_violation_rate": 0.0,
+          "attraction_duplicate_rate": 0.0,
+          "budget_deviation_rate": 0.0,
+          "fallback_success": true,
+          "trace": {
+            "node_count": 9,
+            "tool_count": 4,
+            "nodes": [
+              "parse",
+              "search",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "format"
+            ],
+            "tools": [
+              "poi.search_attractions",
+              "poi.search_foods",
+              "poi.search_hotels",
+              "poi.get_consumption"
+            ],
+            "routes": [
+              "fix",
+              "fix",
+              "pass",
+              "fallback"
+            ]
+          }
+        }
+      },
+      "run2": {
+        "run_id": "llm-西安-2-run2",
+        "status": "degraded",
+        "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+        "stats": {
+          "llm_calls": 5,
+          "tool_calls": 4,
+          "retry_count": 2,
+          "fallback_count": 1,
+          "prompt_tokens": 28505,
+          "completion_tokens": 3373,
+          "total_tokens": 31878
+        },
+        "trace": {
+          "run_id": "llm-西安-2-run2",
+          "events": [
+            {
+              "kind": "node",
+              "name": "parse",
+              "status": "ok",
+              "duration_ms": 0.0,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "西安 人文 历史 文化",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 20,
+                "lexical_count": 20,
+                "fused_count": 20,
+                "candidate_count": 20,
+                "top_k": 30,
+                "fallback": false,
+                "selected_poi_ids": [
+                  84,
+                  81,
+                  77,
+                  78,
+                  76,
+                  79,
+                  85,
+                  83,
+                  80,
+                  93,
+                  90,
+                  91,
+                  94,
+                  87,
+                  92,
+                  86,
+                  88,
+                  89,
+                  82,
+                  95
+                ],
+                "duration_ms": 4.56
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_attractions",
+              "status": "ok",
+              "duration_ms": 4.64,
+              "metadata": {
+                "arg_count": 2,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "西安",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 5,
+                "lexical_count": 5,
+                "fused_count": 5,
+                "candidate_count": 5,
+                "top_k": 10,
+                "fallback": false,
+                "selected_poi_ids": [
+                  100,
+                  99,
+                  97,
+                  98,
+                  96
+                ],
+                "duration_ms": 1.64
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_foods",
+              "status": "ok",
+              "duration_ms": 1.67,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_hotels",
+              "status": "ok",
+              "duration_ms": 22.74,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.get_consumption",
+              "status": "ok",
+              "duration_ms": 29.63,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "node",
+              "name": "search",
+              "status": "ok",
+              "duration_ms": 58.76,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9333,
+                "completion_tokens": 1304
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 29687.42,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 29687.49,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 3,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.09,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9479,
+                "completion_tokens": 981
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 22199.04,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 22199.11,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 3,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.08,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9483,
+                "completion_tokens": 1021
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 23046.52,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 23046.58,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 5,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.09,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "pass",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_pass"
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fallback",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_retry_exhausted"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 105,
+                "completion_tokens": 33
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 105,
+                "completion_tokens": 34
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "run_status",
+              "status": "ok",
+              "metadata": {
+                "status": "degraded",
+                "final_issue_count": 0
+              }
+            },
+            {
+              "kind": "node",
+              "name": "format",
+              "status": "ok",
+              "duration_ms": 2391.06,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            }
+          ]
+        },
+        "quality": {
+          "case": {
+            "city": "西安",
+            "days": 2,
+            "persons": 4,
+            "preferences": [
+              "人文历史"
+            ]
+          },
+          "status": "degraded",
+          "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+          "days": 2,
+          "total_items": 8,
+          "poi_authority_rate": 1.0,
+          "field_reference_rate": 0.8333,
+          "time_conflict_rate": 0.0,
+          "route_violation_rate": 0.0,
+          "attraction_duplicate_rate": 0.0,
+          "budget_deviation_rate": 0.0,
+          "fallback_success": true,
+          "trace": {
+            "node_count": 9,
+            "tool_count": 4,
+            "nodes": [
+              "parse",
+              "search",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "format"
+            ],
+            "tools": [
+              "poi.search_attractions",
+              "poi.search_foods",
+              "poi.search_hotels",
+              "poi.get_consumption"
+            ],
+            "routes": [
+              "fix",
+              "fix",
+              "pass",
+              "fallback"
+            ]
+          }
+        }
+      },
+      "failure_reasons": [
+        "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+        "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题"
+      ]
+    },
+    {
+      "case": {
+        "city": "三亚",
+        "days": 5,
+        "persons": 2,
+        "preferences": [
+          "自然风光"
+        ]
+      },
+      "consistent": true,
+      "signature1": "三亚水稻国家公园>三亚国际免税城|海棠湾>三亚千古情景区|呀诺达雨林文化旅游区>大小洞天|鹿回头风景区>后海村|槟榔谷黎苗文化旅游区>西岛",
+      "signature2": "三亚水稻国家公园>三亚国际免税城|海棠湾>三亚千古情景区|呀诺达雨林文化旅游区>大小洞天|鹿回头风景区>后海村|槟榔谷黎苗文化旅游区>西岛",
+      "run1": {
+        "run_id": "llm-三亚-5-run1",
+        "status": "degraded",
+        "status_reason": "LLM 连续失败，已使用确定性 fallback",
+        "stats": {
+          "llm_calls": 6,
+          "tool_calls": 4,
+          "retry_count": 3,
+          "fallback_count": 1,
+          "prompt_tokens": 38767,
+          "completion_tokens": 7694,
+          "total_tokens": 46461
+        },
+        "trace": {
+          "run_id": "llm-三亚-5-run1",
+          "events": [
+            {
+              "kind": "node",
+              "name": "parse",
+              "status": "ok",
+              "duration_ms": 0.0,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "三亚 自然",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 20,
+                "lexical_count": 20,
+                "fused_count": 20,
+                "candidate_count": 20,
+                "top_k": 30,
+                "fallback": false,
+                "selected_poi_ids": [
+                  120,
+                  111,
+                  105,
+                  119,
+                  114,
+                  117,
+                  112,
+                  107,
+                  101,
+                  115,
+                  102,
+                  106,
+                  118,
+                  103,
+                  104,
+                  110,
+                  108,
+                  109,
+                  116,
+                  113
+                ],
+                "duration_ms": 3.55
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_attractions",
+              "status": "ok",
+              "duration_ms": 3.61,
+              "metadata": {
+                "arg_count": 2,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "三亚",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 5,
+                "lexical_count": 5,
+                "fused_count": 5,
+                "candidate_count": 5,
+                "top_k": 10,
+                "fallback": false,
+                "selected_poi_ids": [
+                  125,
+                  124,
+                  122,
+                  121,
+                  123
+                ],
+                "duration_ms": 1.41
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_foods",
+              "status": "ok",
+              "duration_ms": 1.43,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_hotels",
+              "status": "ok",
+              "duration_ms": 34.69,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.get_consumption",
+              "status": "ok",
+              "duration_ms": 31.07,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "node",
+              "name": "search",
+              "status": "ok",
+              "duration_ms": 70.89,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9382,
+                "completion_tokens": 1727
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 39051.52,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 39051.6,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 7,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.11,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9733,
+                "completion_tokens": 2048
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "error",
+              "duration_ms": 46012.21,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              },
+              "error": "Expecting ',' delimiter: line 210 column 10 (char 5541)"
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 46012.37,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.01,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "generation_error"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9733,
+                "completion_tokens": 1803
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 40592.58,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 40592.65,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 6,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.1,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9706,
+                "completion_tokens": 2048
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "error",
+              "duration_ms": 46041.84,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              },
+              "error": "Expecting ',' delimiter: line 206 column 6 (char 5483)"
+            },
+            {
+              "kind": "route",
+              "name": "fallback",
+              "status": "ok",
+              "metadata": {
+                "reason": "llm_error"
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 46042.48,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 0,
+                "needs_fix": false
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.18,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "pass",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_pass"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 107,
+                "completion_tokens": 36
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 106,
+                "completion_tokens": 32
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "run_status",
+              "status": "ok",
+              "metadata": {
+                "status": "degraded",
+                "final_issue_count": 0
+              }
+            },
+            {
+              "kind": "node",
+              "name": "format",
+              "status": "ok",
+              "duration_ms": 106001.32,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            }
+          ]
+        },
+        "quality": {
+          "case": {
+            "city": "三亚",
+            "days": 5,
+            "persons": 2,
+            "preferences": [
+              "自然风光"
+            ]
+          },
+          "status": "degraded",
+          "status_reason": "LLM 连续失败，已使用确定性 fallback",
+          "days": 5,
+          "total_items": 20,
+          "poi_authority_rate": 1.0,
+          "field_reference_rate": 0.8,
+          "time_conflict_rate": 0.0,
+          "route_violation_rate": 0.0,
+          "attraction_duplicate_rate": 0.0,
+          "budget_deviation_rate": 0.0,
+          "fallback_success": true,
+          "trace": {
+            "node_count": 11,
+            "tool_count": 4,
+            "nodes": [
+              "parse",
+              "search",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "format"
+            ],
+            "tools": [
+              "poi.search_attractions",
+              "poi.search_foods",
+              "poi.search_hotels",
+              "poi.get_consumption"
+            ],
+            "routes": [
+              "fix",
+              "fix",
+              "fix",
+              "fallback",
+              "pass"
+            ]
+          }
+        }
+      },
+      "run2": {
+        "run_id": "llm-三亚-5-run2",
+        "status": "degraded",
+        "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+        "stats": {
+          "llm_calls": 5,
+          "tool_calls": 4,
+          "retry_count": 2,
+          "fallback_count": 1,
+          "prompt_tokens": 28879,
+          "completion_tokens": 5432,
+          "total_tokens": 34311
+        },
+        "trace": {
+          "run_id": "llm-三亚-5-run2",
+          "events": [
+            {
+              "kind": "node",
+              "name": "parse",
+              "status": "ok",
+              "duration_ms": 0.0,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "三亚 自然",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 20,
+                "lexical_count": 20,
+                "fused_count": 20,
+                "candidate_count": 20,
+                "top_k": 30,
+                "fallback": false,
+                "selected_poi_ids": [
+                  120,
+                  111,
+                  105,
+                  119,
+                  114,
+                  117,
+                  112,
+                  107,
+                  101,
+                  115,
+                  102,
+                  106,
+                  118,
+                  103,
+                  104,
+                  110,
+                  108,
+                  109,
+                  116,
+                  113
+                ],
+                "duration_ms": 3.84
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_attractions",
+              "status": "ok",
+              "duration_ms": 3.91,
+              "metadata": {
+                "arg_count": 2,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "retrieval",
+              "name": "poi.hybrid_search",
+              "status": "ok",
+              "metadata": {
+                "query": "三亚",
+                "provider": "semantic+bm25",
+                "embedding_provider": "hashed",
+                "embedding_model": "hashed-ngram-256",
+                "semantic_count": 5,
+                "lexical_count": 5,
+                "fused_count": 5,
+                "candidate_count": 5,
+                "top_k": 10,
+                "fallback": false,
+                "selected_poi_ids": [
+                  125,
+                  124,
+                  122,
+                  121,
+                  123
+                ],
+                "duration_ms": 1.44
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_foods",
+              "status": "ok",
+              "duration_ms": 1.47,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.search_hotels",
+              "status": "ok",
+              "duration_ms": 21.31,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "tool",
+              "name": "poi.get_consumption",
+              "status": "ok",
+              "duration_ms": 19.36,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "node",
+              "name": "search",
+              "status": "ok",
+              "duration_ms": 46.13,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9382,
+                "completion_tokens": 1635
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 36487.34,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 36487.46,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 9,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.16,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9833,
+                "completion_tokens": 1866
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 41650.28,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 41650.36,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 1,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.1,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fix",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_issue"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 9451,
+                "completion_tokens": 1863
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.generate",
+              "status": "ok",
+              "duration_ms": 41583.68,
+              "metadata": {
+                "arg_count": 7,
+                "kwarg_names": [
+                  "feedback",
+                  "hotel_tier",
+                  "hotels"
+                ]
+              }
+            },
+            {
+              "kind": "node",
+              "name": "generate",
+              "status": "ok",
+              "duration_ms": 41583.77,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "reflect_result",
+              "status": "ok",
+              "metadata": {
+                "issue_count": 3,
+                "needs_fix": true
+              }
+            },
+            {
+              "kind": "node",
+              "name": "reflect",
+              "status": "ok",
+              "duration_ms": 0.1,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            },
+            {
+              "kind": "route",
+              "name": "pass",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_pass"
+              }
+            },
+            {
+              "kind": "route",
+              "name": "fallback",
+              "status": "ok",
+              "metadata": {
+                "reason": "validation_retry_exhausted"
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 107,
+                "completion_tokens": 36
+              }
+            },
+            {
+              "kind": "llm",
+              "name": "llm.request",
+              "status": "ok",
+              "metadata": {
+                "model": "qwen-plus",
+                "prompt_tokens": 106,
+                "completion_tokens": 32
+              }
+            },
+            {
+              "kind": "decision",
+              "name": "run_status",
+              "status": "ok",
+              "metadata": {
+                "status": "degraded",
+                "final_issue_count": 0
+              }
+            },
+            {
+              "kind": "node",
+              "name": "format",
+              "status": "ok",
+              "duration_ms": 2425.32,
+              "metadata": {
+                "arg_count": 1,
+                "kwarg_names": []
+              }
+            }
+          ]
+        },
+        "quality": {
+          "case": {
+            "city": "三亚",
+            "days": 5,
+            "persons": 2,
+            "preferences": [
+              "自然风光"
+            ]
+          },
+          "status": "degraded",
+          "status_reason": "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题",
+          "days": 5,
+          "total_items": 20,
+          "poi_authority_rate": 1.0,
+          "field_reference_rate": 0.8,
+          "time_conflict_rate": 0.0,
+          "route_violation_rate": 0.0,
+          "attraction_duplicate_rate": 0.0,
+          "budget_deviation_rate": 0.0,
+          "fallback_success": true,
+          "trace": {
+            "node_count": 9,
+            "tool_count": 4,
+            "nodes": [
+              "parse",
+              "search",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "generate",
+              "reflect",
+              "format"
+            ],
+            "tools": [
+              "poi.search_attractions",
+              "poi.search_foods",
+              "poi.search_hotels",
+              "poi.get_consumption"
+            ],
+            "routes": [
+              "fix",
+              "fix",
+              "pass",
+              "fallback"
+            ]
+          }
+        }
+      },
+      "failure_reasons": [
+        "LLM 连续失败，已使用确定性 fallback",
+        "LLM 结果未通过约束校验，已使用确定性 fallback；达到重试上限后仍存在行程约束问题"
+      ]
+    }
+  ]
+}

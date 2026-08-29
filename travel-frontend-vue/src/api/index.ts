@@ -1,4 +1,4 @@
-import { requestDelete, requestGet, requestPost, requestPut } from './request'
+import { requestDelete, requestGet, requestPost, requestPut, type ApiRequestConfig } from './request'
 import axios from 'axios'
 import type {
   ItineraryDetail,
@@ -124,6 +124,7 @@ export function chatEditItinerary(
   id: number | string,
   message: string,
   history: { role: string; content: string }[],
+  signal?: AbortSignal,
 ) {
   return requestPost<{
     reply: string
@@ -139,6 +140,7 @@ export function chatEditItinerary(
   }>(
     '/itinerary/' + id + '/chat-edit',
     { message, history },
+    { signal },
   )
 }
 
@@ -220,6 +222,10 @@ export function cityGuide(input: string, history: { role: string; content: strin
     message: string
     suggestions: { name: string; reason: string }[]
   }>('/itinerary/city-guide', { input, history })
+}
+
+export function getTopPreferences(config?: ApiRequestConfig) {
+  return requestGet<string[]>('/itinerary/preferences', config)
 }
 
 export function applyPlans(

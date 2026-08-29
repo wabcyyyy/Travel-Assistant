@@ -37,8 +37,9 @@
                 v-model="dateRange"
                 type="daterange"
                 value-format="YYYY-MM-DD"
-                start-placeholder="开始"
-                end-placeholder="结束"
+                :disabled-date="disablePastDate"
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
                 style="width: 100%"
               />
             </el-form-item>
@@ -156,12 +157,12 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { reactive, ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Icon } from '@iconify/vue'
 
-import { generateItinerary, clarifyTrip, cityGuide } from '../api'
+import { generateItinerary, clarifyTrip, cityGuide, getTopPreferences } from '../api'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
@@ -195,7 +196,22 @@ const form = reactive({
 const loading = ref(false)
 const errorMsg = ref('')
 const dateRange = ref<[string, string] | null>(null)
-const clarifySlots = ref<Record<string, unknown>>({})
+
+const CLARIFY_SLOTS_KEY = 'travel_clarify_slots'
+function loadClarifySlots(): Record<string, unknown> {
+  try {
+    const saved = localStorage.getItem(CLARIFY_SLOTS_KEY)
+    return saved ? JSON.parse(saved) : {}
+  } catch { return {} }
+}
+
+const clarifySlots = ref<Record<string, unknown>>(loadClarifySlots())
+
+function disablePastDate(date: Date) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return date.getTime() < today.getTime()
+}
 
 // 出行天数由所选日期区间自动计算（含头含尾）；未选日期时可手填
 watch(dateRange, (range) => {
@@ -214,6 +230,15 @@ watch(() => form.days, (days, previousDays) => {
   }
 })
 
+onMounted(async () => {
+  try {
+    const res = await getTopPreferences({ skipErrorMessage: true })
+    if (res.data?.length && form.preferences.length === 0) {
+      form.preferences = res.data
+    }
+  } catch { /* 静默，首次无历史偏好时忽略 */ }
+})
+
 function togglePreference(label: string) {
   const idx = form.preferences.indexOf(label)
   if (idx >= 0) {
@@ -228,7 +253,7 @@ async function guideIfUnsupported(): Promise<boolean> {
   if (!input) return false
   try {
     const res = await cityGuide(input, [{ role: 'user', content: input }])
-    if (res.data.kind === 'city' && res.data.city && res.data.city !== input) {
+    if (res.data.kind !== 'unclear' && res.data.city && res.data.city !== input) {
       provinceHint.value = input
       form.city = res.data.city
       ElMessage.info(`已为您锁定 ${res.data.city}（${input} 的热门目的地）`)
@@ -268,6 +293,7 @@ async function onSay() {
   try {
     const res = await clarifyTrip({ message: msg, slots: clarifySlots.value })
     clarifySlots.value = res.data.slots || {}
+    localStorage.setItem(CLARIFY_SLOTS_KEY, JSON.stringify(clarifySlots.value))
     applySlots(res.data.slots || {})
     chat.value.push({
       role: 'ai',
@@ -306,15 +332,7 @@ const guideLoading = ref(false)
 const guideSugs = ref<{ name: string; reason: string }[]>([])
 const guideCity = ref('')
 const provinceHint = ref('')
-const supportedCities = ref<string[]>([])
 let guideHistory: { role: string; content: string }[] = []
-
-function openGuide() {
-  guideVisible.value = !guideVisible.value // 点击可开可收
-  if (!guideMsgs.value.length) {
-    guideMsgs.value.push({ role: 'ai', text: '告诉我你的想法，我帮你锁定目的地城市～' })
-  }
-}
 
 function onGuideEnter(e: KeyboardEvent) {
   if ((e as any).isComposing) return
@@ -352,6 +370,12 @@ const rules: FormRules = {
 async function onSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (dateRange.value?.[0] && new Date(dateRange.value[0]).getTime() < today.getTime()) {
+    ElMessage.warning('出行日期不能早于今天，请重新选择')
+    return
+  }
   const blocked = await guideIfUnsupported()
   if (blocked) return
   loading.value = true
@@ -369,6 +393,7 @@ async function onSubmit() {
       hotelTier: form.hotelTier || undefined,
       regionHint: provinceHint.value || undefined,
     })
+    localStorage.removeItem(CLARIFY_SLOTS_KEY)
     router.push({ name: 'trip-detail', params: { id: res.data.id } })
   } catch (err) {
     errorMsg.value = err instanceof Error ? err.message : '生成失败'

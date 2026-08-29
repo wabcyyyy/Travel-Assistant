@@ -29,10 +29,10 @@ src/main/resources/
 
 ```bash
 cp .env.example .env   # 填入 AMAP_WEB_KEY、MYSQL_PASSWORD（spring-dotenv 自动读取，勿提交）
-mvn spring-boot:run -Dspring-boot.run.jvmArguments=-Dfile.encoding=UTF-8
+mvn spring-boot:run "-Dspring-boot.run.jvmArguments=-Dfile.encoding=UTF-8"
 
 # 8081 测试实例（连接 travel_test 库）：.env 中加 MYSQL_DB=travel_test 后另开终端执行
-mvn spring-boot:run -Dspring-boot.run.jvmArguments=-Dfile.encoding=UTF-8 -Dspring-boot.run.arguments=--server.port=8081
+mvn spring-boot:run "-Dspring-boot.run.jvmArguments=-Dfile.encoding=UTF-8" "-Dspring-boot.run.arguments=--server.port=8081"
 ```
 
 > - Windows 下务必加 `-Dfile.encoding=UTF-8`，否则中文乱码。
@@ -44,10 +44,10 @@ mvn spring-boot:run -Dspring-boot.run.jvmArguments=-Dfile.encoding=UTF-8 -Dsprin
 | --- | --- | --- |
 | `MYSQL_HOST/PORT` | `localhost:3306` | MySQL 地址 |
 | `MYSQL_USER` | `root` | 数据库用户 |
-| `MYSQL_PASSWORD` | `root` | 数据库密码 |
+| `MYSQL_PASSWORD` | 必填 | 数据库密码，不使用仓库内置默认值 |
 | `MYSQL_DB` | `travel_assistant` | 数据库名（测试实例用 `travel_test`） |
 | `REDIS_HOST/PORT/PASSWORD` | `localhost:6380/空` | Redis |
-| `JWT_SECRET` | dev 默认值 | 生产必改 |
+| `JWT_SECRET` | 空（进程级随机密钥） | 建议显式配置至少 32 位随机字符串；未配置时重启会使旧登录失效 |
 | `AGENT_SERVICE_URL` | `http://localhost:8000` | Agent 服务地址 |
 | `AGENT_INTERNAL_TOKEN` | 空 | 与 Agent 服务配置相同后启用内部调用认证 |
 | `AMAP_WEB_KEY` | 空 | 高德 Web 服务 key，未配置时 POI 接口返回 400 |

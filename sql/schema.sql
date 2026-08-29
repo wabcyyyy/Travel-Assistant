@@ -6,6 +6,7 @@ DROP TABLE IF EXISTS itinerary_item;
 DROP TABLE IF EXISTS itinerary_day;
 DROP TABLE IF EXISTS itinerary_chat_message;
 DROP TABLE IF EXISTS itinerary_main;
+DROP TABLE IF EXISTS user_preference;
 DROP TABLE IF EXISTS sys_user;
 DROP TABLE IF EXISTS export_task;
 DROP TABLE IF EXISTS hotel_room_type;
@@ -26,6 +27,18 @@ CREATE TABLE sys_user (
     UNIQUE KEY uk_username (username)
 ) ENGINE = InnoDB COMMENT '用户表';
 
+CREATE TABLE user_preference (
+    id            BIGINT       NOT NULL AUTO_INCREMENT,
+    user_id       BIGINT       NOT NULL,
+    pref_label    VARCHAR(32)  NOT NULL COMMENT '偏好标签（如 人文历史/美食）',
+    count         INT          NOT NULL DEFAULT 1 COMMENT '累计选择次数',
+    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_user_pref (user_id, pref_label),
+    KEY idx_user (user_id)
+) ENGINE = InnoDB COMMENT '用户偏好统计';
+
 CREATE TABLE itinerary_main (
     id          BIGINT       NOT NULL AUTO_INCREMENT,
     user_id     BIGINT       NOT NULL COMMENT '所属用户',
@@ -39,6 +52,7 @@ CREATE TABLE itinerary_main (
     preferences VARCHAR(512) DEFAULT NULL COMMENT '偏好标签，逗号分隔',
     hotel_tier  VARCHAR(16) DEFAULT NULL COMMENT '住宿档次偏好',
     status      TINYINT      NOT NULL DEFAULT 1 COMMENT '1-草稿 2-已生成 3-已取消',
+    plan_note   TEXT         DEFAULT NULL COMMENT 'AI管家规划讲解',
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted     TINYINT      NOT NULL DEFAULT 0,
@@ -91,6 +105,7 @@ CREATE TABLE itinerary_item (
     cost          DECIMAL(10, 2) DEFAULT NULL COMMENT '预估单价（景点/餐饮按人，酒店按间/晚）',
     tag           VARCHAR(32)    DEFAULT NULL COMMENT '标签：亲子/网红/人文等',
     remark        VARCHAR(255)   DEFAULT NULL,
+    intro         VARCHAR(600)   DEFAULT NULL COMMENT '景点详细介绍',
     sort_no       INT            NOT NULL DEFAULT 0 COMMENT '当日排序',
     created_at    DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -129,6 +144,8 @@ CREATE TABLE poi_knowledge (
     tags          VARCHAR(128)   DEFAULT NULL COMMENT '偏好标签，逗号分隔',
     rating        DECIMAL(2, 1)  DEFAULT NULL COMMENT '评分 0-5',
     description   VARCHAR(512)   DEFAULT NULL,
+    source        VARCHAR(128)   NOT NULL DEFAULT 'mysql.poi_knowledge' COMMENT '权威数据来源',
+    source_updated_at DATETIME   DEFAULT NULL COMMENT '来源数据更新时间',
     PRIMARY KEY (id),
     KEY idx_city (city),
     KEY idx_tags (tags)

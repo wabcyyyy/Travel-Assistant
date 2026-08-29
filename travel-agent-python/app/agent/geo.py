@@ -1,3 +1,14 @@
+"""地理计算工具：球面距离与最近邻路线排序（无外部依赖的纯函数）。
+
+职责：
+- haversine_meters：计算两点间的球面距离（米）；
+- nearest_neighbor_order：把一组 POI 按地理邻近串成一条合理的游览顺序。
+
+实现要点：
+- 纯计算、无状态，被 generators.fallback_generate 用来排布每日景点路线，
+  让相邻景点之间移动距离尽量短。
+"""
+
 import math
 from typing import Iterable
 

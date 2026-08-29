@@ -28,7 +28,12 @@ def query_live_price(city: str, hotel_name: str, checkin_date: str | None) -> di
             f"{city}「{hotel_name}」标准房型 目前一晚 网络挂牌价大约多少人民币？"
             "只报一个有代表性的每晚价格。"
         )
-        raw = client.complete(question, system_prompt=_SYSTEM_PROMPT, temperature=0.1)
+        raw = client.complete(
+            question,
+            system_prompt=_SYSTEM_PROMPT,
+            temperature=0.1,
+            enable_search=True,
+        )
         text = raw.strip()
         if text.startswith("```"):
             text = text.split("\n", 1)[-1].rsplit("```", 1)[0]

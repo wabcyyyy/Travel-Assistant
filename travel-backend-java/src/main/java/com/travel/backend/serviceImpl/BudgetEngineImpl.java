@@ -5,11 +5,13 @@ import com.travel.backend.entity.BudgetDetail;
 import com.travel.backend.entity.CityConsumption;
 import com.travel.backend.entity.ItineraryItem;
 import com.travel.backend.entity.ItineraryMain;
+import com.travel.backend.entity.HotelRoomType;
 import com.travel.backend.entity.PoiKnowledge;
 import com.travel.backend.mapper.BudgetDetailMapper;
 import com.travel.backend.mapper.CityConsumptionMapper;
 import com.travel.backend.mapper.ItineraryItemMapper;
 import com.travel.backend.mapper.ItineraryMainMapper;
+import com.travel.backend.mapper.HotelRoomTypeMapper;
 import com.travel.backend.mapper.PoiKnowledgeMapper;
 import com.travel.backend.service.BudgetEngine;
 import org.springframework.stereotype.Service;
@@ -32,15 +34,17 @@ public class BudgetEngineImpl implements BudgetEngine {
     private final BudgetDetailMapper budgetMapper;
     private final CityConsumptionMapper consumptionMapper;
     private final PoiKnowledgeMapper poiMapper;
+    private final HotelRoomTypeMapper hotelRoomTypeMapper;
 
     public BudgetEngineImpl(ItineraryMainMapper mainMapper, ItineraryItemMapper itemMapper,
                             BudgetDetailMapper budgetMapper, CityConsumptionMapper consumptionMapper,
-                            PoiKnowledgeMapper poiMapper) {
+                            PoiKnowledgeMapper poiMapper, HotelRoomTypeMapper hotelRoomTypeMapper) {
         this.mainMapper = mainMapper;
         this.itemMapper = itemMapper;
         this.budgetMapper = budgetMapper;
         this.consumptionMapper = consumptionMapper;
         this.poiMapper = poiMapper;
+        this.hotelRoomTypeMapper = hotelRoomTypeMapper;
     }
 
     @Override
@@ -52,8 +56,6 @@ public class BudgetEngineImpl implements BudgetEngine {
         }
         int persons = main.getPersons() == null ? 1 : main.getPersons();
         int days = main.getDays() == null ? 1 : main.getDays();
-        int rooms = (int) Math.ceil(persons / 2.0);
-
         List<ItineraryItem> items = itemMapper.selectList(
                 new LambdaQueryWrapper<ItineraryItem>().eq(ItineraryItem::getItineraryId, itineraryId));
 
@@ -88,14 +90,15 @@ public class BudgetEngineImpl implements BudgetEngine {
                 meal = meal.add(unit);
                 mealCount++;
             } else if ("hotel".equals(type)) {
-                hotel = hotel.add(unit);
+                int capacity = hotelCapacity(item);
+                int roomCount = (int) Math.ceil(persons / (double) capacity);
+                hotel = hotel.add(unit.multiply(BigDecimal.valueOf(roomCount)));
                 hotelCount++;
             }
         }
         ticket = ticket.multiply(BigDecimal.valueOf(persons));
         meal = meal.multiply(BigDecimal.valueOf(persons));
-        // 每天的酒店条目即一晚房费，直接乘房间数，不再重复乘天数
-        hotel = hotel.multiply(BigDecimal.valueOf(rooms));
+        // 酒店已逐晚按所选房型容量计算房间数，不再统一假定每间只能住 2 人。
 
         CityConsumption consumption = consumptionMapper.selectOne(
                 new LambdaQueryWrapper<CityConsumption>().eq(CityConsumption::getCity, main.getCity()));
@@ -139,6 +142,33 @@ public class BudgetEngineImpl implements BudgetEngine {
                     .last("LIMIT 1"));
         }
         return poi != null ? poi.getTicketPrice() : null;
+    }
+
+    private int hotelCapacity(ItineraryItem item) {
+        if (item.getPoiId() == null || item.getRemark() == null) {
+            return 2;
+        }
+        String marker = "房型：";
+        int start = item.getRemark().indexOf(marker);
+        if (start < 0) {
+            return 2;
+        }
+        start += marker.length();
+        int end = item.getRemark().indexOf('；', start);
+        String roomName = (end < 0 ? item.getRemark().substring(start)
+                : item.getRemark().substring(start, end)).trim();
+        try {
+            long poiId = Long.parseLong(item.getPoiId());
+            HotelRoomType roomType = hotelRoomTypeMapper.selectOne(
+                    new LambdaQueryWrapper<HotelRoomType>()
+                            .eq(HotelRoomType::getPoiId, poiId)
+                            .eq(HotelRoomType::getRoomName, roomName)
+                            .last("LIMIT 1"));
+            return roomType == null || roomType.getCapacity() == null
+                    ? 2 : Math.max(roomType.getCapacity(), 1);
+        } catch (NumberFormatException e) {
+            return 2;
+        }
     }
 
     private BudgetDetail build(Long itineraryId, String category, BigDecimal amount,

@@ -16,6 +16,7 @@ import com.travel.backend.entity.ItineraryChatMessage;
 import com.travel.backend.entity.ItineraryItem;
 import com.travel.backend.entity.ItineraryMain;
 import com.travel.backend.entity.PoiKnowledge;
+import com.travel.backend.entity.UserPreference;
 import com.travel.backend.mapper.BudgetDetailMapper;
 import com.travel.backend.mapper.HotelRoomTypeMapper;
 import com.travel.backend.mapper.ItineraryDayMapper;
@@ -23,6 +24,7 @@ import com.travel.backend.mapper.ItineraryChatMessageMapper;
 import com.travel.backend.mapper.ItineraryItemMapper;
 import com.travel.backend.mapper.ItineraryMainMapper;
 import com.travel.backend.mapper.PoiKnowledgeMapper;
+import com.travel.backend.mapper.UserPreferenceMapper;
 import com.travel.backend.service.AgentService;
 import com.travel.backend.service.BudgetEngine;
 
@@ -56,6 +58,7 @@ public class ItineraryServiceImpl implements ItineraryService {
     private final HotelRoomTypeMapper hotelRoomTypeMapper;
     private final ItineraryChatMessageMapper chatMessageMapper;
     private final ItineraryAsyncPlanner planner;
+    private final UserPreferenceMapper userPreferenceMapper;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ItineraryServiceImpl(ItineraryMainMapper mainMapper, ItineraryDayMapper dayMapper,
@@ -64,7 +67,8 @@ public class ItineraryServiceImpl implements ItineraryService {
                                 com.travel.backend.mapper.PoiKnowledgeMapper poiKnowledgeMapper,
                                 HotelRoomTypeMapper hotelRoomTypeMapper,
                                 ItineraryChatMessageMapper chatMessageMapper,
-                                ItineraryAsyncPlanner planner) {
+                                ItineraryAsyncPlanner planner,
+                                UserPreferenceMapper userPreferenceMapper) {
         this.mainMapper = mainMapper;
         this.dayMapper = dayMapper;
         this.itemMapper = itemMapper;
@@ -75,6 +79,7 @@ public class ItineraryServiceImpl implements ItineraryService {
         this.hotelRoomTypeMapper = hotelRoomTypeMapper;
         this.chatMessageMapper = chatMessageMapper;
         this.planner = planner;
+        this.userPreferenceMapper = userPreferenceMapper;
     }
 
     @Override
@@ -125,6 +130,10 @@ public class ItineraryServiceImpl implements ItineraryService {
             dayMapper.insert(day);
         }
 
+        if (request.getPreferences() != null) {
+            recordPreferences(userId, request.getPreferences());
+        }
+
         // 上下文一次构建（知识库城市有候选；未知城市走开放模式由 LLM 安排）
         JsonNode context = agentService.planContext(request.getCity(), request.getPreferences());
 
@@ -138,6 +147,16 @@ public class ItineraryServiceImpl implements ItineraryService {
                 new LambdaQueryWrapper<ItineraryMain>()
                         .eq(ItineraryMain::getUserId, userId)
                         .orderByDesc(ItineraryMain::getId));
+        Map<Long, BigDecimal> totals = mains.isEmpty() ? Map.of()
+                : budgetMapper.selectList(new LambdaQueryWrapper<BudgetDetail>()
+                                .in(BudgetDetail::getItineraryId,
+                                        mains.stream().map(ItineraryMain::getId).toList()))
+                        .stream().collect(java.util.stream.Collectors.groupingBy(
+                                BudgetDetail::getItineraryId,
+                                java.util.stream.Collectors.reducing(
+                                        BigDecimal.ZERO,
+                                        detail -> detail.getAmount() == null ? BigDecimal.ZERO : detail.getAmount(),
+                                        BigDecimal::add)));
         List<ItinerarySummaryVO> result = new ArrayList<>();
         for (ItineraryMain main : mains) {
             ItinerarySummaryVO vo = new ItinerarySummaryVO();
@@ -151,7 +170,7 @@ public class ItineraryServiceImpl implements ItineraryService {
             vo.setBudget(main.getBudget());
             vo.setStatus(main.getStatus());
             vo.setCreatedAt(main.getCreatedAt());
-            vo.setTotalAmount(sumAmount(findBudgetList(main.getId())));
+            vo.setTotalAmount(totals.getOrDefault(main.getId(), BigDecimal.ZERO));
             result.add(vo);
         }
         return result;
@@ -747,7 +766,8 @@ public class ItineraryServiceImpl implements ItineraryService {
          */
         Map<String, Object> chatBody = new java.util.HashMap<>();
         chatBody.put("city", main.getCity());
-        chatBody.put("days", main.getDays());
+        // 有未应用的“调整行程天数”草稿时，后续对话应继续基于草稿天数，而不是数据库旧值。
+        chatBody.put("days", plans.size());
         chatBody.put("persons", main.getPersons() == null ? 1 : main.getPersons());
         chatBody.put("budget", main.getBudget() == null ? null : main.getBudget().doubleValue());
         List<BudgetDetail> currentBudgets = findBudgetList(itineraryId);
@@ -1044,7 +1064,7 @@ public class ItineraryServiceImpl implements ItineraryService {
                 .toList();
         List<ItineraryDay> days = dayMapper.selectList(new LambdaQueryWrapper<ItineraryDay>()
                 .eq(ItineraryDay::getItineraryId, itineraryId).orderByAsc(ItineraryDay::getDayNo));
-        validatePlans(plans, days);
+        validatePlans(plans);
         Map<Long, ItineraryItem> existingItems = itemMapper.selectList(
                         new LambdaQueryWrapper<ItineraryItem>()
                                 .eq(ItineraryItem::getItineraryId, itineraryId))
@@ -1053,6 +1073,20 @@ public class ItineraryServiceImpl implements ItineraryService {
         Map<Integer, ItineraryDay> dayByNo = new java.util.HashMap<>();
         for (ItineraryDay day : days) {
             dayByNo.put(day.getDayNo(), day);
+        }
+        // 用户确认草稿后才真正增补日期；新日期不自动添加酒店，住宿仍由酒店房型卡片单独确认。
+        for (int dayNo = 1; dayNo <= plans.size(); dayNo++) {
+            if (dayByNo.containsKey(dayNo)) {
+                continue;
+            }
+            ItineraryDay day = new ItineraryDay();
+            day.setItineraryId(itineraryId);
+            day.setDayNo(dayNo);
+            day.setCity(main.getCity());
+            day.setTravelDate(main.getStartDate() == null ? null : main.getStartDate().plusDays(dayNo - 1L));
+            day.setNote("宽松安排");
+            dayMapper.insert(day);
+            dayByNo.put(dayNo, day);
         }
         for (Map<String, Object> plan : plans) {
             int dayNo = ((Number) plan.getOrDefault("day_no", 0)).intValue();
@@ -1081,11 +1115,21 @@ public class ItineraryServiceImpl implements ItineraryService {
                 ItineraryItem existing = null;
                 if (item.get("id") instanceof Number itemId) {
                     existing = existingItems.get(itemId.longValue());
+                    // 草稿中的 id 必须属于当前行程，且不能借原 id 偷换成另一个 POI。
+                    if (existing == null || !name.equals(existing.getPoiName())) {
+                        throw new BizException(400, "行程项身份校验失败，未应用任何修改");
+                    }
+                }
+                String itemType = str(item.get("item_type"), poi != null ? poi.getCategory() : "attraction");
+                // 新增的普通地点必须来自当前城市知识库；交通是允许无 POI 的合成项。
+                // 已有开放模式地点若保持原 id 和名称，可以沿用其已有权威字段。
+                if (poi == null && existing == null && !"transport".equals(itemType)) {
+                    throw new BizException(400, "行程项不属于当前城市候选 POI，未应用任何修改");
                 }
                 ItineraryItem e = existing == null ? new ItineraryItem() : existing;
                 e.setDayId(day.getId());
                 e.setItineraryId(itineraryId);
-                e.setItemType(str(item.get("item_type"), poi != null ? poi.getCategory() : "attraction"));
+                e.setItemType(itemType);
                 e.setPoiName(name);
                 if (poi != null) {
                     e.setPoiId(String.valueOf(poi.getId()));
@@ -1123,6 +1167,17 @@ public class ItineraryServiceImpl implements ItineraryService {
                 itemMapper.deleteById(existingId);
             }
         }
+        for (ItineraryDay day : days) {
+            if (day.getDayNo() > plans.size()) {
+                dayMapper.deleteById(day.getId());
+            }
+        }
+        if (!java.util.Objects.equals(main.getDays(), plans.size())) {
+            main.setDays(plans.size());
+            main.setEndDate(main.getStartDate() == null ? null : main.getStartDate().plusDays(plans.size() - 1L));
+            main.setTitle(main.getCity() + plans.size() + "日游");
+            mainMapper.updateById(main);
+        }
         budgetEngine.recalculate(itineraryId);
         consumePendingAction(actionMessage);
         return detail(userId, itineraryId);
@@ -1144,6 +1199,13 @@ public class ItineraryServiceImpl implements ItineraryService {
                 .eq(PoiKnowledge::getCategory, "hotel")
                 .eq(PoiKnowledge::getName, request.getHotelName())
                 .last("LIMIT 1"));
+        // 省级目的地（如“浙江”）的酒店候选来自省内具体城市，按名称兜底解析。
+        if (hotel == null) {
+            hotel = poiKnowledgeMapper.selectOne(new LambdaQueryWrapper<PoiKnowledge>()
+                    .eq(PoiKnowledge::getCategory, "hotel")
+                    .eq(PoiKnowledge::getName, request.getHotelName())
+                    .last("LIMIT 1"));
+        }
         if (hotel == null) {
             throw new BizException(404, "未找到该城市的酒店候选");
         }
@@ -1239,13 +1301,13 @@ public class ItineraryServiceImpl implements ItineraryService {
         return s.isBlank() || "null".equals(s) ? fallback : s;
     }
 
-    private void validatePlans(List<Map<String, Object>> plans, List<ItineraryDay> days) {
-        if (plans == null || plans.size() != days.size()) {
-            throw new BizException(400, "行程草稿必须包含全部日期，未应用任何修改");
+    private void validatePlans(List<Map<String, Object>> plans) {
+        if (plans == null || plans.isEmpty() || plans.size() > 14) {
+            throw new BizException(400, "行程草稿必须包含 1 到 14 个完整日期，未应用任何修改");
         }
         java.util.Set<Integer> seenDays = new java.util.HashSet<>();
-        java.util.Set<Integer> validDays = days.stream().map(ItineraryDay::getDayNo)
-                .collect(java.util.stream.Collectors.toSet());
+        java.util.Set<Integer> validDays = java.util.stream.IntStream.rangeClosed(1, plans.size())
+                .boxed().collect(java.util.stream.Collectors.toSet());
         for (Map<String, Object> plan : plans) {
             if (plan == null || !(plan.get("day_no") instanceof Number)) {
                 throw new BizException(400, "行程草稿日期格式错误，未应用任何修改");
@@ -1317,6 +1379,41 @@ public class ItineraryServiceImpl implements ItineraryService {
             return java.time.LocalTime.parse(String.valueOf(v));
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    @Override
+    public List<String> topPreferences(Long userId, int limit) {
+        return userPreferenceMapper.selectList(
+                new LambdaQueryWrapper<UserPreference>()
+                        .eq(UserPreference::getUserId, userId)
+                        .orderByDesc(UserPreference::getCount)
+                        .last("LIMIT " + limit))
+                .stream()
+                .map(UserPreference::getPrefLabel)
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public void recordPreferences(Long userId, List<String> preferences) {
+        if (preferences == null || preferences.isEmpty()) return;
+        for (String label : preferences) {
+            if (label == null || label.isBlank()) continue;
+            UserPreference existing = userPreferenceMapper.selectOne(
+                    new LambdaQueryWrapper<UserPreference>()
+                            .eq(UserPreference::getUserId, userId)
+                            .eq(UserPreference::getPrefLabel, label));
+            if (existing != null) {
+                existing.setCount(existing.getCount() + 1);
+                userPreferenceMapper.updateById(existing);
+            } else {
+                UserPreference up = new UserPreference();
+                up.setUserId(userId);
+                up.setPrefLabel(label);
+                up.setCount(1);
+                userPreferenceMapper.insert(up);
+            }
         }
     }
 }

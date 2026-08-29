@@ -1,0 +1,8 @@
+[
+  {"city": "北京", "days": 1, "persons": 2, "preferences": ["人文历史"]},
+  {"city": "上海", "days": 2, "persons": 2, "preferences": ["网红出片"]},
+  {"city": "杭州", "days": 3, "persons": 3, "preferences": ["自然风光"]},
+  {"city": "成都", "days": 4, "persons": 2, "preferences": ["美食"]},
+  {"city": "西安", "days": 2, "persons": 4, "preferences": ["人文历史"]},
+  {"city": "三亚", "days": 5, "persons": 2, "preferences": ["自然风光"]}
+]
