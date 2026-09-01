@@ -29,7 +29,7 @@ from app.common.config import settings
 from app.common.llm_client import get_llm_client
 from app.common.season import season_factor, season_label
 from app.schemas.trip import (
-    ChatTurnRequest, ChatTurnResponse, GenerateDayRequest, HotelOption, HotelRoomOption,
+    MAX_TRIP_DAYS, ChatTurnRequest, ChatTurnResponse, GenerateDayRequest, HotelOption, HotelRoomOption,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ def _apply_decision_patches(data: dict, req: ChatTurnRequest) -> list[dict] | No
     # 用户原话解析出的目标天数优先；若模型给出的 target_days 不一致，仍以用户意图为准继续执行，
     # 而非整体判失败。超出目标天数的补丁会在下方被安全跳过（优雅降级）。
     target_days = requested_days if requested_days is not None else req.days
-    if target_days < 1 or target_days > 14:
+    if target_days < 1 or target_days > MAX_TRIP_DAYS:
         return None
     deletion_requested = target_days < req.days or bool(re.search(
         r"删除|删掉|去掉|移除|替换|换成|换掉|减少|精简|不重要|重复|宽松|轻松|别太赶|不要太赶|少一点",

@@ -28,7 +28,7 @@ from app.common.config import settings
 from app.common.llm_client import get_llm_client
 from app.common.season import season_factor, season_label
 from app.schemas.trip import (
-    ChatTurnRequest, ChatTurnResponse, GenerateDayRequest, HotelOption, HotelRoomOption,
+    MAX_TRIP_DAYS, ChatTurnRequest, ChatTurnResponse, GenerateDayRequest, HotelOption, HotelRoomOption,
 )
 
 logger = logging.getLogger(__name__)
@@ -140,6 +140,8 @@ def _extract_document_plans(data: dict, req: ChatTurnRequest) -> list[dict] | No
     expected = _trip_plan_document(req)["trip"]
     requested_days = _requested_day_count(req.message, req.days)
     target_days = requested_days or req.days
+    if target_days < 1 or target_days > MAX_TRIP_DAYS:
+        return None
     protected_keys = set(expected) - {"days", "end_date"}
     if any(trip.get(key) != expected[key] for key in protected_keys):
         return None

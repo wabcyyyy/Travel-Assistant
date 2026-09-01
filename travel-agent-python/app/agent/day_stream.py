@@ -199,9 +199,10 @@ def _generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False)
         feedback = f"{feedback}；{hotel_feedback}" if feedback else hotel_feedback
 
     if not candidates:
-        if force_fallback:
-            raise ValueError(f"{req.city} 没有可用于确定性兜底的候选景点")
-        # 开放模式：知识库无该城市，LLM 凭自身知识安排，坐标由高德落点
+        # 开放模式没有本地权威候选，无法使用 generators.fallback_generate 的
+        # 确定性路线。即使工作流已经进入 force_fallback，也要继续走开放模式的
+        # LLM 生成，否则某一天的校验失败会把整个多日行程直接打成失败。
+        # 坐标和地址仍由后面的高德落点逻辑补齐；这是开放城市唯一可用的降级源。
         plan = _llm_open_day(req, set(req.used_names))
         source = "open"
     elif settings.llm_api_key and not force_fallback:

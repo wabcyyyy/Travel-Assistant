@@ -46,7 +46,7 @@
           </el-col>
           <el-col :span="10">
             <el-form-item label="天数" prop="days">
-              <el-input-number v-model="form.days" :min="1" :max="14" style="width: 100%" />
+              <el-input-number v-model="form.days" :min="1" :max="7" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -218,9 +218,12 @@ watch(dateRange, (range) => {
   if (!range || !range[0] || !range[1]) return
   const ms = new Date(range[1]).getTime() - new Date(range[0]).getTime()
   const days = Math.round(ms / 86400000) + 1
-  if (days >= 1 && days <= 14) {
+  if (days >= 1 && days <= 7) {
     form.days = days
     form.stayNights = Math.max(days - 1, 0)
+  } else if (days > 7) {
+    dateRange.value = null
+    ElMessage.warning('单次行程最多生成 7 天，请重新选择日期范围')
   }
 })
 
@@ -370,6 +373,10 @@ const rules: FormRules = {
 async function onSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
+  if (form.days > 7) {
+    ElMessage.warning('单次行程最多生成 7 天')
+    return
+  }
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   if (dateRange.value?.[0] && new Date(dateRange.value[0]).getTime() < today.getTime()) {

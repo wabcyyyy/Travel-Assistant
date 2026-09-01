@@ -20,10 +20,12 @@ from pydantic import Field
 
 from app.schemas.common import WireModel
 
+MAX_TRIP_DAYS = 7
+
 
 class GenerateRequest(WireModel):
     city: str = Field(min_length=1, max_length=64)
-    days: int = Field(default=1, ge=1, le=14)
+    days: int = Field(default=1, ge=1, le=MAX_TRIP_DAYS)
     persons: int = Field(default=1, ge=1, le=20)
     budget: float | None = None
     start_date: str | None = None
@@ -107,8 +109,8 @@ class ClarifyResponse(WireModel):
 
 class EditOpRequest(WireModel):
     city: str = Field(min_length=1, max_length=64)
-    days: int = Field(ge=1, le=14)
-    plans: list[dict] = Field(default_factory=list, max_length=14)
+    days: int = Field(ge=1, le=MAX_TRIP_DAYS)
+    plans: list[dict] = Field(default_factory=list, max_length=MAX_TRIP_DAYS)
     instruction: str = Field(min_length=1, max_length=2000)
 
 
@@ -130,7 +132,7 @@ class GenerateDayRequest(WireModel):
     persons: int = 1
     budget: float | None = None
     start_date: str | None = None
-    day_no: int = 1
+    day_no: int = Field(default=1, ge=1, le=MAX_TRIP_DAYS)
     days: int | None = None  # 整个行程总天数，用于按总时长调整当日节奏；不传则按单日处理
     used_names: list[str] = Field(default_factory=list)
     hotel_tier: str | None = None
@@ -142,7 +144,7 @@ class GenerateDayRequest(WireModel):
 
 class ChatTurnRequest(WireModel):
     city: str = Field(min_length=1, max_length=64)
-    days: int = Field(ge=1, le=14)
+    days: int = Field(ge=1, le=MAX_TRIP_DAYS)
     persons: int = Field(default=1, ge=1, le=20)
     budget: float | None = None
     current_total: float | None = None
@@ -151,7 +153,7 @@ class ChatTurnRequest(WireModel):
     end_date: str | None = None
     preferences: list[str] = Field(default_factory=list, max_length=20)
     hotel_tier: str | None = None
-    plans: list[dict] = Field(default_factory=list, max_length=14)
+    plans: list[dict] = Field(default_factory=list, max_length=MAX_TRIP_DAYS)
     history: list[dict] = Field(default_factory=list, max_length=20)
     message: str = Field(min_length=1, max_length=2000)
 

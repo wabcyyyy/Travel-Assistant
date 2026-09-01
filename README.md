@@ -6,14 +6,15 @@
 
 ## 功能特性
 
-- **AI 行程生成**：LangGraph 编排「意图解析 → MCP/RAG 知识检索 → LLM 生成 → 反思校验 → 格式化」五节点工作流，反思节点检测时间冲突/营业覆盖/路线可达性/饱和度，最多 2 轮修正
-- **标准化外部能力接入**：Agent 通过高德官方 MCP Server 获取实时 POI 信息，适配层统一支持后续扩展地理编码、路线和天气能力；MCP 失败时自动回退本地知识库与旧 Web API
-- **RAG 知识库**：ChromaDB 持久化基准 POI 知识（`seed_data.sql` 含 130 条、覆盖 5 城市，另有杭州增量），采用混合检索并支持语义模型不可用时回退关键词/哈希检索
+- **AI 行程生成**：完整生成图使用 LangGraph 编排「parse → search → generate → reflect → format」；生产接口按天执行「generate → reflect → retry/fallback」，反思节点检测时间冲突/营业覆盖/路线可达性/饱和度
+- **标准化外部能力接入**：Agent 可选接入高德官方 MCP 的只读 POI 查询；MCP 失败或未启用时自动回退本地知识库与旧 Web API，天气、路线等能力暂未进入主链路
+- **RAG 知识库**：ChromaDB 持久化 POI 知识，基准 `seed_data.sql` 为 125 条、覆盖 5 城市；执行杭州和酒店增量后当前快照约 186 条、覆盖 6 城市，采用词法 + 语义召回、RRF 融合和业务重排
 - **预算引擎**：基于知识库门票价 + 城市消费系数的 D1 单一口径预算，行程生成/编辑后统一重算
 - **地图可视化**：高德 JSAPI 渲染景点 Marker、路线连线与列表双向联动
+- **行程边界**：单次新建、对话扩展和草稿确认统一最多 7 天，超限请求直接拒绝
 - **行程编辑**：拖拽排序、增删改，实时联动预算看板（ECharts 饼图）
-- **异步 PDF 导出**：任务队列 + Thymeleaf 模板 + 中文字体，轮询/下载
-- **高可用**：Redis 缓存（POI/行程详情）、LLM 连续失败自动降级为确定性 fallback 生成
+- **异步 PDF 导出**：数据库任务记录 + Spring 异步执行 + Thymeleaf 模板 + 中文字体，轮询/下载
+- **容错与缓存**：Redis 缓存（POI/行程详情）、LLM 连续失败自动降级为确定性 fallback 生成；异步任务当前基于 Spring `@Async`，尚非消息队列级高可用
 - **完整测试体系**：Java/Python 单测、接口自动化（独立测试库）、Agent 离线评测（含 LangGraph 轨迹）、性能压测
 
 ## 系统架构
@@ -36,7 +37,7 @@
 
 | 服务 | 端口 | 说明 |
 | --- | --- | --- |
-| travel-backend-java | 8080 | 生产实例（库 `travel_assistant`） |
+| travel-backend-java | 8080 | 本地主实例（库 `travel_assistant`） |
 | travel-backend-java | 8081 | 测试实例（库 `travel_test`，接口自动化专用） |
 | travel-agent-python | 8000 | Agent 服务 |
 | travel-frontend-vue | 5173 | 前端（Vite dev server，/api 代理到 8080） |
@@ -49,7 +50,7 @@ Travel-Assistant/
 ├── travel-backend-java/   # Spring Boot 后端（认证/行程/预算/地图/导出）
 ├── travel-agent-python/   # FastAPI + LangGraph Agent（LLM 生成/反思/RAG/评测/压测）
 ├── travel-frontend-vue/   # Vue3 前端（登录/生成/详情/列表 + 地图）
-├── sql/                   # 建表脚本与种子数据（基准 POI 130 条，含增量脚本）
+├── sql/                   # 建表脚本与种子数据（基准 POI 125 条，含增量脚本；完整快照约 186 条）
 └── 开发计划.md            # 开发计划与交付记录
 ```
 
@@ -78,7 +79,7 @@ stop-all.cmd    # 一键全停（加参数 /I 连 Redis 一起停：stop-all.cmd
 
 ```bash
 mysql -uroot -p < sql/schema.sql        # 建完整数据库结构
-mysql -uroot -p < sql/seed_data.sql     # 种子数据：POI 知识 + 城市消费系数（北京/上海/成都/西安/三亚）
+mysql -uroot -p < sql/seed_data.sql     # 基准数据：125 条 POI + 城市消费系数（5 个城市）
 mysql -uroot -p < sql/add_hangzhou.sql  # 追加杭州 POI（幂等）
 mysql -uroot -p < sql/add_hotels.sql    # 追加各城市知识库酒店（经济/舒适/高端三档，幂等）
 mysql -uroot -p < sql/add_hotel_tier.sql # 已有数据库补充住宿偏好字段（幂等）
@@ -151,7 +152,7 @@ npm run dev            # http://localhost:5173
 
 | 套件 | 命令 | 说明 |
 | --- | --- | --- |
-| Java 单测 | `mvn test`（travel-backend-java） | 预算引擎 6 用例 |
+| Java 单测 | `mvn test`（travel-backend-java） | 当前 8 个预算引擎 JUnit/Mockito 用例 |
 | Python 单测（不含需服务的 API 测试） | `uv run pytest --ignore=tests/api -q`（travel-agent-python） | 可离线运行，覆盖工作流、白名单、反思和安全编辑 |
 | Agent 离线评测 | `uv run python tests/agent_eval/eval_agent.py` | 固定权威 fixture，输出 POI 引用/冲突/重复/预算/轨迹指标 |
 | Agent 真实 LLM 评测 | 需在离线评测基础上另行配置模型与数据版本 | 必须固定模型、temperature、Prompt 版本并报告一致性，不能用离线结果冒充 |
@@ -164,3 +165,12 @@ npm run dev            # http://localhost:5173
 - 接口自动化使用独立 `travel_test` 库与随机测试账号，不污染生产数据
 - `/api/test/**` 与 Agent 的 `/test-generate` 仅用于本机联通性检查；部署环境应移除或限制到管理网络
 - Agent 生成接口返回 `X-Agent-Run-ID`；`GET /api/agent/v1/runs/{run_id}` 可查询最近的脱敏轨迹，`GET /api/agent/v1/metrics` 可查看互斥的成功/降级/失败、LLM/工具/MCP 调用、token、重试和 fallback 指标
+
+## 当前验证结果
+
+- 截至 2026-09-01，Python 离线单测 72 passed（`pytest --ignore=tests/api -q`）；Java 8 个单测通过，前端类型检查和生产构建通过
+- Agent 离线评测：6 个固定案例，权威 POI/字段引用/冲突/路线/重复/预算指标符合预期
+- 真实 LLM 双跑：6 个案例、12 次运行，一致性率 100%，failed 0；12 次均为 `degraded`，均触发确定性 fallback
+- 真实评测明细：`travel-agent-python/tests/agent_eval/report/llm_report.json`
+
+> 真实评测中的“100%”是双跑结果一致性，不是 LLM 直出成功率；报告中的 12 次运行最终状态均为 `degraded`。异步生成使用 Spring `@Async`，重启恢复、跨实例指标和任务持久化仍属于后续增强方向。

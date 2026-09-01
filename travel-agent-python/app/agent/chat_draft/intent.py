@@ -27,7 +27,7 @@ from app.common.config import settings
 from app.common.llm_client import get_llm_client
 from app.common.season import season_factor, season_label
 from app.schemas.trip import (
-    ChatTurnRequest, ChatTurnResponse, GenerateDayRequest, HotelOption, HotelRoomOption,
+    MAX_TRIP_DAYS, ChatTurnRequest, ChatTurnResponse, GenerateDayRequest, HotelOption, HotelRoomOption,
 )
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,8 @@ def _requested_day_count(message: str, current_days: int | None = None) -> int |
         return max(1, current_days - reduce_by)
     increase_by = _parse_increase_by_days(message)
     if increase_by is not None and current_days is not None:
-        return min(14, current_days + increase_by)
+        # 保留超限目标，交由上层统一返回“最多 7 天”，不能静默截断成原天数。
+        return current_days + increase_by
     text = re.sub(
         r"第\s*(?:\d{1,2}|十[一二三四]?|[一二两三四五六七八九])\s*(?:天|日)", "", message or ""
     )
@@ -104,7 +105,7 @@ def _requested_day_count(message: str, current_days: int | None = None) -> int |
         return None
     raw = matches[-1]
     value = int(raw) if raw.isdigit() else _CHINESE_DAY_NUMBERS.get(raw)
-    return value if value is not None and 1 <= value <= 14 else None
+    return value if value is not None and value >= 1 else None
 
 def _is_reduction_request(message: str) -> bool:
     return bool(_REDUCTION_PHRASE_RE.search(message or ""))
@@ -120,7 +121,8 @@ def _increase_target_days(req: ChatTurnRequest) -> int | None:
     """用户明确要求“加/增加/延长 N 天”时返回目标天数，否则返回 None。"""
     increase_by = _parse_increase_by_days(req.message)
     if increase_by:
-        return min(14, req.days + increase_by)
+        target = req.days + increase_by
+        return target if target <= MAX_TRIP_DAYS else None
     return None
 
 def _is_vague_poi_browse_request(message: str) -> bool:

@@ -30,7 +30,7 @@ from app.common.config import settings
 from app.common.llm_client import get_llm_client
 from app.common.season import season_factor, season_label
 from app.schemas.trip import (
-    ChatTurnRequest, ChatTurnResponse, GenerateDayRequest, HotelOption, HotelRoomOption,
+    MAX_TRIP_DAYS, ChatTurnRequest, ChatTurnResponse, GenerateDayRequest, HotelOption, HotelRoomOption,
 )
 
 logger = logging.getLogger(__name__)
@@ -130,6 +130,13 @@ def run_chat_turn(req: ChatTurnRequest) -> ChatTurnResponse:
             reply=("### 可以为你推荐其他景点\n\n"
                    "请告诉我想查看哪一天、偏好的类型（自然 / 人文 / 亲子等），"
                    "或直接说出想替换的景点；当前行程没有修改。"),
+            plans=[], changed=False, hotel_options=[], requires_confirmation=False,
+            plan_document=_trip_plan_document(req), operations=[],
+        )
+    requested_days = _requested_day_count(req.message, req.days)
+    if requested_days is not None and requested_days > MAX_TRIP_DAYS:
+        return ChatTurnResponse(
+            reply=f"### 行程天数上限\n\n每次生成行程最多支持 {MAX_TRIP_DAYS} 天，本次没有修改行程。",
             plans=[], changed=False, hotel_options=[], requires_confirmation=False,
             plan_document=_trip_plan_document(req), operations=[],
         )

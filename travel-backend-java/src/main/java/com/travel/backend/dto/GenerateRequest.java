@@ -13,12 +13,14 @@ import java.util.List;
 @Data
 public class GenerateRequest {
 
+    public static final int MAX_TRIP_DAYS = 7;
+
     @NotBlank(message = "目的地不能为空")
     private String city;
 
     @NotNull(message = "出行天数不能为空")
     @Min(value = 1, message = "天数至少为 1 天")
-    @Max(value = 14, message = "天数最多为 14 天")
+    @Max(value = MAX_TRIP_DAYS, message = "天数最多为 7 天")
     private Integer days;
 
     @Min(value = 1, message = "人数至少为 1 人")
@@ -26,7 +28,7 @@ public class GenerateRequest {
     private Integer persons = 1;
 
     @Min(value = 0, message = "住宿晚数不能为负数")
-    @Max(value = 14, message = "住宿晚数最多为 14 晚")
+    @Max(value = MAX_TRIP_DAYS, message = "住宿晚数最多为 7 晚")
     private Integer stayNights;
 
     private LocalDate startDate;
