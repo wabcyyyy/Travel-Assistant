@@ -1200,8 +1200,9 @@ const discoverPois = computed(() => discoverByCategory.value[discoverTab.value] 
 
 function suggestionPhoto(s: TripSuggestion) {
   const city = detail.value?.city ?? ''
-  // 国内外统一走完整链（Unsplash → 高德）；国外 skipAmap 会错过高德上偶发的海外 POI 图
-  return `/api/amap/poi-photo?name=${encodeURIComponent(s.name)}&city=${encodeURIComponent(city)}`
+  // 海外跳过高德（无覆盖且慢）；代理侧走 Unsplash → Wikipedia → Commons
+  const skip = detailForeign.value ? '&skipAmap=true' : ''
+  return `/api/amap/poi-photo?name=${encodeURIComponent(s.name)}&city=${encodeURIComponent(city)}${skip}`
 }
 
 function openDiscoverAdd(s: TripSuggestion) {

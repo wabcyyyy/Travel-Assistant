@@ -133,6 +133,8 @@ public class AmapController {
                 || normalized.equals("images.weserv.nl")
                 || normalized.equals("upload.wikimedia.org")
                 || normalized.endsWith(".wikimedia.org")
+                || normalized.endsWith(".wikipedia.org")
+                || normalized.equals("wikipedia.org")
                 || normalized.equals("restapi.amap.com")
                 || normalized.endsWith(".amap.com")
                 || normalized.equals("store.is.autonavi.com")
@@ -150,9 +152,11 @@ public class AmapController {
             });
 
     /**
-     * POI 实景照片：优先 Unsplash 真实摄影图，回退高德（过滤地图位置图）。
-     * 返回同源代理地址，避免浏览器直接跟随第三方 302 后被防盗链拦截。
-     * skipAmap=true 时只走 Unsplash（海外目的地，高德无覆盖且易超时）。
+     * POI 实景照片。
+     * <p>
+     * 国内：Unsplash → 高德（过滤地图位置图）。<br>
+     * 海外（skipAmap=true）：Unsplash → Wikipedia(zh/en/ja) → Wikimedia Commons，
+     * <b>不访问高德</b>（海外无覆盖且白耗超时）。
      */
     @GetMapping("/poi-photo")
     public ResponseEntity<Void> poiPhoto(@RequestParam String name, @RequestParam String city,
@@ -164,45 +168,7 @@ public class AmapController {
         String cacheKey = city + ":" + name + ":" + (skipAmap ? "u" : "ua");
         String photoUrl = photoCache.get(cacheKey);
         if (photoUrl == null) {
-            try {
-                photoUrl = unsplashPhoto(name, city);
-            } catch (Exception e) {
-                photoUrl = null;
-            }
-            if (!skipAmap && (photoUrl == null || photoUrl.isBlank())) {
-                try {
-                    // name/city 来自前端，直接拼 URL 存在参数注入，统一编码构建。
-                    URI poiUri = UriComponentsBuilder
-                            .fromUriString("https://restapi.amap.com/v3/place/text")
-                            .queryParam("keywords", name)
-                            .queryParam("city", city)
-                            .queryParam("citylimit", "true")
-                            .queryParam("offset", 1)
-                            .queryParam("page", 1)
-                            .queryParam("key", amapKey)
-                            .build().encode().toUri();
-                    ResponseEntity<String> resp = imageRestClient.get()
-                            .uri(poiUri)
-                            .retrieve()
-                            .toEntity(String.class);
-                    JsonNode poi = objectMapper.readTree(resp.getBody())
-                            .path("pois").path(0);
-                    JsonNode photos = poi.path("photos");
-                    if (photos.isArray()) {
-                        for (JsonNode photo : photos) {
-                            String title = photo.path("title").asText("");
-                            String candidate = photo.path("url").asText(null);
-                            if (candidate != null && !candidate.isBlank()
-                                    && !title.contains("地图") && !title.contains("位置")) {
-                                photoUrl = candidate;
-                                break;
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    photoUrl = "";
-                }
-            }
+            photoUrl = resolvePoiPhoto(name, city, skipAmap);
             photoCache.put(cacheKey, photoUrl == null ? "" : photoUrl);
         }
         if (photoUrl == null || photoUrl.isBlank()) {
@@ -211,6 +177,141 @@ public class AmapController {
         String proxyLocation = "/api/amap/image?url=" +
                 java.net.URLEncoder.encode(photoUrl, java.nio.charset.StandardCharsets.UTF_8);
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(proxyLocation)).build();
+    }
+
+    private String resolvePoiPhoto(String name, String city, boolean skipAmap) {
+        try {
+            String url = unsplashPhoto(name, city);
+            if (url != null && !url.isBlank()) {
+                return url;
+            }
+        } catch (Exception ignored) {
+            // 继续下一源
+        }
+        if (skipAmap) {
+            String wiki = wikipediaPhoto(name);
+            if (wiki != null && !wiki.isBlank()) {
+                return wiki;
+            }
+            return wikimediaCommonsPhoto(name);
+        }
+        try {
+            String amap = amapPhoto(name, city);
+            if (amap != null && !amap.isBlank()) {
+                return amap;
+            }
+        } catch (Exception ignored) {
+            // 国内兜底失败则再试百科
+        }
+        String wiki = wikipediaPhoto(name);
+        return (wiki != null && !wiki.isBlank()) ? wiki : wikimediaCommonsPhoto(name);
+    }
+
+    /** Wikipedia 缩略图：zh → en → ja（海外地标覆盖最好，免费且稳定）。 */
+    private String wikipediaPhoto(String name) {
+        String title = name == null ? "" : name.replaceAll("[（(][^（）()]*[)）]", "").trim();
+        if (title.isEmpty()) {
+            return null;
+        }
+        for (String lang : new String[]{"zh", "en", "ja"}) {
+            try {
+                URI uri = UriComponentsBuilder
+                        .fromUriString("https://" + lang + ".wikipedia.org/w/api.php")
+                        .queryParam("action", "query")
+                        .queryParam("generator", "search")
+                        .queryParam("gsrsearch", title)
+                        .queryParam("gsrlimit", 1)
+                        .queryParam("prop", "pageimages")
+                        .queryParam("piprop", "thumbnail")
+                        .queryParam("pithumbsize", 640)
+                        .queryParam("format", "json")
+                        .build().encode().toUri();
+                ResponseEntity<String> resp = imageRestClient.get().uri(uri)
+                        .header("User-Agent", "TravelAssistantDemo/1.0")
+                        .retrieve().toEntity(String.class);
+                JsonNode pages = objectMapper.readTree(resp.getBody()).path("query").path("pages");
+                if (pages.isObject()) {
+                    JsonNode thumb = pages.elements().next().path("thumbnail").path("source");
+                    if (!thumb.isMissingNode() && !thumb.isNull()) {
+                        return thumb.asText(null);
+                    }
+                }
+            } catch (Exception ignored) {
+                // 试下一语言
+            }
+        }
+        return null;
+    }
+
+    /** Wikimedia Commons 文件检索：覆盖多数海外地标实景/官方图。 */
+    private String wikimediaCommonsPhoto(String name) {
+        String title = name == null ? "" : name.replaceAll("[（(][^（）()]*[)）]", "").trim();
+        if (title.isEmpty()) {
+            return null;
+        }
+        try {
+            URI uri = UriComponentsBuilder
+                    .fromUriString("https://commons.wikimedia.org/w/api.php")
+                    .queryParam("action", "query")
+                    .queryParam("generator", "search")
+                    .queryParam("gsrsearch", title)
+                    .queryParam("gsrnamespace", 6)
+                    .queryParam("gsrlimit", 1)
+                    .queryParam("prop", "imageinfo")
+                    .queryParam("iiprop", "url")
+                    .queryParam("iiurlwidth", 640)
+                    .queryParam("format", "json")
+                    .build().encode().toUri();
+            ResponseEntity<String> resp = imageRestClient.get().uri(uri)
+                    .header("User-Agent", "TravelAssistantDemo/1.0")
+                    .retrieve().toEntity(String.class);
+            JsonNode pages = objectMapper.readTree(resp.getBody()).path("query").path("pages");
+            if (pages.isObject()) {
+                JsonNode info = pages.elements().next().path("imageinfo").path(0);
+                String thumb = info.path("thumburl").asText(null);
+                if (thumb != null && !thumb.isBlank()) {
+                    return thumb;
+                }
+                return info.path("url").asText(null);
+            }
+        } catch (Exception ignored) {
+            // 无图
+        }
+        return null;
+    }
+
+    /** 高德 POI 照片（仅国内）。 */
+    private String amapPhoto(String name, String city) {
+        try {
+            URI poiUri = UriComponentsBuilder
+                    .fromUriString("https://restapi.amap.com/v3/place/text")
+                    .queryParam("keywords", name)
+                    .queryParam("city", city)
+                    .queryParam("citylimit", "true")
+                    .queryParam("offset", 1)
+                    .queryParam("page", 1)
+                    .queryParam("key", amapKey)
+                    .build().encode().toUri();
+            ResponseEntity<String> resp = imageRestClient.get()
+                    .uri(poiUri)
+                    .retrieve()
+                    .toEntity(String.class);
+            JsonNode poi = objectMapper.readTree(resp.getBody()).path("pois").path(0);
+            JsonNode photos = poi.path("photos");
+            if (photos.isArray()) {
+                for (JsonNode photo : photos) {
+                    String title = photo.path("title").asText("");
+                    String candidate = photo.path("url").asText(null);
+                    if (candidate != null && !candidate.isBlank()
+                            && !title.contains("地图") && !title.contains("位置")) {
+                        return candidate;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            return null;
+        }
+        return null;
     }
 
     /** Unsplash 检索 POI 实景图；未配置 access key 或请求失败时返回 null。 */
