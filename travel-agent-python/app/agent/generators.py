@@ -96,12 +96,11 @@ QUALITY_CLAUSE = (
     "避免选择定位和定价高度雷同的同质化点位。"
 )
 
-# 备选池条目上限与品类均衡约束：五大类尽量均衡，每类至少 2 条、至多 6 条
-# 「发现更多」数量契约（产品定稿）：主类下限 3、每类上限 12；
-# 总上限取 5 类满配 60，由分类上限自然约束，避免再被总名额挤掉酒店/体验。
-SUGGESTION_LIMIT = 60
-SUGGESTION_MIN_PER_CATEGORY = 3
-SUGGESTION_MAX_PER_CATEGORY = 12
+# 「发现更多」数量契约：主类下限 4、每类上限 20；总上限 80。
+# 海外/开放模式候选池偏小，上限放宽让模型建议与研究证据尽量收入。
+SUGGESTION_LIMIT = 80
+SUGGESTION_MIN_PER_CATEGORY = 4
+SUGGESTION_MAX_PER_CATEGORY = 20
 SUGGESTION_CATEGORIES = ("attraction", "activity", "food", "hotel", "souvenir")
 
 

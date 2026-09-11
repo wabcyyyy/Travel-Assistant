@@ -36,6 +36,17 @@
       >
         <span class="degraded-title">部分信息需复核</span>
         <span>{{ degradedBannerText }}</span>
+        <button type="button" class="degraded-help-toggle" @click="reviewHelpOpen = !reviewHelpOpen">
+          {{ reviewHelpOpen ? '收起说明' : '如何复核？' }}
+        </button>
+      </div>
+      <div v-if="showDegradedBanner && reviewHelpOpen" class="review-help">
+        <ol>
+          <li>在下方行程中筛选带「待确认 / 参考估算」标签的点位</li>
+          <li>出发前用地图 App 或景点官网核实：<b>是否仍营业</b>、<b>营业时间</b>、<b>票价/预约</b></li>
+          <li>价格仅作预算参考，以现场/官方购票页为准；开放研究草案的点位尤其要核对</li>
+          <li>可在本页「智能修改」里让 AI 换成更稳妥的点位</li>
+        </ol>
       </div>
       <div v-if="detail.planNote && detail.status !== 3" class="butler-strip">
         <div class="butler-head">AI 管家说</div>
@@ -332,7 +343,7 @@
       <div class="discover-head">
         <div class="discover-heading">
           <h2 class="discover-title">发现更多</h2>
-          <p class="discover-sub">来自本次规划候选池、未排入行程的备选点位，点击即可加入</p>
+          <p class="discover-sub">候选池与模型备选中未排入行程的点位，点击即可加入（海外城市图片以第三方检索命中为准）</p>
         </div>
         <el-radio-group v-model="discoverTab" class="discover-tabs" size="large">
           <el-radio-button v-for="c in DISCOVER_TABS" :key="c.key" :value="c.key">
@@ -1008,6 +1019,8 @@ function qualityTagType(status?: ItineraryDetail['qualityStatus']) {
   return 'warning'
 }
 
+const reviewHelpOpen = ref(false)
+
 /** 降级/待复核横幅：对齐产品「如实降级」叙事，不把风险藏在小标签里。 */
 const showDegradedBanner = computed(() => {
   const d = detail.value
@@ -1187,9 +1200,7 @@ const discoverPois = computed(() => discoverByCategory.value[discoverTab.value] 
 
 function suggestionPhoto(s: TripSuggestion) {
   const city = detail.value?.city ?? ''
-  if (detailForeign.value) {
-    return `/api/amap/poi-photo?name=${encodeURIComponent(s.name)}&city=${encodeURIComponent(city)}&skipAmap=true`
-  }
+  // 国内外统一走完整链（Unsplash → 高德）；国外 skipAmap 会错过高德上偶发的海外 POI 图
   return `/api/amap/poi-photo?name=${encodeURIComponent(s.name)}&city=${encodeURIComponent(city)}`
 }
 
@@ -1427,6 +1438,39 @@ onUnmounted(() => {
 .gen-banner.warn .degraded-title {
   flex-shrink: 0;
   font-weight: 700;
+}
+
+.gen-banner.warn .degraded-help-toggle {
+  margin-left: auto;
+  flex-shrink: 0;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.review-help {
+  margin: -4px 0 14px;
+  padding: 10px 14px 10px 32px;
+  border: 1px solid var(--lp-border);
+  border-left: 4px solid #e6a23c;
+  border-radius: 8px;
+  background: var(--lp-paper);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--lp-ink);
+}
+
+.review-help ol {
+  margin: 0;
+  padding-left: 1em;
+}
+
+.review-help li + li {
+  margin-top: 4px;
 }
 
 .butler-strip {
