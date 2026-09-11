@@ -12,8 +12,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
@@ -27,14 +27,14 @@ public class AmapServiceImpl implements AmapService {
     private static final String GEOCODE_URL = "https://restapi.amap.com/v3/geocode/geo";
     private static final String POI_SEARCH_URL = "https://restapi.amap.com/v3/place/text";
 
-    private final RestTemplate restTemplate;
+    private final RestClient restClient;
     private final ObjectMapper objectMapper;
 
     @Value("${app.amap.web-key}")
     private String webKey;
 
-    public AmapServiceImpl(RestTemplate restTemplate, ObjectMapper objectMapper) {
-        this.restTemplate = restTemplate;
+    public AmapServiceImpl(RestClient restClient, ObjectMapper objectMapper) {
+        this.restClient = restClient;
         this.objectMapper = objectMapper;
     }
 
@@ -72,15 +72,19 @@ public class AmapServiceImpl implements AmapService {
     }
 
     @Override
-    @Cacheable(cacheNames = "amap:poi", key = "#keywords + ':' + #city + ':' + #types")
+    @Cacheable(cacheNames = "amap:poi", key = "'v2:' + #keywords + ':' + #city + ':' + #types")
     public List<AmapPoiVO> searchPoi(String keywords, String city, String types) {
         checkKey();
-        if (!StringUtils.hasText(keywords)) {
-            throw new BizException(400, "搜索关键字不能为空");
+        if (!StringUtils.hasText(keywords) && !StringUtils.hasText(types)) {
+            throw new BizException(400, "搜索关键字与类型至少填写一项");
         }
         UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(POI_SEARCH_URL)
                 .queryParam("key", webKey)
-                .queryParam("keywords", keywords);
+                // 返回 biz_ext（评分/人均消费），供前端做质量筛选与价位去重
+                .queryParam("extensions", "all");
+        if (StringUtils.hasText(keywords)) {
+            builder.queryParam("keywords", keywords);
+        }
         if (StringUtils.hasText(city)) {
             builder.queryParam("city", city);
         }
@@ -98,6 +102,9 @@ public class AmapServiceImpl implements AmapService {
                 vo.setName(node.path("name").asText(null));
                 vo.setAddress(node.path("address").asText(null));
                 vo.setType(node.path("type").asText(null));
+                JsonNode bizExt = node.path("biz_ext");
+                vo.setRating(bizExt.path("rating").asText(null));
+                vo.setCost(bizExt.path("cost").asText(null));
                 String location = node.path("location").asText(null);
                 if (StringUtils.hasText(location)) {
                     String[] parts = location.split(",");
@@ -120,7 +127,10 @@ public class AmapServiceImpl implements AmapService {
 
     private JsonNode get(String url) {
         try {
-            String body = restTemplate.getForObject(java.net.URI.create(url), String.class);
+            String body = restClient.get()
+                    .uri(java.net.URI.create(url))
+                    .retrieve()
+                    .body(String.class);
             JsonNode root = objectMapper.readTree(body);
             String status = root.path("status").asText();
             if (!"1".equals(status)) {

@@ -7,8 +7,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestTemplate;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -19,13 +19,13 @@ public class TestController {
 
     private static final Logger log = LoggerFactory.getLogger(TestController.class);
 
-    private final RestTemplate restTemplate;
+    private final RestClient restClient;
 
     @Value("${app.agent.base-url}")
     private String agentBaseUrl;
 
-    public TestController(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
+    public TestController(RestClient restClient) {
+        this.restClient = restClient;
     }
 
     @GetMapping("/hello")
@@ -34,10 +34,11 @@ public class TestController {
     }
 
     @GetMapping("/call-agent")
+    @SuppressWarnings("unchecked")
     public Result<Map<String, Object>> callAgent() {
         String url = agentBaseUrl + "/api/agent/hello";
         try {
-            Map<String, Object> body = restTemplate.getForObject(url, Map.class);
+            Map<String, Object> body = restClient.get().uri(url).retrieve().body(Map.class);
             return Result.ok(body);
         } catch (RestClientException e) {
             log.error("call agent service failed: {}", e.getMessage());

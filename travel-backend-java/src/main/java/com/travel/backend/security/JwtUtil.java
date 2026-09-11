@@ -12,6 +12,7 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.security.SecureRandom;
+import java.util.UUID;
 
 @Component
 public class JwtUtil {
@@ -36,20 +37,39 @@ public class JwtUtil {
 
     public String generateToken(String username) {
         Date now = new Date();
+        Date exp = new Date(now.getTime() + expireMillis);
         return Jwts.builder()
+                .id(UUID.randomUUID().toString())
                 .subject(username)
                 .issuedAt(now)
-                .expiration(new Date(now.getTime() + expireMillis))
+                .expiration(exp)
                 .signWith(key)
                 .compact();
     }
 
-    public String parseUsername(String token) {
-        Claims claims = Jwts.parser()
+    public Claims parseClaims(String token) {
+        return Jwts.parser()
                 .verifyWith(key)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
-        return claims.getSubject();
+    }
+
+    public String parseUsername(String token) {
+        return parseClaims(token).getSubject();
+    }
+
+    public String parseJti(String token) {
+        return parseClaims(token).getId();
+    }
+
+    /** Token 剩余有效秒数（用于黑名单 TTL）；已过期返回 0。 */
+    public long remainingSeconds(Claims claims) {
+        Date exp = claims.getExpiration();
+        if (exp == null) {
+            return 0L;
+        }
+        long millis = exp.getTime() - System.currentTimeMillis();
+        return millis > 0 ? (millis + 999) / 1000 : 0L;
     }
 }

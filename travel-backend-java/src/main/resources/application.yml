@@ -39,11 +39,26 @@ app:
   jwt:
     secret: ${JWT_SECRET:}
     expire-hours: 24
+  security:
+    # 启动时强制 JWT_SECRET 非空且 ≥32；本地可设 false 跳过（不推荐）
+    enforce-secret-check: ${ENFORCE_SECRET_CHECK:true}
+    # 仅当 remoteAddr 命中该列表时才信任 X-Forwarded-For（防伪造绕过登录限速）
+    trusted-proxies: ${TRUSTED_PROXIES:127.0.0.1,0:0:0:0:0:0:0:1,::1}
+  auth:
+    # HttpOnly Cookie 的 Secure 标志；本地 http 设 false，生产 https 必须 true
+    cookie-secure: ${AUTH_COOKIE_SECURE:false}
+  state:
+    # 限速/日锁/续跑标记优先写 Redis；false 时纯进程内（仅单机测试）
+    prefer-redis: ${APP_STATE_PREFER_REDIS:true}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   agent:
     base-url: ${AGENT_SERVICE_URL:http://localhost:8000}
     internal-token: ${AGENT_INTERNAL_TOKEN:}
+    circuit:
+      # 连续失败 N 次后熔断；open-seconds 后半开试探
+      failure-threshold: ${AGENT_CIRCUIT_FAILURE_THRESHOLD:5}
+      open-seconds: ${AGENT_CIRCUIT_OPEN_SECONDS:30}
   amap:
     web-key: ${AMAP_WEB_KEY:}
   unsplash:

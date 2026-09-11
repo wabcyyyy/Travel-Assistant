@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.travel.backend.common.BizException;
 import com.travel.backend.common.Result;
+import com.travel.backend.common.SimpleCircuitBreaker;
 import com.travel.backend.dto.AgentGenerateRequest;
 import com.travel.backend.dto.AgentGenerateResponse;
 import com.travel.backend.service.AgentService;
@@ -11,17 +12,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Python Agent 服务调用层。
@@ -42,7 +42,7 @@ import java.util.Map;
  *   <li>{@code /api/agent/v1/edit-ops} — 自然语言指令解析为操作列表</li>
  * </ul>
  *
- * <p>所有调用均为同步 HTTP POST，使用 Spring RestTemplate。</p>
+ * <p>所有调用均为同步 HTTP，使用 Spring {@code RestClient}。</p>
  *
  * @see com.travel.backend.service.AgentService
  */
@@ -51,7 +51,8 @@ public class AgentServiceImpl implements AgentService {
 
     private static final Logger log = LoggerFactory.getLogger(AgentServiceImpl.class);
 
-    private final RestTemplate restTemplate;
+    private final RestClient restClient;
+    private final SimpleCircuitBreaker circuitBreaker;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${app.agent.base-url}")
@@ -60,8 +61,9 @@ public class AgentServiceImpl implements AgentService {
     @Value("${app.agent.internal-token:}")
     private String agentInternalToken;
 
-    public AgentServiceImpl(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
+    public AgentServiceImpl(RestClient restClient, SimpleCircuitBreaker circuitBreaker) {
+        this.restClient = restClient;
+        this.circuitBreaker = circuitBreaker;
     }
 
     /**
@@ -72,7 +74,9 @@ public class AgentServiceImpl implements AgentService {
      */
     @Override
     public AgentGenerateResponse generate(AgentGenerateRequest request) {
-        JsonNode node = postForNode("/api/agent/v1/generate", request, "行程生成服务暂不可用，请稍后重试");
+        // 整段生成会烧 LLM token，瞬时失败不重试，避免双倍计费
+        JsonNode node = postForNode("/api/agent/v1/generate", request,
+                "行程生成服务暂不可用，请稍后重试", false);
         return objectMapper.convertValue(node, AgentGenerateResponse.class);
     }
 
@@ -137,6 +141,17 @@ public class AgentServiceImpl implements AgentService {
     }
 
     /**
+     * 同城权威 POI 近邻：按名称解析坐标或直接传坐标，返回知识库中的真实近邻。
+     *
+     * @param payload 包含 city，及 name 或 latitude/longitude，可选 limit/radius_m/category
+     * @return 包含 items（近邻 POI 列表，含 _distance_m）的 JSON 节点
+     */
+    @Override
+    public JsonNode poiNearby(Map<String, Object> payload) {
+        return postForNode("/api/agent/v1/poi-nearby", payload, "附近推荐服务暂不可用");
+    }
+
+    /**
      * 城市引导对话：用户不确定去哪时，AI 根据偏好推荐城市。
      *
      * @param payload 包含 input（用户输入）和 history（对话历史）
@@ -166,7 +181,52 @@ public class AgentServiceImpl implements AgentService {
      * @return 单日行程 JSON（含 day_no/note/items）
      */
     public JsonNode generateDay(Map<String, Object> payload) {
-        return postForNode("/api/agent/v1/generate-day", payload, "当日行程生成失败");
+        // 逐日生成同样烧 LLM token，不自动重试
+        return postForNode("/api/agent/v1/generate-day", payload, "当日行程生成失败", false);
+    }
+
+    /**
+     * 查询 Agent 运行指标（llm_calls、prompt/completion tokens 等，进程内聚合）。
+     *
+     * @return 指标 JSON 节点，Agent 不可用时抛出 BizException(502)
+     */
+    @Override
+    public JsonNode metrics() {
+        return getForNode("/api/agent/v1/metrics", "Agent 指标服务暂不可用");
+    }
+
+    @Override
+    public JsonNode usage(String range, int limit, int offset) {
+        return getForNode("/api/agent/v1/usage?range=" + range + "&limit=" + limit
+                + "&offset=" + offset, "Agent 用量服务暂不可用");
+    }
+
+    /** GET 请求 Agent 并解包 Result.data；失败抛 BizException(502)。读请求可瞬时重试。 */
+    private JsonNode getForNode(String pathWithQuery, String errorMsg) {
+        String url = agentBaseUrl + pathWithQuery;
+        return circuitBreaker.execute("agent.get:" + pathWithQuery, () -> {
+            try {
+                Result<JsonNode> result = restClient.get()
+                        .uri(url)
+                        .headers(h -> {
+                            h.setContentType(MediaType.APPLICATION_JSON);
+                            if (agentInternalToken != null && !agentInternalToken.isBlank()) {
+                                h.set("X-Agent-Token", agentInternalToken);
+                            }
+                        })
+                        .retrieve()
+                        .body(new ParameterizedTypeReference<Result<JsonNode>>() {
+                        });
+                if (result == null || result.getCode() == null || result.getCode() != Result.CODE_SUCCESS
+                        || result.getData() == null) {
+                    throw new BizException(502, "请求失败：" + (result == null ? "无响应" : result.getMessage()));
+                }
+                return result.getData();
+            } catch (RestClientException e) {
+                log.error("call agent {} failed: {}", pathWithQuery, e.getMessage());
+                throw new BizException(502, errorMsg);
+            }
+        }, 2, true);
     }
 
     /**
@@ -187,27 +247,65 @@ public class AgentServiceImpl implements AgentService {
      * @throws BizException 当 Agent 不可用或返回异常响应时
      */
     private JsonNode postForNode(String path, Object body, String unavailableMsg) {
+        return postForNode(path, body, unavailableMsg, true);
+    }
+
+    /**
+     * @param retryOnTransient 瞬时失败是否重试。generate / generate-day 必须 false，
+     *                         避免 LLM 重复计费与状态机双写。
+     */
+    private JsonNode postForNode(String path, Object body, String unavailableMsg, boolean retryOnTransient) {
         String url = agentBaseUrl + path;
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            if (agentInternalToken != null && !agentInternalToken.isBlank()) {
-                headers.set("X-Agent-Token", agentInternalToken);
+        int maxAttempts = retryOnTransient ? 2 : 1;
+        return circuitBreaker.execute("agent.post:" + path, () -> {
+            try {
+                Result<JsonNode> result = restClient.post()
+                        .uri(url)
+                        .headers(h -> {
+                            h.setContentType(MediaType.APPLICATION_JSON);
+                            h.set("X-Request-ID", resolveRequestId(body));
+                            if (agentInternalToken != null && !agentInternalToken.isBlank()) {
+                                h.set("X-Agent-Token", agentInternalToken);
+                            }
+                        })
+                        .body(body)
+                        .retrieve()
+                        .body(new ParameterizedTypeReference<Result<JsonNode>>() {
+                        });
+                if (result == null || result.getCode() == null || result.getCode() != Result.CODE_SUCCESS
+                        || result.getData() == null) {
+                    log.error("agent call {} returned abnormal result: {}", path, result);
+                    throw new BizException(502, "请求失败：" + (result == null ? "无响应" : result.getMessage()));
+                }
+                return result.getData();
+            } catch (RestClientException e) {
+                log.error("call agent {} failed: {}", path, e.getMessage());
+                throw new BizException(502, unavailableMsg);
             }
-            ResponseEntity<Result<JsonNode>> response = restTemplate.exchange(
-                    url, HttpMethod.POST, new HttpEntity<>(body, headers),
-                    new ParameterizedTypeReference<Result<JsonNode>>() {
-                    });
-            Result<JsonNode> result = response.getBody();
-            if (result == null || result.getCode() == null || result.getCode() != Result.CODE_SUCCESS
-                    || result.getData() == null) {
-                log.error("agent call {} returned abnormal result: {}", path, result);
-                throw new BizException(502, "请求失败：" + (result == null ? "无响应" : result.getMessage()));
+        }, maxAttempts, retryOnTransient);
+    }
+
+    /**
+     * 透传入口请求的关联 ID；异步逐日任务没有 Servlet 上下文时优先使用
+     * payload 中稳定的 itinerary request_id，保证同一行程的 Trace 可串联。
+     */
+    private String resolveRequestId(Object body) {
+        ServletRequestAttributes attributes =
+                (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        if (attributes != null) {
+            String inbound = attributes.getRequest().getHeader("X-Request-ID");
+            if (inbound != null && !inbound.isBlank()) {
+                return inbound.length() > 128 ? inbound.substring(0, 128) : inbound;
             }
-            return result.getData();
-        } catch (RestClientException e) {
-            log.error("call agent {} failed: {}", path, e.getMessage());
-            throw new BizException(502, unavailableMsg);
         }
+        if (body instanceof Map<?, ?> map) {
+            Object requestId = map.get("request_id");
+            if (requestId == null) requestId = map.get("requestId");
+            if (requestId != null && !requestId.toString().isBlank()) {
+                String value = requestId.toString();
+                return value.length() > 128 ? value.substring(0, 128) : value;
+            }
+        }
+        return UUID.randomUUID().toString();
     }
 }
