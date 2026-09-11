@@ -26,6 +26,7 @@ import logging
 
 from app.agent import tools
 from app.agent.day_stream import run_generate_day, run_plan_context
+from app.agent.memory import dialogue_messages
 from app.common.config import settings
 from app.common.llm_client import get_llm_client
 from app.common.season import season_factor, season_label
@@ -40,7 +41,13 @@ from .validate import (DecisionJsonError, _decision_reply, _default_plan_update_
 from .hotel import (_fallback_hotel_intent, _has_explicit_hotel_comparison, _hotel_catalog, _hotel_comparison_base_tier, _hotel_intent_from_decision, _hotel_proposal_response, _hotel_signature, _is_hotel_request, _understand_hotel_intent, _with_stay_scope)
 from .document import (_decision_plan_document, _trip_plan_document)
 from .plan_edit import (_apply_plan_update, _dedupe_plans, _deterministic_extend, _deterministic_reduce)
-from .intent import (_increase_target_days, _is_reduction_request, _is_vague_poi_browse_request, _reduce_target_days)
+from .intent import (
+    _increase_target_days,
+    _is_reduction_request,
+    _is_vague_poi_browse_request,
+    _reduce_target_days,
+    _requested_day_count,
+)
 
 
 def _decide_plan_change(req: ChatTurnRequest, hotels: list[dict],
@@ -86,11 +93,7 @@ def _decide_plan_change(req: ChatTurnRequest, hotels: list[dict],
         '"operations":[{"action":"动作","day_numbers":[1],"summary":"说明"}]}'
     )
     messages = [{"role": "system", "content": system}]
-    for item in (req.history or [])[-4:]:
-        role = "user" if item.get("role") == "user" else "assistant"
-        content = str(item.get("content") or "")[:800]
-        if content:
-            messages.append({"role": role, "content": content})
+    messages.extend(dialogue_messages(req.history))
     user_content = (
         f"当前计划JSON：{json.dumps(document, ensure_ascii=False)}\n"
         f"hotel_catalog：{json.dumps(_hotel_catalog(hotels), ensure_ascii=False)}\n"

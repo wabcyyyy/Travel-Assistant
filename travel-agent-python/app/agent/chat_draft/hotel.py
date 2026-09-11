@@ -16,13 +16,15 @@
 
 import re
 import json
+import logging
 from copy import deepcopy
 from datetime import date, timedelta
 from difflib import SequenceMatcher
-import logging
+from math import ceil
 
 from app.agent import tools
 from app.agent.day_stream import run_generate_day, run_plan_context
+from app.agent.memory import recent_turns
 from app.common.config import settings
 from app.common.llm_client import get_llm_client
 from app.common.season import season_factor, season_label
@@ -290,11 +292,7 @@ def _understand_hotel_intent(req: ChatTurnRequest, hotels: list[dict]) -> HotelI
     """先理解相对当前酒店的换房意图，再把它收敛为一个明确目标档次。"""
     base_tier = _hotel_comparison_base_tier(req, hotels)
     fallback = _fallback_hotel_intent(req.message, base_tier)
-    history = [
-        {"role": item.get("role"), "content": str(item.get("content") or "")[:500]}
-        for item in (req.history or [])[-4:]
-        if item.get("content")
-    ]
+    history = recent_turns(req.history, turns=4, max_chars=500)
     try:
         raw = get_llm_client().complete(
             "请识别用户更换酒店的真实意图，并只输出JSON。\n"

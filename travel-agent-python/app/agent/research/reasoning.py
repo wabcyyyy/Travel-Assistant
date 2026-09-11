@@ -1,0 +1,122 @@
+"""研究 Agent 的 LLM 推理：检索规划 + 证据充分性评估（阶段二）。
+
+规划（plan_research）：根据研究任务卡输出检索策略——扩展偏好、补充自由关键词
+（如具体景点/菜系/酒店品牌）、检索规模；评估（evaluate_research）：判断证据是否
+足够，不足时给出补充检索词，驱动子图最多再补一轮。
+
+设计要点：
+- LLM-only 口径不破：规划/评估只决定"查什么、够不够"，绝不生成行程内容；
+- 任何异常（未配置 LLM / 网络 / 解析失败）都回退到确定性默认值，绝不阻塞研究；
+- 证据为空时确定性判定"不足"并给默认补充词，省一次模型调用；
+- 统一走 llm_fast_model 控制成本，模块级函数可被单测 patch 注入 fixture。
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import re
+
+from app.agent.research.evidence import ResearchTask
+from app.common.config import settings
+from app.common.llm_client import get_llm_client
+
+logger = logging.getLogger(__name__)
+
+_PLAN_SYSTEM = (
+    "你是旅行信息研究员。根据研究任务输出检索计划 JSON，只规划检索不生成行程："
+    '{"reasoning":"一句话说明检索思路","preferences":["扩展的偏好关键词(可空数组)"],'
+    '"extra_keywords":["补充自由检索词(可空数组，如具体景点名/菜系/酒店品牌)"],'
+    '"limit":数字(检索规模)}。字段缺失给 null。'
+)
+
+_EVAL_SYSTEM = (
+    "你是旅行信息评估员。判断检索结果是否满足研究任务（数量、与偏好/预算/档位的匹配度），"
+    "只输出 JSON："
+    '{"sufficient":true或false,"reason":"一句话","extra_keywords":["不足时建议补充的检索词(可空数组)"]}。'
+    "只评估证据充分性，不生成行程。"
+)
+
+# 证据为空时确定性补查的默认关键词（各域兜底，避免空结果直接无证据交付）
+def _default_extra_keywords(task: ResearchTask) -> list[str]:
+    if task.domain == "hotel":
+        return [f"{task.city} 酒店"]
+    if task.domain == "food":
+        return [f"{task.city} 美食", f"{task.city} 特色餐厅"]
+    prefs = [str(p) for p in (task.preferences or []) if p]
+    return [f"{task.city} {p}" for p in prefs] or [f"{task.city} 景点"]
+
+
+def _parse_json(text: str) -> dict | None:
+    text = (text or "").strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[-1].rsplit("```", 1)[0]
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if not match:
+        return None
+    try:
+        data = json.loads(match.group(0))
+        return data if isinstance(data, dict) else None
+    except json.JSONDecodeError:
+        return None
+
+
+def plan_research(task: ResearchTask) -> dict:
+    """输出检索计划 {preferences, extra_keywords, limit}；失败/未配置 LLM 返回空计划。
+
+    空计划等价于阶段一的确定性检索参数，保证降级链路与旧行为一致。
+    """
+    if not settings.llm_api_key:
+        return {}
+    try:
+        raw = get_llm_client().complete(
+            f"研究任务：域={task.domain}，城市={task.city}，偏好={task.preferences}，"
+            f"预算={task.budget}，酒店档位={task.hotel_tier}。请规划检索策略。",
+            system_prompt=_PLAN_SYSTEM,
+            temperature=0.2,
+            max_tokens=300,
+            model=settings.llm_fast_model or None,
+            json_mode=True,
+        )
+        data = _parse_json(raw) or {}
+        return {
+            "preferences": [str(x) for x in (data.get("preferences") or []) if x],
+            "extra_keywords": [str(x) for x in (data.get("extra_keywords") or []) if x],
+            "limit": int(data.get("limit") or 0) or 0,
+        }
+    except Exception as exc:  # noqa: BLE001 - 研究规划失败必须可降级
+        logger.warning("research plan failed for %s/%s: %s", task.domain, task.city, exc)
+        return {}
+
+
+def evaluate_research(task: ResearchTask, items: list[dict], round_no: int) -> dict:
+    """评估证据充分性 {sufficient, extra_keywords}；异常按充分处理（不无限补查）。
+
+    证据为空时确定性返回"不足"+默认补充词（省一次模型调用）；LLM 判定仅在
+    结果非空且已配置模型时发生。
+    """
+    if not items:
+        return {"sufficient": False, "extra_keywords": _default_extra_keywords(task)}
+    if not settings.llm_api_key:
+        return {"sufficient": True, "extra_keywords": []}
+    names = [str(p.get("name") or "") for p in items[:12]]
+    try:
+        raw = get_llm_client().complete(
+            f"研究域={task.domain}；城市={task.city}；任务要求：偏好={task.preferences}，"
+            f"预算={task.budget}，酒店档位={task.hotel_tier}。\n"
+            f"第 {round_no} 轮检索到 {len(items)} 条：{json.dumps(names, ensure_ascii=False)}。"
+            "判断是否足够，不足请给出补充检索词。",
+            system_prompt=_EVAL_SYSTEM,
+            temperature=0.1,
+            max_tokens=240,
+            model=settings.llm_fast_model or None,
+            json_mode=True,
+        )
+        data = _parse_json(raw) or {}
+        return {
+            "sufficient": bool(data.get("sufficient", True)),
+            "extra_keywords": [str(x) for x in (data.get("extra_keywords") or []) if x],
+        }
+    except Exception as exc:  # noqa: BLE001 - 研究评估失败按充分处理
+        logger.warning("research evaluate failed for %s/%s: %s", task.domain, task.city, exc)
+        return {"sufficient": True, "extra_keywords": []}

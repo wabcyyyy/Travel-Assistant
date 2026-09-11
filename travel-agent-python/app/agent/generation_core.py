@@ -1,0 +1,148 @@
+"""生成链路共享内核：产品口径与确定性 helper 的唯一真相源。
+
+架构（已合并为一张图）：
+
+| 模块 | 角色 |
+|------|------|
+| ``trip_graph`` | **唯一** LangGraph 编排图；``mode=day`` / ``mode=trip`` 分流 |
+| ``day_stream`` | 单次生成「事实层」：开放模式 Prompt、坐标/价格落地、ReferencePool |
+| ``workflow`` | 整段业务节点实现 + ``run_generate`` 门面 |
+| ``day_workflow`` | 逐日门面 + ``_generate_day_once`` 兼容再导出 |
+| ``generation_core`` | 产品口径（N-1 晚/草案/重试常量/摊铺） |
+
+历史说明：曾存在 workflow / day_workflow 两张图；已合并进 trip_graph。
+改动产品规则只改本模块；改编排拓扑只改 ``trip_graph``。
+"""
+
+from __future__ import annotations
+
+import copy
+from typing import Any
+
+# 单日/兼容路径的校验修复次数
+MAX_FIX_ATTEMPTS = 2
+# 开放研究失败总尝试（含首次）：失败 → 重试一次 → 待研究草案
+MAX_GENERATION_ATTEMPTS = 2
+# 逐日 LangGraph 单日修复上限（与 MAX_FIX_ATTEMPTS 对齐，避免两套常量漂移）
+MAX_DAY_ATTEMPTS = MAX_FIX_ATTEMPTS
+# Supervisor 证据缺口补查次数
+MAX_REFILLS = 1
+
+DRAFT_NOTE_SUFFIX = "待研究"
+
+
+def stay_nights(days: int | None) -> int:
+    """产品定稿：N 天行程住 N-1 晚；最后一天不安排入住。"""
+    try:
+        d = int(days or 1)
+    except (TypeError, ValueError):
+        d = 1
+    return max(d - 1, 0)
+
+
+def day_needs_hotel(day_no: int, days: int | None, *, override: bool | None = None) -> bool:
+    """某一天是否应安排酒店。``override`` 为客户端/上游显式 needs_hotel 时优先生效。"""
+    if override is not None:
+        return bool(override)
+    nights = stay_nights(days)
+    try:
+        n = int(day_no)
+    except (TypeError, ValueError):
+        return False
+    return 1 <= n <= nights
+
+
+def hotel_prompt_clause(needs_hotel: bool, days: int | None) -> str:
+    """多日/单日酒店 Prompt 条款（与 stay_nights 口径一致）。"""
+    d = int(days or 1)
+    if needs_hotel and d > 1:
+        last_stay = max(d - 1, 0)
+        return (
+            f"第 1 至第 {last_stay} 天每天都要有同一家酒店的入住项"
+            "（全程沿用同一家，默认不换店，仅前往远距离区域转点时可换），最后一天不安排入住"
+        )
+    if needs_hotel:
+        return "安排 1 家酒店"
+    return "按需安排酒店"
+
+
+def day_hotel_clause(needs_hotel: bool) -> str:
+    """单日 Prompt 中的酒店短句。"""
+    return "安排 1 家酒店；" if needs_hotel else "今日无需安排酒店；"
+
+
+def count_hotel_nights_in_budget(plan_day_no: int, days: int | None, item_type: str) -> bool:
+    """预算/落库是否计入该酒店项：末日酒店在多日行程中不计（N-1 晚口径）。"""
+    if item_type != "hotel":
+        return False
+    d = int(days or 1)
+    n = int(plan_day_no or 0)
+    if d > 1 and n >= d:
+        return False
+    return True
+
+
+def spread_hotels(plans: list[dict], nights: int | None = None, days: int | None = None) -> int:
+    """全程同一家酒店：把首个酒店项复制到仍缺入住的晚次。
+
+    不改内容来源（仍是 LLM 选的那家店），只做确定性摊铺。
+    """
+    if nights is None:
+        nights = stay_nights(days if days is not None else _max_day_no(plans))
+    if nights <= 0 or not plans:
+        return 0
+    source: dict | None = None
+    for plan in plans:
+        for item in plan.get("items") or []:
+            if item.get("item_type") == "hotel":
+                source = item
+                break
+        if source:
+            break
+    if not source:
+        return 0
+    added = 0
+    for plan in plans:
+        day_no = int(plan.get("day_no") or 0)
+        if day_no < 1 or day_no > nights:
+            continue
+        items = plan.setdefault("items", [])
+        if any(it.get("item_type") == "hotel" for it in items):
+            continue
+        clone = copy.deepcopy(source)
+        clone["sort_no"] = len(items)
+        items.append(clone)
+        added += 1
+    return added
+
+
+def draft_day_plans(city: str, days: int, reason: str) -> list[dict]:
+    """LLM 失败后的「待研究草案」：如实空日，绝不冒充生成结果。"""
+    try:
+        n = int(days)
+    except (TypeError, ValueError):
+        n = 1
+    n = max(n, 1)
+    return [
+        {"day_no": day_no, "note": f"{city}第{day_no}天{DRAFT_NOTE_SUFFIX}", "items": []}
+        for day_no in range(1, n + 1)
+    ]
+
+
+def filter_dirty_items(items: list[Any] | None) -> list[dict]:
+    """过滤非 dict / 无 poi_name 的脏项，避免下游崩溃。"""
+    out: list[dict] = []
+    for item in items or []:
+        if isinstance(item, dict) and str(item.get("poi_name") or "").strip():
+            out.append(item)
+    return out
+
+
+def _max_day_no(plans: list[dict]) -> int:
+    m = 0
+    for plan in plans:
+        try:
+            m = max(m, int(plan.get("day_no") or 0))
+        except (TypeError, ValueError):
+            continue
+    return m or 1

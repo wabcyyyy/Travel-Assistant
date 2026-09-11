@@ -1,0 +1,132 @@
+"""Supervisor 研究编排：需求分解 → 并行派发 → 证据整合。
+
+职责：
+- decompose：把 GenerateRequest 分解为三个 ResearchTask（酒店/景点/美食）；
+- run_research_parallel：3-worker 线程池并行执行研究 Agent，携带 trace 上下文，
+  单域异常降级为 degraded 证据包（不阻塞其它域与整合）；
+- synthesize：三份证据包映射回现有上下文契约 {candidates, foods, hotels, consumption}
+  + research_report（供 format_output 写入 schedule_report）；
+- run_research_context：整段生成（workflow.search）与逐日（plan-context）共用的入口。
+
+实现要点：
+- 工具调用统一走 app.agent.tools 模块属性（运行时解析），单测注入契约不变；
+- 城市级消费数据（get_consumption）不属于任何 POI 域，由 Supervisor 直接获取；
+- 输出形状与旧 search_pois 完全一致，下游 generate/format 零改动。
+"""
+
+from __future__ import annotations
+
+import contextvars
+import logging
+from concurrent.futures import ThreadPoolExecutor
+
+from app.agent import tools
+from app.agent.observability import metrics
+from app.agent.research.evidence import EvidencePack, ResearchDomain, ResearchTask
+from app.agent.research.factory import run_research
+from app.agent.trace import record_event
+from app.schemas.trip import GenerateRequest
+
+logger = logging.getLogger(__name__)
+
+# 研究阶段并行度 = 三个领域 Agent；与 _search_pois 的 3-worker 口径一致，
+# 避免并行检索把高德/RAG 的等待从串行叠加放大。
+_RESEARCH_WORKERS = 3
+
+
+def decompose(req: GenerateRequest) -> list[ResearchTask]:
+    """按用户请求分解研究任务；各域规模与旧 search_pois 工具参数一致。"""
+    return [
+        ResearchTask(domain="attraction", city=req.city,
+                     preferences=req.preferences, budget=req.budget, limit=30),
+        ResearchTask(domain="food", city=req.city, budget=req.budget, limit=10),
+        ResearchTask(domain="hotel", city=req.city, budget=req.budget,
+                     hotel_tier=req.hotel_tier, limit=6),
+    ]
+
+
+def run_research_parallel(tasks: list[ResearchTask]) -> dict[ResearchDomain, EvidencePack]:
+    """并行执行全部研究任务；单域失败降级为 degraded 证据包。
+
+    必须在提交点（主线程）copy_context：worker 线程默认不继承 contextvars，
+    若在 worker 内才 copy，trace/预算上下文已经丢失，研究轨迹挂不到本次运行。
+    """
+    packs: dict[ResearchDomain, EvidencePack] = {}
+    with ThreadPoolExecutor(max_workers=_RESEARCH_WORKERS,
+                            thread_name_prefix="research-agent") as pool:
+        futures: dict[ResearchDomain, object] = {}
+        for task in tasks:
+            context = contextvars.copy_context()
+            futures[task.domain] = pool.submit(
+                context.run, lambda t=task: run_research(t))
+        for domain, future in futures.items():
+            try:
+                packs[domain] = future.result()
+            except Exception as exc:  # noqa: BLE001 - 单域研究失败必须可降级
+                logger.warning("research agent %s failed: %s", domain, exc)
+                packs[domain] = EvidencePack(
+                    domain=domain, confidence=0.0, rounds=0,
+                    gaps=[f"研究失败：{exc}"], degraded=True)
+    return packs
+
+
+def synthesize(packs: dict[ResearchDomain, EvidencePack], req: GenerateRequest) -> dict:
+    """证据整合：映射回旧上下文契约并产出 research_report。"""
+    attraction = packs.get("attraction") or EvidencePack(domain="attraction")
+    food = packs.get("food") or EvidencePack(domain="food")
+    hotel = packs.get("hotel") or EvidencePack(domain="hotel")
+    consumption = tools.get_consumption(req.city)
+    research_report = {
+        "mode": "supervisor",
+        "agents": {domain: (packs[domain].to_dict() if domain in packs else None)
+                   for domain in ("attraction", "food", "hotel")},
+    }
+    record_event("decision", "research_summary", metadata=research_report)
+    # 研究阶段汇总指标（证据规模/推理轮次/降级包数）由 Supervisor 统一上报。
+    metrics.record_research(
+        items=sum(len(p.items) for p in packs.values()),
+        rounds=sum(p.rounds for p in packs.values()),
+        degraded=sum(1 for p in packs.values() if p.degraded),
+    )
+    return {
+        "candidates": attraction.items,
+        "foods": food.items,
+        "hotels": hotel.items,
+        "consumption": consumption,
+        "research_report": research_report,
+    }
+
+
+def run_research_context(req: GenerateRequest) -> dict:
+    """Supervisor 研究一站式入口：分解 → 并行 → 整合。"""
+    packs = run_research_parallel(decompose(req))
+    return synthesize(packs, req)
+
+
+def run_refill(domain: ResearchDomain, req: GenerateRequest) -> EvidencePack:
+    """Supervisor 缺口补查：对指定域发起一次更激进的证据研究。
+
+    用于 reflect 校验发现"证据型缺口"（如未安排任何景点）时，只重派发该域
+    研究 Agent 补查证据，而不是整体重生成行程。
+    """
+    task = ResearchTask(
+        domain=domain,
+        city=req.city,
+        preferences=list(req.preferences or []) + ["热门", "必游"],
+        budget=req.budget,
+        hotel_tier=req.hotel_tier,
+        limit=60,
+    )
+    return run_research(task)
+
+
+def merge_candidates(existing: list[dict], supplement: list[dict]) -> list[dict]:
+    """合并补查证据：按名称去重，已有候选优先（不覆盖权威字段）。"""
+    by_name = {str(p.get("name")): p for p in existing if p.get("name")}
+    merged = list(existing)
+    for poi in supplement or []:
+        name = str(poi.get("name") or "").strip()
+        if name and name not in by_name:
+            by_name[name] = poi
+            merged.append(poi)
+    return merged
