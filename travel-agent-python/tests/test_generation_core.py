@@ -75,6 +75,21 @@ def test_attempt_constants_aligned():
     assert MAX_GENERATION_ATTEMPTS == 2
 
 
+def test_normalize_item_type_and_sanitize():
+    from app.agent.generation_core import normalize_item_type, sanitize_itinerary_items
+
+    assert normalize_item_type("souvenir") == "attraction"
+    assert normalize_item_type("FOOD") == "food"
+    assert normalize_item_type("nonsense") == "attraction"
+    rows = sanitize_itinerary_items([
+        {"poi_name": "浅草寺", "item_type": "souvenir"},
+        {"poi_name": "拉面", "item_type": "restaurant"},
+        {"item_type": "attraction"},
+    ])
+    assert [r["item_type"] for r in rows] == ["attraction", "food"]
+    assert rows[0]["poi_name"] == "浅草寺"
+
+
 def test_day_hotel_clause():
     assert day_hotel_clause(True) == "安排 1 家酒店；"
     assert day_hotel_clause(False) == "今日无需安排酒店；"

@@ -30,6 +30,55 @@ MAX_REFILLS = 1
 
 DRAFT_NOTE_SUFFIX = "待研究"
 
+# TripItem 合法类型（与 schemas.trip、Java 落库契约一致）
+ALLOWED_ITEM_TYPES = frozenset({"attraction", "food", "hotel", "transport"})
+
+# LLM 开放生成常吐出的扩展类型 → 归一到契约类型，避免 Pydantic 校验 500
+_ITEM_TYPE_ALIASES = {
+    "souvenir": "attraction",
+    "activity": "attraction",
+    "experience": "attraction",
+    "shopping": "attraction",
+    "shop": "attraction",
+    "market": "attraction",
+    "viewpoint": "attraction",
+    "scenic": "attraction",
+    "landmark": "attraction",
+    "museum": "attraction",
+    "park": "attraction",
+    "temple": "attraction",
+    "restaurant": "food",
+    "meal": "food",
+    "cafe": "food",
+    "bar": "food",
+    "snack": "food",
+    "lodging": "hotel",
+    "hostel": "hotel",
+    "stay": "hotel",
+    "traffic": "transport",
+    "metro": "transport",
+    "taxi": "transport",
+    "walk": "transport",
+}
+
+
+def normalize_item_type(raw: Any) -> str:
+    """把 LLM/客户端 item_type 归一到合法值；未知类型回退 attraction。"""
+    t = str(raw or "").strip().lower()
+    if t in ALLOWED_ITEM_TYPES:
+        return t
+    return _ITEM_TYPE_ALIASES.get(t, "attraction")
+
+
+def sanitize_itinerary_items(items: list[Any] | None) -> list[dict]:
+    """过滤脏项并归一 item_type，供 format_output / day_stream 构造 TripItem 前调用。"""
+    out: list[dict] = []
+    for item in filter_dirty_items(items):
+        row = dict(item)
+        row["item_type"] = normalize_item_type(row.get("item_type"))
+        out.append(row)
+    return out
+
 
 def stay_nights(days: int | None) -> int:
     """产品定稿：N 天行程住 N-1 晚；最后一天不安排入住。"""

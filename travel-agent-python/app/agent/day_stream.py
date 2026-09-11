@@ -9,7 +9,12 @@ import logging
 from datetime import date
 
 from app.agent import tools
-from app.agent.generation_core import day_hotel_clause, filter_dirty_items, hotel_prompt_clause
+from app.agent.generation_core import (
+    day_hotel_clause,
+    filter_dirty_items,
+    hotel_prompt_clause,
+    sanitize_itinerary_items,
+)
 from app.agent.memory import WorkingMemory
 from app.agent.generators import (
     _parse_json,
@@ -338,7 +343,7 @@ def _generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False)
     ground_cache: dict = {}
 
     items: list[TripItem] = []
-    for item in filter_dirty_items(plan.get("items")):
+    for item in sanitize_itinerary_items(plan.get("items")):
         if source == "open" and ref_pool.ground(item):
             pass  # 权威背书：字段与来源已由参考资料落地
         elif source == "open":
