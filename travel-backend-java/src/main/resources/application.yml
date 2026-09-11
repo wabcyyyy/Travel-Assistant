@@ -63,6 +63,8 @@ app:
     web-key: ${AMAP_WEB_KEY:}
   unsplash:
     access-key: ${UNSPLASH_ACCESS_KEY:}
+  pexels:
+    access-key: ${PEXELS_API_KEY:}
   export:
     dir: ${EXPORT_DIR:data/export}
 

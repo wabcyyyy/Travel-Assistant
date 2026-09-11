@@ -38,6 +38,9 @@ public class AmapController {
     @Value("${app.unsplash.access-key:}")
     private String unsplashAccessKey;
 
+    @Value("${app.pexels.access-key:}")
+    private String pexelsAccessKey;
+
     public AmapController(AmapService amapService, RestClient imageRestClient) {
         this.amapService = amapService;
         this.imageRestClient = imageRestClient;
@@ -130,6 +133,8 @@ public class AmapController {
         String normalized = host.toLowerCase(java.util.Locale.ROOT);
         return normalized.equals("images.unsplash.com")
                 || normalized.endsWith(".unsplash.com")
+                || normalized.equals("images.pexels.com")
+                || normalized.endsWith(".pexels.com")
                 || normalized.equals("images.weserv.nl")
                 || normalized.equals("upload.wikimedia.org")
                 || normalized.endsWith(".wikimedia.org")
@@ -155,7 +160,7 @@ public class AmapController {
      * POI 实景照片。
      * <p>
      * 国内：Unsplash → 高德（过滤地图位置图）。<br>
-     * 海外（skipAmap=true）：Unsplash → Wikipedia(zh/en/ja) → Wikimedia Commons，
+     * 海外（skipAmap=true）：Unsplash → Pexels(英文检索) → Wikipedia(zh/en/ja) → Wikimedia Commons，
      * <b>不访问高德</b>（海外无覆盖且白耗超时）。
      */
     @GetMapping("/poi-photo")
@@ -188,6 +193,16 @@ public class AmapController {
         } catch (Exception ignored) {
             // 继续下一源
         }
+        // Pexels 对中文查询几乎无命中：非 ASCII 名先尽量解析英文标题再搜
+        try {
+            String pexelsQuery = englishSearchName(name);
+            String pexels = pexelsPhoto(pexelsQuery, city);
+            if (pexels != null && !pexels.isBlank()) {
+                return pexels;
+            }
+        } catch (Exception ignored) {
+            // 继续下一源
+        }
         if (skipAmap) {
             String wiki = wikipediaPhoto(name);
             if (wiki != null && !wiki.isBlank()) {
@@ -205,6 +220,96 @@ public class AmapController {
         }
         String wiki = wikipediaPhoto(name);
         return (wiki != null && !wiki.isBlank()) ? wiki : wikimediaCommonsPhoto(name);
+    }
+
+    /** 名称含中文/日文等时，尝试经 Wikipedia langlinks 取英文标题，供 Pexels/Unsplash 使用。 */
+    private String englishSearchName(String name) {
+        if (name == null || name.isBlank()) {
+            return name;
+        }
+        boolean nonAscii = name.chars().anyMatch(c -> c > 127);
+        if (!nonAscii) {
+            return name.trim();
+        }
+        for (String lang : new String[]{"zh", "ja"}) {
+            try {
+                URI uri = UriComponentsBuilder
+                        .fromUriString("https://" + lang + ".wikipedia.org/w/api.php")
+                        .queryParam("action", "query")
+                        .queryParam("titles", name)
+                        .queryParam("prop", "langlinks")
+                        .queryParam("lllang", "en")
+                        .queryParam("format", "json")
+                        .build().encode().toUri();
+                ResponseEntity<String> resp = imageRestClient.get().uri(uri)
+                        .header("User-Agent", "TravelAssistantDemo/1.0")
+                        .retrieve().toEntity(String.class);
+                JsonNode pages = objectMapper.readTree(resp.getBody()).path("query").path("pages");
+                if (pages.isObject()) {
+                    JsonNode en = pages.elements().next().path("langlinks").path(0).path("*");
+                    if (!en.isMissingNode() && !en.isNull()) {
+                        String title = en.asText("").trim();
+                        if (!title.isEmpty()) {
+                            return title;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+                // 下一语言
+            }
+        }
+        return name.trim();
+    }
+
+    /**
+     * Pexels 实景摄影图（海外推荐源之一）。必须用英文关键词；
+     * API 文档要求 Authorization: <API_KEY>（非 Bearer）。
+     */
+    private String pexelsPhoto(String query, String city) {
+        if (pexelsAccessKey == null || pexelsAccessKey.isBlank()) {
+            return null;
+        }
+        if (query == null) {
+            query = "";
+        }
+        if (city == null) {
+            city = "";
+        }
+        StringBuilder qb = new StringBuilder();
+        String q1 = query.trim();
+        String q2 = city.trim();
+        if (!q1.isEmpty()) {
+            qb.append(q1);
+        }
+        if (!q2.isEmpty()) {
+            if (qb.length() > 0) {
+                qb.append(' ');
+            }
+            qb.append(q2);
+        }
+        String q = qb.toString();
+        if (q.isEmpty()) {
+            return null;
+        }
+        try {
+            URI uri = UriComponentsBuilder
+                    .fromUriString("https://api.pexels.com/v1/search")
+                    .queryParam("query", q)
+                    .queryParam("per_page", 1)
+                    .queryParam("orientation", "landscape")
+                    .build().encode().toUri();
+            ResponseEntity<String> resp = imageRestClient.get().uri(uri)
+                    .header("Authorization", pexelsAccessKey)
+                    .retrieve().toEntity(String.class);
+            JsonNode photo = objectMapper.readTree(resp.getBody()).path("photos").path(0);
+            String url = photo.path("src").path("large").asText(null);
+            if (url == null || url.isBlank()) {
+                url = photo.path("src").path("medium").asText(null);
+            }
+            return url;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** Wikipedia 缩略图：zh → en → ja（海外地标覆盖最好，免费且稳定）。 */
