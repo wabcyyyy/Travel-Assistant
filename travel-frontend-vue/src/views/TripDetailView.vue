@@ -30,6 +30,13 @@
           {{ doneDays >= 1 ? '已生成部分可在下方查看' : '' }}
         </span>
       </div>
+      <div
+        v-if="showDegradedBanner"
+        class="gen-banner warn"
+      >
+        <span class="degraded-title">部分信息需复核</span>
+        <span>{{ degradedBannerText }}</span>
+      </div>
       <div v-if="detail.planNote && detail.status !== 3" class="butler-strip">
         <div class="butler-head">AI 管家说</div>
         <p class="butler-text">{{ butlerNote }}</p>
@@ -1001,6 +1008,40 @@ function qualityTagType(status?: ItineraryDetail['qualityStatus']) {
   return 'warning'
 }
 
+/** 降级/待复核横幅：对齐产品「如实降级」叙事，不把风险藏在小标签里。 */
+const showDegradedBanner = computed(() => {
+  const d = detail.value
+  if (!d || d.status === 1 || d.status === 3) return false
+  if (d.destinationStatus === 'draft_only') return true
+  if (d.qualityStatus === 'READY_WITH_WARNINGS' || d.qualityStatus === 'STALE' || d.qualityStatus === 'BLOCKED') {
+    return true
+  }
+  return Boolean(d.pendingFactCount && d.pendingFactCount > 0)
+})
+
+const degradedBannerText = computed(() => {
+  const d = detail.value
+  if (!d) return ''
+  const parts: string[] = []
+  if (d.destinationStatus === 'draft_only') {
+    parts.push('当前为开放研究草案，点位请出发前核实营业与票价')
+  }
+  const issues = d.qualityReport?.warnings?.map((w) => w.message).filter(Boolean).slice(0, 2) || []
+  if (issues.length) {
+    parts.push(issues.join('；'))
+  } else if (d.qualityStatus === 'READY_WITH_WARNINGS') {
+    parts.push('行程可用，但存在需关注的约束提示')
+  }
+  if (d.qualityStatus === 'BLOCKED') {
+    const blocking = d.qualityReport?.blockingIssues?.map((b) => b.message).filter(Boolean).slice(0, 1) || []
+    parts.push(blocking[0] || '质量检查未全部通过，请复核时间与路线')
+  }
+  if (d.pendingFactCount && d.pendingFactCount > 0) {
+    parts.push(`${d.pendingFactCount} 项事实标记为出发前复核`)
+  }
+  return parts.join('；')
+})
+
 function sourceLabel(source?: string | null) {
   if (!source) return '待补充'
   if (source === 'mysql.poi_knowledge') return '目的地知识库'
@@ -1374,6 +1415,18 @@ onUnmounted(() => {
 .gen-banner.error {
   border-left-color: var(--lp-danger);
   background: var(--el-color-danger-light-9);
+}
+
+.gen-banner.warn {
+  border-left-color: #e6a23c;
+  background: var(--el-color-warning-light-9);
+  font-weight: 500;
+  flex-wrap: wrap;
+}
+
+.gen-banner.warn .degraded-title {
+  flex-shrink: 0;
+  font-weight: 700;
 }
 
 .butler-strip {
