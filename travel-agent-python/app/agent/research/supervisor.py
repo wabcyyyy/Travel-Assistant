@@ -35,13 +35,13 @@ _RESEARCH_WORKERS = 3
 
 
 def decompose(req: GenerateRequest) -> list[ResearchTask]:
-    """按用户请求分解研究任务；各域规模与旧 search_pois 工具参数一致。"""
+    """按用户请求分解研究任务；各域规模支撑「发现更多」候选池。"""
     return [
         ResearchTask(domain="attraction", city=req.city,
-                     preferences=req.preferences, budget=req.budget, limit=30),
-        ResearchTask(domain="food", city=req.city, budget=req.budget, limit=10),
+                     preferences=req.preferences, budget=req.budget, limit=40),
+        ResearchTask(domain="food", city=req.city, budget=req.budget, limit=16),
         ResearchTask(domain="hotel", city=req.city, budget=req.budget,
-                     hotel_tier=req.hotel_tier, limit=6),
+                     hotel_tier=req.hotel_tier, limit=10),
     ]
 
 
