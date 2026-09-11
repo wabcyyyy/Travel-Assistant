@@ -14,10 +14,10 @@ public class RegisterRequest {
     private String username;
 
     /**
-     * 密码：8-32 位，至少包含字母与数字两类，降低弱口令撞库成功率。
+     * 密码：6-24 位（注册策略）。登录不做长度/复杂度校验，避免历史账号被前端/DTO 误拦。
      */
     @NotBlank(message = "密码不能为空")
-    @Size(min = 8, max = 32, message = "密码长度需在 8-32 之间")
+    @Size(min = 6, max = 24, message = "密码长度需在 6-24 之间")
     @Pattern(regexp = "^[A-Za-z0-9!@#$%^&*_-]+$", message = "密码包含非法字符")
     private String password;
 

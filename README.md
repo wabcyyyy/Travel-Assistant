@@ -173,7 +173,7 @@ npm run dev            # http://localhost:5173
 - 高德 MCP key 仅放服务端环境变量；Agent 默认只监听 `127.0.0.1`
 - 生成/编辑类接口的错误响应只回通用文案，内部异常原文（字段校验/SQL/第三方报错）完整记日志不外泄；Trace 落盘前对 URL key 与 Bearer 令牌集中脱敏
 - 行程项溯源字段（source/更新时间/核验状态）让「模型说的」和「知识库说的」在数据层面可区分；客户端传入的参考资料来源不在权威值域内时不背书，降级为待复核估算
-- 登录按「IP+用户名」**滑动窗口**限速；**仅当 remoteAddr 命中 `TRUSTED_PROXIES` 才解析 `X-Forwarded-For`**；限速/日锁/续跑标记统一走 **Redis（`DistributedStateService`）**，故障降级进程内；密码 8–32 位且须含字母+数字；工程化改造汇总见 [docs/技术改造合集.md](docs/技术改造合集.md)
+- 登录按「IP+用户名」**滑动窗口**限速；**仅当 remoteAddr 命中 `TRUSTED_PROXIES` 才解析 `X-Forwarded-For`**；限速/日锁/续跑标记统一走 **Redis（`DistributedStateService`）**，故障降级进程内；**注册**密码 6–24 位且须含字母+数字（登录不做长度校验，兼容历史演示账号）；工程化改造汇总见 [docs/技术改造合集.md](docs/技术改造合集.md)
 - **JWT 服务端吊销**：签发含 `jti`；`POST /api/auth/logout` 将 token SHA-256 写入 Redis 黑名单（TTL=剩余有效期）；鉴权过滤器拒绝已吊销 token；Redis 故障时降级进程内黑名单（仅单机）
 - **会话凭据**：浏览器主通道为 **HttpOnly Cookie**（`TA_AUTH`，`SameSite=Lax`，可选 `Secure`）；**登录响应体不再回传 JWT**；支持 `POST /api/auth/logout-all` 多端登出；Cookie 会话的写请求校验 Origin 白名单（CSRF 缓解）
 - 第三方合规：Wikivoyage 为 CC BY-SA（`source` 字段标注来源，衍生数据开源时需遵守 ShareAlike）；Nominatim UA 含联系方式；Google Places 缓存期限需遵守 Google Maps Platform 条款；Unsplash 按其 API 指南使用。本项目定位**本地演示/作品**，未做生产级合规审计

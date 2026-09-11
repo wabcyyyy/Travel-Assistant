@@ -48,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Avatar, Lock, User } from '@element-plus/icons-vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
@@ -68,30 +68,33 @@ const form = reactive({
   nickname: '',
 })
 
-const rules: FormRules = {
+const rules = computed<FormRules>(() => ({
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
     { min: 3, max: 32, message: '用户名长度 3-32', trigger: 'blur' },
   ],
-  password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 8, max: 32, message: '密码长度 8-32', trigger: 'blur' },
-    {
-      validator: (_rule, value, callback) => {
-        if (!value || value.length < 8) {
-          callback()
-          return
-        }
-        if (!/[A-Za-z]/.test(value) || !/\d/.test(value)) {
-          callback(new Error('密码需同时包含字母和数字'))
-        } else {
-          callback()
-        }
-      },
-      trigger: 'blur',
-    },
-  ],
-}
+  password: isRegister.value
+    ? [
+        { required: true, message: '请输入密码', trigger: 'blur' },
+        { min: 6, max: 24, message: '密码长度 6-24', trigger: 'blur' },
+        {
+          validator: (_rule, value, callback) => {
+            if (!value || value.length < 6) {
+              callback()
+              return
+            }
+            if (!/[A-Za-z]/.test(value) || !/\d/.test(value)) {
+              callback(new Error('密码需同时包含字母和数字'))
+            } else {
+              callback()
+            }
+          },
+          trigger: 'blur',
+        },
+      ]
+    : // 登录只校验非空：历史/演示账号（如管理员 123456）不应被注册策略挡住
+      [{ required: true, message: '请输入密码', trigger: 'blur' }],
+}))
 
 function toggleMode() {
   isRegister.value = !isRegister.value
