@@ -398,8 +398,14 @@ public class ItineraryAsyncPlanner {
                     .eq(ItineraryDay::getItineraryId, itineraryId).orderByAsc(ItineraryDay::getDayNo))) {
                 List<String> names = itemMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ItineraryItem>()
                                 .eq(ItineraryItem::getDayId, day.getId()).orderByAsc(ItineraryItem::getSortNo))
-                        .stream().map(ItineraryItem::getPoiName).toList();
+                        .stream().map(ItineraryItem::getPoiName).filter(n -> n != null && !n.isBlank()).toList();
+                if (names.isEmpty()) {
+                    continue;
+                }
                 plans.add(Map.of("day_no", day.getDayNo(), "items", names));
+            }
+            if (plans.isEmpty()) {
+                return;
             }
             Map<String, Object> payload = Map.of(
                     "city", main.getCity(),

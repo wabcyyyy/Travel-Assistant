@@ -35,8 +35,10 @@ def run_butler_note(req: dict) -> str:
         f"系统校验日志：{json.dumps(req.get('validation_log') or [], ensure_ascii=False)}"
     )
     raw = client.complete(user, system_prompt=system, temperature=0.5, max_tokens=800)
-    # 兜底：模型仍可能输出字面 "\n"，统一还原为真实换行
-    return raw.strip().replace("\\n", "\n")
+    note = raw.strip().replace("\\n", "\n")
+    if not note:
+        raise ValueError("butler note empty")
+    return note
 
 
 def run_poi_intros(city: str, names: list[str]) -> dict:

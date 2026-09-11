@@ -146,14 +146,13 @@ def _fill_zero_costs(plans: list[dict], lookup: dict[str, dict]) -> int:
 
 
 def _floor_suggestions(raw: list[dict], extra_pool: list[dict]) -> list[dict]:
-    """备选池数量地板：主类尽量 ≥3、每类 ≤12；允许伴手礼为 0。
+    """备选池数量地板：主类尽量 ≥4、每类 ≤20；shopping=商城/名店。
 
-    酒店/体验也参与地板：知识库有酒店时必须补满，体验类从 extra_pool 的
-    activity 或高评分 attraction 映射补充。
+    酒店/体验/美食也参与地板；体验类从 extra_pool 的 activity 或景点映射补充。
     """
-    main_cats = ("attraction", "activity", "food", "hotel")
-    max_per = 12
-    min_per = 3
+    main_cats = ("attraction", "activity", "food", "hotel", "shopping")
+    max_per = 20
+    min_per = 4
 
     def _norm_name(name: str) -> str:
         return "".join(str(name or "").lower().split())
@@ -164,13 +163,15 @@ def _floor_suggestions(raw: list[dict], extra_pool: list[dict]) -> list[dict]:
         if not isinstance(s, dict):
             continue
         cat = str(s.get("category") or "attraction")
+        if cat == "souvenir":
+            cat = "shopping"
         name = str(s.get("name") or s.get("poi_name") or "").strip()
         key = _norm_name(name)
         if name and key in used_names:
             continue
         if name:
             used_names.add(key)
-        by_cat.setdefault(cat, []).append(s)
+        by_cat.setdefault(cat, []).append({**s, "category": cat})
 
     def _from_poi(poi: dict, cat: str) -> dict:
         name = str(poi.get("name") or "").strip()
@@ -218,20 +219,21 @@ def _floor_suggestions(raw: list[dict], extra_pool: list[dict]) -> list[dict]:
                 key = _norm_name(name)
                 if not name or key in used_names:
                     continue
-                # 仅挑选评分较高或带体验向标签的点
                 tags = str(poi.get("tags") or "")
                 try:
                     rating = float(poi.get("rating") or 0)
                 except (TypeError, ValueError):
                     rating = 0
-                if rating < 4.3 and not any(x in tags for x in ("体验", "演出", "潜水", "SPA", "spa", "冲浪")):
+                # 海外开放模式常无评分：无 rating 时只看标签，避免 activity 永远为 0
+                if poi.get("rating") is not None and rating < 4.3 and not any(
+                        x in tags for x in ("体验", "演出", "潜水", "SPA", "spa", "冲浪", "剧场", "美术馆", "观景")):
                     continue
                 by_cat.setdefault(cat, []).append(_from_poi(poi, "activity"))
                 used_names.add(key)
                 need -= 1
     out: list[dict] = []
-    for cat, rows in by_cat.items():
-        out.extend(rows[:max_per])
+    for cat in ("attraction", "activity", "food", "hotel", "shopping"):
+        out.extend((by_cat.get(cat) or [])[:max_per])
     return out
 
 

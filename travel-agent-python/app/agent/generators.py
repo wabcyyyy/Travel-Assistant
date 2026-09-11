@@ -101,7 +101,8 @@ QUALITY_CLAUSE = (
 SUGGESTION_LIMIT = 80
 SUGGESTION_MIN_PER_CATEGORY = 4
 SUGGESTION_MAX_PER_CATEGORY = 20
-SUGGESTION_CATEGORIES = ("attraction", "activity", "food", "hotel", "souvenir")
+# shopping=商城/名店（产品语义）；souvenir 兼容历史
+SUGGESTION_CATEGORIES = ("attraction", "activity", "food", "hotel", "shopping", "souvenir")
 
 
 def _daily_attraction_target(days: int) -> int:
@@ -466,12 +467,16 @@ def build_suggestions(plans: list[dict], candidates: list[dict] | None,
 
     def _category_of(poi: dict, hinted: str | None = None) -> str:
         cat = str(hinted or poi.get("category") or "attraction")
-        if cat in ("attraction", "activity", "food", "hotel", "souvenir"):
+        if cat == "souvenir":
+            return "shopping"
+        if cat in ("attraction", "activity", "food", "hotel", "shopping"):
             return cat
         if cat == "hotel" or "酒店" in cat or "住宿" in cat or "客栈" in cat:
             return "hotel"
         if "餐" in cat or "食" in cat or "小吃" in cat:
             return "food"
+        if any(kw in cat for kw in ("购物", "商场", "百货", "市集", "市场", "商店")):
+            return "shopping"
         return "attraction"
 
     def _entry(name: str, poi: dict, raw: dict | None = None) -> dict:
@@ -569,10 +574,10 @@ def build_suggestions(plans: list[dict], candidates: list[dict] | None,
             counts[cat] += 1
             remaining -= 1
 
-    # 按品类分组输出，组间顺序保持 attraction → activity → food → hotel → souvenir
+    # 按品类分组输出，组间顺序 attraction → activity → food → hotel → shopping
     results: list[dict] = []
-    for cat in SUGGESTION_CATEGORIES:
-        results.extend(buckets[cat])
+    for cat in ("attraction", "activity", "food", "hotel", "shopping", "souvenir"):
+        results.extend(buckets.get(cat) or [])
     return results[:limit]
 
 

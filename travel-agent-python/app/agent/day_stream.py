@@ -120,13 +120,14 @@ def _llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
         '{"note":"当天主题","items":[{"item_type":"attraction|food|hotel","poi_name":"真实存在的地点名称",'
         '"start_time":"HH:mm","end_time":"HH:mm","duration_min":数字,"cost":人均人民币估算数字,"tag":"标签",'
         '"remark":"参考价","refs":[从参考资料编号中选，如3]}],'
-        '"suggestions":[{"poi_name":"真实地点名","category":"attraction|activity|food|hotel|souvenir",'
+        '"suggestions":[{"poi_name":"真实地点名","category":"attraction|activity|food|hotel|shopping",'
         '"intro":"一句话亮点(≤40字)","need_reservation":true或false,"estimated_cost":人均或每晚估算数字}]}。'
         "硬性要求：poi_name 必须是简洁的正式地点名（≤10 字，如「龙门石窟」「开封府」），"
         "禁止写成描述性句子。"
         f"{pace}"
-        "每天至少安排正餐；餐饮优先 Google 高分店与米其林指南餐厅（含必比登），"
-        "其次本地口碑名店；按节奏可加入下午茶/夜宵；"
+        "每天至少安排正餐；餐饮必须写具体店名（如「一兰拉面 涩谷店」「Sushi Saito」），"
+        "禁止「表参道米其林餐厅」「六本木之丘米其林餐厅」这类区域+类目笼统称呼；"
+        "优先 Google 高分店与米其林指南收录/推荐餐厅（含必比登），其次本地口碑名店；"
         f"{hotel_clause}"
         "景点顺序必须按地理位置从近到远排列，相邻景点间预留交通时间（步行10-15分钟/公交20-30分钟）。"
         f"{hotel_hint}"
@@ -134,7 +135,8 @@ def _llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
         "免费景点 cost 写 0；餐饮/酒店/付费景点必须写合理人民币估算，禁止写 0。"
         "另必须输出 12-20 个未排入今日行程的优质备选点位 suggestions："
         "优先热门、口碑好、有代表性的地点；"
-        "分类尽量覆盖：景点/体验/美食每类 ≥3，酒店 2-4，伴手礼 1-3；"
+        "分类尽量覆盖：景点/体验/美食每类 ≥3，酒店 2-4，购物 2-4"
+        "（购物必须是具体商城或知名店铺名，如「伊势丹新宿店」「唐吉诃德涩谷」）；"
         "禁止同一店名重复；"
         "名称必须真实存在可搜索到，禁止编造。"
     )
@@ -189,7 +191,7 @@ def _llm_open_trip(req: GenerateDayRequest) -> tuple[list[dict], list[dict]]:
         '{"item_type":"attraction|food|hotel","poi_name":"真实正式地点名",'
         '"start_time":"HH:mm","end_time":"HH:mm","duration_min":数字,'
         '"cost":数字,"tag":"标签","remark":"参考价","refs":[从参考资料编号中选，如3]}]}],'
-        '"suggestions":[{"poi_name":"真实地点名","category":"attraction|activity|food|hotel|souvenir",'
+        '"suggestions":[{"poi_name":"真实地点名","category":"attraction|activity|food|hotel|shopping",'
         '"intro":"一句话亮点(≤40字)","need_reservation":true或false,"estimated_cost":人均或每晚估算数字}]}。'
         f"共 {days} 天。{hotel_clause}。"
         "每日节奏由你根据用户偏好、景点游玩时长、地理距离与游玩种类自主判断："
@@ -197,15 +199,16 @@ def _llm_open_trip(req: GenerateDayRequest) -> tuple[list[dict], list[dict]]:
         "相邻点位预留交通时间，禁止为凑数堆砌远距离点位。"
         "地点名必须简洁且真实存在，避免跨天重复；免费景点 cost 写 0，"
         "餐饮/酒店/付费景点必须写合理人民币估算，禁止写 0。"
+        "餐饮必须写具体店名（禁止「某区米其林餐厅」「某商场美食层」等笼统称呼）。"
         "每天的景点顺序必须按地理位置从近到远排列。"
         "另必须输出未排入行程的优质备选点位 suggestions（尽量 15-25 条）："
         "优先热门、口碑好、有代表性的地点，不限于当日行程主题；"
-        "餐饮优先选择 Google 高分店（约 4.5 分以上）与米其林指南收录/推荐餐厅"
-        "（含必比登 Bib Gourmand），其次本地长期口碑名店；"
+        "餐饮必须写具体餐厅店名；"
         "景点优先知名必去与高评价体验；"
         "分类硬性要求：景点、美食、酒店、体验/游玩每类尽量 4-12 条"
         "（体验含潜水、SPA、冲浪课、演出、游艇等；酒店写未排入行程的正式酒店名）；"
-        "伴手礼 0-4 条；禁止同一店名重复多条；"
+        "购物 2-6 条且必须是具体商城或知名店铺（如「伊势丹新宿店」「唐吉诃德涩谷」），禁止只写「伴手礼店」；"
+        "禁止同一店名重复多条；"
         "名称必须真实存在可搜索到，禁止编造，"
         "且不与任何一天已排入的地点重复。"
     )

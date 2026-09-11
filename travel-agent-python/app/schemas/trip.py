@@ -115,7 +115,8 @@ class Suggestion(WireModel):
 
     poi_id: str | None = None
     name: str
-    category: Literal["attraction", "activity", "food", "hotel", "souvenir"] = "attraction"
+    # shopping 为产品语义（商城/名店）；souvenir 兼容历史数据
+    category: Literal["attraction", "activity", "food", "hotel", "shopping", "souvenir"] = "attraction"
     address: str | None = None
     latitude: float | None = None
     longitude: float | None = None

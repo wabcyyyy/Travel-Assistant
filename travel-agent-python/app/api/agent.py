@@ -295,7 +295,8 @@ def chat_turn(req: ChatTurnRequest,
 def butler_note(req: dict, _auth: None = Depends(require_internal_token)) -> ApiResponse[dict]:
     try:
         return ApiResponse.ok({"note": run_butler_note(req)})
-    except Exception:
+    except Exception as exc:
+        logger.warning("butler_note failed: %s", exc)
         return ApiResponse.ok({"note": ""})
 
 

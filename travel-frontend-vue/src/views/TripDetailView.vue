@@ -1146,7 +1146,7 @@ const DISCOVER_TABS = [
   { key: 'activity', label: '体验·游玩' },
   { key: 'food', label: '美食' },
   { key: 'hotel', label: '酒店' },
-  { key: 'souvenir', label: '伴手礼' },
+  { key: 'shopping', label: '购物' },
 ] as const
 
 type DiscoverCategoryKey = (typeof DISCOVER_TABS)[number]['key']
@@ -1156,7 +1156,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   activity: '体验·游玩',
   food: '美食',
   hotel: '酒店',
-  souvenir: '伴手礼',
+  shopping: '购物',
+  souvenir: '购物',
 }
 
 function categoryLabel(key: string) {

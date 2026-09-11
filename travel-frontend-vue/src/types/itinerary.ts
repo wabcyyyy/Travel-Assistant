@@ -93,7 +93,7 @@ export interface BudgetRow {
 export interface TripSuggestion {
   poiId?: string | null
   name: string
-  category: 'attraction' | 'activity' | 'food' | 'hotel' | 'souvenir'
+  category: 'attraction' | 'activity' | 'food' | 'hotel' | 'shopping' | 'souvenir'
   address?: string | null
   latitude?: number | null
   longitude?: number | null
