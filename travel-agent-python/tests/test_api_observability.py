@@ -12,15 +12,18 @@ def test_generate_exposes_run_id_without_exposing_trace(monkeypatch):
         lambda _req: GenerateResponse(city="杭州", days=1, title="杭州1日游", daily_plans=[]),
     )
     with TestClient(app) as client:
-        response = client.post("/api/agent/v1/generate", json={"city": "杭州", "days": 1})
+        response = client.post("/api/agent/v1/generate", headers={"X-Request-ID": "request-api"},
+                               json={"city": "杭州", "days": 1})
     assert response.status_code == 200
     assert response.headers.get("X-Agent-Run-ID")
+    assert response.headers.get("X-Request-ID") == "request-api"
     assert "events" not in response.json()["data"]
 
     run_id = response.headers["X-Agent-Run-ID"]
     trace_response = client.get(f"/api/agent/v1/runs/{run_id}")
     assert trace_response.status_code == 200
     assert trace_response.json()["data"]["run_id"] == run_id
+    assert trace_response.json()["data"]["request_id"] == "request-api"
     assert "events" in trace_response.json()["data"]
 
 

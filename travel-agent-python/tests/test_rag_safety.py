@@ -1,7 +1,13 @@
 from unittest.mock import patch
 
 from app.agent import poi_repository, tools
+from app.rag.retriever import HashedEmbeddingProvider
 from app.rag.store import PoIKnowledgeStore
+
+
+def _store(tmp_path):
+    """测试固定用 hashed 向量：不依赖 .env 的语义模型配置，保持离线可跑。"""
+    return PoIKnowledgeStore(tmp_path, embedding_provider=HashedEmbeddingProvider())
 
 
 def _poi(price=0):
@@ -27,23 +33,23 @@ def test_remote_only_poi_is_not_authoritative_candidate():
 
 
 def test_repository_status_distinguishes_unavailable_from_empty(monkeypatch):
-    def fail_connect():
+    def fail_acquire():
         raise RuntimeError("database unavailable")
 
-    monkeypatch.setattr(poi_repository, "_connect", fail_connect)
+    monkeypatch.setattr(poi_repository.db_pool, "acquire", fail_acquire)
     assert poi_repository.list_all_pois_with_status() == ([], False)
 
 
 def test_store_keeps_existing_index_when_source_is_unavailable(tmp_path):
     poi = _poi()
     with patch.object(poi_repository, "list_all_pois_with_status", return_value=([poi], True)):
-        first = PoIKnowledgeStore(tmp_path)
+        first = _store(tmp_path)
         first.ensure_loaded()
         first.ensure_loaded(force=True)
         assert first.index_info["changed_count"] == 0
 
     with patch.object(poi_repository, "list_all_pois_with_status", return_value=([], False)):
-        second = PoIKnowledgeStore(tmp_path)
+        second = _store(tmp_path)
         second.ensure_loaded()
         assert second.index_info["status"] == "source_unavailable"
         assert second.search("西湖", city="杭州", category="attraction", limit=1)[0]["name"] == "西湖"
@@ -53,7 +59,7 @@ def test_store_retries_source_after_recovery(tmp_path):
     poi = _poi()
     status = ([], False)
     with patch.object(poi_repository, "list_all_pois_with_status", side_effect=lambda: status):
-        store = PoIKnowledgeStore(tmp_path)
+        store = _store(tmp_path)
         store.ensure_loaded()
         assert store.index_info["status"] == "source_unavailable"
         status = ([poi], True)
@@ -66,7 +72,7 @@ def test_store_only_updates_changed_and_deleted_pois(tmp_path):
     poi = _poi()
     rows = [poi]
     with patch.object(poi_repository, "list_all_pois_with_status", side_effect=lambda: (rows, True)):
-        store = PoIKnowledgeStore(tmp_path)
+        store = _store(tmp_path)
         store.ensure_loaded()
         rows[0] = _poi(price=50)
         store.ensure_loaded(force=True)

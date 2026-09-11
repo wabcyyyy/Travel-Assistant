@@ -1,4 +1,9 @@
-from app.rag.retriever import HashedEmbeddingProvider, HybridRetriever, build_poi_document
+from app.rag.retriever import (
+    HashedEmbeddingProvider,
+    HybridRetriever,
+    NoopReranker,
+    build_poi_document,
+)
 
 
 class MemoryCollection:
@@ -38,7 +43,8 @@ def _retriever():
     collection = MemoryCollection(provider, [
         {**item, "embedding": provider.embed_query(item["document"])} for item in documents.values()
     ])
-    retriever = HybridRetriever(collection, provider)
+    # 显式注入 NoopReranker：测试不依赖 .env 的精排配置，避免加载真实模型。
+    retriever = HybridRetriever(collection, provider, reranker=NoopReranker())
     retriever.set_documents(documents)
     return retriever
 
@@ -57,6 +63,8 @@ def test_hybrid_retriever_fuses_exact_name_and_semantic_results_with_hard_filter
 def test_hybrid_retriever_keeps_lexical_results_when_semantic_provider_fails():
     retriever = _retriever()
     retriever.embedding_provider.embed_query = lambda _query: (_ for _ in ()).throw(RuntimeError("offline"))
-    rows = retriever.search("西湖", city="杭州", category="attraction", top_k=1)
-    assert rows[0]["name"] == "西湖"
+    # P2 查询路由后，"西湖" 这类精确名会走 lexical 直查而不触发语义召回；
+    # 这里用有具体意图的查询保持在 hybrid 路径上，验证语义失败时词法兜底。
+    rows = retriever.search("古建筑寺庙", city="杭州", category="attraction", top_k=1)
+    assert rows[0]["name"] == "灵隐寺"
     assert retriever.last_telemetry["fallback"] is True

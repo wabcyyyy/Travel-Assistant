@@ -55,6 +55,27 @@ public class ItineraryCityService {
         return result;
     }
 
+    /**
+     * 同城权威 POI 近邻（附近推荐）：payload 透传给 Python Agent 的 /v1/poi-nearby。
+     * 返回 items 列表（name/category/rating/address/_distance_m 等）。
+     */
+    public Map<String, Object> poiNearby(Map<String, Object> payload) {
+        JsonNode node = agentService.poiNearby(payload == null ? Map.of() : payload);
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> items = new ArrayList<>();
+        node.path("items").forEach(item -> {
+            Map<String, Object> row = new HashMap<>();
+            row.put("name", item.path("name").asText(""));
+            row.put("category", item.path("category").asText("attraction"));
+            row.put("rating", item.hasNonNull("rating") ? item.get("rating").asDouble() : null);
+            row.put("address", item.hasNonNull("address") ? item.get("address").asText() : null);
+            row.put("distanceM", item.hasNonNull("_distance_m") ? item.get("_distance_m").asInt() : null);
+            items.add(row);
+        });
+        result.put("items", items);
+        return result;
+    }
+
     public Map<String, Object> clarify(String message, Map<String, Object> slots) {
         JsonNode node = agentService.clarify(message, slots);
         Map<String, Object> result = new HashMap<>();

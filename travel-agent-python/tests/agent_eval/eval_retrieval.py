@@ -10,7 +10,12 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from app.rag.evaluation import aggregate_retrieval_metrics, evaluate_retrieval_case
-from app.rag.retriever import HashedEmbeddingProvider, HybridRetriever, build_poi_document
+from app.rag.retriever import (
+    HashedEmbeddingProvider,
+    HybridRetriever,
+    NoopReranker,
+    build_poi_document,
+)
 from tests.agent_eval.mock_llm import catalog
 
 
@@ -42,11 +47,14 @@ def run_case(case: dict) -> dict:
     records = [dict(row, city=case["city"], source="mysql.poi_knowledge") for row in source_records]
     provider = HashedEmbeddingProvider()
     documents = {str(row["id"]): {"document": build_poi_document(row), "metadata": row} for row in records}
-    retriever = HybridRetriever(FixtureCollection(provider, documents), provider)
+    # 离线 fixture 评测固定不启用精排，保持 hashed 基线可复现。
+    retriever = HybridRetriever(FixtureCollection(provider, documents), provider, reranker=NoopReranker())
     retriever.set_documents(documents)
     rows = retriever.search(case["query"], city=case["city"], category=case["category"], top_k=10,
                             preferences=case.get("preferences"))
-    return evaluate_retrieval_case(rows, case)
+    # 过滤准确率必须有"未过滤全集"作对照，否则对已过滤结果再验过滤恒为 1.0。
+    case_with_universe = dict(case, all_rows=records)
+    return evaluate_retrieval_case(rows, case_with_universe)
 
 
 def main() -> int:

@@ -1,4 +1,4 @@
-from app.agent.observability import metrics, observe_run
+from app.agent.observability import metrics, observe_run, use_scene
 from app.agent.trace import record_event
 
 
@@ -6,7 +6,8 @@ def test_observe_run_aggregates_llm_tools_retries_and_tokens():
     metrics.reset()
     with observe_run("test-run"):
         record_event("llm", "llm.generate")
-        record_event("llm", "llm.request", metadata={"prompt_tokens": 100, "completion_tokens": 20})
+        # token 用量由 llm_client 直接上报（覆盖未包 trace 的调用），不再依赖事件聚合。
+        metrics.record_llm_call(100, 20)
         record_event("tool", "poi.search_attractions")
         record_event("route", "retry")
         record_event("route", "fallback")
@@ -22,6 +23,17 @@ def test_observe_run_aggregates_llm_tools_retries_and_tokens():
     assert snapshot["fallback_runs"] == 1
     assert snapshot["prompt_tokens"] == 100
     assert snapshot["completion_tokens"] == 20
+
+
+def test_record_llm_call_counts_without_trace_context():
+    metrics.reset()
+    # 未处于 observe_run 上下文（如 clarify/city-guide）时也应计入。
+    metrics.record_llm_call(7, 3)
+    metrics.record_llm_call(1, 1)
+    snapshot = metrics.snapshot()
+    assert snapshot["llm_calls"] == 2
+    assert snapshot["prompt_tokens"] == 8
+    assert snapshot["completion_tokens"] == 4
 
 
 def test_observe_run_aggregates_mcp_failures():
@@ -54,7 +66,7 @@ def test_observe_run_keeps_error_as_failed_run():
     )
 
 
-def test_observe_run_allows_recent_trace_lookup_and_expires_old_entries():
+def test_observe_run_keeps_recent_memory_and_persistent_trace_lookup():
     metrics.reset()
     with observe_run("lookup-run"):
         record_event("node", "parse")
@@ -66,6 +78,46 @@ def test_observe_run_allows_recent_trace_lookup_and_expires_old_entries():
     for index in range(101):
         with observe_run(f"run-{index}"):
             record_event("node", "parse")
-    assert metrics.get_trace("lookup-run") is None
-    assert metrics.get_trace("run-0") is None
+    # 超出内存窗口后仍可从 JSONL Trace 存储查询，满足故障回放需求。
+    assert metrics.get_trace("lookup-run") is not None
+    # 超出内存窗口后仍可从持久化存储查询旧 Trace。
+    assert metrics.get_trace("run-0") is not None
     assert metrics.get_trace("run-100") is not None
+
+
+def test_trace_has_request_span_parent_and_action_links():
+    with observe_run("run-linked", request_id="request-linked", action_id="action-linked") as trace:
+        with __import__("app.agent.trace", fromlist=["trace_span"]).trace_span("node", "parent"):
+            record_event("decision", "child")
+    data = trace.to_dict()
+    assert data["request_id"] == "request-linked"
+    assert data["action_id"] == "action-linked"
+    child = next(event for event in data["events"] if event["name"] == "child")
+    parent = next(event for event in data["events"] if event["name"] == "parent")
+    assert parent["span_id"] != child["span_id"]
+    assert child["parent_span_id"] == parent["span_id"]
+    assert child["action_id"] == "action-linked"
+
+
+def test_llm_call_scene_attribution():
+    metrics.reset()
+    with use_scene("generate"):
+        metrics.record_llm_call(100, 10)
+    metrics.record_llm_call(7, 3)  # 无场景标记 → other
+    snapshot = metrics.snapshot()
+    assert snapshot["tokens_by_scene"]["generate"]["llm_calls"] == 1
+    assert snapshot["tokens_by_scene"]["generate"]["prompt_tokens"] == 100
+    assert snapshot["tokens_by_scene"]["other"]["llm_calls"] == 1
+    assert snapshot["llm_calls"] == 2
+
+
+def test_token_timeline_buckets():
+    metrics.reset()
+    metrics.record_llm_call(50, 5)
+    metrics.record_llm_call(20, 2)
+    snapshot = metrics.snapshot()
+    timeline = snapshot["tokens_timeline"]
+    assert len(timeline) == 1
+    assert timeline[0]["calls"] == 2
+    assert timeline[0]["prompt_tokens"] == 70
+    assert timeline[0]["completion_tokens"] == 7

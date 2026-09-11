@@ -70,7 +70,7 @@ public class BudgetEngineImpl implements BudgetEngine {
         for (ItineraryItem item : items) {
             String type = item.getItemType();
             BigDecimal unit;
-            if (item.getCost() != null) {
+            if (item.getCost() != null && !isZeroCostFor(type, item.getCost())) {
                 unit = item.getCost();
             } else {
                 unit = poiUnitCost(item, main.getCity());
@@ -141,7 +141,15 @@ public class BudgetEngineImpl implements BudgetEngine {
                     .eq(PoiKnowledge::getName, item.getPoiName())
                     .last("LIMIT 1"));
         }
-        return poi != null ? poi.getTicketPrice() : null;
+        return poi != null ? (poi.getTicketPrice() != null ? poi.getTicketPrice() : poi.getAvgCost()) : null;
+    }
+
+    /** 餐饮/酒店被模型写成 0 时视为无效，回落知识库权威价；免费景点保持 0。 */
+    private boolean isZeroCostFor(String type, BigDecimal cost) {
+        if (!"food".equals(type) && !"hotel".equals(type)) {
+            return false;
+        }
+        return cost.signum() == 0;
     }
 
     private int hotelCapacity(ItineraryItem item) {

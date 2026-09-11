@@ -18,12 +18,22 @@ if (Test-Path $rootEnv) {
     Write-Host "[env   ] loaded $rootEnv"
 }
 
+# 安全启动检查：JWT_SECRET / AGENT_INTERNAL_TOKEN 缺失时 Java 会 fail-fast
+if (-not $env:JWT_SECRET -or $env:JWT_SECRET.Length -lt 32) {
+    Write-Warning "JWT_SECRET 未配置或过短（需 ≥32）。请写入根目录 .env；详见 travel-backend-java/.env.example"
+}
+if (-not $env:AGENT_INTERNAL_TOKEN) {
+    Write-Warning "AGENT_INTERNAL_TOKEN 未配置：Java/Python 生成类内部调用将无鉴权（仅本机演示勉强可接受）"
+}
+
 function Test-Port([int]$p) {
     return [bool](Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue)
 }
 
 function Start-ServiceWindow([string]$title, [string]$workdir, [string]$cmdline) {
-    $args_ = "/k title $title && cd /d `"$workdir`" && $cmdline"
+    # 输出重定向到 logs\<title>.log，随时可用 Get-Content logs\<title>.log -Wait -Tail 100 查看
+    $logFile = Join-Path $root "logs\$title.log"
+    $args_ = "/k title $title && cd /d `"$workdir`" && $cmdline > `"$logFile`" 2>&1"
     Start-Process -FilePath "cmd.exe" -ArgumentList $args_ -WindowStyle Hidden
 }
 

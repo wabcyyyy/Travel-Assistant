@@ -1,6 +1,7 @@
 import axios, { type AxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '../router'
+import { useUserStore } from '../store/user'
 
 export type ApiRequestConfig = AxiosRequestConfig & {
   /** Optional background calls can fail without interrupting the current page. */
@@ -16,12 +17,15 @@ export interface ApiResult<T = unknown> {
 const request = axios.create({
   baseURL: '/api',
   timeout: 180000, // 生成行程含联网搜索，放宽超时
+  // HttpOnly Cookie 会话：必须携带凭证（同源 Vite 代理下天然同源）
+  withCredentials: true,
 })
 
 request.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+  // 主凭据是 HttpOnly Cookie；内存 token 仅作联调/脚本兜底
+  const memToken = useUserStore().token
+  if (memToken) {
+    config.headers.Authorization = `Bearer ${memToken}`
   }
   return config
 })
@@ -30,7 +34,10 @@ request.interceptors.response.use(
   (response) => {
     const res = response.data as ApiResult
     if (res.code !== 200) {
-      ElMessage.error(res.message || '请求失败')
+      const cfg = response.config as ApiRequestConfig | undefined
+      if (!cfg?.skipErrorMessage) {
+        ElMessage.error(res.message || '请求失败')
+      }
       return Promise.reject(new Error(res.message || '请求失败'))
     }
     return res as unknown as typeof response
@@ -41,8 +48,12 @@ request.interceptors.response.use(
       return Promise.reject(error)
     }
     if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('username')
+      try {
+        useUserStore().clearSession()
+      } catch {
+        localStorage.removeItem('username')
+        localStorage.removeItem('role')
+      }
       router.push({ name: 'login' })
       ElMessage.warning('登录已过期，请重新登录')
       return Promise.reject(error)
@@ -67,7 +78,7 @@ export function requestDelete<T>(url: string, config?: ApiRequestConfig): Promis
   return request.delete<unknown, ApiResult<T>>(url, config)
 }
 
-export function requestPut<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<ApiResult<T>> {
+export function requestPut<T>(url: string, data?: unknown, config?: ApiRequestConfig): Promise<ApiResult<T>> {
   return request.put<unknown, ApiResult<T>>(url, data, config)
 }
 

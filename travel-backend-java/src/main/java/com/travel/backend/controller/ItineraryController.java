@@ -5,6 +5,7 @@ import com.travel.backend.common.SecurityUtils;
 import com.travel.backend.dto.GenerateRequest;
 import com.travel.backend.dto.HotelOptionApplyRequest;
 import com.travel.backend.dto.ItemUpsertRequest;
+import com.travel.backend.dto.PreferenceSignalRequest;
 import com.travel.backend.service.ItineraryService;
 import com.travel.backend.service.UserService;
 import com.travel.backend.vo.ItinerarySummaryVO;
@@ -58,6 +59,12 @@ public class ItineraryController {
                 (List<Map<String, Object>>) body.getOrDefault("history", List.of());
         return Result.ok(itineraryService.cityGuide(
                 String.valueOf(body.getOrDefault("input", "")), history));
+    }
+
+    /** 附近推荐：行程项所在城市的权威知识库真实近邻（轻量 GraphRAG）。 */
+    @PostMapping("/poi-nearby")
+    public Result<Map<String, Object>> poiNearby(@RequestBody Map<String, Object> body) {
+        return Result.ok(itineraryService.poiNearby(body));
     }
 
     /**
@@ -204,6 +211,43 @@ public class ItineraryController {
     @GetMapping("/preferences")
     public Result<List<String>> topPreferences() {
         return Result.ok(itineraryService.topPreferences(currentUserId(), 5));
+    }
+
+    @PostMapping("/preferences/signals")
+    public Result<Void> preferenceSignals(@Valid @RequestBody PreferenceSignalRequest request) {
+        itineraryService.recordPreferenceSignals(currentUserId(), request.getExplicitPreferences(),
+                request.getHardConstraints(), request.getNegativePreferences(), request.getSource(),
+                request.getConfidence() == null ? 1.0 : request.getConfidence());
+        return Result.ok();
+    }
+
+    @GetMapping("/preferences/signals")
+    public Result<List<Map<String, Object>>> preferenceSignalList() {
+        return Result.ok(itineraryService.preferenceSignals(currentUserId(), 50));
+    }
+
+    @GetMapping("/{id}/versions")
+    public Result<List<Map<String, Object>>> versions(@PathVariable Long id) {
+        return Result.ok(itineraryService.listVersions(currentUserId(), id));
+    }
+
+    @GetMapping("/{id}/versions/diff")
+    public Result<Map<String, Object>> versionDiff(@PathVariable Long id,
+                                                   @org.springframework.web.bind.annotation.RequestParam Long fromVersionId,
+                                                   @org.springframework.web.bind.annotation.RequestParam Long toVersionId) {
+        return Result.ok(itineraryService.diffVersions(currentUserId(), id, fromVersionId, toVersionId));
+    }
+
+    @PostMapping("/{id}/versions")
+    public Result<Map<String, Object>> createVersion(@PathVariable Long id,
+                                                     @RequestBody Map<String, String> body) {
+        return Result.ok(itineraryService.createVersion(currentUserId(), id,
+                body.getOrDefault("operation", "snapshot"), body.getOrDefault("summary", "行程快照")));
+    }
+
+    @PostMapping("/{id}/versions/{versionId}/restore")
+    public Result<ItineraryVO> restoreVersion(@PathVariable Long id, @PathVariable Long versionId) {
+        return Result.ok(itineraryService.restoreVersion(currentUserId(), id, versionId));
     }
 
     /** 获取当前登录用户 ID（从 JWT 中解析）。 */

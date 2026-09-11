@@ -38,9 +38,13 @@ public class PoiKnowledge {
     private BigDecimal latitude;
     private BigDecimal longitude;
     private BigDecimal ticketPrice;
+    /** 人均/房价参考价：餐饮=人均、酒店=房价；与 ticket_price 互补，预算链路优先 ticketPrice。 */
+    private BigDecimal avgCost;
     private Integer durationMin;
     private String openTime;
     private String tags;
     private BigDecimal rating;
     private String description;
+    private String source;
+    private java.time.LocalDateTime sourceUpdatedAt;
 }

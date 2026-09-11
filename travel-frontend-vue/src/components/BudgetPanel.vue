@@ -3,7 +3,7 @@
     <div class="total-row">
       <div>
         <div class="label">预估总价</div>
-        <div class="total">￥{{ totalAmount }}</div>
+        <div class="total" :class="{ over: overBudget }">￥{{ totalAmount }}</div>
       </div>
       <div v-if="budgetLimit" class="limit">
         预算上限 ￥{{ budgetLimit }}
@@ -51,11 +51,12 @@ const props = defineProps<{
   dayList: DayPlan[]
 }>()
 
+/* 与 theme.css --lp-cat-* 保持一致 */
 const CATEGORY_COLORS: Record<string, string> = {
-  门票: '#b4532a',
-  餐饮: '#8a9a5b',
-  交通: '#d9c7a7',
-  酒店: '#4a4a4a',
+  门票: '#0f766e',
+  餐饮: '#d97706',
+  交通: '#0284c7',
+  酒店: '#475569',
 }
 
 const chartRef = ref<HTMLDivElement>()
@@ -141,7 +142,12 @@ onBeforeUnmount(() => {
 .total {
   font-size: 26px;
   font-weight: 700;
-  color: var(--el-color-primary);
+  color: var(--lp-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.total.over {
+  color: var(--lp-danger);
 }
 
 .limit {

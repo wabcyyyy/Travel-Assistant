@@ -107,6 +107,70 @@ def create_embedding_provider(
     raise ValueError(f"不支持的 RAG_EMBEDDING_PROVIDER: {configured}")
 
 
+class RerankerProvider(ABC):
+    """精排提供方的最小稳定接口：对 (query, document) 打 0~1 相关性分。"""
+
+    provider_name: str
+    model_name: str
+    fallback: bool = False
+
+    @abstractmethod
+    def rerank(self, query: str, documents: list[str]) -> list[float]:
+        raise NotImplementedError
+
+
+class NoopReranker(RerankerProvider):
+    """无精排：保持融合排序结果不变。"""
+
+    provider_name = "none"
+    model_name = "none"
+
+    def rerank(self, query: str, documents: list[str]) -> list[float]:
+        return [0.0] * len(documents)
+
+
+class CrossEncoderReranker(RerankerProvider):
+    provider_name = "cross-encoder"
+
+    def __init__(self, model_name: str) -> None:
+        try:
+            from sentence_transformers import CrossEncoder
+        except ImportError as exc:
+            raise RuntimeError(
+                "RAG reranker requires the optional 'sentence-transformers' dependency"
+            ) from exc
+        self.model_name = model_name
+        # 只使用本地缓存，与 embedding provider 保持一致的离线约定。
+        self._model = CrossEncoder(model_name, max_length=512, local_files_only=True)
+
+    def rerank(self, query: str, documents: list[str]) -> list[float]:
+        if not documents:
+            return []
+        logits = self._model.predict([(query, doc) for doc in documents])
+        # bge-reranker 输出 logit；sigmoid 映射到 0~1 相关性分。
+        return [1.0 / (1.0 + math.exp(-float(score))) for score in logits]
+
+
+def create_reranker(
+    provider_name: str | None = None,
+    model_name: str | None = None,
+) -> RerankerProvider:
+    """创建配置的精排 provider，模型不可用时安全降级为无精排。"""
+    configured = (provider_name or settings.rag_rerank_provider).strip().lower()
+    if configured in {"", "none", "off", "disabled"}:
+        return NoopReranker()
+    model = model_name or settings.rag_rerank_model
+    if configured in {"cross-encoder", "cross_encoder", "sentence-transformers", "st"}:
+        try:
+            return CrossEncoderReranker(model)
+        except Exception as exc:
+            logger.warning("精排模型不可用，降级为融合排序: %s", exc)
+            fallback = NoopReranker()
+            fallback.fallback = True
+            return fallback
+    raise ValueError(f"不支持的 RAG_RERANK_PROVIDER: {configured}")
+
+
 _TOKEN_RE = re.compile(r"[\u4e00-\u9fff]|[a-zA-Z0-9]+")
 
 
@@ -134,6 +198,32 @@ def build_poi_document(poi: dict[str, Any]) -> str:
     return "\n".join(f"{label}：{value}" for label, value in fields if value not in (None, ""))
 
 
+# 查询路由（P2）：把无意图查询从“向量+精排”重路径上移走。
+# 泛词集合覆盖品类与旅游意图词；不含任何具体意图的查询走评分枚举。
+_GENERIC_QUERY_WORDS = (
+    "景点", "美食", "餐饮", "餐厅", "酒店", "住宿", "好玩", "旅游", "旅行",
+    "热门", "推荐", "必去", "必吃", "必玩", "打卡", "小吃", "特产", "商圈",
+    "附近", "周边", "攻略", "名胜", "景区", "游玩",
+)
+
+_NAME_STRIP_RE = re.compile(r"[\s（）()【】\[\]·]")
+
+
+def normalize_query_name(text: str | None) -> str:
+    """归一化查询/名称：去空白与括号等修饰符，供精确名路由匹配。"""
+    return _NAME_STRIP_RE.sub("", str(text or ""))
+
+
+def strip_generic_words(query: str, city: str | None) -> str:
+    """去掉城市名与品类泛词后的剩余意图文本；为空说明查询没有具体意图。"""
+    text = str(query or "")
+    if city:
+        text = text.replace(str(city), " ")
+    for word in _GENERIC_QUERY_WORDS:
+        text = text.replace(word, " ")
+    return "".join(text.split())
+
+
 def _field_value(poi: dict[str, Any], key: str) -> str:
     return str(poi.get(key) or "")
 
@@ -147,6 +237,7 @@ class HybridRetriever:
         embedding_provider: EmbeddingProvider,
         *,
         rrf_k: int | None = None,
+        reranker: RerankerProvider | None = None,
     ) -> None:
         self.collection = collection
         self.embedding_provider = embedding_provider
@@ -154,6 +245,14 @@ class HybridRetriever:
         self.documents: dict[str, dict[str, Any]] = {}
         self._lexical_cache: dict[tuple[str | None, str | None], tuple[dict[str, list[str]], Counter[str], float]] = {}
         self.last_telemetry: dict[str, Any] = {}
+        # 精排 provider 惰性创建：构造检索器不应触发 2GB 级模型加载（如测试场景）。
+        self._reranker = reranker
+
+    @property
+    def reranker(self) -> RerankerProvider:
+        if self._reranker is None:
+            self._reranker = create_reranker()
+        return self._reranker
 
     def set_documents(self, documents: dict[str, dict[str, Any]]) -> None:
         self.documents = documents
@@ -161,6 +260,47 @@ class HybridRetriever:
 
     def _allowed(self, row: dict[str, Any], city: str | None, category: str | None) -> bool:
         return (not city or row.get("city") == city) and (not category or row.get("category") == category)
+
+    def _route(self, query: str, city: str | None, category: str | None) -> str:
+        """查询路由：enumerate（无意图枚举）/ lexical（精确名直查）/ hybrid（默认）。
+
+        路由只决定执行路径，不改变城市、类别与权威数据边界；匹配不到具体
+        意图时保守回退 hybrid，保证语义与精排收益不丢失。
+        """
+        if not settings.rag_router_enabled or not self.documents:
+            return "hybrid"
+        if not strip_generic_words(query, city):
+            return "enumerate"
+        query_name = normalize_query_name(query)
+        if len(query_name) >= 2:
+            for item in self.documents.values():
+                if not self._allowed(item["metadata"], city, category):
+                    continue
+                if normalize_query_name(item["metadata"].get("name")) == query_name:
+                    return "lexical"
+        return "hybrid"
+
+    def _enumerate(
+        self, *, city: str | None, category: str | None,
+        preferences: list[str] | None, top_k: int,
+    ) -> list[dict[str, Any]]:
+        """无意图查询的确定性枚举：偏好命中优先，其次评分，最后稳定按 id。"""
+        rows = [
+            dict(item["metadata"]) for item in self.documents.values()
+            if self._allowed(item["metadata"], city, category)
+        ]
+        for row in rows:
+            preference_score = self._preference_score(row, preferences or [])
+            rating_score = min(max(float(row.get("rating") or 0.0) / 5.0, 0.0), 1.0)
+            row.update({
+                "_route": "enumerate",
+                "_preference_score": round(preference_score, 6),
+                "_business_score": round(0.16 * preference_score + 0.06 * rating_score, 6),
+                "_retrieval_score": round(preference_score + rating_score, 6),
+                "_authoritative": True,
+            })
+        rows.sort(key=lambda row: (-row["_retrieval_score"], int(row.get("id") or 0)))
+        return rows[:top_k]
 
     def _lexical_search(
         self, query: str, *, city: str | None, category: str | None, candidate_limit: int
@@ -268,10 +408,37 @@ class HybridRetriever:
         started = time.perf_counter()
         final_k = max(int(top_k or settings.rag_top_k), 1)
         candidate_limit = max(final_k * 2, settings.rag_top_k)
-        lexical = self._lexical_search(query, city=city, category=category, candidate_limit=candidate_limit)
-        semantic, semantic_fallback = self._semantic_search(
-            query, city=city, category=category, candidate_limit=candidate_limit
-        )
+        route = self._route(query, city, category)
+        semantic_fallback = False
+        lexical: list[tuple[str, float]] = []
+        semantic: list[tuple[str, float]] = []
+        if route == "enumerate":
+            rows = self._enumerate(city=city, category=category,
+                                   preferences=preferences, top_k=final_k)
+            self.last_telemetry = {
+                "provider": "enumerate", "route": route,
+                "embedding_provider": self.embedding_provider.provider_name,
+                "embedding_model": self.embedding_provider.model_name,
+                "semantic_count": 0, "lexical_count": 0,
+                "fused_count": 0, "candidate_count": len(rows),
+                "top_k": final_k,
+                "fallback": bool(self.embedding_provider.fallback),
+                "selected_poi_ids": [row.get("id") for row in rows],
+                "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            }
+            record_event("retrieval", "poi.hybrid_search",
+                         metadata={"query": query[:120], **self.last_telemetry})
+            return rows
+        if route == "lexical":
+            # 精确名直查：BM25 的名称加权保证目标 rank-1，无需向量与精排。
+            lexical = self._lexical_search(query, city=city, category=category,
+                                           candidate_limit=candidate_limit)
+        else:
+            lexical = self._lexical_search(query, city=city, category=category,
+                                           candidate_limit=candidate_limit)
+            semantic, semantic_fallback = self._semantic_search(
+                query, city=city, category=category, candidate_limit=candidate_limit
+            )
         lexical_rank = {doc_id: rank for rank, (doc_id, _) in enumerate(lexical, start=1)}
         semantic_rank = {doc_id: rank for rank, (doc_id, _) in enumerate(semantic, start=1)}
         semantic_score = dict(semantic)
@@ -313,9 +480,46 @@ class HybridRetriever:
             })
             reranked.append((rrf + business, doc_id, row))
         reranked.sort(key=lambda value: (-value[0], value[1]))
+        # 精排（P0②）：对融合排序头部窗口做 cross-encoder 重打分。
+        # 精排分为主、业务分为辅（0.7/0.3），窗口外的尾部保持融合排序不变；
+        # 精排失败时整段退回融合排序结果。lexical 直查路由无需语义精排。
+        rerank_telemetry: dict[str, Any] = {}
+        window_n = min(len(reranked), max(final_k, settings.rag_rerank_candidates))
+        if route == "hybrid" and window_n > 0 and self.reranker.provider_name != "none":
+            window = reranked[:window_n]
+            rest = reranked[window_n:]
+            started_rerank = time.perf_counter()
+            scores: list[float] | None = None
+            try:
+                scores = self.reranker.rerank(
+                    query, [self.documents[doc_id]["document"] for _, doc_id, _ in window]
+                )
+            except Exception as exc:  # noqa: BLE001 - 精排失败不阻断检索
+                logger.warning("精排失败，退回融合排序: %s", exc)
+            if scores is not None:
+                rescored: list[tuple[float, str, dict[str, Any]]] = []
+                for (_, doc_id, row), score in zip(window, scores):
+                    rerank_score = max(0.0, min(1.0, float(score)))
+                    # business 分值域约 [-0.12, 0.58]，归一到 0~1 后与精排分加权。
+                    business = float(row["_business_score"])
+                    business_norm = max(0.0, min(1.0, (business + 0.12) / 0.70))
+                    row["_rerank_score"] = round(rerank_score, 6)
+                    row["_retrieval_score"] = round(0.7 * rerank_score + 0.3 * business_norm, 8)
+                    rescored.append((row["_retrieval_score"], doc_id, row))
+                rescored.sort(key=lambda value: (-value[0], value[1]))
+                reranked = rescored + rest
+            rerank_telemetry = {
+                "reranker": self.reranker.provider_name,
+                "rerank_model": self.reranker.model_name,
+                "rerank_candidates": window_n,
+                "rerank_duration_ms": round((time.perf_counter() - started_rerank) * 1000, 2),
+            }
         rows = [row for _, _, row in reranked[:final_k]]
+        for row in rows:
+            row["_route"] = route
         self.last_telemetry = {
-            "provider": "semantic+bm25",
+            "provider": "semantic+bm25" if route == "hybrid" else "bm25",
+            "route": route,
             "embedding_provider": self.embedding_provider.provider_name,
             "embedding_model": self.embedding_provider.model_name,
             "semantic_count": len(semantic),
@@ -323,7 +527,9 @@ class HybridRetriever:
             "fused_count": len(ids),
             "candidate_count": len(ids),
             "top_k": final_k,
-            "fallback": bool(self.embedding_provider.fallback or semantic_fallback),
+            "fallback": bool(self.embedding_provider.fallback or semantic_fallback
+                             or self.reranker.fallback),
+            **rerank_telemetry,
             "selected_poi_ids": [row.get("id") for row in rows],
             "duration_ms": round((time.perf_counter() - started) * 1000, 2),
         }

@@ -29,10 +29,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /** 用户确认后的行程草稿和酒店房型应用。 */
 @Service
 public class ItineraryPlanApplyService {
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private final ItineraryMainMapper mainMapper;
     private final ItineraryDayMapper dayMapper;
@@ -42,11 +45,13 @@ public class ItineraryPlanApplyService {
     private final BudgetEngine budgetEngine;
     private final ItineraryQueryService queryService;
     private final ItineraryChatService chatService;
+    private final ItineraryVersionService versionService;
 
     public ItineraryPlanApplyService(ItineraryMainMapper mainMapper, ItineraryDayMapper dayMapper,
                                      ItineraryItemMapper itemMapper, PoiKnowledgeMapper poiKnowledgeMapper,
-                                     HotelRoomTypeMapper hotelRoomTypeMapper, BudgetEngine budgetEngine,
-                                     ItineraryQueryService queryService, ItineraryChatService chatService) {
+                                      HotelRoomTypeMapper hotelRoomTypeMapper, BudgetEngine budgetEngine,
+                                      ItineraryQueryService queryService, ItineraryChatService chatService,
+                                      ItineraryVersionService versionService) {
         this.mainMapper = mainMapper;
         this.dayMapper = dayMapper;
         this.itemMapper = itemMapper;
@@ -55,6 +60,7 @@ public class ItineraryPlanApplyService {
         this.budgetEngine = budgetEngine;
         this.queryService = queryService;
         this.chatService = chatService;
+        this.versionService = versionService;
     }
 
     @CacheEvict(cacheNames = "itinerary:detail", allEntries = true)
@@ -74,6 +80,7 @@ public class ItineraryPlanApplyService {
                 .stream().collect(Collectors.toMap(ItineraryItem::getId, item -> item));
         Set<Long> retainedItemIds = new HashSet<>();
         Map<Integer, ItineraryDay> dayByNo = new HashMap<>();
+        versionService.createSnapshot(userId, itineraryId, "apply_plans", "应用草稿前快照");
         for (ItineraryDay day : days) {
             dayByNo.put(day.getDayNo(), day);
         }
@@ -99,8 +106,9 @@ public class ItineraryPlanApplyService {
             Object note = plan.get("note");
             if (note instanceof String s && !s.isBlank()) {
                 day.setNote(s);
-                dayMapper.updateById(day);
             }
+            persistDayMetadata(day, plan);
+            dayMapper.updateById(day);
             int sortNo = 0;
             for (Object rawItem : (List<?>) plan.getOrDefault("items", List.of())) {
                 if (!(rawItem instanceof Map<?, ?> item)) {
@@ -136,6 +144,15 @@ public class ItineraryPlanApplyService {
                     entity.setLongitude(poi.getLongitude());
                     entity.setCost(poi.getTicketPrice());
                     entity.setDurationMin(poi.getDurationMin());
+                    entity.setOpenTime(poi.getOpenTime());
+                    entity.setSource(poi.getSource());
+                    entity.setSourceUpdatedAt(poi.getSourceUpdatedAt());
+                    entity.setVerificationStatus(poi.getSourceUpdatedAt() == null
+                            ? "unverified" : "partially_verified");
+                    entity.setValueKind("observed");
+                    entity.setFreshnessStatus(poi.getSourceUpdatedAt() == null ? "unknown" : "fresh");
+                    entity.setReviewRequirement(poi.getSourceUpdatedAt() == null
+                            ? "before_departure" : "none");
                     entity.setTag(poi.getTags());
                 }
                 if (existing != null) {
@@ -148,6 +165,22 @@ public class ItineraryPlanApplyService {
                 }
                 entity.setTag(str(item.get("tag"), entity.getTag()));
                 entity.setRemark(str(item.get("remark"), entity.getRemark()));
+                // 保留对话草稿中携带的证据字段；没有携带时沿用候选 POI 的
+                // 权威来源，不把一次用户编辑降级成“无来源事实”。
+                entity.setOpenTime(str(item.get("open_time"), entity.getOpenTime()));
+                entity.setSource(str(item.get("source"), entity.getSource()));
+                entity.setVerificationStatus(str(item.get("verification_status"), entity.getVerificationStatus()));
+                entity.setValueKind(str(item.get("value_kind"), entity.getValueKind()));
+                entity.setFreshnessStatus(str(item.get("freshness_status"), entity.getFreshnessStatus()));
+                entity.setReviewRequirement(str(item.get("review_requirement"), entity.getReviewRequirement()));
+                Object sourceUpdatedAt = item.get("source_updated_at");
+                if (sourceUpdatedAt instanceof String text && !text.isBlank()) {
+                    entity.setSourceUpdatedAt(parseDateTime(text));
+                }
+                Object factEvidence = item.get("fact_evidence_json");
+                if (factEvidence instanceof String text && !text.isBlank()) {
+                    entity.setFactEvidenceJson(text);
+                }
                 entity.setSortNo(sortNo++);
                 if (existing == null) {
                     itemMapper.insert(entity);
@@ -175,6 +208,7 @@ public class ItineraryPlanApplyService {
         }
         budgetEngine.recalculate(itineraryId);
         chatService.consumePendingAction(actionMessage);
+        versionService.createSnapshot(userId, itineraryId, "apply_plans", "应用草稿完成");
         return queryService.detail(userId, itineraryId);
     }
 
@@ -203,6 +237,7 @@ public class ItineraryPlanApplyService {
             throw new BizException(404, "未找到该城市的酒店候选");
         }
         chatService.validateHotelChoice(actionMessage, request.getHotelName(), request.getRoomType());
+        versionService.createSnapshot(userId, itineraryId, "apply_hotel", "应用酒店方案前快照");
         List<ItineraryItem> hotelItems = itemMapper.selectList(new LambdaQueryWrapper<ItineraryItem>()
                 .eq(ItineraryItem::getItineraryId, itineraryId)
                 .eq(ItineraryItem::getItemType, "hotel"));
@@ -273,6 +308,7 @@ public class ItineraryPlanApplyService {
         }
         budgetEngine.recalculate(itineraryId);
         chatService.consumePendingAction(actionMessage);
+        versionService.createSnapshot(userId, itineraryId, "apply_hotel", "应用酒店方案完成");
         return queryService.detail(userId, itineraryId);
     }
 
@@ -281,6 +317,57 @@ public class ItineraryPlanApplyService {
                         .eq(ItineraryItem::getDayId, dayId)).stream()
                 .map(ItineraryItem::getSortNo).filter(s -> s != null)
                 .max(Integer::compareTo).orElse(-1) + 1;
+    }
+
+    private void persistDayMetadata(ItineraryDay day, Map<String, Object> plan) {
+        Map<String, Object> metadata = new java.util.LinkedHashMap<>();
+        copyMetadata(metadata, plan, "theme");
+        copyMetadata(metadata, plan, "mini_route");
+        copyMetadata(metadata, plan, "backup_plan");
+        copyMetadata(metadata, plan, "photo_spots");
+        copyMetadata(metadata, plan, "practical_notes");
+        try {
+            // 草稿是该日期的完整替代读模型；未携带可选元数据时清除旧值，
+            // 避免恢复/应用后继续展示上一版本的主题或备选方案。
+            day.setMetadataJson(metadata.isEmpty() ? null : objectMapper.writeValueAsString(metadata));
+        } catch (Exception ignored) {
+            day.setMetadataJson(null);
+        }
+    }
+
+    private void copyMetadata(Map<String, Object> metadata, Map<String, Object> plan, String key) {
+        Object value = plan.get(key);
+        if (value == null) {
+            value = switch (key) {
+                case "mini_route" -> plan.get("miniRoute");
+                case "backup_plan" -> plan.get("backupPlan");
+                case "photo_spots" -> plan.get("photoSpots");
+                case "practical_notes" -> plan.get("practicalNotes");
+                default -> null;
+            };
+        }
+        if (value != null) {
+            String outputKey = switch (key) {
+                case "mini_route" -> "miniRoute";
+                case "backup_plan" -> "backupPlan";
+                case "photo_spots" -> "photoSpots";
+                case "practical_notes" -> "practicalNotes";
+                default -> key;
+            };
+            metadata.put(outputKey, value);
+        }
+    }
+
+    private java.time.LocalDateTime parseDateTime(String value) {
+        try {
+            return java.time.OffsetDateTime.parse(value).toLocalDateTime();
+        } catch (Exception ignored) {
+            try {
+                return java.time.LocalDateTime.parse(value);
+            } catch (Exception ignoredAgain) {
+                return null;
+            }
+        }
     }
 
     private String str(Object value, String fallback) {

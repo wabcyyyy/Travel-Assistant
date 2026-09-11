@@ -10,8 +10,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -20,6 +23,22 @@ from app.common.config import settings
 from app.agent.trace import record_event
 
 logger = logging.getLogger(__name__)
+
+# 语义工具名 → 服务端真实工具名的解析缓存。streamable HTTP 传输本身是无连接
+# 的，每次调用都要 initialize + list_tools 一轮握手；工具名在服务端版本内是
+# 稳定的，缓存后同语义只解析一次（调用失败时清除、下次自愈，兼容服务端改名）。
+_resolved_tools: dict[str, str] = {}
+_resolved_lock = threading.Lock()
+
+
+def _remember_tool_name(semantic_name: str, tool_name: str) -> None:
+    with _resolved_lock:
+        _resolved_tools[semantic_name] = tool_name
+
+
+def _forget_tool_name(semantic_name: str) -> None:
+    with _resolved_lock:
+        _resolved_tools.pop(semantic_name, None)
 
 
 _TOOL_ALIASES: dict[str, tuple[str, ...]] = {
@@ -122,21 +141,68 @@ async def _call_async(semantic_name: str, arguments: dict[str, Any]) -> Any:
     if streamable_client is None:
         streamable_client = streamable_http.streamablehttp_client
 
+    with _resolved_lock:
+        cached_tool = _resolved_tools.get(semantic_name)
+
     async with streamable_client(build_endpoint(), timeout=settings.amap_mcp_timeout) as streams:
         read_stream, write_stream = streams[0], streams[1]
         async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
-            available = (await session.list_tools()).tools
-            tool = _resolve_tool(available, semantic_name)
-            if tool is None:
-                raise RuntimeError(
-                    f"高德 MCP 未找到查询工具 semantic={semantic_name}, "
-                    f"available={[ _tool_name(item) for item in available ]}"
-                )
-            result = await session.call_tool(_tool_name(tool), arguments=arguments)
+            if cached_tool is not None:
+                # 命中缓存：跳过 list_tools 往返（省一次网络 + 反序列化）。
+                tool_name = cached_tool
+            else:
+                available = (await session.list_tools()).tools
+                tool = _resolve_tool(available, semantic_name)
+                if tool is None:
+                    raise RuntimeError(
+                        f"高德 MCP 未找到查询工具 semantic={semantic_name}, "
+                        f"available={[ _tool_name(item) for item in available ]}"
+                    )
+                tool_name = _tool_name(tool)
+                _remember_tool_name(semantic_name, tool_name)
+            result = await session.call_tool(tool_name, arguments=arguments)
             if getattr(result, "isError", False):
-                raise RuntimeError(f"高德 MCP 工具调用失败: {_tool_name(tool)}")
+                # 缓存的工具名可能因服务端改名失效，清除后下次重新解析。
+                _forget_tool_name(semantic_name)
+                raise RuntimeError(f"高德 MCP 工具调用失败: {tool_name}")
             return _decode_result(result)
+
+
+_mcp_pool: ThreadPoolExecutor | None = None
+_mcp_pool_lock = threading.Lock()
+
+
+def _mcp_bridge_pool() -> ThreadPoolExecutor:
+    """事件循环桥接用的模块级线程池（懒加载，避免每次调用创建/销毁线程）。
+
+    多个 worker 让并发请求的 MCP 调用彼此不串行；每个任务内部仍是
+    asyncio.run 独立 loop，互不干扰。
+    """
+    global _mcp_pool
+    if _mcp_pool is None:
+        with _mcp_pool_lock:
+            if _mcp_pool is None:
+                _mcp_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="amap-mcp")
+    return _mcp_pool
+
+
+def _run_coro_blocking(coro_factory) -> Any:
+    """在独立线程的事件循环里跑协程。
+
+    调用方可能已处于运行中的事件循环（FastAPI async 路由 / day_stream 异步链）；
+    此时 asyncio.run() 会抛 RuntimeError 被吞成"高德不可用"。用带 contextvars
+    复制的专用线程执行，既避免嵌套 loop 崩溃，又保留 trace/预算上下文。
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # 当前线程没有运行中的 loop，直接 asyncio.run 即可。
+        return asyncio.run(coro_factory())
+
+    context = contextvars.copy_context()
+    return _mcp_bridge_pool().submit(context.run, lambda: asyncio.run(coro_factory())).result(
+        timeout=settings.amap_mcp_timeout + 5)
 
 
 def call(semantic_name: str, arguments: dict[str, Any]) -> Any | None:
@@ -144,10 +210,12 @@ def call(semantic_name: str, arguments: dict[str, Any]) -> Any | None:
     if not enabled():
         return None
     try:
-        result = asyncio.run(asyncio.wait_for(_call_async(semantic_name, arguments), settings.amap_mcp_timeout))
+        result = _run_coro_blocking(
+            lambda: asyncio.wait_for(_call_async(semantic_name, arguments), settings.amap_mcp_timeout))
         record_event("mcp", f"amap.{semantic_name}", metadata={"status": "ok"})
         return result
     except Exception as exc:  # noqa: BLE001 - 第三方能力失败必须可降级
+        _forget_tool_name(semantic_name)
         record_event("mcp", f"amap.{semantic_name}", status="error", error=str(exc))
         logger.warning("amap MCP call failed semantic=%s: %s", semantic_name, exc)
         return None

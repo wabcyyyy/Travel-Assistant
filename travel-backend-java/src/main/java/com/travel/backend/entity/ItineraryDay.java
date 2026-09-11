@@ -30,6 +30,15 @@ public class ItineraryDay {
     private LocalDate travelDate;
     private String city;
     private String note;
+    /** 每日手册元数据（主题、微路线、备选方案、拍照点和实用提醒）。 */
+    private String metadataJson;
+    /** 稳定的每日生成动作 ID，格式为 day-{itineraryId}-{dayNo}。 */
+    private String generationActionId;
+    /** 生成参数指纹；同一 actionId 携带不同参数时拒绝执行。 */
+    private String generationFingerprint;
+    /** PENDING/RUNNING/SUCCEEDED/FAILED/TIMED_OUT_UNKNOWN。 */
+    private String generationStatus;
+    private String generationError;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     @TableLogic

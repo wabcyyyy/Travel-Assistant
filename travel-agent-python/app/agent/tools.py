@@ -19,9 +19,33 @@ import httpx
 
 from app.agent import poi_repository
 from app.common.config import settings
-from app.integrations import amap_mcp
+from app.integrations import amap_mcp, google_maps
 from app.rag.store import poi_store
 from app.agent.trace import traced
+
+
+def _anchor_name_similar(query: str, candidate: str) -> bool:
+    """附近推荐锚点解析的名称相似度门槛。
+
+    高德/向量对乱码或不存在名称会做模糊召回；若候选名与查询几乎无关，
+    不能当锚点，否则「不存在的景点」会被错误定位到市中心酒店。
+    """
+    def norm(s: str) -> str:
+        return re.sub(r"[\s·'’\-()（）]", "", str(s or "")).lower()
+
+    q, c = norm(query), norm(candidate)
+    if not q or not c:
+        return False
+    if q == c or q in c or c in q:
+        return True
+    # 共享足够长的片段才算命中（至少 2 个字符重叠，或候选短名出现在查询中）
+    shorter, longer = (q, c) if len(q) <= len(c) else (c, q)
+    if len(shorter) >= 2 and shorter in longer:
+        return True
+    # 字符重叠率：过滤「不存在的景点XYZ123」→「湖滨大酒店」这类弱相关
+    overlap = len(set(q) & set(c))
+    union = len(set(q) | set(c))
+    return union > 0 and overlap / union >= 0.55 and overlap >= 4
 
 # 前端展示标签 → 知识库 tags 关键词（匹配用）
 PREFERENCE_KEYWORDS = {
@@ -111,13 +135,28 @@ def _merge_pois(remote: list[dict], local: list[dict]) -> list[dict]:
 
 @traced("tool", "amap.search_poi")
 def search_amap_poi(city: str, name: str, *, category: str | None = None) -> list[dict]:
-    """查询高德 POI，优先官方 MCP，未启用时兼容旧 Web API。"""
+    """查询 POI，优先官方 MCP；未启用/失败时切 Google 兜底。
+
+    Provider chain（高德 → Google）：高德仅覆盖中国境内，国外目的地高德必空，
+    配置 GOOGLE_MAPS_API_KEY 后自动切 Google Places 落真实坐标；未配置则保持
+    原空结果语义（国外裸跑降级）。
+    """
     if amap_mcp.enabled():
         payload = amap_mcp.search_poi(name[:12], city=city)
         hits = amap_mcp.normalize_pois(payload, category=category)
         if hits:
             return hits
-    return _search_amap_rest(name, city, category=category)
+    hits = _search_amap_rest(name, city, category=category)
+    if hits:
+        return hits
+    # 国外目的地兜底：高德（中国）无结果 → Google Places（需 key+绑卡）→
+    # 可选 OSM Nominatim（默认关闭：国内网络不稳，会拖垮 Deadline）。
+    hits = google_maps.search_pois(name, city, category=category)
+    if hits:
+        return hits
+    if settings.nominatim_enabled:
+        return google_maps.search_pois_nominatim(name, city, category=category)
+    return []
 
 
 def _search_amap_rest(name: str, city: str, *, category: str | None = None) -> list[dict]:
@@ -185,6 +224,63 @@ def search_hotels(city: str, limit: int = 6) -> list[dict]:
 
 def get_poi_detail(city: str, name: str) -> dict | None:
     return poi_repository.get_poi(city, name)
+
+
+@traced("tool", "poi.find_nearby")
+def find_nearby_pois(city: str, name: str | None = None,
+                     latitude: float | None = None, longitude: float | None = None,
+                     limit: int = 5, radius_m: int | None = None,
+                     category: str | None = None) -> list[dict]:
+    """查找权威知识库中的同城近邻 POI（轻量 GraphRAG，真实坐标网格）。
+
+    坐标优先使用显式传入值；仅给名称时依次尝试权威库详情、知识库检索、
+    高德 POI 检索解析真实坐标，并排除锚点自身（“西湖附近”不应包含西湖）。
+    带坐标但带名称时也做轻量锚点解析用于排除自身。全部失败（无真实坐标）
+    时返回空列表，不伪造“附近推荐”。
+    """
+    exclude: str | None = None
+    anchor: dict | None = None
+    if latitude is None or longitude is None:
+        anchor = get_poi_detail(city, str(name or ""))
+        if not anchor:
+            poi_store.ensure_loaded()
+            # 语义检索对乱名也会返回 top-k；必须过名称门槛，否则会错锚。
+            for row in poi_store.search(str(name or ""), city=city, limit=5):
+                if _anchor_name_similar(str(name or ""), str(row.get("name") or "")):
+                    anchor = row
+                    break
+        if not anchor:
+            # 名称在权威库解析不到（如开放模式的自选点），用高德解析真实坐标；
+            # 高德结果即真实坐标，不是伪造，只是锚点定位而非数据来源。
+            # MCP 未启用/失败时 search_amap_poi 内部已回退 Web API，仍无则返回空。
+            try:
+                remote = search_amap_poi(city, str(name or ""))
+            except Exception:  # noqa: BLE001 - 高德失败按无坐标处理
+                remote = []
+            # 只接受名称足够接近的召回，避免模糊命中把乱名锚到任意 POI。
+            for row in remote or []:
+                if _anchor_name_similar(str(name or ""), str(row.get("name") or "")):
+                    anchor = row
+                    break
+        try:
+            latitude = float(anchor.get("latitude")) if anchor else None  # type: ignore[union-attr]
+            longitude = float(anchor.get("longitude")) if anchor else None  # type: ignore[union-attr]
+        except (TypeError, ValueError):
+            latitude = longitude = None
+        if latitude in (None, 0.0) or longitude in (None, 0.0):
+            return []
+    elif name:
+        # 坐标已给：仅做轻量锚点解析（不做高德回退），把锚点自身从结果中排除。
+        anchor = get_poi_detail(city, name)
+        if not anchor:
+            poi_store.ensure_loaded()
+            for row in poi_store.search(name, city=city, limit=1):
+                anchor = row
+                break
+    if anchor and anchor.get("id") is not None:
+        exclude = str(anchor.get("id"))
+    return poi_store.nearby(city, latitude, longitude, limit=limit,
+                            radius_m=radius_m, category=category, exclude=exclude)
 
 
 @traced("tool", "poi.get_consumption")
@@ -278,7 +374,7 @@ def _wikipedia_image(name: str) -> str | None:
                 "format": "json",
             },
             timeout=4,
-            headers={"User-Agent": "travel-agent/1.0 (itinerary)"},
+            headers={"User-Agent": "TravelAssistantDemo/1.0 (student-project; contact=dev@localhost.invalid)"},
         )
         pages = (resp.json().get("query") or {}).get("pages") or {}
         for page in pages.values():

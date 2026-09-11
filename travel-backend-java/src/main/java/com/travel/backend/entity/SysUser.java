@@ -28,6 +28,8 @@ public class SysUser {
     private String nickname;
     private String phone;
     private Integer status;
+    /** 角色：user-普通用户，admin-管理员 */
+    private String role;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     @TableLogic

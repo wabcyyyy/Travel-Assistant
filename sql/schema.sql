@@ -5,6 +5,7 @@ DROP TABLE IF EXISTS budget_detail;
 DROP TABLE IF EXISTS itinerary_item;
 DROP TABLE IF EXISTS itinerary_day;
 DROP TABLE IF EXISTS itinerary_chat_message;
+DROP TABLE IF EXISTS itinerary_version;
 DROP TABLE IF EXISTS itinerary_main;
 DROP TABLE IF EXISTS user_preference;
 DROP TABLE IF EXISTS sys_user;
@@ -32,12 +33,32 @@ CREATE TABLE user_preference (
     user_id       BIGINT       NOT NULL,
     pref_label    VARCHAR(32)  NOT NULL COMMENT '偏好标签（如 人文历史/美食）',
     count         INT          NOT NULL DEFAULT 1 COMMENT '累计选择次数',
+    source        VARCHAR(24)  NOT NULL DEFAULT 'explicit' COMMENT '来源 explicit/inferred/feedback',
+    confidence    DECIMAL(5,4) NOT NULL DEFAULT 1.0000 COMMENT '偏好置信度',
+    negative      TINYINT      NOT NULL DEFAULT 0 COMMENT '是否为负反馈',
+    hard_constraint TINYINT    NOT NULL DEFAULT 0 COMMENT '是否为硬约束',
+    last_seen_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uk_user_pref (user_id, pref_label),
     KEY idx_user (user_id)
 ) ENGINE = InnoDB COMMENT '用户偏好统计';
+
+CREATE TABLE itinerary_version (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    itinerary_id    BIGINT       NOT NULL,
+    user_id         BIGINT       NOT NULL,
+    parent_version_id BIGINT     DEFAULT NULL,
+    version_no      INT          NOT NULL,
+    operation       VARCHAR(24)  NOT NULL DEFAULT 'snapshot' COMMENT 'snapshot/apply/restore',
+    summary         VARCHAR(255) DEFAULT NULL,
+    snapshot_json   LONGTEXT     NOT NULL,
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_itinerary_version (itinerary_id, version_no),
+    KEY idx_version_itinerary (itinerary_id, id)
+) ENGINE = InnoDB COMMENT '行程版本快照';
 
 CREATE TABLE itinerary_main (
     id          BIGINT       NOT NULL AUTO_INCREMENT,
@@ -51,8 +72,10 @@ CREATE TABLE itinerary_main (
     budget      DECIMAL(12, 2) DEFAULT NULL COMMENT '用户预算上限',
     preferences VARCHAR(512) DEFAULT NULL COMMENT '偏好标签，逗号分隔',
     hotel_tier  VARCHAR(16) DEFAULT NULL COMMENT '住宿档次偏好',
+    stay_nights INT NOT NULL DEFAULT 0 COMMENT '住宿晚数',
     status      TINYINT      NOT NULL DEFAULT 1 COMMENT '1-草稿 2-已生成 3-已取消',
     plan_note   TEXT         DEFAULT NULL COMMENT 'AI管家规划讲解',
+    suggestions_json TEXT    DEFAULT NULL COMMENT '备选池（发现更多）JSON，来自生成时候选池中未排入行程的优质点位',
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted     TINYINT      NOT NULL DEFAULT 0,
@@ -82,11 +105,19 @@ CREATE TABLE itinerary_day (
     travel_date   DATE        DEFAULT NULL COMMENT '当日日期',
     city          VARCHAR(64) DEFAULT NULL COMMENT '当日所在城市',
     note          VARCHAR(512) DEFAULT NULL COMMENT '当日备注',
+    metadata_json LONGTEXT DEFAULT NULL COMMENT '每日手册元数据 JSON（主题/路线/备选/拍照点/提醒）',
+    generation_action_id VARCHAR(96) DEFAULT NULL COMMENT '稳定的每日生成动作 ID',
+    generation_fingerprint CHAR(64) DEFAULT NULL COMMENT '生成参数 SHA-256 指纹',
+    generation_status VARCHAR(24) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/RUNNING/SUCCEEDED/FAILED/TIMED_OUT_UNKNOWN',
+    generation_error VARCHAR(512) DEFAULT NULL COMMENT '最近一次生成错误',
     created_at    DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted       TINYINT     NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
-    KEY idx_itinerary (itinerary_id)
+    UNIQUE KEY uk_itinerary_day_no (itinerary_id, day_no),
+    UNIQUE KEY uk_generation_action (generation_action_id),
+    KEY idx_itinerary (itinerary_id),
+    KEY idx_generation_status (generation_status)
 ) ENGINE = InnoDB COMMENT '日行程表';
 
 CREATE TABLE itinerary_item (
@@ -105,6 +136,15 @@ CREATE TABLE itinerary_item (
     cost          DECIMAL(10, 2) DEFAULT NULL COMMENT '预估单价（景点/餐饮按人，酒店按间/晚）',
     tag           VARCHAR(32)    DEFAULT NULL COMMENT '标签：亲子/网红/人文等',
     remark        VARCHAR(255)   DEFAULT NULL,
+    open_time     VARCHAR(64)    DEFAULT NULL COMMENT '来源营业时间文本',
+    image_url     VARCHAR(1024)  DEFAULT NULL COMMENT '地点图片 URL（可选）',
+    source        VARCHAR(128)   DEFAULT NULL COMMENT '本次事实来源标识',
+    source_updated_at DATETIME   DEFAULT NULL COMMENT '来源数据更新时间',
+    verification_status VARCHAR(24) NOT NULL DEFAULT 'unverified' COMMENT 'verified/partially_verified/unverified',
+    value_kind    VARCHAR(16)    NOT NULL DEFAULT 'generated' COMMENT 'observed/estimated/generated',
+    freshness_status VARCHAR(16) NOT NULL DEFAULT 'unknown' COMMENT 'fresh/stale/unknown',
+    review_requirement VARCHAR(24) NOT NULL DEFAULT 'before_departure' COMMENT 'none/before_departure',
+    fact_evidence_json LONGTEXT   DEFAULT NULL COMMENT '字段级事实证据 JSON',
     intro         VARCHAR(600)   DEFAULT NULL COMMENT '景点详细介绍',
     sort_no       INT            NOT NULL DEFAULT 0 COMMENT '当日排序',
     created_at    DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -139,6 +179,7 @@ CREATE TABLE poi_knowledge (
     latitude      DECIMAL(10, 6) DEFAULT NULL,
     longitude     DECIMAL(10, 6) DEFAULT NULL,
     ticket_price  DECIMAL(10, 2) DEFAULT NULL COMMENT '门票参考价，NULL 表示免费或未知',
+    avg_cost      DECIMAL(10, 2) DEFAULT NULL COMMENT '人均消费(元)：餐饮人均/景点园内平均花费，非门票价',
     duration_min  INT            DEFAULT NULL COMMENT '建议游玩时长(分钟)',
     open_time     VARCHAR(64)    DEFAULT NULL COMMENT '开放时间文本',
     tags          VARCHAR(128)   DEFAULT NULL COMMENT '偏好标签，逗号分隔',
@@ -147,6 +188,7 @@ CREATE TABLE poi_knowledge (
     source        VARCHAR(128)   NOT NULL DEFAULT 'mysql.poi_knowledge' COMMENT '权威数据来源',
     source_updated_at DATETIME   DEFAULT NULL COMMENT '来源数据更新时间',
     PRIMARY KEY (id),
+    UNIQUE KEY uk_city_name_category (city, name, category),
     KEY idx_city (city),
     KEY idx_tags (tags)
 ) ENGINE = InnoDB COMMENT '景点知识库(种子数据，幻觉检测对照)';

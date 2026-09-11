@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from app.agent.day_stream import _canonicalize_known_plan
+from app.agent.generators import ReferencePool
 from app.agent.reflect import validate_plans
 from tests.agent_eval.mock_llm import catalog
 
@@ -24,13 +24,14 @@ def _run(case: dict) -> dict:
     kind = case["kind"]
     if kind == "authority":
         data = catalog("杭州")
-        try:
-            _canonicalize_known_plan(
-                {"items": [{"item_type": "attraction", "poi_name": "不存在的景点"}]},
-                data["attractions"], data["foods"], data["hotels"],
-            )
-        except ValueError as exc:
-            return {"id": case["id"], "detected": True, "issue": str(exc)}
+        pool = ReferencePool({"candidates": data["attractions"],
+                              "foods": data["foods"], "hotels": data["hotels"]})
+        item = {"item_type": "attraction", "poi_name": "不存在的景点"}
+        grounded = pool.ground(item)
+        # LLM-only 口径：编造名称不允许获得知识库背书（source/权威字段不落地）。
+        detected = grounded is False and "source" not in item
+        return {"id": case["id"], "detected": detected,
+                "issue": "非白名单名称未被知识库背书" if detected else " unexpectedly grounded"}
     elif kind == "route":
         issues, _ = validate_plans([{"day_no": 1, "items": [
             {"item_type": "attraction", "poi_name": "A", "start_time": "09:00", "end_time": "10:00",

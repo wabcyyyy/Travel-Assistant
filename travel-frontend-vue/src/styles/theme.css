@@ -1,30 +1,91 @@
 /* ============================================================
-   Lonely Planet 风格主题：白色 / 大地色 / 黑白为主
-   - 主色：墨黑 #1A1A1A（按钮、链接、激活态）
-   - 点缀：赤陶橙 #B4532A（品牌强调）
-   - 背景：暖沙白 #FAF7F2；卡片：纯白 + 暖灰细边框
+   主题：浅色 / 冷灰中性底 + 深青绿单强调色（Forest 系）
+   - 强调色：深青绿 #0F766E（唯一 accent，全站锁定）
+   - 背景：冷白 #F7F8FA；卡片：纯白 + 冷灰细边框
+   - 形状锁：卡片 16px / 按钮全药丸 / 输入框 8px
    ============================================================ */
 
 :root {
-  /* LP 设计令牌 */
-  --lp-bg: #faf7f2;
+  /* 设计令牌 — Travel Field Handbook */
+  --lp-bg: #f4f6f5;
   --lp-surface: #ffffff;
-  --lp-ink: #1a1a1a;
-  --lp-ink-soft: #4d4a46;
-  --lp-muted: #8a837b;
-  --lp-border: #e8e2d9;
-  --lp-accent: #b4532a;
-  --lp-accent-soft: #f3e4da;
-  --lp-sand: #efe9df;
+  --lp-ink: #14181f;
+  --lp-ink-soft: #3d4451;
+  --lp-muted: #5c6470;
+  --lp-border: #e2e6e4;
+  --lp-accent: #0f766e;
+  --lp-accent-soft: #e4f3f1;
+  --lp-accent-hover: #0c5f59;
+  --lp-sand: #eef2f0;
 
-  /* Element Plus 主色 → 墨黑 */
-  --el-color-primary: #1a1a1a;
-  --el-color-primary-light-3: #484442;
-  --el-color-primary-light-5: #7c7671;
-  --el-color-primary-light-7: #bdb6ae;
-  --el-color-primary-light-8: #d8d2ca;
-  --el-color-primary-light-9: #efeae2;
-  --el-color-primary-dark-2: #000000;
+  /* ---------- 手册化增量（全站展示层） ---------- */
+  --lp-accent-warm: #bd6246; /* 陶土橙：仅限序数/装饰/左缘条，禁止用于按钮与文本链接 */
+  --lp-ink-deep: #0c2e2c; /* 手册深底 */
+  --lp-deep-mid: #173f36; /* 手册深底次级 */
+  --lp-paper: #f6f0e4; /* 暖纸底 */
+  --lp-rule: #d8dfda; /* 发丝分割线 */
+  --lp-content: 1120px; /* 内容区统一宽度 */
+  --lp-content-wide: 1280px; /* 详情工作台 / 管理台 */
+  --lp-font-display:
+    'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'STSong', 'SimSun',
+    Georgia, serif;
+  --lp-font-body:
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue',
+    system-ui, sans-serif;
+  --lp-font-data:
+    'SF Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
+
+  /* 深封面渐变（列表扉页 / 详情封面共用） */
+  --lp-cover-gradient: linear-gradient(
+    125deg,
+    #0b2927 0%,
+    #174a3e 48%,
+    #1b6971 100%
+  );
+
+  /* 辅助色（图表 / 状态） */
+  --lp-olive: #4d7c0f;
+  --lp-clay: #d97706;
+  --lp-danger: #be123c;
+  --lp-success: #4d7c0f;
+  --lp-warning: #b45309;
+  --lp-slate: #475569;
+  --lp-sky: #0284c7; /* 交通类图表 */
+  --lp-gold: #b45309; /* 评分（与装饰序数分离） */
+
+  /* 预算分类色板 */
+  --lp-cat-ticket: #0f766e;
+  --lp-cat-meal: #d97706;
+  --lp-cat-transport: #0284c7;
+  --lp-cat-hotel: #475569;
+  --lp-cat-other: #909399;
+
+  /* 阴影层级（带底色倾向，不用纯黑投影） */
+  --lp-shadow-xs: 0 1px 2px rgb(20 24 31 / 4%);
+  --lp-shadow-sm: 0 2px 10px rgb(20 24 31 / 6%);
+  --lp-shadow-md: 0 8px 24px rgb(20 24 31 / 8%);
+  --lp-shadow-accent: 0 4px 14px rgb(15 118 110 / 24%);
+
+  /* Element Plus 主色 → 深青绿 */
+  --el-color-primary: #0f766e;
+  --el-color-primary-light-3: #579f99;
+  --el-color-primary-light-5: #87bab1;
+  --el-color-primary-light-7: #b7d7ca;
+  --el-color-primary-light-8: #cfe3e0;
+  --el-color-primary-light-9: #e7f1f0;
+  --el-color-primary-dark-2: #0c5e58;
+
+  /* Element Plus 状态色 */
+  --el-color-success: #4d7c0f;
+  --el-color-success-light-9: #eef3e2;
+  --el-color-warning: #b45309;
+  --el-color-warning-light-9: #f8efdd;
+  --el-color-danger: #be123c;
+  --el-color-danger-light-9: #fae7ec;
+  --el-color-error: #be123c;
+  --el-color-error-light-9: #fae7ec;
+  --el-color-info: #697180;
+  --el-color-info-light-9: #eff1f4;
 
   /* 圆角与边框 */
   --el-border-radius-base: 8px;
@@ -42,9 +103,8 @@ body {
   margin: 0;
   background: var(--lp-bg);
   color: var(--lp-ink);
-  font-family:
-    'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', sans-serif;
+  font-family: var(--lp-font-body);
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -52,14 +112,119 @@ h1,
 h2,
 h3 {
   color: var(--lp-ink);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
 }
 
-/* ---------- 卡片：白底细边框，弱阴影 ---------- */
+::selection {
+  background: var(--lp-accent-soft);
+  color: var(--lp-accent-hover);
+}
+
+:focus-visible {
+  outline: 2px solid var(--lp-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d3d8df;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #bcc3cd;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 数字统一等宽 */
+.el-table,
+.stat-value,
+.el-progress__text,
+.el-pagination,
+.lp-ordinal,
+.lp-data {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 手册符号组件（全站可复用） ---------- */
+.lp-ordinal {
+  font-family: var(--lp-font-display);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--lp-accent-warm);
+}
+
+.lp-rule {
+  border: none;
+  border-top: 1px solid var(--lp-rule);
+  margin: 0;
+}
+
+.lp-strip {
+  padding: 10px 14px;
+  border-left: 3px solid var(--lp-accent-warm);
+  border-radius: 0 8px 8px 0;
+  background: var(--lp-paper);
+  color: var(--lp-ink-soft);
+  font-size: 12.5px;
+  line-height: 1.75;
+}
+
+/* 封面底部压字渐变：隐藏残余水印 + 提升图上文字可读性 */
+.lp-cover-fade {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 42%;
+  background: linear-gradient(
+    to top,
+    rgb(12 46 44 / 55%),
+    rgb(12 46 44 / 0%)
+  );
+  pointer-events: none;
+}
+
+/* 主内容区留白节奏 */
+.el-main {
+  padding: 16px 20px;
+}
+
+/* ---------- 按钮：全药丸 + 统一节奏 ---------- */
+.el-button {
+  font-weight: 600;
+  border-radius: 999px;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link):hover {
+  box-shadow: var(--lp-shadow-accent);
+  transform: translateY(-1px);
+}
+
+.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link):active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* ---------- 卡片：白底细边框 16px ---------- */
 .el-card {
   border: 1px solid var(--lp-border);
-  border-radius: 14px !important;
-  box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--lp-shadow-xs) !important;
+  transition:
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
 }
 
 .el-card__header {
@@ -67,7 +232,35 @@ h3 {
   font-weight: 700;
 }
 
-/* ---------- 表格：编辑风细线 ---------- */
+/* ---------- 标签：药丸形 ---------- */
+.el-tag {
+  border-radius: 999px;
+  border: none;
+  font-weight: 600;
+}
+
+.el-input__wrapper,
+.el-select__wrapper,
+.el-textarea__inner {
+  border-radius: 8px;
+}
+
+/* ---------- 分页器 ---------- */
+.el-pagination.is-background .el-pager li:not(.is-disabled).is-active {
+  background: var(--lp-ink);
+  border-radius: 999px;
+}
+
+/* ---------- 对话框 ---------- */
+.el-dialog {
+  border-radius: 16px;
+}
+
+.el-dialog__title {
+  font-weight: 800;
+}
+
+/* ---------- 表格 ---------- */
 .el-table {
   --el-table-border-color: var(--lp-border);
   --el-table-header-bg-color: transparent;
@@ -82,9 +275,10 @@ h3 {
   font-size: 12px;
 }
 
-/* ---------- 菜单 / 头部 ---------- */
+/* ---------- 菜单 / 头部：浅色玻璃 ---------- */
 .lp-header {
-  background: var(--lp-surface);
+  background: rgb(255 255 255 / 86%);
+  backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--lp-border);
 }
 
@@ -102,6 +296,11 @@ h3 {
   border-radius: 4px;
   background: var(--lp-accent);
   flex: none;
+  transition: transform 0.2s ease;
+}
+
+.lp-logo:hover .mark {
+  transform: rotate(8deg) scale(1.08);
 }
 
 .lp-logo .zh {
@@ -144,4 +343,161 @@ h3 {
 .lp-page-head .sub {
   color: var(--lp-muted);
   font-size: 13px;
+}
+
+/* ---------- 统计卡通用 ---------- */
+.stat-card {
+  text-align: center;
+}
+
+.stat-card.clickable {
+  cursor: pointer;
+}
+
+.stat-card.clickable:hover {
+  border-color: var(--lp-accent);
+  box-shadow: var(--lp-shadow-sm) !important;
+  transform: translateY(-2px);
+}
+
+.stat-label {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--lp-muted);
+}
+
+.stat-value {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--lp-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-sub {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--lp-muted);
+}
+
+.card-title {
+  font-weight: 700;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ============================================================
+   全局增强（追加层）：页头变体 / 空状态 / 对话框 / 表格节奏
+   ============================================================ */
+
+/* ---------- 页头变体：不破坏既有 inline 用法 ---------- */
+.lp-page-head {
+  flex-wrap: wrap;
+}
+
+/* 右侧主操作区：<div class="actions"> 放页头行末 */
+.lp-page-head .actions {
+  margin-left: auto;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 两行堆叠变体：<div class="lp-page-head stack"> */
+.lp-page-head.stack {
+  display: block;
+}
+
+.lp-page-head.stack .bar {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.lp-page-head.stack h2 {
+  display: block;
+  font-size: 26px;
+  letter-spacing: -0.01em;
+}
+
+.lp-page-head.stack .sub {
+  display: block;
+  margin-top: 6px;
+  max-width: 60ch;
+}
+
+/* ---------- 空状态 ---------- */
+.el-empty {
+  padding: 44px 0;
+}
+
+.el-empty__description p {
+  margin: 0;
+  color: var(--lp-muted);
+  font-size: 13px;
+}
+
+/* ---------- 对话框：柔和投影 + 头部节奏 ---------- */
+.el-dialog {
+  box-shadow: var(--lp-shadow-md);
+}
+
+.el-dialog__title {
+  font-size: 16px;
+  letter-spacing: 0.01em;
+}
+
+/* ---------- 表格：行高节奏与数字列 ---------- */
+.el-table {
+  font-size: 13.5px;
+}
+
+.el-table th.el-table__cell > .cell,
+.el-table td.el-table__cell > .cell {
+  padding: 0 14px;
+}
+
+.el-table td.el-table__cell {
+  padding: 11px 0;
+}
+
+.el-table .num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 描述列表（后台配置页） ---------- */
+.el-descriptions__label {
+  color: var(--lp-muted);
+  font-weight: 600;
+}
+
+.el-descriptions__body {
+  font-size: 13.5px;
+}
+
+/* ---------- 折叠面板 / 分割线细节 ---------- */
+.el-divider__text {
+  color: var(--lp-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* ---------- 减少动效：系统偏好优先 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .reading-progress {
+    display: none !important;
+  }
 }

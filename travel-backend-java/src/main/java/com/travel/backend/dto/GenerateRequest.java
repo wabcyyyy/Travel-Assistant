@@ -42,4 +42,7 @@ public class GenerateRequest {
     private String hotelTier;
 
     private String regionHint;
+
+    /** 客户额外要求（自然语言，生成时并入 Agent 规划提示） */
+    private String requirements;
 }

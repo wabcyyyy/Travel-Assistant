@@ -1,4 +1,10 @@
-"""离线评测数据面：模拟权威检索结果，不模拟模型输出。"""
+"""离线评测数据面：模拟权威检索结果与确定性 LLM 输出。
+
+LLM-only 口径下生产链路不再有确定性 fallback，因此离线评测改为
+mock 开放模式的模型输出（fixture_open_day / fixture_open_trip）：
+从固定 fixture 目录按序取点生成合法行程 JSON，不依赖真实 LLM，
+但走真实的编排/落地/反思/格式化链路。
+"""
 
 from __future__ import annotations
 
@@ -69,3 +75,74 @@ def get_consumption(city: str) -> dict:
 
 def attach_poi_images(plan: list[dict], city: str) -> list[dict]:
     return plan
+
+
+@traced("tool", "fixture.search_amap_poi")
+def search_amap_poi(city: str, name: str, *, category: str | None = None) -> list[dict]:
+    """按名称回放 fixture 坐标，供开放模式的 _amap_ground 离线落点。"""
+    for group in (_attractions(city), _foods(city), _hotels(city)):
+        for poi in group:
+            if poi["name"] == name:
+                return [deepcopy(poi)]
+    return []
+
+
+def plan_research(task) -> dict:
+    """确定性研究规划：不扩展检索参数（等价阶段一的确定性行为）。"""
+    return {}
+
+
+def evaluate_research(task, items: list[dict], round_no: int) -> dict:
+    """确定性研究评估：结果非空即视为充分（等价阶段一的确定性行为）。"""
+    return {"sufficient": True, "extra_keywords": []}
+
+
+def _take_unused(pool: list[dict], used: set[str], offset: int) -> dict | None:
+    for poi in pool[offset:]:
+        if poi["name"] not in used:
+            return deepcopy(poi)
+    return None
+
+
+def _item(poi: dict, start: str, end: str) -> dict:
+    return {"item_type": poi["category"], "poi_name": poi["name"],
+            "start_time": start, "end_time": end,
+            "duration_min": poi.get("duration_min") or 90,
+            "cost": float(poi.get("ticket_price") or 0), "tag": poi.get("tags")}
+
+
+def fixture_open_day(req, used: set[str]) -> dict:
+    """确定性单日开放模式输出：2 景点 + 1 餐饮 + 1 酒店（名字来自 fixture）。"""
+    city = req.city
+    data = catalog(city)
+    offset = (req.day_no - 1) * 2
+    a1 = _take_unused(data["attractions"], used, offset)
+    a2 = _take_unused(data["attractions"], used, offset + 1)
+    food = _take_unused(data["foods"], used, (req.day_no - 1) % len(data["foods"]))
+    hotel = data["hotels"][(req.day_no - 1) % len(data["hotels"])]
+    items = []
+    if a1:
+        items.append(_item(a1, "09:00", "10:30"))
+    if a2:
+        items.append(_item(a2, "11:00", "12:30"))
+    if food:
+        items.append(_item(food, "18:00", "19:00"))
+    if req.needs_hotel:
+        items.append(_item(hotel, "21:00", "08:00"))
+    return {"note": f"{city}第{req.day_no}天行程", "items": items, "suggestions": []}
+
+
+def fixture_open_trip(req) -> tuple[list[dict], list[dict]]:
+    """确定性多日开放模式输出：逐天展开 fixture_open_day（day_no 逐天递增）。"""
+    days = req.days or 1
+    plans = []
+    taken: set[str] = set()
+    for day_no in range(1, days + 1):
+        day_req = req.model_copy(update={"day_no": day_no})
+        plan = fixture_open_day(day_req, taken)
+        for item in plan["items"]:
+            taken.add(item["poi_name"])
+        plan["day_no"] = day_no
+        plans.append(plan)
+    return plans, []
+

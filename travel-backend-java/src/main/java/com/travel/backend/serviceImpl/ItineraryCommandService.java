@@ -1,7 +1,9 @@
 package com.travel.backend.serviceImpl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.travel.backend.common.BizException;
 import com.travel.backend.dto.ItemUpsertRequest;
 import com.travel.backend.entity.BudgetDetail;
@@ -44,13 +46,17 @@ public class ItineraryCommandService {
     private final BudgetEngine budgetEngine;
     private final ItineraryQueryService queryService;
     private final ItineraryChatService chatService;
+    private final ItineraryVersionService versionService;
+    private final ObjectMapper objectMapper;
 
     public ItineraryCommandService(ItineraryMainMapper mainMapper, ItineraryDayMapper dayMapper,
                                    ItineraryItemMapper itemMapper, BudgetDetailMapper budgetMapper,
                                    ItineraryChatMessageMapper chatMessageMapper,
                                    PoiKnowledgeMapper poiKnowledgeMapper, AgentService agentService,
                                    BudgetEngine budgetEngine, ItineraryQueryService queryService,
-                                   ItineraryChatService chatService) {
+                                   ItineraryChatService chatService,
+                                   ItineraryVersionService versionService,
+                                   ObjectMapper objectMapper) {
         this.mainMapper = mainMapper;
         this.dayMapper = dayMapper;
         this.itemMapper = itemMapper;
@@ -61,12 +67,25 @@ public class ItineraryCommandService {
         this.budgetEngine = budgetEngine;
         this.queryService = queryService;
         this.chatService = chatService;
+        this.versionService = versionService;
+        this.objectMapper = objectMapper;
     }
 
     @CacheEvict(cacheNames = "itinerary:detail", allEntries = true)
     @Transactional
     public void delete(Long userId, Long itineraryId) {
         queryService.findOwnedMain(userId, itineraryId);
+        versionService.createSnapshot(userId, itineraryId, "delete", "删除行程前快照");
+        deleteCascade(itineraryId);
+    }
+
+    /**
+     * #11：级联删除行程明细（日/项/预算/聊天记录）并删除主表。
+     * 用户侧与 Admin 侧共用，避免 Admin 只删主表遗留孤儿数据。
+     */
+    @CacheEvict(cacheNames = "itinerary:detail", allEntries = true)
+    @Transactional
+    public void deleteCascade(Long itineraryId) {
         dayMapper.delete(new LambdaQueryWrapper<ItineraryDay>().eq(ItineraryDay::getItineraryId, itineraryId));
         itemMapper.delete(new LambdaQueryWrapper<ItineraryItem>().eq(ItineraryItem::getItineraryId, itineraryId));
         budgetMapper.delete(new LambdaQueryWrapper<BudgetDetail>().eq(BudgetDetail::getItineraryId, itineraryId));
@@ -90,6 +109,7 @@ public class ItineraryCommandService {
         if (day == null) {
             throw new BizException(404, "日期不存在");
         }
+        versionService.createSnapshot(userId, itineraryId, "add_item", "新增行程项前快照");
         ItineraryItem entity = new ItineraryItem();
         entity.setDayId(request.getDayId());
         entity.setItineraryId(itineraryId);
@@ -99,6 +119,9 @@ public class ItineraryCommandService {
 
         chatService.invalidatePendingActions(userId, itineraryId);
         budgetEngine.recalculate(itineraryId);
+        // 备选池：加入后标记 used，并按需在 AI 管家说中追加预约提醒
+        applySuggestionUsed(itineraryId, request.getPoiId(), request.getPoiName(), true);
+        versionService.createSnapshot(userId, itineraryId, "add_item", "新增行程项完成");
         return queryService.detail(userId, itineraryId);
     }
 
@@ -110,6 +133,7 @@ public class ItineraryCommandService {
             throw new BizException(400, "请求不能为空");
         }
         validateItemRequest(request);
+        versionService.createSnapshot(userId, item.getItineraryId(), "update_item", "更新行程项前快照");
         if (request.getItemType() != null) {
             item.setItemType(request.getItemType());
         }
@@ -121,6 +145,7 @@ public class ItineraryCommandService {
 
         chatService.invalidatePendingActions(userId, item.getItineraryId());
         budgetEngine.recalculate(item.getItineraryId());
+        versionService.createSnapshot(userId, item.getItineraryId(), "update_item", "更新行程项完成");
         return queryService.detail(userId, item.getItineraryId());
     }
 
@@ -128,9 +153,13 @@ public class ItineraryCommandService {
     @Transactional
     public ItineraryVO deleteItem(Long userId, Long itemId) {
         ItineraryItem item = queryService.findOwnedItem(userId, itemId);
+        versionService.createSnapshot(userId, item.getItineraryId(), "delete_item", "删除行程项前快照");
         itemMapper.deleteById(itemId);
         chatService.invalidatePendingActions(userId, item.getItineraryId());
         budgetEngine.recalculate(item.getItineraryId());
+        // 备选池：删除后归还备选池（used=false），并移除对应的预约提醒
+        applySuggestionUsed(item.getItineraryId(), item.getPoiId(), item.getPoiName(), false);
+        versionService.createSnapshot(userId, item.getItineraryId(), "delete_item", "删除行程项完成");
         return queryService.detail(userId, item.getItineraryId());
     }
 
@@ -149,6 +178,7 @@ public class ItineraryCommandService {
         if (itemIds.size() != items.size() || !itemsById.keySet().equals(new java.util.HashSet<>(itemIds))) {
             throw new BizException(400, "行程项顺序必须包含该日期的全部行程项");
         }
+        versionService.createSnapshot(userId, itineraryId, "reorder", "调整行程顺序前快照");
         for (int index = 0; index < itemIds.size(); index++) {
             ItineraryItem item = itemsById.get(itemIds.get(index));
             item.setSortNo(index);
@@ -156,6 +186,7 @@ public class ItineraryCommandService {
         }
         chatService.invalidatePendingActions(userId, itineraryId);
         budgetEngine.recalculate(itineraryId);
+        versionService.createSnapshot(userId, itineraryId, "reorder", "调整行程顺序完成");
         return queryService.detail(userId, itineraryId);
     }
 
@@ -163,6 +194,7 @@ public class ItineraryCommandService {
     @Transactional
     public Map<String, Object> nlEdit(Long userId, Long itineraryId, String instruction) {
         ItineraryMain main = queryService.findOwnedMain(userId, itineraryId);
+        versionService.createSnapshot(userId, itineraryId, "nl_edit", "自然语言编辑前快照");
         List<ItineraryDay> days = dayMapper.selectList(new LambdaQueryWrapper<ItineraryDay>()
                 .eq(ItineraryDay::getItineraryId, itineraryId).orderByAsc(ItineraryDay::getDayNo));
         Map<Integer, ItineraryDay> dayByNo = new HashMap<>();
@@ -258,6 +290,13 @@ public class ItineraryCommandService {
                         entity.setLongitude(poi.getLongitude());
                         entity.setCost(poi.getTicketPrice());
                         entity.setDurationMin(poi.getDurationMin());
+                        entity.setOpenTime(poi.getOpenTime());
+                        entity.setSource(poi.getSource());
+                        entity.setSourceUpdatedAt(poi.getSourceUpdatedAt());
+                        entity.setVerificationStatus(poi.getSourceUpdatedAt() == null ? "unverified" : "partially_verified");
+                        entity.setValueKind("observed");
+                        entity.setFreshnessStatus(poi.getSourceUpdatedAt() == null ? "unknown" : "fresh");
+                        entity.setReviewRequirement(poi.getSourceUpdatedAt() == null ? "before_departure" : "none");
                         entity.setTag(poi.getTags());
                     }
                     if (startTime != null) entity.setStartTime(parseRequiredTime(startTime));
@@ -273,7 +312,75 @@ public class ItineraryCommandService {
         }
         chatService.invalidatePendingActions(userId, itineraryId);
         budgetEngine.recalculate(itineraryId);
+        versionService.createSnapshot(userId, itineraryId, "nl_edit", "自然语言编辑完成");
         return Map.of("applied", applied, "detail", queryService.detail(userId, itineraryId));
+    }
+
+    private static final String RESERVATION_REMINDER_PREFIX = "【预约提醒】";
+
+    /**
+     * 维护行程级备选池的 used 标记，并同步增删 AI 管家说（planNote）中的预约提醒。
+     * 加入行程时：used=true；needReservation=true 的点位在 planNote 末尾追加提醒行。
+     * 删除行程项时：used=false 归还备选池，并按名称移除对应提醒行。
+     */
+    private void applySuggestionUsed(Long itineraryId, String poiId, String poiName, boolean used) {
+        ItineraryMain main = mainMapper.selectById(itineraryId);
+        if (main == null) {
+            return;
+        }
+        List<Map<String, Object>> suggestions = parseSuggestions(main.getSuggestionsJson());
+        if (suggestions.isEmpty()) {
+            return;
+        }
+        boolean changed = false;
+        for (Map<String, Object> suggestion : suggestions) {
+            String sugId = suggestion.get("poiId") == null ? "" : String.valueOf(suggestion.get("poiId"));
+            String sugName = suggestion.get("name") == null ? "" : String.valueOf(suggestion.get("name"));
+            boolean hit = (poiId != null && !poiId.isBlank() && poiId.equals(sugId))
+                    || (poiName != null && !poiName.isBlank() && poiName.equals(sugName));
+            if (!hit) {
+                continue;
+            }
+            boolean currentUsed = Boolean.TRUE.equals(suggestion.get("used"));
+            if (currentUsed != used) {
+                suggestion.put("used", used);
+                changed = true;
+            }
+            String note = main.getPlanNote() == null ? "" : main.getPlanNote();
+            String marker = RESERVATION_REMINDER_PREFIX + "「" + sugName + "」";
+            boolean needReservation = Boolean.TRUE.equals(suggestion.get("needReservation"));
+            if (used && needReservation && !note.contains(marker)) {
+                String line = marker + "通常需要提前预约或取票，建议出发前通过官方渠道/小程序确认。";
+                main.setPlanNote(note.isBlank() ? line : note + "\n" + line);
+                changed = true;
+            } else if (!used && note.contains(marker)) {
+                String cleaned = note.lines()
+                        .filter(line -> !line.contains(marker))
+                        .collect(java.util.stream.Collectors.joining("\n"));
+                main.setPlanNote(cleaned.isBlank() ? null : cleaned);
+                changed = true;
+            }
+        }
+        if (!changed) {
+            return;
+        }
+        try {
+            main.setSuggestionsJson(objectMapper.writeValueAsString(suggestions));
+        } catch (Exception ignored) {
+            // 序列化失败时保留原 JSON，只影响 used 标记的持久化
+        }
+        mainMapper.updateById(main);
+    }
+
+    private List<Map<String, Object>> parseSuggestions(String json) {
+        if (json == null || json.isBlank()) {
+            return new ArrayList<>();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<Map<String, Object>>>() {});
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
     }
 
     private void copyRequest(ItineraryItem target, ItemUpsertRequest request) {
@@ -283,16 +390,28 @@ public class ItineraryCommandService {
     }
 
     private void copyOptionalFields(ItineraryItem target, ItemUpsertRequest request) {
-        target.setPoiId(request.getPoiId());
-        target.setAddress(request.getAddress());
-        target.setLatitude(request.getLatitude());
-        target.setLongitude(request.getLongitude());
-        target.setStartTime(request.getStartTime());
-        target.setEndTime(request.getEndTime());
-        target.setDurationMin(request.getDurationMin());
-        target.setCost(request.getCost());
-        target.setTag(request.getTag());
-        target.setRemark(request.getRemark());
+        // 部分更新：null 表示「不改」，禁止把已有事实字段清空（旧编辑表单/局部 PUT）。
+        if (request.getPoiId() != null) target.setPoiId(request.getPoiId());
+        if (request.getAddress() != null) target.setAddress(request.getAddress());
+        if (request.getLatitude() != null) target.setLatitude(request.getLatitude());
+        if (request.getLongitude() != null) target.setLongitude(request.getLongitude());
+        if (request.getStartTime() != null) target.setStartTime(request.getStartTime());
+        if (request.getEndTime() != null) target.setEndTime(request.getEndTime());
+        if (request.getDurationMin() != null) target.setDurationMin(request.getDurationMin());
+        if (request.getCost() != null) target.setCost(request.getCost());
+        if (request.getTag() != null) target.setTag(request.getTag());
+        if (request.getRemark() != null) target.setRemark(request.getRemark());
+        // 证据字段属于地点事实；旧版编辑表单不会回传这些字段，不能因
+        // 更新时间/备注而把已有来源和核验状态清空。
+        if (request.getOpenTime() != null) target.setOpenTime(request.getOpenTime());
+        if (request.getImageUrl() != null) target.setImageUrl(request.getImageUrl());
+        if (request.getSource() != null) target.setSource(request.getSource());
+        if (request.getSourceUpdatedAt() != null) target.setSourceUpdatedAt(request.getSourceUpdatedAt());
+        if (request.getVerificationStatus() != null) target.setVerificationStatus(request.getVerificationStatus());
+        if (request.getValueKind() != null) target.setValueKind(request.getValueKind());
+        if (request.getFreshnessStatus() != null) target.setFreshnessStatus(request.getFreshnessStatus());
+        if (request.getReviewRequirement() != null) target.setReviewRequirement(request.getReviewRequirement());
+        if (request.getFactEvidenceJson() != null) target.setFactEvidenceJson(request.getFactEvidenceJson());
     }
 
     private void validateItemRequest(ItemUpsertRequest request) {

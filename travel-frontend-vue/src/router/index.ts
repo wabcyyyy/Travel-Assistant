@@ -28,15 +28,51 @@ const router = createRouter({
       name: 'trip-detail',
       component: () => import('../views/TripDetailView.vue'),
     },
+    {
+      path: '/admin',
+      component: () => import('../views/admin/AdminLayout.vue'),
+      meta: { requiresAdmin: true },
+      children: [
+        {
+          path: '',
+          name: 'admin-dashboard',
+          component: () => import('../views/admin/AdminDashboard.vue'),
+        },
+        {
+          path: 'users',
+          name: 'admin-users',
+          component: () => import('../views/admin/AdminUsersView.vue'),
+        },
+        {
+          path: 'itineraries',
+          name: 'admin-itineraries',
+          component: () => import('../views/admin/AdminItinerariesView.vue'),
+        },
+        {
+          path: 'tokens',
+          name: 'admin-tokens',
+          component: () => import('../views/admin/AdminTokensView.vue'),
+        },
+        {
+          path: 'agent',
+          name: 'admin-agent',
+          component: () => import('../views/admin/AdminAgentView.vue'),
+        },
+      ],
+    },
   ],
 })
 
 router.beforeEach((to) => {
-  const token = localStorage.getItem('token')
-  if (!token && to.name !== 'login') {
+  // 凭据在 HttpOnly Cookie；本地仅保存展示用 username/role
+  const authed = Boolean(localStorage.getItem('username'))
+  if (!authed && to.name !== 'login') {
     return { name: 'login' }
   }
-  if (token && to.name === 'login') {
+  if (authed && to.name === 'login') {
+    return { name: 'home' }
+  }
+  if (to.meta.requiresAdmin && localStorage.getItem('role') !== 'admin') {
     return { name: 'home' }
   }
 })

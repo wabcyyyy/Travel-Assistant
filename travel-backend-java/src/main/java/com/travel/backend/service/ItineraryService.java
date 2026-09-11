@@ -80,9 +80,26 @@ public interface ItineraryService {
     /** 城市引导对话：用户不确定去哪时，AI 根据偏好推荐城市。 */
     Map<String, Object> cityGuide(String input, List<Map<String, Object>> history);
 
+    /** 同城权威 POI 近邻（附近推荐）：city + name 或 latitude/longitude。 */
+    Map<String, Object> poiNearby(Map<String, Object> payload);
+
     /** 获取用户偏好 top N（按选择次数降序）。 */
     List<String> topPreferences(Long userId, int limit);
 
     /** 记录用户偏好选择（有则 +1，无则插入）。 */
     void recordPreferences(Long userId, List<String> preferences);
+
+    /** 记录带来源、置信度、硬约束和负反馈语义的偏好信号。 */
+    void recordPreferenceSignals(Long userId, List<String> explicit, List<String> hard,
+                                 List<String> negative, String source, double confidence);
+
+    List<Map<String, Object>> preferenceSignals(Long userId, int limit);
+
+    Map<String, Object> createVersion(Long userId, Long itineraryId, String operation, String summary);
+
+    List<Map<String, Object>> listVersions(Long userId, Long itineraryId);
+
+    Map<String, Object> diffVersions(Long userId, Long itineraryId, Long fromVersionId, Long toVersionId);
+
+    ItineraryVO restoreVersion(Long userId, Long itineraryId, Long versionId);
 }

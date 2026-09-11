@@ -5,23 +5,25 @@
 - 提供按城市/类别/名称/多城市/全量的检索，以及城市消费系数与酒店房型查询。
 
 实现要点：
-- 用 pymysql 直连 settings 配置的数据库，统一 try/except 吞掉异常并记日志，
-  查询失败返回空列表/None 而非抛错，保证上游检索链路不中断；
+- 经 `app.common.db_pool` 连接池访问 MySQL，避免每次查询新建 TCP 连接；
+- 统一 try/except 吞掉异常并记日志，查询失败返回空列表/None 而非抛错，
+  保证上游检索链路不中断；
 - 是 tools 层（RAG + 知识库混合检索）最终回退到的权威数据来源。
 
-依赖：app.common.config.settings。
+依赖：app.common.config.settings、app.common.db_pool。
 """
 
 import logging
 
-import pymysql
-
-from app.common.config import settings
+from app.common import db_pool
 
 logger = logging.getLogger(__name__)
 
+# 注意：poi_knowledge 另有 avg_cost 列（人均消费，见 sql/add_poi_avg_cost_and_unique.sql）。
+# 预算契约：ticket_price 优先；food/hotel 在 ticket_price 为空时回落 avg_cost
+# （海外种子与部分采集管线把人均/房价写在 avg_cost）。
 _POI_COLUMNS = (
-    "id, city, name, category, address, latitude, longitude, ticket_price, duration_min, "
+    "id, city, name, category, address, latitude, longitude, ticket_price, avg_cost, duration_min, "
     "open_time, tags, rating, description, source, source_updated_at"
 )
 
@@ -30,7 +32,7 @@ def list_all_pois_with_status() -> tuple[list[dict], bool]:
     """返回 POI 与查询是否成功，区分“空表”和“数据库暂不可用”。"""
     sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge ORDER BY id"
     try:
-        with _connect() as conn:
+        with db_pool.connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(sql)
                 return list(cursor.fetchall()), True
@@ -40,15 +42,8 @@ def list_all_pois_with_status() -> tuple[list[dict], bool]:
 
 
 def _connect():
-    return pymysql.connect(
-        host=settings.db_host,
-        port=settings.db_port,
-        user=settings.db_user,
-        password=settings.db_password,
-        database=settings.db_name,
-        charset="utf8mb4",
-        cursorclass=pymysql.cursors.DictCursor,
-    )
+    """兼容旧调用点；请优先使用 db_pool.connection()。"""
+    return db_pool.acquire()
 
 
 def search_pois(city: str, category: str | None = None, limit: int = 50) -> list[dict]:
@@ -59,7 +54,7 @@ def search_pois(city: str, category: str | None = None, limit: int = 50) -> list
         params.append(category)
     sql += f" ORDER BY rating DESC LIMIT {int(limit)}"
     try:
-        with _connect() as conn:
+        with db_pool.connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(sql, params)
                 return list(cursor.fetchall())
@@ -84,7 +79,7 @@ def search_pois_by_cities(cities: list[str], category: str | None = None, limit:
         params.append(category)
     sql += f" ORDER BY rating DESC LIMIT {int(limit)}"
     try:
-        with _connect() as conn:
+        with db_pool.connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(sql, params)
                 return list(cursor.fetchall())
@@ -102,7 +97,7 @@ def search_poi_by_name(name: str, category: str | None = None) -> dict | None:
         params.append(category)
     sql += " ORDER BY rating DESC LIMIT 1"
     try:
-        with _connect() as conn:
+        with db_pool.connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(sql, params)
                 row = cursor.fetchone()
@@ -121,7 +116,7 @@ def list_hotel_pois(city: str) -> list[dict]:
     """完整枚举城市酒店，供档次/价格/房型比较使用，不使用 Top-K 截断。"""
     sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge WHERE city = %s AND category = 'hotel' ORDER BY rating DESC, id"
     try:
-        with _connect() as conn:
+        with db_pool.connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(sql, (city,))
                 return list(cursor.fetchall())
@@ -138,7 +133,7 @@ def list_hotel_pois_by_cities(cities: list[str]) -> list[dict]:
     placeholders = ",".join(["%s"] * len(normalized))
     sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge WHERE city IN ({placeholders}) AND category = 'hotel' ORDER BY rating DESC, id"
     try:
-        with _connect() as conn:
+        with db_pool.connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(sql, normalized)
                 return list(cursor.fetchall())
@@ -150,7 +145,7 @@ def list_hotel_pois_by_cities(cities: list[str]) -> list[dict]:
 def get_poi(city: str, name: str) -> dict | None:
     sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge WHERE city = %s AND name = %s LIMIT 1"
     try:
-        with _connect() as conn:
+        with db_pool.connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(sql, (city, name))
                 row = cursor.fetchone()
@@ -163,7 +158,7 @@ def get_poi(city: str, name: str) -> dict | None:
 def get_city_consumption(city: str) -> dict | None:
     sql = "SELECT city, level, meal_price, transport_price, hotel_price FROM city_consumption WHERE city = %s LIMIT 1"
     try:
-        with _connect() as conn:
+        with db_pool.connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(sql, (city,))
                 row = cursor.fetchone()
@@ -183,7 +178,7 @@ def search_hotel_room_types(poi_ids: list[int]) -> list[dict]:
         f"WHERE poi_id IN ({placeholders}) ORDER BY poi_id, is_default DESC, base_price"
     )
     try:
-        with _connect() as conn:
+        with db_pool.connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(sql, poi_ids)
                 return list(cursor.fetchall())

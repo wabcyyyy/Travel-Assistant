@@ -10,6 +10,7 @@
         .day { border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px; page-break-inside: avoid; }
         .day-title { background: #409eff; color: #fff; padding: 6px 10px; font-weight: bold; }
         .day-note { padding: 6px 10px; color: #888; }
+        .day-guide { padding: 0 10px 6px; color: #667085; font-size: 11px; }
         table { width: 100%; border-collapse: collapse; }
         th, td { border: 1px solid #eee; padding: 5px 8px; text-align: left; }
         th { background: #f5f7fa; }
@@ -31,6 +32,11 @@
 <div class="day" th:each="day : ${dayList}">
     <div class="day-title"><span th:text="'第 ' + ${day.dayNo} + ' 天'">第 1 天</span><span th:if="${day.travelDate}" th:text="'（' + ${day.travelDate} + '）'">（日期）</span></div>
     <div class="day-note" th:if="${day.note}" th:text="${day.note}">备注</div>
+    <div class="day-guide" th:if="${day['theme'] != null or day['practicalNotes'] != null or day['backupPlan'] != null}">
+        <span th:if="${day['theme']}" th:text="'主题：' + ${day['theme']}">主题</span>
+        <span th:if="${day['practicalNotes']}" th:text="'提醒：' + ${day['practicalNotes']}">提醒</span>
+        <span th:if="${day['backupPlan']}" th:text="'备选：' + ${day['backupPlan']}">备选</span>
+    </div>
     <table>
         <thead>
         <tr>
@@ -39,6 +45,7 @@
             <th>时间</th>
             <th>时长(分)</th>
             <th>费用(￥)</th>
+            <th>开放/来源</th>
             <th>备注</th>
         </tr>
         </thead>
@@ -49,6 +56,7 @@
             <td th:text="(${item.startTime} != null ? ${item.startTime} : '') + (${item.endTime} != null ? ' - ' + ${item.endTime} : '')">时间</td>
             <td th:text="${item.durationMin}">0</td>
             <td th:text="${item.cost}">0</td>
+            <td><span th:if="${item.openTime != null}" th:text="'开放：' + ${item.openTime}">开放</span><br th:if="${item.openTime != null and item.source != null}"/><span th:if="${item.source != null}" th:text="'来源：' + ${item.source}">来源</span><br th:if="${item.verificationStatus != null}"/><span th:if="${item.verificationStatus != null}" th:text="'核验：' + ${item.verificationStatus}">核验</span></td>
             <td th:text="${item.remark}">备注</td>
         </tr>
         </tbody>

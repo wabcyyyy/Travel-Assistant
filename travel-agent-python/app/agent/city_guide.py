@@ -40,7 +40,16 @@ def run_city_guide(req: dict) -> dict:
     text = raw.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[-1].rsplit("```", 1)[0]
-    data = json.loads(text[text.find("{") : text.rfind("}") + 1])
+    try:
+        data = json.loads(text[text.find("{") : text.rfind("}") + 1])
+    except (json.JSONDecodeError, ValueError):
+        # 模型输出无花括号/截断时切片为空串会抛 JSONDecodeError；按"意图不明"
+        # 的引导语义降级，而不是让异常冒泡成 API 500。
+        return {"kind": "unclear", "city": None,
+                "message": "想去哪里玩？说说你的想法～", "suggestions": []}
+    if not isinstance(data, dict):
+        return {"kind": "unclear", "city": None,
+                "message": "想去哪里玩？说说你的想法～", "suggestions": []}
 
     suggestions = []
     for s in data.get("suggestions") or []:

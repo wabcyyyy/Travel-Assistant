@@ -50,10 +50,25 @@ def evaluate_response(response, case: dict, catalog: dict, trace: dict) -> dict:
     cons = catalog["consumption"]
     rooms = (case["persons"] + 1) // 2
     selected_ticket = sum(float(i.get("cost") or 0) for i in items if i.get("item_type") == "attraction")
-    selected_hotel = sum(float(i.get("cost") or 0) for i in items if i.get("item_type") == "hotel")
+    # 住宿期望与生产口径一致：N 天 = N-1 晚，最后一天不计房价。
+    selected_hotel = sum(float(i.cost or 0)
+                         for plan in response.daily_plans if plan.day_no < case["days"]
+                         for i in plan.items if i.item_type == "hotel")
+    # 餐饮期望与生产口径一致：有价日期按实际选中餐厅人均价×2 餐，
+    # 无价日期回落到城市人均餐价×2；否则指标会惩罚"高价餐厅如实计价"这一有意改进。
+    priced_meal = 0.0
+    priced_days = 0
+    for plan in response.daily_plans:
+        day_meal = max((float(i.cost or 0) for i in plan.items
+                        if i.item_type == "food" and i.cost is not None), default=0.0)
+        if day_meal > 0:
+            priced_meal += day_meal * 2
+            priced_days += 1
+    unpriced_days = max(case["days"] - priced_days, 0)
     expected = {
         "门票": round(selected_ticket * case["persons"], 2),
-        "餐饮": round(float(cons.get("meal_price", 60)) * 2 * case["days"] * case["persons"], 2),
+        "餐饮": round(priced_meal * case["persons"]
+                      + float(cons.get("meal_price", 60)) * 2 * unpriced_days * case["persons"], 2),
         "交通": round(float(cons.get("transport_price", 35)) * case["days"] * case["persons"], 2),
         "酒店": round(selected_hotel * rooms, 2),
     }
@@ -62,6 +77,11 @@ def evaluate_response(response, case: dict, catalog: dict, trace: dict) -> dict:
 
     tool_events = [event for event in trace.get("events", []) if event["kind"] == "tool"]
     node_events = [event for event in trace.get("events", []) if event["kind"] == "node"]
+    # 多 Agent 研究编排（P3）：从 schedule_report 汇总各域证据包规模与推理轮次。
+    research = (response.schedule_report or {}).get("research") or {}
+    research_agents = research.get("agents") or {}
+    research_rounds = sum((a or {}).get("rounds", 0) for a in research_agents.values())
+    research_pack = sum((a or {}).get("count", 0) for a in research_agents.values())
     return {
         "case": case,
         "status": response.status,
@@ -83,4 +103,6 @@ def evaluate_response(response, case: dict, catalog: dict, trace: dict) -> dict:
             "tools": [event["name"] for event in tool_events],
             "routes": [event["name"] for event in trace.get("events", []) if event["kind"] == "route"],
         },
+        "research_rounds": research_rounds,
+        "research_pack": research_pack,
     }

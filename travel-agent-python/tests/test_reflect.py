@@ -27,6 +27,19 @@ def test_validate_ok():
     assert len(log) == 1
 
 
+def test_validate_flags_day_without_attractions():
+    """只有酒店/餐饮没有景点的天必须进校验问题（丽江占位酒店事故缺口）。"""
+    plans = [
+        {"day_no": 1, "items": [
+            {"item_type": "food", "poi_name": "餐厅", "start_time": "12:00", "end_time": "13:00"},
+            {"item_type": "hotel", "poi_name": "酒店", "start_time": "21:00", "end_time": "08:00"},
+        ]},
+        {"day_no": 2, "items": []},  # 完全空日仍走"无行程项"日志语义，不重复报 issue
+    ]
+    issues, _log = validate_plans(plans)
+    assert issues == ["第 1 天未安排任何景点"]
+
+
 def test_validate_conflict_and_open_time():
     plans = [
         {

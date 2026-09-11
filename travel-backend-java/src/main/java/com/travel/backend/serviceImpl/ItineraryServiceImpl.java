@@ -41,6 +41,7 @@ public class ItineraryServiceImpl implements ItineraryService {
     private final ItineraryChatService chatService;
     private final ItineraryPlanApplyService planApplyService;
     private final UserPreferenceService preferenceService;
+    private final ItineraryVersionService versionService;
 
     public ItineraryServiceImpl(ItineraryGenerationService generationService,
                                 ItineraryQueryService queryService,
@@ -48,7 +49,8 @@ public class ItineraryServiceImpl implements ItineraryService {
                                 ItineraryCityService cityService,
                                 ItineraryChatService chatService,
                                 ItineraryPlanApplyService planApplyService,
-                                UserPreferenceService preferenceService) {
+                                UserPreferenceService preferenceService,
+                                ItineraryVersionService versionService) {
         this.generationService = generationService;
         this.queryService = queryService;
         this.commandService = commandService;
@@ -56,6 +58,7 @@ public class ItineraryServiceImpl implements ItineraryService {
         this.chatService = chatService;
         this.planApplyService = planApplyService;
         this.preferenceService = preferenceService;
+        this.versionService = versionService;
     }
 
     @Override
@@ -146,6 +149,11 @@ public class ItineraryServiceImpl implements ItineraryService {
     }
 
     @Override
+    public Map<String, Object> poiNearby(Map<String, Object> payload) {
+        return cityService.poiNearby(payload);
+    }
+
+    @Override
     public List<String> topPreferences(Long userId, int limit) {
         return preferenceService.topPreferences(userId, limit);
     }
@@ -153,5 +161,36 @@ public class ItineraryServiceImpl implements ItineraryService {
     @Override
     public void recordPreferences(Long userId, List<String> preferences) {
         preferenceService.recordPreferences(userId, preferences);
+    }
+
+    @Override
+    public void recordPreferenceSignals(Long userId, List<String> explicit, List<String> hard,
+                                        List<String> negative, String source, double confidence) {
+        preferenceService.recordSignals(userId, explicit, hard, negative, source, confidence);
+    }
+
+    @Override
+    public List<Map<String, Object>> preferenceSignals(Long userId, int limit) {
+        return preferenceService.signals(userId, limit);
+    }
+
+    @Override
+    public Map<String, Object> createVersion(Long userId, Long itineraryId, String operation, String summary) {
+        return versionService.createSnapshot(userId, itineraryId, operation, summary);
+    }
+
+    @Override
+    public List<Map<String, Object>> listVersions(Long userId, Long itineraryId) {
+        return versionService.list(userId, itineraryId);
+    }
+
+    @Override
+    public Map<String, Object> diffVersions(Long userId, Long itineraryId, Long fromVersionId, Long toVersionId) {
+        return versionService.diff(userId, itineraryId, fromVersionId, toVersionId);
+    }
+
+    @Override
+    public ItineraryVO restoreVersion(Long userId, Long itineraryId, Long versionId) {
+        return versionService.restore(userId, itineraryId, versionId);
     }
 }

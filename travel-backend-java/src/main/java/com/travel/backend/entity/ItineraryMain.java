@@ -38,8 +38,10 @@ public class ItineraryMain {
     private BigDecimal budget;
     private String preferences;
     private String hotelTier;
+    private Integer stayNights;
     private Integer status;
     private String planNote;
+    private String suggestionsJson;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     @TableLogic

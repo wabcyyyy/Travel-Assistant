@@ -1,5 +1,7 @@
 package com.travel.backend.serviceImpl;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.lowagie.text.pdf.BaseFont;
 import com.travel.backend.entity.BudgetDetail;
@@ -47,6 +49,7 @@ public class ExportTaskRunner {
     private final TemplateEngine templateEngine;
     private final String exportDir;
     private final Path fontPath;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ExportTaskRunner(ExportTaskMapper taskMapper, ItineraryMainMapper mainMapper,
                             ItineraryDayMapper dayMapper, ItineraryItemMapper itemMapper,
@@ -123,6 +126,7 @@ public class ExportTaskRunner {
             dayMap.put("dayNo", day.getDayNo());
             dayMap.put("note", day.getNote());
             dayMap.put("travelDate", day.getTravelDate());
+            addDayMetadata(dayMap, day.getMetadataJson());
             List<Map<String, Object>> items = new ArrayList<>();
             List<ItineraryItem> itemEntities = itemMapper.selectList(new LambdaQueryWrapper<ItineraryItem>()
                     .eq(ItineraryItem::getDayId, day.getId())
@@ -137,6 +141,9 @@ public class ExportTaskRunner {
                 itemMap.put("cost", item.getCost());
                 itemMap.put("tag", item.getTag());
                 itemMap.put("remark", item.getRemark());
+                itemMap.put("openTime", item.getOpenTime());
+                itemMap.put("source", item.getSource());
+                itemMap.put("verificationStatus", item.getVerificationStatus());
                 items.add(itemMap);
             }
             dayMap.put("items", items);
@@ -158,6 +165,32 @@ public class ExportTaskRunner {
         model.put("budgetList", budgetList);
         model.put("totalAmount", total);
         return model;
+    }
+
+    private void addDayMetadata(Map<String, Object> dayMap, String metadataJson) {
+        if (metadataJson == null || metadataJson.isBlank()) return;
+        try {
+            JsonNode metadata = objectMapper.readTree(metadataJson);
+            if (metadata.hasNonNull("theme")) dayMap.put("theme", metadata.get("theme").asText());
+            JsonNode notes = metadata.get("practicalNotes");
+            if (notes != null && notes.isArray() && notes.size() > 0) {
+                List<String> texts = new ArrayList<>();
+                notes.forEach(n -> { if (!n.asText().isBlank()) texts.add(n.asText()); });
+                if (!texts.isEmpty()) dayMap.put("practicalNotes", String.join("；", texts));
+            }
+            JsonNode backups = metadata.get("backupPlan");
+            if (backups != null && backups.isArray() && backups.size() > 0) {
+                List<String> names = new ArrayList<>();
+                backups.forEach(n -> {
+                    String name = n.hasNonNull("name") ? n.get("name").asText()
+                            : n.hasNonNull("title") ? n.get("title").asText() : "";
+                    if (!name.isBlank()) names.add(name);
+                });
+                if (!names.isEmpty()) dayMap.put("backupPlan", String.join("、", names));
+            }
+        } catch (Exception ignored) {
+            // 可选手册元数据损坏时仍导出基础行程。
+        }
     }
 
     private void renderPdfToFile(String html, File target) throws Exception {

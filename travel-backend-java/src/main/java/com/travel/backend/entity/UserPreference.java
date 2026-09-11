@@ -27,6 +27,11 @@ public class UserPreference {
     private Long userId;
     private String prefLabel;
     private Integer count;
+    private String source;
+    private java.math.BigDecimal confidence;
+    private Integer negative;
+    private Integer hardConstraint;
+    private LocalDateTime lastSeenAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

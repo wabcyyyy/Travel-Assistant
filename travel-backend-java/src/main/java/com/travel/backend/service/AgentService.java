@@ -44,4 +44,13 @@ public interface AgentService {
 
     /** 景点详细介绍批量生成。 */
     JsonNode poiIntros(Map<String, Object> payload);
+
+    /** 同城权威 POI 近邻（轻量 GraphRAG 附近推荐）。 */
+    JsonNode poiNearby(Map<String, Object> payload);
+
+    /** Agent 运行指标（llm_calls、prompt/completion tokens 等进程内聚合）。 */
+    JsonNode metrics();
+
+    /** LLM 用量历史（SQLite 落库）：汇总/场景/模型/趋势/明细。range: 1h|24h|7d|30d */
+    JsonNode usage(String range, int limit, int offset);
 }

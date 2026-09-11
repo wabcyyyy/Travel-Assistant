@@ -23,6 +23,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * 行程只读查询与展示模型组装。
@@ -38,15 +40,17 @@ public class ItineraryQueryService {
     private final ItineraryItemMapper itemMapper;
     private final BudgetDetailMapper budgetMapper;
     private final PoiKnowledgeMapper poiKnowledgeMapper;
+    private final ObjectMapper objectMapper;
 
     public ItineraryQueryService(ItineraryMainMapper mainMapper, ItineraryDayMapper dayMapper,
                                  ItineraryItemMapper itemMapper, BudgetDetailMapper budgetMapper,
-                                 PoiKnowledgeMapper poiKnowledgeMapper) {
+                                 PoiKnowledgeMapper poiKnowledgeMapper, ObjectMapper objectMapper) {
         this.mainMapper = mainMapper;
         this.dayMapper = dayMapper;
         this.itemMapper = itemMapper;
         this.budgetMapper = budgetMapper;
         this.poiKnowledgeMapper = poiKnowledgeMapper;
+        this.objectMapper = objectMapper;
     }
 
     public List<ItinerarySummaryVO> list(Long userId) {
@@ -108,6 +112,7 @@ public class ItineraryQueryService {
             dayVO.setDayNo(day.getDayNo());
             dayVO.setTravelDate(day.getTravelDate());
             dayVO.setNote(day.getNote());
+            applyDayMetadata(dayVO, day.getMetadataJson());
             dayVO.setItems(itemsByDay.getOrDefault(day.getId(), List.of()).stream()
                     .map(this::toItemVO)
                     .collect(Collectors.toCollection(ArrayList::new)));
@@ -142,13 +147,146 @@ public class ItineraryQueryService {
         }
 
         ItineraryVO vo = toVO(main);
+        vo.setSuggestions(parseSuggestions(main.getSuggestionsJson()));
         vo.setDayList(dayVOList);
         vo.setStayNights((int) dayVOList.stream()
                 .filter(day -> day.getItems().stream().anyMatch(item -> "hotel".equals(item.getItemType())))
                 .count());
         vo.setBudgetList(budgetVOList);
         vo.setTotalAmount(sumAmount(budgets));
+        vo.setDestinationStatus(resolveDestinationStatus(allItems));
+        vo.setSources(buildSourceRecords(allItems));
+        int pendingFacts = (int) allItems.stream()
+                .filter(item -> item.getReviewRequirement() == null
+                        || !"none".equals(item.getReviewRequirement())
+                        || "stale".equals(item.getFreshnessStatus()))
+                .count();
+        vo.setPendingFactCount(pendingFacts);
+        boolean hasStaleFacts = allItems.stream()
+                .anyMatch(item -> "stale".equals(item.getFreshnessStatus()));
+        boolean hasIncompleteDay = days.stream()
+                .anyMatch(day -> "PENDING".equals(day.getGenerationStatus())
+                        || "RUNNING".equals(day.getGenerationStatus()));
+        boolean hasFailedDay = days.stream()
+                .anyMatch(day -> "FAILED".equals(day.getGenerationStatus())
+                        || "TIMED_OUT_UNKNOWN".equals(day.getGenerationStatus()));
+        String qualityStatus;
+        if ((main.getStatus() != null && main.getStatus() == 3) || hasFailedDay) {
+            qualityStatus = "BLOCKED";
+        } else if (hasIncompleteDay || (main.getStatus() != null && main.getStatus() == 1)) {
+            qualityStatus = "DRAFT";
+        } else if (allItems.isEmpty()) {
+            qualityStatus = "BLOCKED";
+        } else if (hasStaleFacts) {
+            qualityStatus = "STALE";
+        } else {
+            qualityStatus = pendingFacts > 0 ? "READY_WITH_WARNINGS" : "READY";
+        }
+        vo.setQualityStatus(qualityStatus);
+        vo.setQualityRuleVersion("travel-quality-1.0");
+        vo.setQualityReport(buildQualityReport(qualityStatus,
+                qualityRuleIssues(qualityStatus, days, allItems, pendingFacts), pendingFacts));
         return vo;
+    }
+
+    private Map<String, Object> buildQualityReport(String status, List<Map<String, Object>> issues,
+                                                    int pendingFacts) {
+        List<Map<String, Object>> blocking = "BLOCKED".equals(status)
+                ? issues : List.of();
+        List<Map<String, Object>> warnings = "READY_WITH_WARNINGS".equals(status)
+                || "STALE".equals(status) ? issues : List.of();
+        Map<String, Object> report = new HashMap<>();
+        report.put("qualityStatus", status);
+        report.put("qualityRuleVersion", "travel-quality-1.0");
+        report.put("blockingIssues", blocking);
+        report.put("warnings", warnings);
+        report.put("metrics", Map.of("pendingFactCount", pendingFacts));
+        return report;
+    }
+
+    private List<Map<String, Object>> qualityRuleIssues(String status, List<ItineraryDay> days,
+                                                         List<ItineraryItem> items, int pendingFacts) {
+        List<Map<String, Object>> issues = new ArrayList<>();
+        if ("BLOCKED".equals(status)) {
+            if (items.isEmpty()) issues.add(issue("NO_ITINERARY_ITEMS", "没有可交付的行程地点"));
+            if (days.stream().anyMatch(day -> "FAILED".equals(day.getGenerationStatus())
+                    || "TIMED_OUT_UNKNOWN".equals(day.getGenerationStatus()))) {
+                issues.add(issue("DAY_GENERATION_FAILED", "至少一天的行程生成失败"));
+            }
+        } else if (pendingFacts > 0) {
+            issues.add(issue("FACT_REQUIRES_REVIEW", pendingFacts + " 项事实需要出发前复核"));
+        }
+        return issues;
+    }
+
+    private Map<String, Object> issue(String code, String message) {
+        return Map.of("code", code, "message", message);
+    }
+
+    private List<Map<String, Object>> buildSourceRecords(List<ItineraryItem> items) {
+        Map<String, Map<String, Object>> records = new java.util.LinkedHashMap<>();
+        for (ItineraryItem item : items) {
+            String source = item.getSource();
+            if (source == null || source.isBlank()) continue;
+            Map<String, Object> record = records.computeIfAbsent(source, key -> {
+                Map<String, Object> value = new java.util.LinkedHashMap<>();
+                value.put("sourceId", key);
+                value.put("storageSource", key);
+                value.put("provider", key);
+                return value;
+            });
+            if (item.getSourceUpdatedAt() != null) {
+                record.putIfAbsent("retrievedAt", item.getSourceUpdatedAt());
+            }
+        }
+        return new ArrayList<>(records.values());
+    }
+
+    private String resolveDestinationStatus(List<ItineraryItem> items) {
+        if (items.isEmpty()) return "draft_only";
+        boolean hasOpenResearch = items.stream()
+                .anyMatch(item -> "llm.open_day".equals(item.getSource()));
+        if (hasOpenResearch) {
+            boolean hasAuthoritativeFact = items.stream()
+                    .anyMatch(item -> item.getSource() != null
+                            && !"llm.open_day".equals(item.getSource()));
+            return hasAuthoritativeFact ? "researched" : "draft_only";
+        }
+        return "knowledge_backed";
+    }
+
+    private void applyDayMetadata(ItineraryVO.DayVO dayVO, String metadataJson) {
+        if (metadataJson == null || metadataJson.isBlank()) return;
+        try {
+            Map<String, Object> metadata = objectMapper.readValue(metadataJson,
+                    new TypeReference<Map<String, Object>>() {});
+            dayVO.setTheme(asString(metadata.get("theme")));
+            dayVO.setMiniRoute(asMap(metadata.get("miniRoute")));
+            dayVO.setBackupPlan(asMapList(metadata.get("backupPlan")));
+            dayVO.setPhotoSpots(asMapList(metadata.get("photoSpots")));
+            dayVO.setPracticalNotes(asStringList(metadata.get("practicalNotes")));
+        } catch (Exception ignored) {
+            // 旧数据或损坏的可选元数据不应阻塞详情读取。
+        }
+    }
+
+    private String asString(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> asMap(Object value) {
+        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> asMapList(Object value) {
+        return value instanceof List<?> list ? (List<Map<String, Object>>) (List<?>) list : null;
+    }
+
+    private List<String> asStringList(Object value) {
+        if (!(value instanceof List<?> list)) return null;
+        return list.stream().map(this::asString).filter(v -> v != null).toList();
     }
 
     public ItineraryMain findOwnedMain(Long userId, Long id) {
@@ -196,8 +334,38 @@ public class ItineraryQueryService {
         vo.setCost(item.getCost());
         vo.setTag(item.getTag());
         vo.setRemark(item.getRemark());
+        vo.setOpenTime(item.getOpenTime());
+        vo.setImage(item.getImageUrl());
+        vo.setImageUrl(item.getImageUrl());
+        vo.setSource(item.getSource());
+        vo.setSourceUpdatedAt(item.getSourceUpdatedAt());
+        vo.setVerificationStatus(item.getVerificationStatus());
+        vo.setValueKind(item.getValueKind());
+        vo.setFreshnessStatus(item.getFreshnessStatus());
+        vo.setReviewRequirement(item.getReviewRequirement());
+        vo.setFactEvidenceJson(item.getFactEvidenceJson());
+        vo.setFactEvidence(parseFactEvidence(item.getFactEvidenceJson()));
         vo.setSortNo(item.getSortNo());
         return vo;
+    }
+
+    private Map<String, Object> parseFactEvidence(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private List<Map<String, Object>> parseSuggestions(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<Map<String, Object>>>() {});
+        } catch (Exception ignored) {
+            // 旧数据或损坏的可选备选池不应阻塞详情读取。
+            return List.of();
+        }
     }
 
     private ItineraryVO.BudgetVO toBudgetVO(BudgetDetail budget) {
@@ -210,6 +378,7 @@ public class ItineraryQueryService {
 
     private ItineraryVO toVO(ItineraryMain main) {
         ItineraryVO vo = new ItineraryVO();
+        vo.setSchemaVersion("1.0");
         vo.setId(main.getId());
         vo.setTitle(main.getTitle());
         vo.setCity(main.getCity());

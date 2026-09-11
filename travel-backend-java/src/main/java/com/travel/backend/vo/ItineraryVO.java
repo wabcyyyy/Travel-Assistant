@@ -6,10 +6,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
 
 @Data
 public class ItineraryVO {
 
+    private String schemaVersion = "1.0";
     private Long id;
     private String title;
     private String city;
@@ -23,6 +25,14 @@ public class ItineraryVO {
     private String hotelTier;
     private Integer status;
     private String planNote;
+    private String destinationStatus;
+    private String qualityStatus;
+    private String qualityRuleVersion;
+    private java.time.LocalDateTime validatedAt;
+    private Integer pendingFactCount;
+    private Map<String, Object> qualityReport;
+    private List<Map<String, Object>> sources;
+    private List<Map<String, Object>> suggestions;
     private List<DayVO> dayList;
     private List<BudgetVO> budgetList;
     private BigDecimal totalAmount;
@@ -33,6 +43,11 @@ public class ItineraryVO {
         private Integer dayNo;
         private LocalDate travelDate;
         private String note;
+        private String theme;
+        private Map<String, Object> miniRoute;
+        private List<Map<String, Object>> backupPlan;
+        private List<Map<String, Object>> photoSpots;
+        private List<String> practicalNotes;
         private List<TripItemVO> items;
     }
 
@@ -51,6 +66,17 @@ public class ItineraryVO {
         private BigDecimal cost;
         private String tag;
         private String remark;
+        private String openTime;
+        private String image;
+        private String imageUrl;
+        private String source;
+        private java.time.LocalDateTime sourceUpdatedAt;
+        private String verificationStatus;
+        private String valueKind;
+        private String freshnessStatus;
+        private String reviewRequirement;
+        private String factEvidenceJson;
+        private Map<String, Object> factEvidence;
         private String intro;
         private String description;
         private Integer sortNo;

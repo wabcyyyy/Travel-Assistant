@@ -17,4 +17,5 @@ public class AgentGenerateRequest {
     private List<String> preferences;
     private String hotelTier;
     private String regionHint;
+    private String requirements;
 }

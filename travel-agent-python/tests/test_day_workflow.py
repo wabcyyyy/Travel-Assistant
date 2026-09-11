@@ -2,17 +2,38 @@ from app.agent import day_workflow
 from app.schemas.trip import DailyPlan, GenerateDayRequest, TripItem
 
 
-def _plan(start: str = "09:00", end: str = "11:00") -> DailyPlan:
+def _plan() -> DailyPlan:
+    # 需通过 reflect：时长充足、含餐饮、时间不重叠
     return DailyPlan(
         day_no=1,
         items=[
             TripItem(
                 item_type="attraction",
                 poi_name="测试景点",
-                start_time=start,
-                end_time=end,
-                duration_min=120,
-            )
+                start_time="09:00",
+                end_time="12:00",
+                duration_min=180,
+                latitude=30.0,
+                longitude=120.0,
+            ),
+            TripItem(
+                item_type="food",
+                poi_name="测试餐厅",
+                start_time="12:20",
+                end_time="13:20",
+                duration_min=60,
+                latitude=30.01,
+                longitude=120.01,
+            ),
+            TripItem(
+                item_type="attraction",
+                poi_name="测试景点2",
+                start_time="13:50",
+                end_time="16:50",
+                duration_min=180,
+                latitude=30.02,
+                longitude=120.02,
+            ),
         ],
     )
 

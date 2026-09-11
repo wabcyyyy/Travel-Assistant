@@ -37,13 +37,29 @@ def auth_headers(token):
 
 
 def generate(client, token, city="北京", days=2):
+    """发起异步生成并轮询至完成，返回最终行程详情。
+
+    生成接口先异步建壳返回 status=1（draft），逐日由后台填充后 status=2。
+    测试需轮询等待，不能对同步建壳响应做完整 data 断言。
+    """
     r = client.post("/api/itinerary/generate",
                     json={"city": city, "days": days, "persons": 2, "budget": 3000, "preferences": ["人文"]},
                     headers=auth_headers(token))
     assert r.status_code == 200
     body = r.json()
     assert body["code"] == 200
-    return body["data"]
+    detail = body["data"]
+    itin_id = detail["id"]
+
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        d = client.get(f"/api/itinerary/{itin_id}", headers=auth_headers(token), timeout=60).json()
+        assert d["code"] == 200
+        d = d["data"]
+        if d.get("status") == 2:
+            return d
+        time.sleep(2)
+    raise AssertionError(f"等待行程生成超时: id={itin_id}, status={detail.get('status')}")
 
 
 class TestAuth:
@@ -89,7 +105,8 @@ class TestItinerary:
 
         d = client.get(f"/api/itinerary/{itin_id}", headers=auth_headers(token)).json()
         assert d["code"] == 200
-        assert len(d["data"]["dayList"][0]["items"]) == 5
+        # 开放模式下单日行程项数量随 LLM 选点浮动，断言为合理下界而非固定值。
+        assert len(d["data"]["dayList"][0]["items"]) >= 1
 
         r = client.delete(f"/api/itinerary/{itin_id}", headers=auth_headers(token)).json()
         assert r["code"] == 200

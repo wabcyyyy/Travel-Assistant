@@ -47,6 +47,15 @@ public class ItineraryItem {
     private BigDecimal cost;
     private String tag;
     private String remark;
+    private String openTime;
+    private String imageUrl;
+    private String source;
+    private java.time.LocalDateTime sourceUpdatedAt;
+    private String verificationStatus;
+    private String valueKind;
+    private String freshnessStatus;
+    private String reviewRequirement;
+    private String factEvidenceJson;
     private String intro;
     private Integer sortNo;
     private LocalDateTime createdAt;

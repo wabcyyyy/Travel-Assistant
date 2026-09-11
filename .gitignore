@@ -7,4 +7,34 @@ logs/
 *.log
 .pnpm-store/
 .uv-cache/
+.uv-python/
 node_modules/
+
+# 构建与临时
+dist/
+target/
+.venv/
+.venv-*/
+travel-frontend-vue/dist/
+travel-backend-java/target/
+travel-agent-python/data/
+travel-agent-python/.venv*/
+travel-agent-python/.pytestemp*/
+travel-agent-python/.repro/
+travel-agent-python/models/
+sql/__pycache__/
+**/__pycache__/
+.pytest_cache/
+
+# 敏感/本地测试产物
+.test-report/
+.test-token.txt
+.test-user.txt
+*.token
+secrets/
+**/secrets/
+openapi.json
+
+# 编辑器/工具私有
+.trae/
+.worktrees/

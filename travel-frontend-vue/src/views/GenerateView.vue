@@ -1,15 +1,17 @@
 <template>
-  <div class="generate-page" :style="{ transform: guideVisible ? 'translateX(-100px)' : 'none' }">
-    <div class="lp-page-head">
+  <div class="generate-page">
+    <div class="lp-page-head stack">
       <span class="bar"></span>
       <h2>行程生成</h2>
       <span class="sub">填写基本信息，其余交给 Agent</span>
     </div>
 
-    <!-- 第一栏：目的地与出行 -->
-    <el-card shadow="never" class="group-card">
+    <!-- 单列堆叠：基本信息 → 偏好 → 额外要求与生成 -->
+    <div class="gen-stack">
+        <!-- 第一栏：目的地与出行 -->
+        <el-card shadow="never" class="group-card">
       <template #header>
-        <span class="group-title">目的地与出行</span>
+        <span class="group-title"><i class="group-no">01</i>目的地与出行</span>
       </template>
       <el-form
         ref="formRef"
@@ -18,7 +20,7 @@
         label-width="90px"
         style="max-width: 100%"
       >
-        <el-row :gutter="12">
+        <el-row :gutter="16">
           <el-col :span="14">
             <el-form-item label="目的地" prop="city">
               <el-input v-model="form.city" placeholder="城市或省份" />
@@ -30,7 +32,7 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="12">
+        <el-row :gutter="16">
           <el-col :span="14">
             <el-form-item label="出行日期">
               <el-date-picker
@@ -46,25 +48,33 @@
           </el-col>
           <el-col :span="10">
             <el-form-item label="天数" prop="days">
-              <el-input-number v-model="form.days" :min="1" :max="7" style="width: 100%" />
+              <el-input-number v-model="form.days" :min="1" :max="7" disabled style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="12">
-          <el-col :span="9">
-            <el-form-item label="住宿晚数" prop="stayNights">
-              <el-input-number v-model="form.stayNights" :min="0" :max="form.days" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="15">
+        <el-row :gutter="16">
+          <el-col :span="12">
             <el-form-item label="预算上限">
               <el-input-number v-model="form.budget" :min="0" :step="500" style="width: 100%" />
             </el-form-item>
           </el-col>
         </el-row>
         <div class="form-tips">
-          <span class="hint">天数随日期自动计算；住宿默认少 1 晚</span>
-          <el-button link type="primary" @click="guideVisible = !guideVisible">🧭 拿不准去哪？AI 帮我选</el-button>
+          <span class="hint">天数由所选日期自动计算（含头含尾，最多 7 天）</span>
+          <el-button link type="primary" @click="guideVisible = !guideVisible">拿不准去哪？AI 帮我选</el-button>
+        </div>
+        <div class="quick-cities">
+          <span class="hint">热门目的地</span>
+          <button
+            v-for="c in POPULAR_CITIES"
+            :key="c"
+            type="button"
+            class="city-chip"
+            :class="{ active: form.city === c }"
+            @click="form.city = c"
+          >
+            {{ c }}
+          </button>
         </div>
       </el-form>
     </el-card>
@@ -72,7 +82,7 @@
     <!-- 第二栏：偏好设置 -->
     <el-card shadow="never" class="group-card">
       <template #header>
-        <span class="group-title">偏好设置</span>
+        <span class="group-title"><i class="group-no">02</i>偏好设置</span>
       </template>
       <el-form label-width="100px" style="max-width: 720px">
         <el-form-item label="旅行偏好">
@@ -85,7 +95,7 @@
               :class="{ active: form.preferences.includes(t.label) }"
               @click="togglePreference(t.label)"
             >
-              <Icon :icon="t.icon" width="20" />
+              <el-icon :size="18"><component :is="t.icon" /></el-icon>
               {{ t.label }}
             </button>
           </div>
@@ -104,41 +114,54 @@
       </el-form>
     </el-card>
 
-    <!-- 第三栏：额外要求 + 生成按钮 -->
+    <!-- 第三栏：额外要求 + 生成 -->
     <el-card shadow="never" class="chat-card">
-      <template #header>
-        <span class="group-title">额外要求</span>
-      </template>
-      <p class="chat-tip">有特别安排？用一句话告诉我们，AI 会帮你补全或调整上面的表单。</p>
-      <div v-for="(m, i) in chat" :key="i" class="chat-line" :class="m.role">
-        {{ m.text }}
-      </div>
-      <div class="chat-input">
-        <el-input
-          v-model="say"
-          placeholder="例如：想去杭州玩 3 天，2 个人，10 月 1 日出发"
-          @keydown.enter="onSayEnter"
-        />
-        <el-button type="primary" plain :loading="thinking" @click="onSay">发送</el-button>
-      </div>
+          <template #header>
+            <span class="group-title"><i class="group-no">03</i>额外要求</span>
+          </template>
+          <div class="trip-brief">
+            <template v-if="form.city">
+              <span class="brief-city">{{ form.city }}</span>
+              <span class="brief-meta">{{ form.days }} 天行程</span>
+              <span v-if="dateRange?.[0] && dateRange?.[1]" class="brief-meta">{{ dateRange[0].slice(5).replace('-', '/') }} - {{ dateRange[1].slice(5).replace('-', '/') }}</span>
+              <span class="brief-meta">{{ form.persons }} 人出行</span>
+              <span v-if="form.budget" class="brief-meta">预算 ¥{{ form.budget.toLocaleString() }}</span>
+              <span v-if="form.hotelTier" class="brief-meta">{{ form.hotelTier }}</span>
+            </template>
+            <span v-else class="brief-empty">选定目的地后，这里会实时汇总你的行程安排</span>
+          </div>
+          <p class="chat-tip">有特别安排？直接输入（如「想吃地道的本地小吃」「想看一场川剧变脸」），生成行程时 AI 会纳入规划。</p>
+          <div v-for="(m, i) in chat" :key="i" class="chat-line" :class="m.role">
+            {{ m.text }}
+          </div>
+          <div class="chat-input">
+            <el-input
+              v-model="say"
+              placeholder="例如：想体验一次慢船下午茶；不吃辣"
+              @keydown.enter="onSayEnter"
+            />
+            <el-button type="primary" plain @click="onSay">发送</el-button>
+          </div>
 
-      <el-divider />
-      <div class="submit-row">
-        <el-button type="primary" size="large" class="submit" :loading="loading" @click="onSubmit">
-          生成行程
-        </el-button>
-      </div>
-      <el-alert
-        v-if="errorMsg"
-        :title="errorMsg"
-        type="error"
-        :closable="false"
-        show-icon
-      />
-    </el-card>
+          <el-divider />
+          <div class="submit-row">
+            <el-alert
+              v-if="errorMsg"
+              :title="errorMsg"
+              type="error"
+              :closable="false"
+              show-icon
+              class="submit-error"
+            />
+            <el-button type="primary" size="large" class="submit" :loading="loading" @click="onSubmit">
+              生成行程
+            </el-button>
+          </div>
+        </el-card>
+    </div>
 
     <!-- 城市引导侧边抽屉 -->
-    <el-drawer v-model="guideVisible" title="🧭 目的地引导" size="380px" :modal="false" append-to-body>
+    <el-drawer v-model="guideVisible" title="目的地引导" size="min(380px, 92vw)" append-to-body>
       <div class="guide-chat">
         <div v-for="(m, i) in guideMsgs" :key="i" class="chat-line" :class="m.role">{{ m.text }}</div>
         <div v-if="guideSugs.length" class="guide-sugs">
@@ -157,37 +180,51 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { reactive, ref, computed, watch, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
-import { Icon } from '@iconify/vue'
+import {
+  Camera,
+  Food,
+  MagicStick,
+  Reading,
+  ShoppingBag,
+  Sunny,
+} from '@element-plus/icons-vue'
 
-import { generateItinerary, clarifyTrip, cityGuide, getTopPreferences } from '../api'
+import { generateItinerary, cityGuide, getTopPreferences } from '../api'
 
 const router = useRouter()
+const route = useRoute()
 const formRef = ref<FormInstance>()
 
 
 const PREFERENCE_TAGS = [
-  { label: '人文历史', icon: 'fluent-emoji:classical-building' },
-  { label: '自然风光', icon: 'fluent-emoji:national-park' },
-  { label: '美食', icon: 'fluent-emoji:fork-and-knife-with-plate' },
-  { label: '网红出片', icon: 'fluent-emoji:camera-with-flash' },
-  { label: '主题娱乐', icon: 'fluent-emoji:ferris-wheel' },
-  { label: '购物', icon: 'fluent-emoji:shopping-bags' },
+  { label: '人文历史', icon: Reading },
+  { label: '自然风光', icon: Sunny },
+  { label: '美食', icon: Food },
+  { label: '网红出片', icon: Camera },
+  { label: '主题娱乐', icon: MagicStick },
+  { label: '购物', icon: ShoppingBag },
 ]
 
 const HOTEL_TIERS = ['经济型', '舒适型', '高档型', '豪华型', '奢华型']
 
+// 热门目的地快捷选择（点击直接填入目的地）
+const POPULAR_CITIES = ['成都', '杭州', '西安', '重庆', '北京', '上海']
+
 const chat = ref<{ role: 'user' | 'ai'; text: string }[]>([])
 const say = ref('')
-const thinking = ref(false)
+
+// 汇总用户输入的全部额外要求，生成行程时随请求发送给 Agent
+const requirements = computed(() =>
+  chat.value.filter((m) => m.role === 'user').map((m) => m.text.trim()).filter(Boolean).join('；'),
+)
 
 const form = reactive({
   city: '',
   days: 2,
   persons: 2,
-  stayNights: 1,
   budget: null as number | null,
   preferences: [] as string[],
   hotelTier: '' as string,
@@ -197,43 +234,31 @@ const loading = ref(false)
 const errorMsg = ref('')
 const dateRange = ref<[string, string] | null>(null)
 
-const CLARIFY_SLOTS_KEY = 'travel_clarify_slots'
-function loadClarifySlots(): Record<string, unknown> {
-  try {
-    const saved = localStorage.getItem(CLARIFY_SLOTS_KEY)
-    return saved ? JSON.parse(saved) : {}
-  } catch { return {} }
-}
-
-const clarifySlots = ref<Record<string, unknown>>(loadClarifySlots())
-
 function disablePastDate(date: Date) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   return date.getTime() < today.getTime()
 }
 
-// 出行天数由所选日期区间自动计算（含头含尾）；未选日期时可手填
+// 天数由所选日期区间自动计算（含头含尾），住宿晚数恒为天数 - 1
 watch(dateRange, (range) => {
   if (!range || !range[0] || !range[1]) return
   const ms = new Date(range[1]).getTime() - new Date(range[0]).getTime()
   const days = Math.round(ms / 86400000) + 1
   if (days >= 1 && days <= 7) {
     form.days = days
-    form.stayNights = Math.max(days - 1, 0)
   } else if (days > 7) {
     dateRange.value = null
     ElMessage.warning('单次行程最多生成 7 天，请重新选择日期范围')
   }
 })
 
-watch(() => form.days, (days, previousDays) => {
-  if (form.stayNights === Math.max(previousDays - 1, 0) || form.stayNights > days) {
-    form.stayNights = Math.max(days - 1, 0)
-  }
-})
-
 onMounted(async () => {
+  // 首页目的地墙点击跳转：/generate?city=杭州
+  const cityFromQuery = typeof route.query.city === 'string' ? route.query.city.trim() : ''
+  if (cityFromQuery && !form.city) {
+    form.city = cityFromQuery
+  }
   try {
     const res = await getTopPreferences({ skipErrorMessage: true })
     if (res.data?.length && form.preferences.length === 0) {
@@ -287,45 +312,14 @@ function onSayEnter(e: KeyboardEvent) {
   onSay()
 }
 
-async function onSay() {
+// 额外要求为纯输入模式：不做 LLM 对话解析，仅记录内容，
+// 固定回复「收到」表示已记录，生成行程时随请求发送给 Agent。
+function onSay() {
   const msg = say.value.trim()
-  if (!msg || thinking.value) return
+  if (!msg) return
   chat.value.push({ role: 'user', text: msg })
   say.value = ''
-  thinking.value = true
-  try {
-    const res = await clarifyTrip({ message: msg, slots: clarifySlots.value })
-    clarifySlots.value = res.data.slots || {}
-    localStorage.setItem(CLARIFY_SLOTS_KEY, JSON.stringify(clarifySlots.value))
-    applySlots(res.data.slots || {})
-    chat.value.push({
-      role: 'ai',
-      text: res.data.ready ? '信息齐了！点击「生成行程」即可 ✅' : res.data.question || '还有信息需要补充',
-    })
-  } catch {
-    chat.value.push({ role: 'ai', text: '没太理解，换个说法试试？' })
-  } finally {
-    thinking.value = false
-  }
-}
-
-function applySlots(slots: Record<string, unknown>) {
-  if (slots.city) form.city = String(slots.city)
-  if (slots.days) form.days = Number(slots.days)
-  if (slots.stay_nights != null) form.stayNights = Number(slots.stay_nights)
-  if (slots.persons) form.persons = Number(slots.persons)
-  if (slots.budget != null) form.budget = Number(slots.budget)
-  if (slots.hotel_tier) form.hotelTier = String(slots.hotel_tier)
-  if (Array.isArray(slots.preferences)) {
-    form.preferences = slots.preferences.map(String).filter((value) => PREFERENCE_TAGS.some((tag) => tag.label === value))
-  }
-  if (slots.start_date) {
-    const s = String(slots.start_date)
-    const d = new Date(s)
-    d.setDate(d.getDate() + Number(slots.days || form.days) - 1)
-    const pad = (n: number) => String(n).padStart(2, '0')
-    dateRange.value = [s, `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`]
-  }
+  chat.value.push({ role: 'ai', text: '收到！生成行程时会考虑这条要求' })
 }
 
 const guideVisible = ref(false)
@@ -366,8 +360,7 @@ async function confirmGuideCity() {
 
 const rules: FormRules = {
   city: [{ required: true, message: '请输入目的地', trigger: 'blur' }],
-  days: [{ required: true, message: '请输入出行天数', trigger: 'change' }],
-  stayNights: [{ required: true, message: '请输入住宿晚数', trigger: 'change' }],
+  days: [{ required: true, message: '请选择出行日期', trigger: 'change' }],
 }
 
 async function onSubmit() {
@@ -392,15 +385,15 @@ async function onSubmit() {
       city: form.city,
       days: form.days,
       persons: form.persons,
-      stayNights: form.stayNights,
+      stayNights: Math.max(form.days - 1, 0), // 后端契约保留，由天数派生
       budget: form.budget ?? undefined,
       startDate: dateRange.value?.[0],
       endDate: dateRange.value?.[1],
       preferences: form.preferences,
       hotelTier: form.hotelTier || undefined,
       regionHint: provinceHint.value || undefined,
+      requirements: requirements.value || undefined,
     })
-    localStorage.removeItem(CLARIFY_SLOTS_KEY)
     router.push({ name: 'trip-detail', params: { id: res.data.id } })
   } catch (err) {
     errorMsg.value = err instanceof Error ? err.message : '生成失败'
@@ -412,30 +405,140 @@ async function onSubmit() {
 
 <style scoped>
 .generate-page {
-  max-width: 840px;
+  max-width: var(--lp-content, 1120px);
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  transition: transform 0.3s ease;
+}
+
+/* 表单标签视觉字重 */
+:deep(.el-form-item__label) {
+  font-weight: 600;
+}
+
+/* 热门目的地快捷芯片：药丸形，hover 轻浮起 */
+.quick-cities {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding-left: 0;
+}
+
+.city-chip {
+  min-height: 36px;
+  padding: 6px 16px;
+  border: 1px solid var(--lp-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--lp-ink-soft);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.city-chip:hover {
+  border-color: var(--lp-accent);
+  color: var(--lp-accent);
+  transform: translateY(-1px);
+}
+
+.city-chip:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.city-chip.active {
+  background: var(--lp-accent);
+  border-color: var(--lp-accent);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: var(--lp-shadow-accent);
+}
+
+.city-chip:focus-visible {
+  outline: 2px solid var(--lp-accent);
+  outline-offset: 2px;
+}
+
+/* 生成前行程速览条：强调色左缘 + 基线排版，主次分明 */
+.trip-brief {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-bottom: 14px;
+  padding: 13px 16px;
+  background: var(--lp-accent-soft);
+  border-left: 3px solid var(--lp-accent);
+  border-radius: 12px;
+}
+
+.brief-city {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--lp-ink);
+  letter-spacing: -0.01em;
+}
+
+.brief-meta {
+  color: var(--lp-ink-soft);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.brief-empty {
+  color: var(--lp-muted);
+  font-size: 13px;
 }
 
 .form-tips {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: -6px 0 0 90px;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 2px 0 0;
+}
+
+.form-tips .hint {
+  white-space: nowrap;
 }
 
 .group-title {
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--lp-font-display);
+  font-weight: 600;
+  font-size: 18px;
+  color: var(--lp-ink);
+  letter-spacing: 0.01em;
+}
+
+.group-no {
+  font-family: var(--lp-font-display);
+  font-style: italic;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lp-accent-warm);
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
 }
 
 .hint {
-  margin-left: 10px;
   color: var(--lp-muted);
-  font-size: 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* ---------- 单列堆叠：基本信息 → 偏好 → 额外要求 ---------- */
+.gen-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 /* ---------- 偏好标签 ---------- */
@@ -449,7 +552,8 @@ async function onSubmit() {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 16px;
+  min-height: 40px;
+  padding: 8px 16px;
   border: 1px solid var(--lp-border);
   border-radius: 999px;
   background: var(--lp-surface);
@@ -457,19 +561,29 @@ async function onSubmit() {
   font-size: 14px;
   cursor: pointer;
   transition:
-    background 0.15s,
-    color 0.15s,
-    border-color 0.15s;
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .pref-tag:hover {
-  border-color: var(--lp-ink);
+  border-color: var(--lp-accent);
+  color: var(--lp-accent-hover);
+  transform: translateY(-1px);
+}
+
+.pref-tag:focus-visible {
+  outline: 2px solid var(--lp-accent);
+  outline-offset: 2px;
 }
 
 .pref-tag.active {
-  background: var(--lp-ink);
-  border-color: var(--lp-ink);
+  background: var(--lp-accent);
+  border-color: var(--lp-accent);
   color: #fff;
+  box-shadow: var(--lp-shadow-accent);
 }
 
 .pref-tag .el-icon {
@@ -499,6 +613,7 @@ async function onSubmit() {
 
 .chat-line.ai {
   background: var(--lp-sand);
+  border: 1px solid var(--lp-border);
   color: var(--lp-ink);
   width: fit-content;
 }
@@ -507,11 +622,23 @@ async function onSubmit() {
   display: flex;
   gap: 8px;
   margin-top: 4px;
+  max-width: 680px;
 }
 
 .submit-row {
   display: flex;
-  justify-content: center;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+}
+
+.submit-error {
+  flex: 1;
+  min-width: 0;
+}
+
+.submit {
+  min-width: 220px;
 }
 
 .guide-sugs {
@@ -522,16 +649,21 @@ async function onSubmit() {
 }
 
 .guide-sug {
+  min-height: 36px;
   padding: 6px 14px;
   border: 1px solid var(--lp-border);
   border-radius: 999px;
   background: #fff;
   cursor: pointer;
   font-size: 13px;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .guide-sug:hover {
-  border-color: var(--lp-ink);
+  border-color: var(--lp-accent);
+  color: var(--lp-accent-hover);
 }
 
 .guide-confirm {
@@ -548,5 +680,31 @@ async function onSubmit() {
   min-width: 220px;
   font-weight: 700;
   letter-spacing: 0.08em;
+  box-shadow: var(--lp-shadow-accent);
+}
+
+@media (max-width: 720px) {
+  :deep(.el-form-item__label) {
+    width: 100% !important;
+    justify-content: flex-start;
+  }
+
+  :deep(.el-form-item__content) {
+    margin-left: 0 !important;
+  }
+
+  .trip-brief {
+    border-radius: 10px;
+  }
+
+  .submit {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .submit-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style>

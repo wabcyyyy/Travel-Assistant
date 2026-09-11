@@ -15,6 +15,8 @@ from chromadb.config import Settings
 
 from app.agent import poi_repository
 from app.common.config import BASE_DIR, settings
+from app.rag.cache import RetrievalCache, make_cache_key
+from app.rag.graph import PoiGraph
 from app.rag.retriever import (
     EmbeddingProvider,
     HybridRetriever,
@@ -25,6 +27,20 @@ from app.rag.retriever import (
 logger = logging.getLogger(__name__)
 _DATA_DIR = BASE_DIR / "data"
 _COLLECTION_NAME = "poi_knowledge"
+
+
+def record_cache_event(cache_key: tuple, *, kind: str) -> None:
+    """缓存命中遥测：只记命中（miss 会走常规检索遥测，无需重复）。"""
+    try:
+        from app.agent.trace import record_event
+
+        signature, query = cache_key
+        record_event("retrieval", "cache_hit", metadata={
+            "kind": kind, "query": query[:120],
+            "city": signature[0], "category": signature[1], "top_k": signature[2],
+        })
+    except Exception:  # noqa: BLE001 - 遥测失败不影响检索主链路
+        pass
 
 
 class PoIKnowledgeStore:
@@ -53,9 +69,14 @@ class PoIKnowledgeStore:
         self._retriever = HybridRetriever(
             self._collection, self.embedding_provider, rrf_k=settings.rag_rrf_k
         )
+        # P2：语义缓存与轻量近邻图（都在索引同步点重建/失效）。
+        self._cache = RetrievalCache()
+        self._graph = PoiGraph()
         self._loaded = False
         self._source_unavailable = False
         self._last_source_retry_at = 0.0
+        # 上次成功加载/同步的时刻，用于 rag_refresh_seconds 惰性刷新判定。
+        self._last_load_at = 0.0
         self._sync_lock = threading.RLock()
         self._last_sync: dict[str, Any] = {}
 
@@ -81,10 +102,12 @@ class PoIKnowledgeStore:
 
     def ensure_loaded(self, force: bool = False) -> None:
         with self._sync_lock:
-            if self._loaded and not self._source_unavailable and not force:
+            now = time.monotonic()
+            stale = (settings.rag_refresh_seconds > 0
+                     and now - self._last_load_at > settings.rag_refresh_seconds)
+            if self._loaded and not self._source_unavailable and not force and not stale:
                 return
             # 数据库恢复期间避免每个请求都重复连接；force 仍可立即触发检查。
-            now = time.monotonic()
             if self._source_unavailable and not force and now - self._last_source_retry_at < 30:
                 return
             self._last_source_retry_at = now
@@ -94,6 +117,7 @@ class PoIKnowledgeStore:
                 self._restore_from_collection()
                 self._loaded = True
                 self._source_unavailable = True
+                self._last_load_at = now
                 self._last_sync = {
                     "status": "source_unavailable",
                     "poi_count": len(self._documents),
@@ -101,9 +125,18 @@ class PoIKnowledgeStore:
                 }
                 logger.warning("POI 数据源不可用，保留已有 Chroma 索引并降级检索")
                 return
-            self._sync(pois)
+            try:
+                self._sync(pois)
+            except Exception as exc:  # noqa: BLE001 - 索引同步失败不能拖垮检索
+                # 保留旧内存目录继续服务，并把本次纳入与"数据源不可用"同样的
+                # 30s 退避窗口；否则每个请求都会重复"查全表→失败"。
+                logger.warning("RAG 索引同步失败，沿用现有索引: %s", exc)
+                self._source_unavailable = True
+                self._last_load_at = now
+                return
             self._loaded = True
             self._source_unavailable = False
+            self._last_load_at = time.monotonic()
 
     def _restore_from_collection(self) -> None:
         """数据库不可用时从已有 Chroma 元数据恢复词法检索所需的内存目录。"""
@@ -125,6 +158,7 @@ class PoIKnowledgeStore:
                              "fingerprint": metadata.get("content_fingerprint", "")}
         self._documents = restored
         self._retriever.set_documents(self._documents)
+        self._graph.rebuild(self._documents)
 
     def _row_payload(self, poi: dict[str, Any]) -> tuple[str, str, dict[str, Any], str]:
         pid = str(poi["id"])
@@ -135,7 +169,8 @@ class PoIKnowledgeStore:
             "id": pid, "document": document, "city": poi.get("city") or "",
             "category": poi.get("category") or "", "address": poi.get("address") or "",
             "latitude": poi.get("latitude"), "longitude": poi.get("longitude"),
-            "ticket_price": poi.get("ticket_price"), "duration_min": poi.get("duration_min"),
+            "ticket_price": poi.get("ticket_price"), "avg_cost": poi.get("avg_cost"),
+            "duration_min": poi.get("duration_min"),
             "open_time": poi.get("open_time") or "", "tags": poi.get("tags") or "",
             "rating": poi.get("rating"), "description": poi.get("description") or "",
             "source": source, "source_updated_at": source_updated_at,
@@ -148,7 +183,6 @@ class PoIKnowledgeStore:
             "category": poi.get("category") or "", "name": poi.get("name") or "",
             "address": poi.get("address") or "", "latitude": float(poi.get("latitude") or 0.0),
             "longitude": float(poi.get("longitude") or 0.0),
-            "ticket_price": float(poi.get("ticket_price") or 0.0),
             "duration_min": int(poi.get("duration_min") or 0),
             "open_time": poi.get("open_time") or "", "tags": poi.get("tags") or "",
             "rating": float(poi.get("rating") or 0.0), "description": poi.get("description") or "",
@@ -158,6 +192,20 @@ class PoIKnowledgeStore:
             "document_version": settings.rag_document_version,
             "content_fingerprint": fingerprint,
         }
+        # Chroma 不接受 None：缺价字段直接省略，禁止把 NULL 写成 0.0 哨兵
+        # （否则下游把 0 当成真实免费价，0 价覆盖与 Reflect 会失效）。
+        ticket_price = poi.get("ticket_price")
+        avg_cost = poi.get("avg_cost")
+        if ticket_price is not None:
+            try:
+                metadata["ticket_price"] = float(ticket_price)
+            except (TypeError, ValueError):
+                pass
+        if avg_cost is not None:
+            try:
+                metadata["avg_cost"] = float(avg_cost)
+            except (TypeError, ValueError):
+                pass
         return pid, document, metadata, fingerprint
 
     def _sync(self, pois: list[dict]) -> None:
@@ -208,6 +256,8 @@ class PoIKnowledgeStore:
         self._documents = desired
         self._retriever.collection = self._collection
         self._retriever.set_documents(self._documents)
+        self._graph.rebuild(self._documents)
+        self._cache.clear()  # 索引内容已变化，旧缓存整体失效。
         self._last_sync = {
             "index_version": self._index_version(desired),
             "embedding_provider": self.embedding_provider.provider_name,
@@ -263,10 +313,58 @@ class PoIKnowledgeStore:
         budget: float | None = None,
     ) -> list[dict[str, Any]]:
         self.ensure_loaded()
-        return self._retriever.search(
+        top_k = limit or settings.rag_top_k
+        cache_key = make_cache_key(query, city=city, category=category, top_k=top_k,
+                                   preferences=preferences, budget=budget)
+        if settings.rag_cache_enabled:
+            # 必须传 embedding_provider，否则近似命中分支在生产链路永远不生效
+            # （单测传入 provider 掩盖了这一集成缺口）。
+            cached = self._cache.lookup(
+                cache_key, embedding_provider=self.embedding_provider,
+                index_version=str(self._last_sync.get("index_version", "")))
+            if cached is not None:
+                record_cache_event(cache_key, kind="hit")
+                return cached
+        rows = self._retriever.search(
             query, city=city, category=category,
-            top_k=limit or settings.rag_top_k, preferences=preferences, budget=budget,
+            top_k=top_k, preferences=preferences, budget=budget,
         )
+        # 降级结果（向量/精排 fallback）与空结果不缓存，避免固化瞬时故障。
+        if settings.rag_cache_enabled and rows and not self._retriever.last_telemetry.get("fallback"):
+            self._cache.store(cache_key, rows, embedding_provider=self.embedding_provider,
+                              index_version=str(self._last_sync.get("index_version", "")))
+        return rows
+
+    def cache_stats(self) -> dict[str, Any]:
+        """语义缓存命中统计（观测/评测用）。"""
+        return self._cache.stats()
+
+    def nearby(self, city: str, latitude: float, longitude: float, *,
+               limit: int | None = None, radius_m: int | None = None,
+               category: str | None = None,
+               exclude: str | int | None = None) -> list[dict[str, Any]]:
+        """给定坐标的同城权威 POI 近邻（轻量 GraphRAG 空间层）。"""
+        self.ensure_loaded()
+        return self._graph.nearby(city, latitude, longitude, limit=limit,
+                                  radius_m=radius_m, category=category, exclude=exclude)
+
+    def neighbors(self, poi_id: str | int, *, limit: int | None = None,
+                  radius_m: int | None = None,
+                  category: str | None = None) -> list[dict[str, Any]]:
+        """给定 POI 的同城近邻（轻量 GraphRAG 空间层）。"""
+        self.ensure_loaded()
+        return self._graph.neighbors(poi_id, limit=limit, radius_m=radius_m,
+                                     category=category)
+
+    def same_tag(self, poi_id: str | int, *,
+                 limit: int | None = None) -> list[dict[str, Any]]:
+        """给定 POI 的同标签同类推荐（轻量 GraphRAG 标签层）。"""
+        self.ensure_loaded()
+        return self._graph.same_tag(poi_id, limit=limit)
+
+    def graph_stats(self) -> dict[str, int]:
+        self.ensure_loaded()
+        return self._graph.stats()
 
 
 poi_store = PoIKnowledgeStore()

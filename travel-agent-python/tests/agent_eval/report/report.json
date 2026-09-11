@@ -25,9 +25,9 @@
         ]
       },
       "status": "degraded",
-      "status_reason": "未配置 LLM，使用确定性 fallback",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
       "days": 1,
-      "total_items": 5,
+      "total_items": 3,
       "poi_authority_rate": 1.0,
       "field_reference_rate": 1.0,
       "time_conflict_rate": 0.0,
@@ -37,7 +37,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 5,
-        "tool_count": 4,
+        "tool_count": 2,
         "nodes": [
           "parse",
           "search",
@@ -46,13 +46,10 @@
           "format"
         ],
         "tools": [
-          "fixture.search_attractions",
-          "fixture.search_foods",
-          "fixture.search_hotels",
-          "fixture.get_consumption"
+          "search_pois",
+          "fixture.search_hotels"
         ],
         "routes": [
-          "fallback",
           "pass"
         ]
       }
@@ -67,9 +64,9 @@
         ]
       },
       "status": "degraded",
-      "status_reason": "未配置 LLM，使用确定性 fallback",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
       "days": 2,
-      "total_items": 10,
+      "total_items": 8,
       "poi_authority_rate": 1.0,
       "field_reference_rate": 1.0,
       "time_conflict_rate": 0.0,
@@ -79,7 +76,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 5,
-        "tool_count": 4,
+        "tool_count": 2,
         "nodes": [
           "parse",
           "search",
@@ -88,13 +85,10 @@
           "format"
         ],
         "tools": [
-          "fixture.search_attractions",
-          "fixture.search_foods",
-          "fixture.search_hotels",
-          "fixture.get_consumption"
+          "search_pois",
+          "fixture.search_hotels"
         ],
         "routes": [
-          "fallback",
           "pass"
         ]
       }
@@ -109,9 +103,9 @@
         ]
       },
       "status": "degraded",
-      "status_reason": "未配置 LLM，使用确定性 fallback",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
       "days": 3,
-      "total_items": 15,
+      "total_items": 12,
       "poi_authority_rate": 1.0,
       "field_reference_rate": 1.0,
       "time_conflict_rate": 0.0,
@@ -121,7 +115,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 5,
-        "tool_count": 4,
+        "tool_count": 2,
         "nodes": [
           "parse",
           "search",
@@ -130,13 +124,10 @@
           "format"
         ],
         "tools": [
-          "fixture.search_attractions",
-          "fixture.search_foods",
-          "fixture.search_hotels",
-          "fixture.get_consumption"
+          "search_pois",
+          "fixture.search_hotels"
         ],
         "routes": [
-          "fallback",
           "pass"
         ]
       }
@@ -151,7 +142,7 @@
         ]
       },
       "status": "degraded",
-      "status_reason": "未配置 LLM，使用确定性 fallback",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
       "days": 4,
       "total_items": 16,
       "poi_authority_rate": 1.0,
@@ -163,7 +154,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 5,
-        "tool_count": 4,
+        "tool_count": 2,
         "nodes": [
           "parse",
           "search",
@@ -172,13 +163,10 @@
           "format"
         ],
         "tools": [
-          "fixture.search_attractions",
-          "fixture.search_foods",
-          "fixture.search_hotels",
-          "fixture.get_consumption"
+          "search_pois",
+          "fixture.search_hotels"
         ],
         "routes": [
-          "fallback",
           "pass"
         ]
       }
@@ -193,9 +181,9 @@
         ]
       },
       "status": "degraded",
-      "status_reason": "未配置 LLM，使用确定性 fallback",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
       "days": 2,
-      "total_items": 10,
+      "total_items": 8,
       "poi_authority_rate": 1.0,
       "field_reference_rate": 1.0,
       "time_conflict_rate": 0.0,
@@ -205,7 +193,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 5,
-        "tool_count": 4,
+        "tool_count": 2,
         "nodes": [
           "parse",
           "search",
@@ -214,13 +202,10 @@
           "format"
         ],
         "tools": [
-          "fixture.search_attractions",
-          "fixture.search_foods",
-          "fixture.search_hotels",
-          "fixture.get_consumption"
+          "search_pois",
+          "fixture.search_hotels"
         ],
         "routes": [
-          "fallback",
           "pass"
         ]
       }
@@ -235,7 +220,7 @@
         ]
       },
       "status": "degraded",
-      "status_reason": "未配置 LLM，使用确定性 fallback",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
       "days": 5,
       "total_items": 19,
       "poi_authority_rate": 1.0,
@@ -247,7 +232,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 5,
-        "tool_count": 4,
+        "tool_count": 2,
         "nodes": [
           "parse",
           "search",
@@ -256,13 +241,10 @@
           "format"
         ],
         "tools": [
-          "fixture.search_attractions",
-          "fixture.search_foods",
-          "fixture.search_hotels",
-          "fixture.get_consumption"
+          "search_pois",
+          "fixture.search_hotels"
         ],
         "routes": [
-          "fallback",
           "pass"
         ]
       }

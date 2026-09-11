@@ -1,5 +1,6 @@
 import { requestDelete, requestGet, requestPost, requestPut, type ApiRequestConfig } from './request'
 import axios from 'axios'
+import { useUserStore } from '../store/user'
 import type {
   ItineraryDetail,
   ItinerarySummary,
@@ -24,8 +25,175 @@ export function register(data: { username: string; password: string; nickname?: 
   return requestPost<void>('/auth/register', data)
 }
 
+/** 服务端吊销 JWT（logout）；本地清理仍由 user store 执行。 */
+export function logoutApi() {
+  return requestPost<void>('/auth/logout')
+}
+
 export function getUserInfo() {
   return requestGet<UserInfo>('/user/info')
+}
+
+// ---------------- 后台管理 ----------------
+
+export interface AdminUser {
+  id: number
+  username: string
+  nickname: string | null
+  phone: string | null
+  status: number
+  role: string
+  itineraryCount: number
+  createdAt: string
+}
+
+export interface AdminUserPage {
+  records: AdminUser[]
+  total: number
+  size: number
+  current: number
+  pages: number
+}
+
+export interface AdminStats {
+  totalUsers: number
+  activeUsers: number
+  disabledUsers: number
+  totalItineraries: number
+  todayNewUsers: number
+  todayNewItineraries: number
+  generatingItineraries: number
+}
+
+export function getAdminStats() {
+  return requestGet<AdminStats>('/admin/stats')
+}
+
+export function getAdminUsers(params: { page: number; size: number; keyword?: string }) {
+  return requestGet<AdminUserPage>('/admin/users', { params })
+}
+
+export function updateAdminUserStatus(id: number, status: 0 | 1) {
+  return requestPut<void>(`/admin/users/${id}/status/${status}`)
+}
+
+export function deleteAdminUser(id: number) {
+  return requestDelete<void>(`/admin/users/${id}`)
+}
+
+export interface AdminItinerary {
+  id: number
+  userId: number
+  title: string
+  city: string
+  startDate: string | null
+  endDate: string | null
+  days: number
+  persons: number
+  budget: number | null
+  status: number
+  createdAt: string
+}
+
+export interface AdminItineraryPage {
+  records: AdminItinerary[]
+  total: number
+  size: number
+  current: number
+  pages: number
+}
+
+export function getAdminItineraries(params: {
+  page: number
+  size: number
+  keyword?: string
+  status?: number
+  userId?: number
+}) {
+  return requestGet<AdminItineraryPage>('/admin/itineraries', { params })
+}
+
+export function deleteAdminItinerary(id: number) {
+  return requestDelete<void>(`/admin/itineraries/${id}`)
+}
+
+export interface AgentMetrics {
+  agentAvailable: boolean
+  runs: number
+  successes: number
+  failures: number
+  degraded_runs: number
+  llm_calls: number
+  tool_calls: number
+  prompt_tokens: number
+  completion_tokens: number
+  success_rate: number
+  failure_rate: number
+  degraded_rate: number
+  avg_event_latency_ms: number
+  recent_failures: { run_id: string; events: { kind: string; name: string; status: string; error: string }[] }[]
+  tokens_by_scene: Record<string, { llm_calls: number; prompt_tokens: number; completion_tokens: number }>
+  tokens_timeline: { ts: number; calls: number; prompt_tokens: number; completion_tokens: number }[]
+}
+
+export function getAgentMetrics() {
+  return requestGet<AgentMetrics>('/admin/agent-metrics')
+}
+
+export interface UsageSummary {
+  calls: number
+  successes: number
+  failures: number
+  success_rate: number
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  avg_duration_ms: number
+}
+
+export interface UsageGroup {
+  scene?: string
+  model?: string
+  calls: number
+  successes: number
+  prompt_tokens: number
+  completion_tokens: number
+  avg_duration_ms: number
+}
+
+export interface UsageCall {
+  ts: number
+  scene: string
+  model: string
+  prompt_tokens: number
+  completion_tokens: number
+  duration_ms: number
+  success: boolean
+  error: string | null
+}
+
+export interface LlmUsage {
+  agentAvailable: boolean
+  range: string
+  bucket: number
+  summary: UsageSummary
+  by_scene: UsageGroup[]
+  by_model: UsageGroup[]
+  timeline: { ts: number; calls: number; prompt_tokens: number; completion_tokens: number }[]
+  calls: { total: number; records: UsageCall[] }
+}
+
+export function getLlmUsage(range: string, limit = 200, offset = 0) {
+  return requestGet<LlmUsage>('/admin/llm-usage', { params: { range, limit, offset } })
+}
+
+/** Token 仪表盘场景中文名 */
+export const SCENE_LABELS: Record<string, string> = {
+  generate: '行程生成',
+  clarify: '澄清提问',
+  chat: '对话修改',
+  assist: '导览/介绍',
+  other: '其他',
 }
 
 export function getSupportedCities() {
@@ -43,6 +211,7 @@ export function generateItinerary(data: {
   preferences: string[]
   hotelTier?: string
   regionHint?: string
+  requirements?: string
 }) {
   return requestPost<ItineraryDetail>('/itinerary/generate', data)
 }
@@ -66,11 +235,13 @@ export interface AmapPoi {
   latitude: number | null
   longitude: number | null
   type: string | null
+  rating: string | null
+  cost: string | null
 }
 
-export function searchPoi(keywords: string, city?: string) {
+export function searchPoi(keywords: string, city?: string, types?: string) {
   return requestGet<AmapPoi[]>('/amap/poi', {
-    params: { keywords, city: city || undefined },
+    params: { keywords: keywords || undefined, city: city || undefined, types: types || undefined },
   })
 }
 
@@ -107,13 +278,6 @@ export function createPdfExport(itineraryId: number | string) {
 
 export function getExportTask(taskId: number) {
   return requestGet<ExportTaskInfo>(`/export/tasks/${taskId}`)
-}
-
-export function clarifyTrip(data: { message: string; slots?: Record<string, unknown> }) {
-  return requestPost<{ slots: Record<string, unknown>; missing: string[]; question: string | null; ready: boolean }>(
-    '/itinerary/clarify',
-    data,
-  )
 }
 
 export function nlEditItinerary(id: number | string, instruction: string) {
@@ -224,6 +388,26 @@ export function cityGuide(input: string, history: { role: string; content: strin
   }>('/itinerary/city-guide', { input, history })
 }
 
+export interface NearbyPoi {
+  name: string
+  category: string
+  rating: number | null
+  address: string | null
+  distanceM: number | null
+}
+
+/** 附近推荐：行程项所在城市的权威知识库真实近邻（轻量 GraphRAG）。 */
+export function getNearbyPois(data: {
+  city: string
+  name?: string
+  latitude?: number
+  longitude?: number
+  limit?: number
+  category?: string
+}) {
+  return requestPost<{ items: NearbyPoi[] }>('/itinerary/poi-nearby', data)
+}
+
 export function getTopPreferences(config?: ApiRequestConfig) {
   return requestGet<string[]>('/itinerary/preferences', config)
 }
@@ -259,12 +443,12 @@ export function applyHotelOption(
   })
 }
 
-const downloadClient = axios.create({ baseURL: '/api', timeout: 60000 })
+const downloadClient = axios.create({ baseURL: '/api', timeout: 60000, withCredentials: true })
 
 downloadClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+  const memToken = useUserStore().token
+  if (memToken) {
+    config.headers.Authorization = `Bearer ${memToken}`
   }
   return config
 })
