@@ -40,3 +40,6 @@ openapi.json
 .worktrees/
 dump.rdb
 .agents/
+
+# 内部工作文档（不入库，本地保留）
+docs/
