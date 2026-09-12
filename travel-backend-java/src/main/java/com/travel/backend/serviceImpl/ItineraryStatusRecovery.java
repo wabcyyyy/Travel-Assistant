@@ -22,7 +22,13 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/** 修复因进程中断遗留的生成中行程，避免页面永久轮询。 */
+/**
+ * 修复因进程中断遗留的生成中行程，避免页面永久轮询。
+ *
+ * <p>J3 状态机改造：待恢复集改为基于 gen_state 精确判定（并 OR 兼容 gen_state IS NULL
+ * 的存量行按旧 status 语义兜底），替代原先对 status=1 全量扫描 + updatedAt 启发式；
+ * "已续跑过一次"的防死循环标记从 planNote 文案改为 gen_resumed 字段承载。</p>
+ */
 @Slf4j
 @Service
 public class ItineraryStatusRecovery {
@@ -58,23 +64,27 @@ public class ItineraryStatusRecovery {
     @Scheduled(fixedDelay = 60_000L, initialDelay = 60_000L)
     public void recover() {
         LocalDateTime activeAfter = LocalDateTime.now().minusMinutes(5);
+        // 生成中僵尸任务：gen_state=GENERATING 且已 5 分钟无活动；OR 兼容迁移前 gen_state IS NULL 的存量行
         List<ItineraryMain> pending = mainMapper.selectList(
-                new LambdaQueryWrapper<ItineraryMain>().eq(ItineraryMain::getStatus, 1));
+                new LambdaQueryWrapper<ItineraryMain>()
+                        .and(w -> w.eq(ItineraryMain::getGenState, "GENERATING")
+                                .or(w2 -> w2.isNull(ItineraryMain::getGenState).eq(ItineraryMain::getStatus, 1)))
+                        .lt(ItineraryMain::getUpdatedAt, activeAfter));
+        // 可续跑失败行程：gen_state=FAILED 且已 5 分钟无活动；同样 OR 兼容存量
         List<ItineraryMain> failedTrips = mainMapper.selectList(
                 new LambdaQueryWrapper<ItineraryMain>()
-                        .eq(ItineraryMain::getStatus, 3)
+                        .and(w -> w.eq(ItineraryMain::getGenState, "FAILED")
+                                .or(w2 -> w2.isNull(ItineraryMain::getGenState).eq(ItineraryMain::getStatus, 3)))
                         .lt(ItineraryMain::getUpdatedAt, activeAfter));
         boolean changed = false;
         for (ItineraryMain main : pending) {
-            if (main.getUpdatedAt() != null && main.getUpdatedAt().isAfter(activeAfter)) {
-                continue;
-            }
             changed |= recoverOne(main, activeAfter, false);
         }
         for (ItineraryMain main : failedTrips) {
             changed |= recoverOne(main, activeAfter, true);
         }
         if (changed) {
+            // 批量恢复属于跨 id 的维护操作，保留全量清缓存；单条写路径已改为精确失效（J2）
             var cache = cacheManager.getCache("itinerary:detail");
             if (cache != null) cache.clear();
         }
@@ -88,7 +98,10 @@ public class ItineraryStatusRecovery {
                 || (day.getGenerationStatus() == null && itemMapper.selectCount(
                 new LambdaQueryWrapper<ItineraryItem>().eq(ItineraryItem::getDayId, day.getId())) > 0)).count();
         if (!days.isEmpty() && completedDays == days.size() && days.size() == main.getDays()) {
+            // 所有天都已成功（如进程在 finish 前中断）：直接收口为完成态，同步状态机避免被反复捞起
             main.setStatus(2);
+            main.setGenState("COMPLETED");
+            main.setGenFinishedAt(LocalDateTime.now());
             main.setTitle(main.getCity() + main.getDays() + "日游");
             mainMapper.updateById(main);
             log.info("recovered completed itinerary {}", main.getId());
@@ -109,7 +122,10 @@ public class ItineraryStatusRecovery {
         try {
             GenerateRequest request = rebuildRequest(main);
             if (failedResume) {
-                main.setPlanNote(ItineraryAsyncPlanner.RESUME_MARKER);
+                // 续跑前置（J3）：gen_resumed=1 防二次续跑死循环；genState/status 回到生成中
+                // （替代旧实现写 planNote 续跑标记文案）
+                main.setGenResumed(true);
+                main.setGenState("GENERATING");
                 main.setStatus(1);
                 mainMapper.updateById(main);
             }
@@ -123,13 +139,12 @@ public class ItineraryStatusRecovery {
     }
 
     /**
-     * #19：判定 status=3 的行程是否可自动续跑：所有未成功天均为 FAILED 且有
-     * 错误信息（即落库阶段失败、planDays 可幂等重跑补天）；planNote 已含续跑
-     * 标记说明已自动重试过一次，不再重拉，防止失败-重生成死循环。
+     * #19：判定 status=3/gen_state=FAILED 的行程是否可自动续跑：所有未成功天均为 FAILED 且
+     * 有错误信息（即落库阶段失败、planDays 可幂等重跑补天）；gen_resumed=1 说明已自动续跑过
+     * 一次，不再重拉，防止失败-重生成死循环（旧实现以 planNote 内嵌标记承载，见迁移脚本）。
      */
     private boolean resumableFailedTrip(List<ItineraryDay> days, ItineraryMain main) {
-        if (days.isEmpty() || main.getPlanNote() != null
-                && main.getPlanNote().contains(ItineraryAsyncPlanner.RESUME_MARKER)) {
+        if (days.isEmpty() || Boolean.TRUE.equals(main.getGenResumed())) {
             return false;
         }
         for (ItineraryDay day : days) {

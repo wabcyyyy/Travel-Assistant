@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.lowagie.text.pdf.BaseFont;
+import com.travel.backend.common.ItineraryEventPublisher;
 import com.travel.backend.entity.BudgetDetail;
 import com.travel.backend.entity.ExportTask;
 import com.travel.backend.entity.ItineraryDay;
@@ -47,6 +48,7 @@ public class ExportTaskRunner {
     private final ItineraryItemMapper itemMapper;
     private final BudgetDetailMapper budgetMapper;
     private final TemplateEngine templateEngine;
+    private final ItineraryEventPublisher eventPublisher;
     private final String exportDir;
     private final Path fontPath;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -54,6 +56,7 @@ public class ExportTaskRunner {
     public ExportTaskRunner(ExportTaskMapper taskMapper, ItineraryMainMapper mainMapper,
                             ItineraryDayMapper dayMapper, ItineraryItemMapper itemMapper,
                             BudgetDetailMapper budgetMapper,
+                            ItineraryEventPublisher eventPublisher,
                             @org.springframework.beans.factory.annotation.Qualifier("exportTemplateEngine") TemplateEngine templateEngine,
                             @Value("${app.export.dir:data/export}") String exportDir) throws Exception {
         this.taskMapper = taskMapper;
@@ -61,6 +64,7 @@ public class ExportTaskRunner {
         this.dayMapper = dayMapper;
         this.itemMapper = itemMapper;
         this.budgetMapper = budgetMapper;
+        this.eventPublisher = eventPublisher;
         this.templateEngine = templateEngine;
         this.exportDir = exportDir;
         this.fontPath = extractFont();
@@ -92,6 +96,10 @@ public class ExportTaskRunner {
             task.setFilePath(target.toString());
             task.setFinishedAt(LocalDateTime.now());
             taskMapper.updateById(task);
+            // 导出完成事件（M2-③ AD2）：前端可订阅 SSE 替代 1.5s 轮询；
+            // downloadUrl 与 /api/export 任务查询响应（ExportServiceImpl.toVO）保持一致
+            eventPublisher.exportDone(task.getItineraryId(), taskId, "DONE",
+                    "/api/export/download/" + taskId);
             log.info("export pdf done: task={} file={}", taskId, target);
         } catch (Throwable e) {
             log.error("export pdf failed: task={}", taskId, e);
@@ -141,6 +149,8 @@ public class ExportTaskRunner {
                 itemMap.put("cost", item.getCost());
                 itemMap.put("tag", item.getTag());
                 itemMap.put("remark", item.getRemark());
+                // 叙事理由（M3-③）：为空时模板按缺键跳过，不占版面
+                itemMap.put("whyThis", item.getWhyNote());
                 itemMap.put("openTime", item.getOpenTime());
                 itemMap.put("source", item.getSource());
                 itemMap.put("verificationStatus", item.getVerificationStatus());
@@ -176,7 +186,8 @@ public class ExportTaskRunner {
             if (notes != null && notes.isArray() && notes.size() > 0) {
                 List<String> texts = new ArrayList<>();
                 notes.forEach(n -> { if (!n.asText().isBlank()) texts.add(n.asText()); });
-                if (!texts.isEmpty()) dayMap.put("practicalNotes", String.join("；", texts));
+                // M3-③：提示列表按条目下发，模板逐条渲染（此前合并为一句不利于阅读）
+                if (!texts.isEmpty()) dayMap.put("practicalNotes", texts);
             }
             JsonNode backups = metadata.get("backupPlan");
             if (backups != null && backups.isArray() && backups.size() > 0) {

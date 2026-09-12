@@ -81,6 +81,7 @@ public class ItineraryQueryService {
             vo.setPersons(main.getPersons());
             vo.setBudget(main.getBudget());
             vo.setStatus(main.getStatus());
+            vo.setTripTheme(main.getTripTheme());
             vo.setCreatedAt(main.getCreatedAt());
             vo.setTotalAmount(totals.getOrDefault(main.getId(), BigDecimal.ZERO));
             result.add(vo);
@@ -265,6 +266,8 @@ public class ItineraryQueryService {
             dayVO.setBackupPlan(asMapList(metadata.get("backupPlan")));
             dayVO.setPhotoSpots(asMapList(metadata.get("photoSpots")));
             dayVO.setPracticalNotes(asStringList(metadata.get("practicalNotes")));
+            // dayOptions（M3 叙事契约）：不透出即 V4 槽位空转——metadataJson 已落库但前端拿不到
+            dayVO.setDayOptions(asMapList(metadata.get("dayOptions")));
         } catch (Exception ignored) {
             // 旧数据或损坏的可选元数据不应阻塞详情读取。
         }
@@ -334,6 +337,8 @@ public class ItineraryQueryService {
         vo.setCost(item.getCost());
         vo.setTag(item.getTag());
         vo.setRemark(item.getRemark());
+        // 叙事理由（M3-③）：读 why_note 列，快照/前端随 VO 携带
+        vo.setWhyThis(item.getWhyNote());
         vo.setOpenTime(item.getOpenTime());
         vo.setImage(item.getImageUrl());
         vo.setImageUrl(item.getImageUrl());
@@ -391,6 +396,8 @@ public class ItineraryQueryService {
         vo.setHotelTier(main.getHotelTier());
         vo.setStatus(main.getStatus());
         vo.setPlanNote(main.getPlanNote());
+        // 整趟主题标题（M3-③）：生成阶段由编排层单列捕获
+        vo.setTripTheme(main.getTripTheme());
         return vo;
     }
 }

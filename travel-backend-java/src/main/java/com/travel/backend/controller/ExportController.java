@@ -52,7 +52,12 @@ public class ExportController {
                 .body(resource);
     }
 
+    /**
+     * 获取当前登录用户 ID（从 JWT 中解析）。
+     * J9：包一层请求内记忆化——一个请求多次调用 currentUserId 只 getByUsername 查一次库。
+     */
     private Long currentUserId() {
-        return userService.getByUsername(SecurityUtils.currentUsername()).getId();
+        return SecurityUtils.cachedUserId(() ->
+                userService.getByUsername(SecurityUtils.currentUsername()).getId());
     }
 }

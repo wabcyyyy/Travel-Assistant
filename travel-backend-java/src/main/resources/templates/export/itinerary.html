@@ -10,10 +10,13 @@
         .day { border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px; page-break-inside: avoid; }
         .day-title { background: #409eff; color: #fff; padding: 6px 10px; font-weight: bold; }
         .day-note { padding: 6px 10px; color: #888; }
+        .day-theme { padding: 6px 10px 0; color: #409eff; font-weight: bold; font-size: 13px; }
+        .day-notes { margin: 4px 0 0; padding: 0 10px 0 26px; color: #888; font-size: 11px; }
         .day-guide { padding: 0 10px 6px; color: #667085; font-size: 11px; }
         table { width: 100%; border-collapse: collapse; }
         th, td { border: 1px solid #eee; padding: 5px 8px; text-align: left; }
         th { background: #f5f7fa; }
+        .item-why td { color: #888; font-size: 11px; border: none; padding-top: 0; }
         .budget { border: 1px solid #67c23a; border-radius: 4px; margin-top: 12px; page-break-inside: avoid; }
         .budget-title { background: #67c23a; color: #fff; padding: 6px 10px; font-weight: bold; }
         .total { text-align: right; padding: 6px 10px; font-weight: bold; }
@@ -30,11 +33,14 @@
 </div>
 
 <div class="day" th:each="day : ${dayList}">
-    <div class="day-title"><span th:text="'第 ' + ${day.dayNo} + ' 天'">第 1 天</span><span th:if="${day.travelDate}" th:text="'（' + ${day.travelDate} + '）'">（日期）</span></div>
-    <div class="day-note" th:if="${day.note}" th:text="${day.note}">备注</div>
-    <div class="day-guide" th:if="${day['theme'] != null or day['practicalNotes'] != null or day['backupPlan'] != null}">
-        <span th:if="${day['theme']}" th:text="'主题：' + ${day['theme']}">主题</span>
-        <span th:if="${day['practicalNotes']}" th:text="'提醒：' + ${day['practicalNotes']}">提醒</span>
+    <div class="day-title"><span th:text="'第 ' + ${day['dayNo']} + ' 天'">第 1 天</span><span th:if="${day['travelDate']}" th:text="'（' + ${day['travelDate']} + '）'">（日期）</span></div>
+    <div class="day-note" th:if="${day['note']}" th:text="${day['note']}">备注</div>
+    <!-- M3-③：当日主题叙事句标题；提示列表逐条渲染；均用括号取值防 Map 缺键崩溃 -->
+    <div class="day-theme" th:if="${day['theme'] != null}" th:text="${day['theme']}">当日主题叙事句</div>
+    <ul class="day-notes" th:if="${day['practicalNotes'] != null}">
+        <li th:each="tip : ${day['practicalNotes']}" th:text="${tip}">出发前提醒</li>
+    </ul>
+    <div class="day-guide" th:if="${day['backupPlan'] != null}">
         <span th:if="${day['backupPlan']}" th:text="'备选：' + ${day['backupPlan']}">备选</span>
     </div>
     <table>
@@ -50,15 +56,21 @@
         </tr>
         </thead>
         <tbody>
-        <tr th:each="item : ${day.items}">
-            <td th:text="${item.itemType}">类型</td>
-            <td th:text="${item.poiName}">名称</td>
-            <td th:text="(${item.startTime} != null ? ${item.startTime} : '') + (${item.endTime} != null ? ' - ' + ${item.endTime} : '')">时间</td>
-            <td th:text="${item.durationMin}">0</td>
-            <td th:text="${item.cost}">0</td>
-            <td><span th:if="${item.openTime != null}" th:text="'开放：' + ${item.openTime}">开放</span><br th:if="${item.openTime != null and item.source != null}"/><span th:if="${item.source != null}" th:text="'来源：' + ${item.source}">来源</span><br th:if="${item.verificationStatus != null}"/><span th:if="${item.verificationStatus != null}" th:text="'核验：' + ${item.verificationStatus}">核验</span></td>
-            <td th:text="${item.remark}">备注</td>
+        <th:block th:each="item : ${day['items']}">
+        <tr>
+            <td th:text="${item['itemType']}">类型</td>
+            <td th:text="${item['poiName']}">名称</td>
+            <td th:text="(${item['startTime']} != null ? ${item['startTime']} : '') + (${item['endTime']} != null ? ' - ' + ${item['endTime']} : '')">时间</td>
+            <td th:text="${item['durationMin']}">0</td>
+            <td th:text="${item['cost']}">0</td>
+            <td><span th:if="${item['openTime'] != null}" th:text="'开放：' + ${item['openTime']}">开放</span><br th:if="${item['openTime'] != null and item['source'] != null}"/><span th:if="${item['source'] != null}" th:text="'来源：' + ${item['source']}">来源</span><br th:if="${item['verificationStatus'] != null}"/><span th:if="${item['verificationStatus'] != null}" th:text="'核验：' + ${item['verificationStatus']}">核验</span></td>
+            <td th:text="${item['remark']}">备注</td>
         </tr>
+        <!-- M3-③：叙事理由次级行，缺键/为空不占版面 -->
+        <tr class="item-why" th:if="${item['whyThis'] != null}">
+            <td th:colspan="7" th:text="'为什么选这里：' + ${item['whyThis']}">为什么选这里</td>
+        </tr>
+        </th:block>
         </tbody>
     </table>
 </div>
@@ -75,9 +87,9 @@
         </thead>
         <tbody>
         <tr th:each="b : ${budgetList}">
-            <td th:text="${b.category}">分类</td>
-            <td th:text="${b.amount}">0</td>
-            <td th:text="${b.itemCount}">0</td>
+            <td th:text="${b['category']}">分类</td>
+            <td th:text="${b['amount']}">0</td>
+            <td th:text="${b['itemCount']}">0</td>
         </tr>
         </tbody>
     </table>

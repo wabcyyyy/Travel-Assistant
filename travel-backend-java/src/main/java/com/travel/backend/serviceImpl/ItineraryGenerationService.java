@@ -64,6 +64,9 @@ public class ItineraryGenerationService {
         main.setHotelTier(request.getHotelTier());
         main.setStayNights(stayNights);
         main.setStatus(1);
+        // 显式状态机（J3）：建壳即入 GENERATING 并记录开始时间，恢复任务据此精确识别生成中行程
+        main.setGenState("GENERATING");
+        main.setGenStartedAt(java.time.LocalDateTime.now());
         mainMapper.insert(main);
 
         for (int dayNo = 1; dayNo <= request.getDays(); dayNo++) {
@@ -87,6 +90,8 @@ public class ItineraryGenerationService {
             // H6：生成专用池已满，快速失败返回 429；不能回退到请求线程同步生成。
             // 壳数据置为失败终态，用户可见并可重新创建（该状态不满足自动续跑条件）。
             main.setStatus(3);
+            // 状态机同步置 FAILED：避免壳数据留在 GENERATING 被恢复任务误当成僵尸任务重拉
+            main.setGenState("FAILED");
             main.setPlanNote("生成失败：系统繁忙，生成队列已满");
             mainMapper.updateById(main);
             throw new BizException(429, "行程生成任务已满，系统繁忙，请稍后再试");

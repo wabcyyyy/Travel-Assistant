@@ -46,4 +46,24 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    /**
+     * 富化专用线程池（J6）：管家讲解/景点介绍是可选增强，但单次调用耗时可能很长。
+     * core 1 / max 2 / queue 10 的小容量 + AbortPolicy 形成有界背压——池满即拒绝并
+     * 由提交点记日志丢弃，绝不退化为占用其它线程同步执行拖垮主流程；替代原先跑在
+     * 公共 ForkJoinPool（无界、无背压）上的 CompletableFuture.runAsync。
+     */
+    @Bean(name = "enricherExecutor")
+    public Executor enricherExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(2);
+        executor.setQueueCapacity(10);
+        executor.setThreadNamePrefix("travel-enricher-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(30);
+        executor.initialize();
+        return executor;
+    }
 }

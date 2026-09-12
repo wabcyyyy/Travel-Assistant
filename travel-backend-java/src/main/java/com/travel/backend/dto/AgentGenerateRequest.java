@@ -18,4 +18,5 @@ public class AgentGenerateRequest {
     private String hotelTier;
     private String regionHint;
     private String requirements;
+    private String intent;
 }
