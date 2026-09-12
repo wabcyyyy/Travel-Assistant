@@ -38,3 +38,5 @@ openapi.json
 # 编辑器/工具私有
 .trae/
 .worktrees/
+dump.rdb
+.agents/
