@@ -1,5 +1,22 @@
 <template>
-  <div ref="mapContainer" class="map-container"></div>
+  <div class="map-wrap">
+    <div ref="mapContainer" class="map-container"></div>
+    <!-- a11y §5.5 #4：地图标记键盘可达替代方案。
+         高德 Marker/Leaflet 图标非可靠可聚焦 DOM，改用图外标记点列表（视觉隐藏、
+         屏幕阅读器可读）：Tab 聚焦 + Enter/Space 激活，触发与鼠标点击相同的选中事件与信息窗。 -->
+    <ul v-if="locatedItems().length" class="sr-only marker-list" aria-label="地图标记点列表">
+      <li v-for="(item, index) in locatedItems()" :key="item.id ?? index">
+        <button
+          type="button"
+          @click="activateItem(item)"
+          @keydown.enter.prevent="activateItem(item)"
+          @keydown.space.prevent="activateItem(item)"
+        >
+          {{ index + 1 }}. {{ item.poiName }}（第{{ item.dayNo }}天·{{ TYPE_LABEL[item.itemType] || item.itemType }}）
+        </button>
+      </li>
+    </ul>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -128,6 +145,24 @@ function fitMarkers() {
   }
 }
 
+/**
+ * 统一激活入口：选中行程项并打开对应信息窗（高德 InfoWindow / Leaflet Popup）。
+ * 鼠标点击标记与键盘「标记点列表」激活共用，保证两条路径行为一致。
+ */
+function activateItem(item: MapItem) {
+  emit('select', item.id ?? null)
+  const index = locatedItems().indexOf(item)
+  const marker = markers[index]
+  if (!marker) return
+  if (engine === 'amap') {
+    if (!infoWindow) infoWindow = new AMap.InfoWindow({ offset: new AMap.Pixel(0, -28) })
+    infoWindow.setContent(infoHtml(item))
+    infoWindow.open(map, marker.getPosition())
+  } else if (engine === 'leaflet') {
+    marker.bindPopup(infoHtml(item)).openPopup()
+  }
+}
+
 function buildMarkers() {
   clearMarkers()
   const located = locatedItems()
@@ -140,12 +175,7 @@ function buildMarkers() {
         offset: new AMap.Pixel(-12, -12),
         title: item.poiName,
       })
-      marker.on('click', () => {
-        emit('select', item.id ?? null)
-        if (!infoWindow) infoWindow = new AMap.InfoWindow({ offset: new AMap.Pixel(0, -28) })
-        infoWindow.setContent(infoHtml(item))
-        infoWindow.open(map, marker.getPosition())
-      })
+      marker.on('click', () => activateItem(item))
       marker.setMap(map)
       markers.push(marker)
     })
@@ -161,10 +191,7 @@ function buildMarkers() {
         icon,
         title: item.poiName,
       })
-      marker.on('click', () => {
-        emit('select', item.id ?? null)
-        marker.bindPopup(infoHtml(item)).openPopup()
-      })
+      marker.on('click', () => activateItem(item))
       marker.addTo(map)
       markers.push(marker)
     })
@@ -296,9 +323,27 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.map-wrap {
+  position: relative;
+}
+
 .map-container {
   width: 100%;
   height: 100%;
   min-height: 320px;
+}
+
+/* 键盘可达标记点列表：视觉隐藏，仅屏幕阅读器/键盘用户可用（不遮挡地图交互） */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 </style>

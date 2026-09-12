@@ -117,12 +117,7 @@
 import { useRouter } from 'vue-router'
 import { Coin, Document, MapLocation } from '@element-plus/icons-vue'
 
-import coverBeijing from '../assets/img/cover-beijing.jpg'
-import coverChengdu from '../assets/img/cover-chengdu.jpg'
-import coverChongqing from '../assets/img/cover-chongqing.jpg'
-import coverHangzhou from '../assets/img/cover-hangzhou.jpg'
-import coverShanghai from '../assets/img/cover-shanghai.jpg'
-import coverXian from '../assets/img/cover-xian.jpg'
+import { DESTINATIONS } from '../constants/covers'
 
 const router = useRouter()
 
@@ -132,15 +127,6 @@ const DEMO_ITEMS = [
   { idx: '03', name: '灵隐寺', time: '15:00', cost: '¥75/人', tag: '参考估算', tagType: 'warning' as const },
   { idx: '04', name: '河坊街', time: '18:30', cost: '自由消费', tag: '已核实', tagType: 'success' as const },
   { idx: '05', name: '楼外楼', time: '19:30', cost: '¥120/人', tag: '待复核', tagType: 'info' as const },
-]
-
-const DESTINATIONS = [
-  { name: '杭州', img: coverHangzhou },
-  { name: '成都', img: coverChengdu },
-  { name: '西安', img: coverXian },
-  { name: '重庆', img: coverChongqing },
-  { name: '北京', img: coverBeijing },
-  { name: '上海', img: coverShanghai },
 ]
 
 function goGenerate(city: string) {

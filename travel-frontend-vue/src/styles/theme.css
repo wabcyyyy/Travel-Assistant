@@ -35,6 +35,17 @@
   --lp-font-data:
     'SF Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
 
+  /* ---------- 叙事语义层令牌（M4-②b §5.1 新增） ----------
+     仅叙事字段渲染使用（trip_theme / theme / why_this / practical_notes /
+     photo_spots / day_options / 流式进度），禁止挪作按钮、链接等交互用途。 */
+  --lp-theme-accent: linear-gradient(90deg, #0f766e, #155e75); /* 主题叙事装饰线：青绿→蓝绿渐变（background-image 用途） */
+  --lp-why-ink: #6f695f; /* why_this / 注释文字：正文 60% 暖灰（白底对比 5.4:1，AA） */
+  --lp-note-callout: #e7efed; /* practical_notes 浅青灰底（左 3px 竖线由 --lp-theme-accent 承担） */
+  --lp-photo-badge: #f7ebe3; /* photo_spots 徽标浅底（#bd6246 家族；深字由 --lp-accent-warm 加深派生） */
+  --lp-branch-a: #0f766e; /* day_options 方案 A：青绿 */
+  --lp-branch-b: #4f52b5; /* day_options 方案 B：蓝紫 */
+  --lp-stream-glow: rgb(21 94 117 / 18%); /* 流式微光：--lp-theme-accent 深端低透明 */
+
   /* 深封面渐变（列表扉页 / 详情封面共用） */
   --lp-cover-gradient: linear-gradient(
     125deg,
@@ -486,6 +497,111 @@ h3 {
   font-weight: 600;
 }
 
+/* ============================================================
+   公共层：双视图重复样式上提（M4-②a F6，重构方案 §5.5 令牌复用）
+   - .chat-line 家族：TripDetailView（ChatEditPanel）消费；
+     GenerateView 同名类保留 scoped 变体（padding/max-width 与此不同，scoped 优先级更高不受影响），
+     其收敛在本层统一，待列表页/生成页工序处理
+   - .pref-tag 家族：GenerateView 偏好标签的公共基线，逐值复制自其 scoped 定义
+     （值完全一致，scoped 仍生效，渲染零变化），供后续收敛去重
+   ============================================================ */
+
+/* ---------- chat 消息行 ---------- */
+.chat-line {
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  max-width: 92%;
+}
+
+.chat-line.user {
+  background: var(--lp-ink);
+  color: #fff;
+  margin-left: auto;
+  width: fit-content;
+}
+
+.chat-line.ai {
+  background: var(--lp-sand);
+  border: 1px solid var(--lp-border);
+  width: fit-content;
+}
+
+/* ---------- 偏好标签（GenerateView 变体的公共基线） ---------- */
+.pref-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 1px solid var(--lp-border);
+  border-radius: 999px;
+  background: var(--lp-surface);
+  color: var(--lp-ink-soft);
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.pref-tag:hover {
+  border-color: var(--lp-accent);
+  color: var(--lp-accent-hover);
+  transform: translateY(-1px);
+}
+
+.pref-tag:focus-visible {
+  outline: 2px solid var(--lp-accent);
+  outline-offset: 2px;
+}
+
+.pref-tag.active {
+  background: var(--lp-accent);
+  border-color: var(--lp-accent);
+  color: #fff;
+  box-shadow: var(--lp-shadow-accent);
+}
+
+.pref-tag .el-icon {
+  font-size: 15px;
+}
+
+/* ---------- 流式骨架屏公共件（M4-②b §5.3.5）：HeadStatusPanel / DayListCard 复用 ---------- */
+.lp-skel-line {
+  position: relative;
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--lp-sand);
+  overflow: hidden;
+}
+
+/* shimmer 高光层：仅动 transform，降低重绘成本 */
+.lp-skel-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--lp-stream-glow), transparent);
+  transform: translateX(-100%);
+}
+
+@keyframes lp-skel-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* shimmer 仅在系统允许动效时播放；reduce 下退化为静态骨架条（§5.1 动效底线） */
+@media (prefers-reduced-motion: no-preference) {
+  .lp-skel-line::after {
+    animation: lp-skel-sweep 1.8s ease-in-out infinite;
+  }
+}
+
 /* ---------- 减少动效：系统偏好优先 ---------- */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -500,4 +616,41 @@ h3 {
   .reading-progress {
     display: none !important;
   }
+}
+
+/* ============================================================
+   管理端令牌级统一（M4-③ §5.5）：AdminLayout + 五子路由
+   - 密度：.admin-content 内表格统一紧凑行高（前台 11px 节奏不受影响）
+   - 数字列：列上声明 class-name="num"，走 --lp-font-data（data mono）+ 等宽数字
+   - 按钮/标签：经 CSS 变量覆盖对齐 --lp-accent 家族，与前台同源
+   - 布局结构与 requiresAdmin 守卫不变
+   ============================================================ */
+
+/* 表格紧凑行高 */
+.admin-content .el-table td.el-table__cell {
+  padding: 8px 0;
+}
+
+/* 数字列：data mono 字体 */
+.admin-content .el-table td.num .cell {
+  font-family: var(--lp-font-data);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 主按钮令牌对齐：--lp-accent 家族（与全局 --el-color-primary 同源，显式声明防漂移） */
+.admin-content .el-button--primary {
+  --el-button-bg-color: var(--lp-accent);
+  --el-button-border-color: var(--lp-accent);
+  --el-button-hover-bg-color: var(--lp-accent-hover);
+  --el-button-hover-border-color: var(--lp-accent-hover);
+  --el-button-active-bg-color: var(--lp-accent-hover);
+  --el-button-active-border-color: var(--lp-accent-hover);
+}
+
+/* 标签令牌对齐：primary 家族走 --lp-accent-soft 浅底（success/warning/danger 已映射 lp 状态色） */
+.admin-content .el-tag--primary {
+  --el-tag-bg-color: var(--lp-accent-soft);
+  --el-tag-border-color: transparent;
+  --el-tag-text-color: var(--lp-accent-hover);
 }

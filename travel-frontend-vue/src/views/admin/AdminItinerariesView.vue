@@ -42,8 +42,8 @@
     </div>
 
     <el-table :data="rows" v-loading="loading" size="large">
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="userId" label="用户ID" width="80" />
+      <el-table-column prop="id" label="ID" width="70" class-name="num" />
+      <el-table-column prop="userId" label="用户ID" width="80" class-name="num" />
       <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
       <el-table-column prop="city" label="城市" width="100" />
       <el-table-column label="日期" width="200">
@@ -51,9 +51,9 @@
           {{ row.startDate || '-' }} ~ {{ row.endDate || '-' }}
         </template>
       </el-table-column>
-      <el-table-column prop="days" label="天数" width="70" />
-      <el-table-column prop="persons" label="人数" width="70" />
-      <el-table-column label="预算" width="100">
+      <el-table-column prop="days" label="天数" width="70" class-name="num" />
+      <el-table-column prop="persons" label="人数" width="70" class-name="num" />
+      <el-table-column label="预算" width="100" class-name="num">
         <template #default="{ row }">
           {{ row.budget == null ? '-' : `¥${row.budget}` }}
         </template>
@@ -66,7 +66,7 @@
       <el-table-column prop="createdAt" label="创建时间" width="180" />
       <el-table-column label="操作" width="90" fixed="right">
         <template #default="{ row }">
-          <el-button link type="danger" @click="onDelete(row)">删除</el-button>
+          <el-button link type="danger" @click="onDelete(row as AdminItinerary)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -89,7 +89,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   deleteAdminItinerary,
   getAdminItineraries,

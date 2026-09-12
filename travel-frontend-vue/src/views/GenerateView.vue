@@ -3,11 +3,49 @@
     <div class="lp-page-head stack">
       <span class="bar"></span>
       <h2>行程生成</h2>
-      <span class="sub">填写基本信息，其余交给 Agent</span>
+      <span class="sub">先写清旅行意图，其余交给 Agent</span>
     </div>
 
-    <!-- 单列堆叠：基本信息 → 偏好 → 额外要求与生成 -->
+    <!-- 单列堆叠：意图（00 置顶） → 基本信息（01） → 偏好（02 弱化） → 额外要求与生成（03） -->
     <div class="gen-stack">
+        <!-- 00 旅行意图：★ 主输入，置顶最高优先级信号 -->
+        <el-card shadow="never" class="group-card intent-card">
+      <template #header>
+        <div class="group-head">
+          <span class="group-title"><i class="group-no">00</i>旅行意图</span>
+          <span class="group-badge is-star">★ 主输入</span>
+        </div>
+      </template>
+      <div class="intent-block">
+        <div class="intent-shell">
+          <el-input
+            v-model="intent"
+            type="textarea"
+            :autosize="{ minRows: 3, maxRows: 8 }"
+            resize="none"
+            placeholder="一句话说清这趟旅行最想要什么，例如：京都 3 日全程住柏悦，《千恋万花》圣地巡礼，节奏松弛"
+          />
+        </div>
+        <!-- 右下角实时计数：超限红字提示但不阻断输入，提交时裁剪 -->
+        <div class="intent-counter" :class="{ over: intent.length > INTENT_MAX }">
+          {{ intent.length }}/{{ INTENT_MAX }}
+        </div>
+        <div class="intent-examples">
+          <span class="hint">示例</span>
+          <button
+            v-for="e in INTENT_EXAMPLES"
+            :key="e"
+            type="button"
+            class="intent-chip"
+            @click="applyIntentExample(e)"
+          >
+            {{ e }}
+          </button>
+        </div>
+        <span class="hint intent-note">意图是生成的最高优先级信号；下方偏好标签作为辅助信号</span>
+      </div>
+        </el-card>
+
         <!-- 第一栏：目的地与出行 -->
         <el-card shadow="never" class="group-card">
       <template #header>
@@ -79,10 +117,13 @@
       </el-form>
     </el-card>
 
-    <!-- 第二栏：偏好设置 -->
+    <!-- 第二栏：偏好设置（◇ 辅助信号：标签弱化，意图优先） -->
     <el-card shadow="never" class="group-card">
       <template #header>
-        <span class="group-title"><i class="group-no">02</i>偏好设置</span>
+        <div class="group-head">
+          <span class="group-title"><i class="group-no">02</i>偏好设置</span>
+          <span class="group-badge">◇ 辅助信号</span>
+        </div>
       </template>
       <el-form label-width="100px" style="max-width: 720px">
         <el-form-item label="旅行偏好">
@@ -99,6 +140,7 @@
               {{ t.label }}
             </button>
           </div>
+          <span class="hint pref-note">标签帮系统快速定向；具体想要什么，请写在上方意图里</span>
         </el-form-item>
         <el-form-item label="住宿偏好">
           <el-select
@@ -114,10 +156,13 @@
       </el-form>
     </el-card>
 
-    <!-- 第三栏：额外要求 + 生成 -->
+    <!-- 第三栏：额外要求（◇ 硬约束） + 生成 -->
     <el-card shadow="never" class="chat-card">
           <template #header>
-            <span class="group-title"><i class="group-no">03</i>额外要求</span>
+            <div class="group-head">
+              <span class="group-title"><i class="group-no">03</i>额外要求</span>
+              <span class="group-badge">◇ 硬约束</span>
+            </div>
           </template>
           <div class="trip-brief">
             <template v-if="form.city">
@@ -130,7 +175,7 @@
             </template>
             <span v-else class="brief-empty">选定目的地后，这里会实时汇总你的行程安排</span>
           </div>
-          <p class="chat-tip">有特别安排？直接输入（如「想吃地道的本地小吃」「想看一场川剧变脸」），生成行程时 AI 会纳入规划。</p>
+          <p class="chat-tip">有特别安排？直接输入（如「想吃地道的本地小吃」「想看一场川剧变脸」），生成行程时 AI 会纳入规划；多条要求合计不超过 4000 字。</p>
           <div v-for="(m, i) in chat" :key="i" class="chat-line" :class="m.role">
             {{ m.text }}
           </div>
@@ -154,7 +199,7 @@
               class="submit-error"
             />
             <el-button type="primary" size="large" class="submit" :loading="loading" @click="onSubmit">
-              生成行程
+              开始规划
             </el-button>
           </div>
         </el-card>
@@ -182,7 +227,8 @@
 <script setup lang="ts">
 import { reactive, ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+// ElMessage/ElMessageBox 由 AutoImport resolver 按需注入（含样式）；表单类型仍显式声明
+import type { FormInstance, FormRules } from 'element-plus'
 import {
   Camera,
   Food,
@@ -215,6 +261,36 @@ const POPULAR_CITIES = ['成都', '杭州', '西安', '重庆', '北京', '上�
 
 const chat = ref<{ role: 'user' | 'ai'; text: string }[]>([])
 const say = ref('')
+
+// 旅行意图（§5.2 完整版）：置顶 00 主输入区块，最高优先级生成信号透传给 Agent；
+// 超限不阻断输入，提交时裁剪至 800 字并提示
+const intent = ref('')
+const INTENT_MAX = 800
+const INTENT_EXAMPLES = [
+  '千恋万花圣地巡礼',
+  '只吃米其林与本地名店',
+  '带父母慢节奏不爬山',
+]
+
+// 额外要求合计上限 4000 字，同样提交时裁剪
+const REQUIREMENTS_MAX = 4000
+
+// 意图示例 chip：点击填入并替换；已有内容时先轻提示确认再覆盖
+async function applyIntentExample(text: string) {
+  const current = intent.value.trim()
+  if (current && current !== text) {
+    try {
+      await ElMessageBox.confirm('当前已填写旅行意图，继续将替换为该示例。', '覆盖确认', {
+        type: 'warning',
+        confirmButtonText: '覆盖',
+        cancelButtonText: '取消',
+      })
+    } catch {
+      return
+    }
+  }
+  intent.value = text
+}
 
 // 汇总用户输入的全部额外要求，生成行程时随请求发送给 Agent
 const requirements = computed(() =>
@@ -307,8 +383,9 @@ async function sendGuideInput(input: string) {
   }
 }
 
-function onSayEnter(e: KeyboardEvent) {
-  if ((e as any).isComposing) return
+// EP 按需后 el-input keydown 事件签名为 Event | KeyboardEvent，用类型守卫窄化判 IME 组合输入
+function onSayEnter(e: Event | KeyboardEvent) {
+  if ('isComposing' in e && e.isComposing) return
   onSay()
 }
 
@@ -331,8 +408,8 @@ const guideCity = ref('')
 const provinceHint = ref('')
 let guideHistory: { role: string; content: string }[] = []
 
-function onGuideEnter(e: KeyboardEvent) {
-  if ((e as any).isComposing) return
+function onGuideEnter(e: Event | KeyboardEvent) {
+  if ('isComposing' in e && e.isComposing) return
   sendGuide()
 }
 
@@ -378,6 +455,18 @@ async function onSubmit() {
   }
   const blocked = await guideIfUnsupported()
   if (blocked) return
+  // 意图超限不阻断输入：提交时裁剪至 800 字并提示
+  let intentPayload = intent.value.trim()
+  if (intentPayload.length > INTENT_MAX) {
+    intentPayload = intentPayload.slice(0, INTENT_MAX)
+    ElMessage.warning(`旅行意图超过 ${INTENT_MAX} 字，已自动裁剪至前 ${INTENT_MAX} 字`)
+  }
+  // 额外要求合计超 4000 字时同样提交时裁剪
+  let requirementsPayload = requirements.value
+  if (requirementsPayload.length > REQUIREMENTS_MAX) {
+    requirementsPayload = requirementsPayload.slice(0, REQUIREMENTS_MAX)
+    ElMessage.warning(`额外要求合计超过 ${REQUIREMENTS_MAX} 字，已自动裁剪`)
+  }
   loading.value = true
   errorMsg.value = ''
   try {
@@ -392,7 +481,8 @@ async function onSubmit() {
       preferences: form.preferences,
       hotelTier: form.hotelTier || undefined,
       regionHint: provinceHint.value || undefined,
-      requirements: requirements.value || undefined,
+      intent: intentPayload || undefined,
+      requirements: requirementsPayload || undefined,
     })
     router.push({ name: 'trip-detail', params: { id: res.data.id } })
   } catch (err) {
@@ -425,6 +515,97 @@ async function onSubmit() {
   gap: 8px;
   margin: 12px 0 0;
   padding-left: 0;
+}
+
+/* ---------- 00 旅行意图：★ 主输入（§5.2） ---------- */
+.intent-block {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 意图输入壳：常态细灰描边，聚焦时转 --lp-theme-accent 渐变描边（padding 技法做渐变环） */
+.intent-shell {
+  padding: 1.5px;
+  border-radius: 10px;
+  background: var(--lp-border);
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.intent-shell:focus-within {
+  background: var(--lp-theme-accent);
+  box-shadow: 0 0 0 3px var(--lp-accent-soft);
+}
+
+/* 内层 textarea 去掉默认描边环，交由外壳统一表达聚焦态 */
+.intent-shell :deep(.el-textarea__inner),
+.intent-shell :deep(.el-textarea__inner:focus) {
+  border-radius: 8.5px;
+  border: none;
+  box-shadow: none;
+  font-size: 15px;
+  line-height: 1.7;
+  background: var(--lp-surface);
+}
+
+/* 右下角实时计数器：超限红字，不阻断输入 */
+.intent-counter {
+  align-self: flex-end;
+  margin-top: -2px;
+  font-size: 11px;
+  color: var(--lp-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.intent-counter.over {
+  color: var(--lp-danger);
+  font-weight: 600;
+}
+
+.intent-examples {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 意图示例 chip：--lp-accent 描边药丸，与 02 弱化实底标签形成主次 */
+.intent-chip {
+  min-height: 32px;
+  padding: 5px 14px;
+  border: 1px solid var(--lp-accent);
+  border-radius: 999px;
+  background: var(--lp-surface);
+  color: var(--lp-accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.intent-chip:hover {
+  background: var(--lp-accent-soft);
+  color: var(--lp-accent-hover);
+  transform: translateY(-1px);
+}
+
+.intent-chip:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.intent-chip:focus-visible {
+  outline: 2px solid var(--lp-accent);
+  outline-offset: 2px;
+}
+
+.intent-note {
+  white-space: normal;
 }
 
 .city-chip {
@@ -507,6 +688,14 @@ async function onSubmit() {
   white-space: nowrap;
 }
 
+/* 卡片头：标题 + 角标（★ 主输入 / ◇ 辅助信号 / ◇ 硬约束） */
+.group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .group-title {
   display: inline-flex;
   align-items: center;
@@ -528,37 +717,61 @@ async function onSubmit() {
   font-variant-numeric: tabular-nums;
 }
 
+.group-badge {
+  flex: none;
+  padding: 2px 10px;
+  border: 1px dashed var(--lp-border);
+  border-radius: 999px;
+  color: var(--lp-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+/* ★ 主输入角标：强调色实底浅底，视觉权重高于 ◇ 徽标 */
+.group-badge.is-star {
+  border: none;
+  background: var(--lp-accent-soft);
+  color: var(--lp-accent-hover);
+}
+
 .hint {
   color: var(--lp-muted);
   font-size: 13px;
   white-space: nowrap;
 }
 
-/* ---------- 单列堆叠：基本信息 → 偏好 → 额外要求 ---------- */
+/* ---------- 单列堆叠：意图 → 基本信息 → 偏好 → 额外要求 ---------- */
 .gen-stack {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-/* ---------- 偏好标签 ---------- */
+/* ---------- 偏好标签（◇ 辅助信号：缩小一号 + 降饱和弱化） ---------- */
 .tag-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
+.pref-note {
+  width: 100%;
+  margin-top: 2px;
+  white-space: normal;
+}
+
 .pref-tag {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
-  padding: 8px 16px;
-  border: 1px solid var(--lp-border);
+  min-height: 34px;
+  padding: 5px 13px;
+  border: 1px solid var(--lp-rule);
   border-radius: 999px;
   background: var(--lp-surface);
-  color: var(--lp-ink-soft);
-  font-size: 14px;
+  color: var(--lp-muted);
+  font-size: 13px;
   cursor: pointer;
   transition:
     background 0.15s ease,
@@ -587,7 +800,8 @@ async function onSubmit() {
 }
 
 .pref-tag .el-icon {
-  font-size: 15px;
+  font-size: 13px;
+  color: inherit;
 }
 
 .chat-tip {
@@ -596,26 +810,11 @@ async function onSubmit() {
   font-size: 13px;
 }
 
+/* chat 行：与 theme.css 公共层同名类去重后，仅保留本页差异两值
+   （padding/max-width 与公共基线不同；圆角/字号/配色复用公共层，渲染不变） */
 .chat-line {
   padding: 6px 12px;
-  border-radius: 10px;
-  margin-bottom: 8px;
   max-width: 80%;
-  font-size: 14px;
-}
-
-.chat-line.user {
-  background: var(--lp-ink);
-  color: #fff;
-  margin-left: auto;
-  width: fit-content;
-}
-
-.chat-line.ai {
-  background: var(--lp-sand);
-  border: 1px solid var(--lp-border);
-  color: var(--lp-ink);
-  width: fit-content;
 }
 
 .chat-input {
@@ -625,20 +824,22 @@ async function onSubmit() {
   max-width: 680px;
 }
 
+/* 提交区：主按钮全宽「开始规划」，错误提示在其上方 */
 .submit-row {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 16px;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .submit-error {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
 }
 
 .submit {
-  min-width: 220px;
+  width: 100%;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  box-shadow: var(--lp-shadow-accent);
 }
 
 .guide-sugs {
@@ -676,13 +877,6 @@ async function onSubmit() {
   gap: 8px;
 }
 
-.submit {
-  min-width: 220px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  box-shadow: var(--lp-shadow-accent);
-}
-
 @media (max-width: 720px) {
   :deep(.el-form-item__label) {
     width: 100% !important;
@@ -695,16 +889,6 @@ async function onSubmit() {
 
   .trip-brief {
     border-radius: 10px;
-  }
-
-  .submit {
-    width: 100%;
-    min-width: 0;
-  }
-
-  .submit-row {
-    flex-direction: column;
-    align-items: stretch;
   }
 }
 </style>

@@ -15,21 +15,21 @@
       <div class="form-panel">
         <h2 class="title">{{ isRegister ? '创建账号' : '欢迎回来' }}</h2>
         <p class="subtitle">{{ isRegister ? '注册后立即开始规划行程' : '登录以继续你的行程' }}</p>
-        <el-form ref="formRef" :model="form" :rules="rules" label-width="0" size="large">
-          <el-form-item prop="username">
-            <el-input v-model="form.username" placeholder="用户名" :prefix-icon="User" />
+        <el-form ref="formRef" :model="form" :rules="rules" label-position="top" size="large">
+          <el-form-item prop="username" label="用户名">
+            <el-input v-model="form.username" placeholder="3-32 个字符" :prefix-icon="User" />
           </el-form-item>
-          <el-form-item prop="password">
+          <el-form-item prop="password" label="密码">
             <el-input
               v-model="form.password"
               type="password"
-              placeholder="密码"
+              placeholder="请输入密码"
               show-password
               :prefix-icon="Lock"
             />
           </el-form-item>
-          <el-form-item v-if="isRegister" prop="nickname">
-            <el-input v-model="form.nickname" placeholder="昵称（可选）" :prefix-icon="Avatar" />
+          <el-form-item v-if="isRegister" prop="nickname" label="昵称">
+            <el-input v-model="form.nickname" placeholder="选填" :prefix-icon="Avatar" />
           </el-form-item>
           <el-form-item>
             <el-button type="primary" :loading="loading" style="width: 100%" @click="onSubmit">
@@ -51,7 +51,8 @@
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Avatar, Lock, User } from '@element-plus/icons-vue'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+// ElMessage 由 AutoImport resolver 按需注入（含样式）；表单类型仍显式声明
+import type { FormInstance, FormRules } from 'element-plus'
 
 import { login, register } from '../api'
 import { useUserStore } from '../store/user'
@@ -188,6 +189,17 @@ async function onSubmit() {
   color: #9dc3be;
 }
 
+/* 手册风渐变点缀（§5.5，纯 CSS 不引入图片）：品牌名下 --lp-theme-accent 渐变细条 */
+.brand::after {
+  content: '';
+  display: block;
+  width: 48px;
+  height: 3px;
+  margin-top: 6px;
+  border-radius: 2px;
+  background: var(--lp-theme-accent);
+}
+
 .brand-lede {
   margin: 0;
   font-family: var(--lp-font-display);
@@ -198,9 +210,22 @@ async function onSubmit() {
 
 .brand-foot {
   margin: 0;
+  padding-top: 14px;
+  position: relative;
   font-size: 12px;
   color: #b9d4d0;
   letter-spacing: 0.04em;
+}
+
+/* 留白节奏：底部注脚上方发丝渐变线，与主题渐变条呼应 */
+.brand-foot::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, rgb(242 248 247 / 0%), rgb(242 248 247 / 32%));
 }
 
 .form-panel {
@@ -210,6 +235,20 @@ async function onSubmit() {
 
 .form-panel :deep(.el-form-item) {
   margin-bottom: 20px;
+}
+
+/* 表单规范对齐（§5.5）：label 在上（placeholder 不作 label）、字重与全站一致 */
+.form-panel :deep(.el-form-item__label) {
+  font-weight: 600;
+  color: var(--lp-ink-soft);
+  padding-bottom: 6px;
+}
+
+/* 焦点环对齐全站规范：--lp-accent 描边 + 浅底外环 */
+.form-panel :deep(.el-input__wrapper.is-focus) {
+  box-shadow:
+    0 0 0 1px var(--lp-accent) inset,
+    0 0 0 3px var(--lp-accent-soft);
 }
 
 .form-panel :deep(.el-button) {
