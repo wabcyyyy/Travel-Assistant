@@ -42,6 +42,18 @@ public class ItineraryMain {
     private Integer status;
     private String planNote;
     private String suggestionsJson;
+    /** 整趟主题标题（M3-③）：来自生成契约 trip_theme，仅 day_no=1 的 generate-day 响应携带。 */
+    private String tripTheme;
+    /** 显式生成状态机（J3）：GENERATING/PARTIAL/COMPLETED/FAILED。status 1/2/3 面向用户可见语义，
+     *  gen_state 面向恢复任务与运维——两者并行承载，避免继续用 planNote 文案 + updatedAt 启发式猜状态。 */
+    private String genState;
+    /** 本次生成开始时间：由 planDays 启动（含恢复续跑）刷新，配合 updatedAt 判断僵尸任务。 */
+    private LocalDateTime genStartedAt;
+    /** 本次生成结束时间：finish/fail 落终态时写入，便于排查耗时与卡死。 */
+    private LocalDateTime genFinishedAt;
+    /** 已自动续跑过一次：恢复任务续跑前置 1、续跑成功后 finish 清 0，防止失败-重生成死循环
+     *  （替代旧实现写入 planNote 的 "[已自动续跑一次]" 标记文案）。 */
+    private Boolean genResumed;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     @TableLogic

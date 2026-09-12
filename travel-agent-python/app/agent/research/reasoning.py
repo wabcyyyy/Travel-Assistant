@@ -89,14 +89,37 @@ def plan_research(task: ResearchTask) -> dict:
         return {}
 
 
+def _intent_keywords_covered(task: ResearchTask, items: list[dict]) -> bool:
+    """确定性检查：任一证据 item 的 name/remark/tags 命中任一意图关键词（子串/casefold）。
+
+    tags 可能是 list，str() 后子串匹配同样生效；无意图关键词视为已覆盖。
+    """
+    for poi in items:
+        if not isinstance(poi, dict):
+            continue
+        haystack = " ".join(str(poi.get(key) or "") for key in ("name", "remark", "tags"))
+        folded = haystack.casefold()
+        if any(kw and str(kw).casefold() in folded for kw in task.intent_keywords):
+            return True
+    return False
+
+
 def evaluate_research(task: ResearchTask, items: list[dict], round_no: int) -> dict:
     """评估证据充分性 {sufficient, extra_keywords}；异常按充分处理（不无限补查）。
 
-    证据为空时确定性返回"不足"+默认补充词（省一次模型调用）；LLM 判定仅在
-    结果非空且已配置模型时发生。
+    证据为空时确定性返回"不足"+默认补充词（省一次模型调用）；第 1 轮且任务卡
+    携带意图关键词时，先做确定性的「意图关键词覆盖」检查——证据完全未命中任何
+    意图词即前置短路判定不足（补充词=意图词∪域默认词），省一次模型调用；
+    LLM 判定仅在结果非空、未被短路且已配置模型时发生。
     """
     if not items:
         return {"sufficient": False, "extra_keywords": _default_extra_keywords(task)}
+    # M3-②（AD5）：意图覆盖确定性维度前置短路（round 1 且意图词非空时生效）
+    if (int(round_no) == 1 and task.intent_keywords
+            and not _intent_keywords_covered(task, items)):
+        merged = list(dict.fromkeys(
+            list(task.intent_keywords) + _default_extra_keywords(task)))
+        return {"sufficient": False, "extra_keywords": merged}
     if not settings.llm_api_key:
         return {"sufficient": True, "extra_keywords": []}
     names = [str(p.get("name") or "") for p in items[:12]]

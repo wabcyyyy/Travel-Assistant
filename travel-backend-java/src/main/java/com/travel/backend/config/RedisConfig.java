@@ -11,6 +11,14 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
+/**
+ * Redis 模板配置。
+ *
+ * <p>生成事件订阅容器（gen:events:*）不在此注册：{@code RedisMessageListenerContainer}
+ * 是 SmartLifecycle，注册为 Bean 会在上下文刷新期自动启动，Redis 不可达时会拖死整个应用；
+ * 改由 {@link com.travel.backend.common.ItineraryEventChannelManager} 自管生命周期
+ * （手动启停 + 失败重试 + 失联断流），保证「无 Redis 只失去 SSE、轮询降级照常可用」。</p>
+ */
 @Configuration
 public class RedisConfig {
 

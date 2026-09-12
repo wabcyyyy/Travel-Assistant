@@ -1,5 +1,7 @@
 <template>
-  <el-container class="layout">
+  <!-- EP 按需后经 ConfigProvider 全局下发中文 locale（替代原 app.use(ElementPlus, { locale })） -->
+  <el-config-provider :locale="zhCn">
+    <el-container class="layout">
     <el-header class="header lp-header" height="60px">
       <div class="logo lp-logo" @click="$router.push('/')">
         <span class="mark"></span>
@@ -20,17 +22,9 @@
       </el-menu>
       <div class="header-end">
         <div v-if="userStore.username" class="user-area desktop-only">
-          <el-dropdown @command="onCommand">
-            <span class="user-name">
-              {{ userStore.username }}
-              <el-icon><ArrowDown /></el-icon>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <span class="user-name">{{ userStore.username }}</span>
+          <!-- 登出常驻可见（硬约束）：描边次级按钮，不再藏进下拉菜单 -->
+          <el-button class="logout-btn" @click="onCommand('logout')">退出登录</el-button>
         </div>
         <el-button v-else type="primary" class="desktop-only" @click="$router.push('/login')">
           登录
@@ -97,13 +91,14 @@
         </p>
       </footer>
     </el-main>
-  </el-container>
+    </el-container>
+  </el-config-provider>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ArrowDown } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 
 import { useUserStore } from './store/user'
 import { logoutApi } from './api'
@@ -191,6 +186,7 @@ async function onCommand(command: string) {
   color: var(--lp-accent);
   background: transparent;
   border-bottom-color: var(--lp-accent);
+  font-weight: 700;
 }
 
 .menu :deep(.el-menu-item:hover) {
@@ -205,20 +201,30 @@ async function onCommand(command: string) {
   margin-left: auto;
 }
 
-.user-name {
-  cursor: pointer;
+.user-area {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-weight: 600;
-  color: var(--lp-ink);
-  padding: 6px 10px;
-  border-radius: 8px;
-  transition: background 0.15s ease;
+  gap: 8px;
 }
 
-.user-name:hover {
-  background: var(--lp-sand);
+.user-name {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  color: var(--lp-ink);
+  padding: 6px 4px;
+}
+
+/* 登出常驻按钮：描边次级样式，hover 加深（导航可见性硬约束） */
+.logout-btn {
+  border-color: var(--lp-border);
+  color: var(--lp-ink-soft);
+}
+
+.logout-btn:hover {
+  border-color: var(--lp-accent-hover);
+  color: var(--lp-accent-hover);
+  background: var(--lp-accent-soft);
 }
 
 .nav-toggle {

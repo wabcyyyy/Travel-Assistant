@@ -27,10 +27,10 @@
         </div>
       </template>
       <el-table :data="recentUsers" v-loading="loading" size="large">
-        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column prop="id" label="ID" width="70" class-name="num" />
         <el-table-column prop="username" label="用户名" min-width="140" />
         <el-table-column prop="nickname" label="昵称" min-width="120" />
-        <el-table-column prop="itineraryCount" label="行程数" width="90" />
+        <el-table-column prop="itineraryCount" label="行程数" width="90" class-name="num" />
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
             <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">

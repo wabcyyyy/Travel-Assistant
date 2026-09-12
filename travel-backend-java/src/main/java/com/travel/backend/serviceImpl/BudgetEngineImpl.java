@@ -96,12 +96,39 @@ public class BudgetEngineImpl implements BudgetEngine {
                 hotelCount++;
             }
         }
+        CityConsumption consumption = consumptionMapper.selectOne(
+                new LambdaQueryWrapper<CityConsumption>().eq(CityConsumption::getCity, main.getCity()));
+        BigDecimal mealPrice = consumption != null && consumption.getMealPrice() != null
+                ? consumption.getMealPrice() : new BigDecimal("60.00");
+        BigDecimal hardCap = mealPrice.multiply(new BigDecimal("8"));
+        BigDecimal softCap = mealPrice.multiply(new BigDecimal("4"));
+        // 二次钳制：Agent 端可能未开启实时价/钳制，展示总价仍需抑制离谱餐饮估值
+        BigDecimal mealClamped = BigDecimal.ZERO;
+        for (ItineraryItem item : items) {
+            if (!"food".equals(item.getItemType())) {
+                continue;
+            }
+            BigDecimal unit = item.getCost();
+            if (unit == null || isZeroCostFor("food", unit)) {
+                unit = poiUnitCost(item, main.getCity());
+            }
+            if (unit == null) {
+                continue;
+            }
+            if (unit.compareTo(hardCap) > 0) {
+                unit = softCap;
+            } else if (unit.compareTo(softCap) > 0) {
+                unit = softCap.multiply(new BigDecimal("0.75"));
+            }
+            mealClamped = mealClamped.add(unit);
+        }
+        if (mealClamped.compareTo(BigDecimal.ZERO) > 0) {
+            meal = mealClamped;
+        }
         ticket = ticket.multiply(BigDecimal.valueOf(persons));
         meal = meal.multiply(BigDecimal.valueOf(persons));
         // 酒店已逐晚按所选房型容量计算房间数，不再统一假定每间只能住 2 人。
 
-        CityConsumption consumption = consumptionMapper.selectOne(
-                new LambdaQueryWrapper<CityConsumption>().eq(CityConsumption::getCity, main.getCity()));
         BigDecimal transportPerDay = DEFAULT_TRANSPORT_PER_DAY;
         if (consumption != null && consumption.getTransportPrice() != null) {
             transportPerDay = consumption.getTransportPrice();

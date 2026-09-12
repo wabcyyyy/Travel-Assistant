@@ -57,6 +57,8 @@ public class ItineraryItem {
     private String reviewRequirement;
     private String factEvidenceJson;
     private String intro;
+    /** 叙事理由（M3-③）：来自生成契约 why_this（attraction 必填，≤120 字）。 */
+    private String whyNote;
     private Integer sortNo;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

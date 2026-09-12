@@ -51,12 +51,25 @@ public class AgentGenerateResponse {
         private Integer dayNo;
         private String note;
         private String theme;
+        /** 整趟主题标题（M3-③ 契约）：仅 day_no=1 的 generate-day 响应携带，≤40 字。 */
+        private String tripTheme;
+        /** 整趟主题的备选日方案（M3-③ 契约）：仅 day_no=1 携带，随 metadataJson 落库。 */
+        private List<DayOption> dayOptions;
         private Map<String, Object> miniRoute;
         private List<Map<String, Object>> backupPlan;
         private List<Map<String, Object>> photoSpots;
         private List<String> practicalNotes;
         private List<Item> items;
         private List<Suggestion> suggestions;
+    }
+
+    /** 备选日方案（M3-③ 契约）：wire 键 label/summary/tradeoff；items 为 Python 侧可选回显，反序列化忽略。 */
+    @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class DayOption {
+        private String label;
+        private String summary;
+        private String tradeoff;
     }
 
     @Data
@@ -74,6 +87,8 @@ public class AgentGenerateResponse {
         private BigDecimal cost;
         private String tag;
         private String remark;
+        /** 叙事理由（M3-③ 契约）：attraction 必填，≤120 字，落库到 itinerary_item.why_note。 */
+        private String whyThis;
         private String openTime;
         private String image;
         private String source;

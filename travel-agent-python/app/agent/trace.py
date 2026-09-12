@@ -146,6 +146,18 @@ def current_span_id() -> str | None:
     return _active_span.get()
 
 
+def current_run_id() -> str | None:
+    """当前 trace 上下文的 run_id；无上下文返回 None。
+
+    供流式事件发布（event_publisher）把 Redis 进度事件与本次 Agent run
+    关联：run_id 随事件 data（key=runId）下发，实现「事件 ↔ 行程 ↔ 轨迹」
+    三向对账；没有 trace 上下文（如独立进程调用研究链路）时返回 None，
+    发布层自动退化为不带 runId 的旧形态。
+    """
+    recorder = _active_recorder.get()
+    return recorder.run_id if recorder is not None else None
+
+
 @contextmanager
 def registry_tool_call(tool_call_id: str) -> Iterator[None]:
     """标记 Registry 正在执行 handler，收口其内部旧式 tool 轨迹。"""

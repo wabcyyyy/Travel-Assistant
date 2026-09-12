@@ -20,9 +20,10 @@ HTTP 契约不变。测试可 monkeypatch ``day_workflow._generate_day_once``
 from __future__ import annotations
 
 import logging
-from typing import Any, TypedDict
+from typing import Any
 
 from langgraph.graph import END, StateGraph
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.agent.generation_core import MAX_DAY_ATTEMPTS
 from app.agent.reflect import build_feedback, validate_plans
@@ -35,41 +36,68 @@ MODE_DAY = "day"
 MODE_TRIP = "trip"
 
 
-class UnifiedAgentState(TypedDict, total=False):
-    """day / trip 共用状态；未用到的字段保持默认即可。"""
+class UnifiedAgentState(BaseModel):
+    """day / trip 共用状态；未用到的字段保持默认即可。
 
-    mode: str
+    M0：由 TypedDict(total=False) 改为 Pydantic BaseModel（同名字段、全字段带默认值），
+    LangGraph 以模型实例把状态传给节点；节点代码仍是 dict 风格访问
+    （``state.get(...)`` / ``state["..."]``），由下方兼容访问器承接，节点零改动。
+
+    - extra="forbid"：节点返回未知键时响亮失败（保持 TypedDict 时代 LangGraph
+      对非法更新键的报错语义，防止静默丢字段）；
+    - 兼容访问器：get / __getitem__ / __contains__ 让节点无需感知模型与 dict 的差异；
+    - dict 入口不变：``unified_agent_graph.invoke(empty_*_state(req))`` 仍传 dict，
+      LangGraph 自行 coerce 成模型实例；节点返回部分更新 dict 的约定也不变。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: str = "trip"
 
     # ---- day ----
-    day_request: GenerateDayRequest
-    plan: DailyPlan | None
-    source: str
-    force_fallback: bool
+    day_request: GenerateDayRequest | None = None
+    plan: DailyPlan | None = None
+    source: str = ""
+    force_fallback: bool = False
 
     # ---- trip（与 workflow.AgentState 对齐）----
-    request: GenerateRequest
-    requirements: dict
-    candidates: list[dict]
-    foods: list[dict]
-    hotels: list[dict]
-    consumption: dict | None
-    daily_plans: list[dict]
-    budget_estimate: dict
-    raw_suggestions: list[dict]
-    result: GenerateResponse
-    fix_count: int
-    degraded_reason: str | None
-    schedule_report: dict
-    critic_report: dict
-    research_report: dict
-    refill_count: int
+    request: GenerateRequest | None = None
+    requirements: dict = Field(default_factory=dict)
+    candidates: list[dict] = Field(default_factory=list)
+    foods: list[dict] = Field(default_factory=list)
+    hotels: list[dict] = Field(default_factory=list)
+    consumption: dict | None = None
+    daily_plans: list[dict] = Field(default_factory=list)
+    budget_estimate: dict = Field(default_factory=dict)
+    raw_suggestions: list[dict] = Field(default_factory=list)
+    result: GenerateResponse | None = None
+    fix_count: int = 0
+    degraded_reason: str | None = None
+    schedule_report: dict = Field(default_factory=dict)
+    critic_report: dict = Field(default_factory=dict)
+    research_report: dict = Field(default_factory=dict)
+    refill_count: int = 0
 
     # ---- shared ----
-    attempts: int
-    error: str | None
-    feedback: str
-    validation_issues: list[str]
-    validation_log: list[str]
+    attempts: int = 0
+    error: str | None = None
+    feedback: str = ""
+    validation_issues: list[str] = Field(default_factory=list)
+    validation_log: list[str] = Field(default_factory=list)
+
+    # ---- 兼容访问器：LangGraph 传模型实例，节点代码按 dict 风格访问 ----
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return getattr(self, key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        try:
+            return getattr(self, key)
+        except AttributeError as exc:
+            raise KeyError(key) from exc
+
+    def __contains__(self, key: str) -> bool:
+        return hasattr(self, key)
 
 
 def _is_day(state: UnifiedAgentState) -> bool:
@@ -126,6 +154,8 @@ def day_generate(state: UnifiedAgentState) -> dict:
 
 @traced("node", "day.reflect")
 def day_reflect(state: UnifiedAgentState) -> dict:
+    from app.common.config import settings as _settings
+
     plan = state.get("plan")
     if plan is None:
         return {
@@ -134,7 +164,15 @@ def day_reflect(state: UnifiedAgentState) -> dict:
             "feedback": state.get("error") or "单日行程生成失败，请重新生成",
         }
     raw = plan.model_dump() if hasattr(plan, "model_dump") else plan
-    issues, log = validate_plans([raw])
+    request = state.get("day_request")
+    budget = getattr(request, "budget", None) if request is not None else None
+    persons = getattr(request, "persons", 1) or 1 if request is not None else 1
+    issues, log = validate_plans(
+        [raw],
+        budget=budget if _settings.budget_hard_constraint else None,
+        persons=persons,
+        budget_overage_ratio=_settings.budget_overage_ratio,
+    )
     record_event("decision", "day.reflect_result", metadata={
         "issue_count": len(issues), "needs_fix": bool(issues),
     })

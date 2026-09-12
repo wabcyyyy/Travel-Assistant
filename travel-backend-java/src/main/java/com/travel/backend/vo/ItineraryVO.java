@@ -25,6 +25,8 @@ public class ItineraryVO {
     private String hotelTier;
     private Integer status;
     private String planNote;
+    /** 整趟主题标题（M3-③）：来自 itinerary_main.trip_theme，版本快照随 VO 自动携带。 */
+    private String tripTheme;
     private String destinationStatus;
     private String qualityStatus;
     private String qualityRuleVersion;
@@ -48,6 +50,7 @@ public class ItineraryVO {
         private List<Map<String, Object>> backupPlan;
         private List<Map<String, Object>> photoSpots;
         private List<String> practicalNotes;
+        private List<Map<String, Object>> dayOptions;
         private List<TripItemVO> items;
     }
 
@@ -66,6 +69,8 @@ public class ItineraryVO {
         private BigDecimal cost;
         private String tag;
         private String remark;
+        /** 叙事理由（M3-③）：来自 itinerary_item.why_note（契约 why_this）。 */
+        private String whyThis;
         private String openTime;
         private String image;
         private String imageUrl;

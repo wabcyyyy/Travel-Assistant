@@ -19,5 +19,7 @@ public class ItinerarySummaryVO {
     private BigDecimal budget;
     private BigDecimal totalAmount;
     private Integer status;
+    /** 整趟主题标题（M3 叙事契约）；列表卡片主题摘要行数据源，空则前端渲染 muted 文案 */
+    private String tripTheme;
     private LocalDateTime createdAt;
 }

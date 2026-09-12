@@ -183,7 +183,7 @@ npm run dev            # http://localhost:5173
 | 局限 | 说明 |
 | --- | --- |
 | 非生产系统 | 单机演示；无集群、无真正多实例限流/会话吊销集群方案 |
-| 酒店预算 | 默认 `LIVE_PRICE_SEARCH=false`，走「知识库基准价 × 季节系数」估算，**不是 OTA 实时成交价** |
+| 酒店预算 | 默认 `LIVE_PRICE_SEARCH=true`（联网实时价搜索开启，受 `MAX_LIVE_QUERIES` 约束）；关闭后走「知识库基准价 × 季节系数」估算。两条路径都**不是 OTA 实时成交价** |
 | 开放模式行程 | LLM 自选点标注「待确认/参考估算」，Reflection 校验时间与路线可达，**不保证店铺仍营业** |
 | 双后端 | Vue→Java→Python：Java 负责鉴权/状态机/异步/PDF，Agent 负责智能；是有意拆分，非「必须生产形态」 |
 | 生成编排 | **已合并为一张图** `trip_graph.unified_agent_graph`（mode=day/trip）；事实层 `day_stream`；口径 `generation_core`；`workflow`/`day_workflow` 为门面 |

@@ -39,7 +39,9 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import * as echarts from 'echarts'
+// echarts 按需注册（pie + tooltip/legend），禁全量引入，见 charts/index.ts 约定
+import echarts from '../charts'
+import type { EChartsType } from '../charts'
 
 import type { BudgetRow, DayPlan } from '../types/itinerary'
 
@@ -60,7 +62,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 }
 
 const chartRef = ref<HTMLDivElement>()
-let chart: echarts.ECharts | null = null
+let chart: EChartsType | null = null
 
 const overBudget = computed(() => {
   if (!props.budgetLimit) return false

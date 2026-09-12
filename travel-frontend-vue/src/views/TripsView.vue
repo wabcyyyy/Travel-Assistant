@@ -38,7 +38,7 @@
         @keyup.space.prevent="goDetail(row)"
       >
         <div class="trip-cover">
-          <img :src="coverFor(row)" alt="旅行封面" loading="lazy" />
+          <img :src="coverForCity(row.city || row.title || '')" alt="旅行封面" loading="lazy" />
           <div class="lp-cover-fade" aria-hidden="true"></div>
           <el-tag
             class="cover-tag"
@@ -55,6 +55,11 @@
             <span class="dest-meta">{{ row.days }} 天 / {{ row.persons }} 人</span>
           </div>
           <div class="trip-dates">{{ row.startDate || '—' }} ~ {{ row.endDate || '—' }}</div>
+          <!-- 主题摘要行（§5.5）：trip_theme 衬线小字；字段不存在时回退 muted 文案而非空槽 -->
+          <div class="trip-theme">
+            <span v-if="row.tripTheme" class="theme-text">{{ row.tripTheme }}</span>
+            <span v-else class="theme-empty">未命名行程</span>
+          </div>
           <div class="trip-foot">
             <span class="trip-price">￥{{ row.totalAmount }}</span>
             <span class="trip-actions" @click.stop>
@@ -77,39 +82,12 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 
 import { deleteItinerary, getItineraryList } from '../api'
 import type { ItinerarySummary } from '../types/itinerary'
 
-import coverBeijing from '../assets/img/cover-beijing.jpg'
-import coverChengdu from '../assets/img/cover-chengdu.jpg'
-import coverChongqing from '../assets/img/cover-chongqing.jpg'
-import coverHangzhou from '../assets/img/cover-hangzhou.jpg'
-import coverShanghai from '../assets/img/cover-shanghai.jpg'
-import coverXian from '../assets/img/cover-xian.jpg'
-import coverFallback from '../assets/img/hero-handbook.jpg'
-
-/** 城市 → 目的地封面；未命中回落手册风通用图 */
-const CITY_COVERS: Record<string, string> = {
-  杭州: coverHangzhou,
-  成都: coverChengdu,
-  西安: coverXian,
-  重庆: coverChongqing,
-  北京: coverBeijing,
-  上海: coverShanghai,
-}
-
-function coverFor(row: ItinerarySummary) {
-  const city = (row.city || row.title || '').trim()
-  if (CITY_COVERS[city]) return CITY_COVERS[city]
-  // 支持「杭州市」「成都之旅」等带后缀文案
-  for (const key of Object.keys(CITY_COVERS)) {
-    if (city.includes(key)) return CITY_COVERS[key]
-  }
-  return coverFallback
-}
+import { coverForCity } from '../constants/covers'
 
 const $router = useRouter()
 const list = ref<ItinerarySummary[]>([])
@@ -349,6 +327,36 @@ onMounted(load)
   font-size: 13px;
   color: var(--lp-muted);
   font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 主题摘要行（§5.5）：trip_theme 衬线小字，--lp-theme-accent 渐变衬字 ---------- */
+.trip-theme {
+  display: flex;
+  align-items: baseline;
+  min-height: 18px;
+}
+
+.theme-text {
+  font-family: var(--lp-font-display);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* 渐变文字：--lp-theme-accent（青绿→蓝绿）；不支持时回落正文强调色 */
+  color: var(--lp-accent-hover);
+  background: var(--lp-theme-accent);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* 无主题：muted 文案占位（文案而非空槽） */
+.theme-empty {
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--lp-muted);
 }
 
 .trip-foot {

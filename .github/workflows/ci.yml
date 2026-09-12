@@ -21,7 +21,8 @@ jobs:
           python -m pip install -U pip
           pip install fastapi==0.111.0 "uvicorn[standard]==0.30.1" pydantic==2.8.2 \
             httpx==0.27.0 "mcp>=1.10,<2" python-dotenv==1.0.1 langgraph==0.2.44 \
-            langchain-core==0.3.15 pymysql==1.2.0 chromadb==1.5.9 pytest==8.2.2
+            langchain-core==0.3.15 pymysql==1.2.0 chromadb==1.5.9 pytest==8.2.2 \
+            redis==5.3.1
       - name: Offline unit tests
         env:
           # 单测不依赖真实密钥
@@ -45,7 +46,8 @@ jobs:
           java-version: '17'
           cache: maven
       - name: Unit tests
-        run: mvn -B "-Dtest=DistributedStateServiceTest,SimpleCircuitBreakerTest,TokenRevocationServiceTest,BudgetEngineImplTest,ItineraryStatusRecoveryTest,ItineraryDayPersistenceServiceTest,ItineraryAsyncPlannerTest" test
+        # 全量跑（106 用例均 mock、不依赖外部服务）；避免 -Dtest 白名单漏掉新增测试类
+        run: mvn -B test
 
   secret-scan:
     runs-on: ubuntu-latest

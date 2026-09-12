@@ -73,6 +73,39 @@ DESTINATION_CITIES = {
 }
 
 
+# 高德仅覆盖中国境内；海外目的地若继续用高德检索，会把「岚山/怀石/京都」
+# 等关键词误匹配成国内同名 POI（京都行程混入岚山收费站、武夷山野菜等）。
+OVERSEAS_CITIES = {
+    # 日本
+    "东京", "東京", "京都", "大阪", "冲绳", "沖縄", "北海道", "札幌", "奈良",
+    "神户", "神戶", "福冈", "福岡", "名古屋", "横滨", "横浜", "镰仓", "鎌倉",
+    "富士山", "箱根", "广岛", "広島", "仙台", "那霸",
+    # 韩国
+    "首尔", "首爾", "釜山", "济州", "濟州",
+    # 东南亚
+    "曼谷", "清迈", "清萊", "普吉", "新加坡", "吉隆坡", "河内", "胡志明",
+    "马尼拉", "雅加达", "巴厘岛", "峇里島",
+    # 欧美澳
+    "巴黎", "伦敦", "倫敦", "纽约", "洛杉磯", "洛杉矶", "旧金山", "舊金山",
+    "悉尼", "墨尔本", "墨爾本", "罗马", "羅馬", "米兰", "米蘭", "巴塞罗那",
+    "柏林", "阿姆斯特丹", "迪拜", "杜拜", "莫斯科", "多伦多", "溫哥华", "温哥华",
+}
+
+
+def is_overseas_destination(city: str) -> bool:
+    """是否海外目的地：高德不可用，禁止用其结果落坐标/灌候选。"""
+    c = str(city or "").strip()
+    if not c:
+        return False
+    if c in OVERSEAS_CITIES:
+        return True
+    # 「日本东京」「京都府」等带国家/后缀的写法
+    for name in OVERSEAS_CITIES:
+        if name and name in c:
+            return True
+    return False
+
+
 def destination_cities(city: str) -> list[str]:
     return DESTINATION_CITIES.get(city, [city])
 
@@ -137,20 +170,23 @@ def _merge_pois(remote: list[dict], local: list[dict]) -> list[dict]:
 def search_amap_poi(city: str, name: str, *, category: str | None = None) -> list[dict]:
     """查询 POI，优先官方 MCP；未启用/失败时切 Google 兜底。
 
-    Provider chain（高德 → Google）：高德仅覆盖中国境内，国外目的地高德必空，
-    配置 GOOGLE_MAPS_API_KEY 后自动切 Google Places 落真实坐标；未配置则保持
-    原空结果语义（国外裸跑降级）。
+    Provider chain（高德 → Google）：高德仅覆盖中国境内，国外目的地**禁止**
+    走高德——否则「京都/岚山/怀石」会被匹配成国内同名垃圾 POI。
+    海外直接走 Google Places；未配置 key 则返回空，由联网补池/模型知识承担。
     """
-    if amap_mcp.enabled():
-        payload = amap_mcp.search_poi(name[:12], city=city)
-        hits = amap_mcp.normalize_pois(payload, category=category)
+    overseas = is_overseas_destination(city)
+    if not overseas:
+        if amap_mcp.enabled():
+            payload = amap_mcp.search_poi(name[:12], city=city)
+            hits = amap_mcp.normalize_pois(payload, category=category)
+            hits = _filter_hits_for_city(hits, city)
+            if hits:
+                return hits
+        hits = _search_amap_rest(name, city, category=category)
+        hits = _filter_hits_for_city(hits, city)
         if hits:
             return hits
-    hits = _search_amap_rest(name, city, category=category)
-    if hits:
-        return hits
-    # 国外目的地兜底：高德（中国）无结果 → Google Places（需 key+绑卡）→
-    # 可选 OSM Nominatim（默认关闭：国内网络不稳，会拖垮 Deadline）。
+    # 国外目的地：跳过高德，直接 Google → 可选 Nominatim
     hits = google_maps.search_pois(name, city, category=category)
     if hits:
         return hits
@@ -159,9 +195,33 @@ def search_amap_poi(city: str, name: str, *, category: str | None = None) -> lis
     return []
 
 
+def _filter_hits_for_city(hits: list[dict], city: str) -> list[dict]:
+    """国内检索二次过滤：地址应包含目的地城市名，避免 citylimit 失败时串城。"""
+    if not hits:
+        return hits
+    c = str(city or "").strip()
+    if not c or len(c) < 2:
+        return hits
+    # 省级名展开后地址校验意义有限，只做轻过滤
+    kept = []
+    for h in hits:
+        addr = str(h.get("address") or "")
+        name = str(h.get("name") or "")
+        # 无地址信息时保留（由后续名称相似度门槛处理）
+        if not addr:
+            kept.append(h)
+            continue
+        if c in addr or c in name or any(p in addr for p in destination_cities(c)):
+            kept.append(h)
+        elif any(province_hint in addr for province_hint in (c,)):
+            kept.append(h)
+        # 明确是其它城市的地址则丢弃
+    return kept if kept else []
+
+
 def _search_amap_rest(name: str, city: str, *, category: str | None = None) -> list[dict]:
-    """旧高德 Web API 兼容降级，仅在 MCP 未配置/失败时使用。"""
-    if not settings.amap_web_key:
+    """旧高德 Web API 兼容降级，仅在 MCP 未配置/失败时使用。海外直接返回空。"""
+    if not settings.amap_web_key or is_overseas_destination(city):
         return []
     try:
         resp = httpx.get(

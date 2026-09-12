@@ -1,7 +1,7 @@
 from app.agent import day_stream
 from pydantic import ValidationError
 
-from app.schemas.trip import GenerateDayRequest, GenerateRequest
+from app.schemas.trip import BackupRule, GenerateDayRequest, GenerateRequest, PhotoSpot
 
 
 def test_generate_request_rejects_more_than_one_week():
@@ -48,8 +48,10 @@ def test_open_city_can_generate_after_workflow_enters_fallback(monkeypatch):
     assert [item.poi_name for item in plan.items] == ["拙政园"]
     assert plan.theme == "园林慢游"
     assert plan.mini_route == {"mode": "walking"}
-    assert plan.backup_plan == [{"name": "狮子林"}]
-    assert plan.photo_spots == [{"name": "拙政园入口"}]
+    # M3-① 叙事层：backup_plan/photo_spots 升级为结构化子模型，
+    # 旧 dict（{"name": ...}）经 BackupRule 前向兼容归一（缺 key 补空串）。
+    assert plan.backup_plan == [BackupRule.model_validate({"name": "狮子林"})]
+    assert plan.photo_spots == [PhotoSpot(name="拙政园入口")]
     assert plan.practical_notes == ["提前预约"]
     assert plan.items[0].source == "llm.open_day"
     assert plan.items[0].review_requirement == "before_departure"

@@ -120,7 +120,7 @@ onMounted(load)
 }
 
 .run-id {
-  font-family: monospace;
+  font-family: var(--lp-font-data);
   font-size: 12px;
 }
 

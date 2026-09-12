@@ -5,8 +5,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.travel.backend.common.BizException;
 import com.travel.backend.common.Result;
 import com.travel.backend.common.SimpleCircuitBreaker;
+import com.travel.backend.dto.AgentButlerNoteRequest;
+import com.travel.backend.dto.AgentButlerNoteResponse;
+import com.travel.backend.dto.AgentCityGuideRequest;
+import com.travel.backend.dto.AgentCityGuideResponse;
+import com.travel.backend.dto.AgentClarifyRequest;
+import com.travel.backend.dto.AgentClarifyResponse;
 import com.travel.backend.dto.AgentGenerateRequest;
 import com.travel.backend.dto.AgentGenerateResponse;
+import com.travel.backend.dto.AgentPoiIntrosRequest;
+import com.travel.backend.dto.AgentPoiIntrosResponse;
+import com.travel.backend.dto.AgentPoiNearbyRequest;
+import com.travel.backend.dto.AgentPoiNearbyResponse;
 import com.travel.backend.service.AgentService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,15 +93,17 @@ public class AgentServiceImpl implements AgentService {
     /**
      * 意图确认：从用户自然语言中抽取槽位（city/days/persons 等），返回缺失字段和追问。
      *
-     * @param message 用户最新输入
-     * @param slots   已有槽位（前端/Java 逐轮累积）
-     * @return 包含 slots/missing/question/ready 的 JSON 节点
+     * @param request 包含 message 和 slots（已有槽位，前端/Java 逐轮累积）
+     * @return 包含 slots/missing/question/ready 的强类型响应
      */
     @Override
-    public JsonNode clarify(String message, Map<String, Object> slots) {
-        Map<String, Object> body = Map.of("message", message, "slots", slots == null ? Map.of() : slots);
-        JsonNode node = postForNode("/api/agent/v1/clarify", body, "意图解析服务暂不可用");
-        return node;
+    public AgentClarifyResponse clarify(AgentClarifyRequest request) {
+        // 与改造前一致：slots 缺省时发空对象，Python 侧 dict 字段不接受 null
+        if (request.getSlots() == null) {
+            request.setSlots(Map.of());
+        }
+        JsonNode node = postForNode("/api/agent/v1/clarify", request, "意图解析服务暂不可用");
+        return objectMapper.convertValue(node, AgentClarifyResponse.class);
     }
 
     /**
@@ -123,42 +135,46 @@ public class AgentServiceImpl implements AgentService {
     /**
      * 生成 AI 管家讲解：基于最终行程生成整体规划思路的自然语言讲解。
      *
-     * @param payload 包含 city/days/persons/preferences/plans 等
-     * @return 包含 note 字段的 JSON 节点
+     * @param request 包含 city/days/persons/preferences/plans 等
+     * @return 包含 note 字段的强类型响应
      */
-    public JsonNode butlerNote(Map<String, Object> payload) {
-        return postForNode("/api/agent/v1/butler-note", payload, "管家讲解生成失败");
+    public AgentButlerNoteResponse butlerNote(AgentButlerNoteRequest request) {
+        JsonNode node = postForNode("/api/agent/v1/butler-note", request, "管家讲解生成失败");
+        return objectMapper.convertValue(node, AgentButlerNoteResponse.class);
     }
 
     /**
      * 批量生成景点详细介绍：为行程中的每个景点生成一段介绍文本。
      *
-     * @param payload 包含 city 和 names（景点名称列表）
-     * @return 包含 intros（景点名 → 介绍文本）的 JSON 节点
+     * @param request 包含 city 和 names（景点名称列表）
+     * @return 包含 intros（景点名 → 介绍文本）的强类型响应
      */
-    public JsonNode poiIntros(Map<String, Object> payload) {
-        return postForNode("/api/agent/v1/poi-intros", payload, "景点介绍生成失败");
+    public AgentPoiIntrosResponse poiIntros(AgentPoiIntrosRequest request) {
+        JsonNode node = postForNode("/api/agent/v1/poi-intros", request, "景点介绍生成失败");
+        return objectMapper.convertValue(node, AgentPoiIntrosResponse.class);
     }
 
     /**
      * 同城权威 POI 近邻：按名称解析坐标或直接传坐标，返回知识库中的真实近邻。
      *
-     * @param payload 包含 city，及 name 或 latitude/longitude，可选 limit/radius_m/category
-     * @return 包含 items（近邻 POI 列表，含 _distance_m）的 JSON 节点
+     * @param request 包含 city，及 name 或 latitude/longitude，可选 limit/radiusM/category
+     * @return 包含 items（近邻 POI 列表，距离字段映射自 wire 键 _distance_m）的强类型响应
      */
     @Override
-    public JsonNode poiNearby(Map<String, Object> payload) {
-        return postForNode("/api/agent/v1/poi-nearby", payload, "附近推荐服务暂不可用");
+    public AgentPoiNearbyResponse poiNearby(AgentPoiNearbyRequest request) {
+        JsonNode node = postForNode("/api/agent/v1/poi-nearby", request, "附近推荐服务暂不可用");
+        return objectMapper.convertValue(node, AgentPoiNearbyResponse.class);
     }
 
     /**
      * 城市引导对话：用户不确定去哪时，AI 根据偏好推荐城市。
      *
-     * @param payload 包含 input（用户输入）和 history（对话历史）
-     * @return 包含 kind/city/message/suggestions 的 JSON 节点
+     * @param request 包含 input（用户输入）、supported（支持城市）和 history（对话历史）
+     * @return 包含 kind/city/message/suggestions 的强类型响应
      */
-    public JsonNode cityGuide(Map<String, Object> payload) {
-        return postForNode("/api/agent/v1/city-guide", payload, "城市引导服务暂不可用");
+    public AgentCityGuideResponse cityGuide(AgentCityGuideRequest request) {
+        JsonNode node = postForNode("/api/agent/v1/city-guide", request, "城市引导服务暂不可用");
+        return objectMapper.convertValue(node, AgentCityGuideResponse.class);
     }
 
     /**
@@ -169,8 +185,22 @@ public class AgentServiceImpl implements AgentService {
      * @return 包含 candidates/foods/hotels/consumption 的上下文 JSON
      */
     public JsonNode planContext(String city, List<String> preferences) {
-        Map<String, Object> body = Map.of("city", city,
-                "preferences", preferences == null ? List.of() : preferences);
+        // 旧签名保留委托（Recovery 等既有调用者兼容）：不传 itineraryId 即不参与事件协议
+        return planContext(city, preferences, null);
+    }
+
+    /**
+     * 构建行程上下文（带 itineraryId）：itinerary_id 随 body 透传给 Python，
+     * 令其能向 gen:events:{itineraryId} 发布研究阶段事件（M2-③ AD2 事件协议）。
+     */
+    public JsonNode planContext(String city, List<String> preferences, Long itineraryId) {
+        // Map.of 不接受 null 值且无法放条件键，改用 HashMap
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("city", city);
+        body.put("preferences", preferences == null ? List.of() : preferences);
+        if (itineraryId != null) {
+            body.put("itinerary_id", itineraryId);
+        }
         return postForNode("/api/agent/v1/plan-context", body, "行程上下文构建失败");
     }
 

@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -45,4 +46,8 @@ public class GenerateRequest {
 
     /** 客户额外要求（自然语言，生成时并入 Agent 规划提示） */
     private String requirements;
+
+    /** 旅行意图（用户一句话，最高优先级生成信号；为空时服务端以 requirements 兜底） */
+    @Size(max = 800, message = "旅行意图最多 800 字")
+    private String intent;
 }

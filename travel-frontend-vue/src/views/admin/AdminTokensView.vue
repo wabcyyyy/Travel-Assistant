@@ -45,16 +45,16 @@
             <el-table-column label="场景" min-width="100">
               <template #default="{ row }">{{ SCENE_LABELS[row.scene] ?? row.scene }}</template>
             </el-table-column>
-            <el-table-column prop="calls" label="调用" width="70" />
-            <el-table-column label="Token" width="110">
+            <el-table-column prop="calls" label="调用" width="70" class-name="num" />
+            <el-table-column label="Token" width="110" class-name="num">
               <template #default="{ row }">{{ fmt(row.prompt_tokens + row.completion_tokens) }}</template>
             </el-table-column>
             <el-table-column label="占比" min-width="130">
               <template #default="{ row }">
-                <el-progress :percentage="percentOf(row)" :stroke-width="8" :show-text="false" />
+                <el-progress :percentage="percentOf(row as CallRow)" :stroke-width="8" :show-text="false" />
               </template>
             </el-table-column>
-            <el-table-column label="平均耗时" width="90">
+            <el-table-column label="平均耗时" width="90" class-name="num">
               <template #default="{ row }">{{ row.avg_duration_ms }} ms</template>
             </el-table-column>
           </el-table>
@@ -65,13 +65,13 @@
           <template #header><span class="card-title">按模型</span></template>
           <el-table :data="usage?.by_model ?? []" size="small" empty-text="暂无数据">
             <el-table-column prop="model" label="模型" min-width="140" show-overflow-tooltip />
-            <el-table-column prop="calls" label="调用" width="70" />
-            <el-table-column prop="prompt_tokens" label="输入" width="90" />
-            <el-table-column prop="completion_tokens" label="输出" width="90" />
-            <el-table-column label="Token" width="100">
+            <el-table-column prop="calls" label="调用" width="70" class-name="num" />
+            <el-table-column prop="prompt_tokens" label="输入" width="90" class-name="num" />
+            <el-table-column prop="completion_tokens" label="输出" width="90" class-name="num" />
+            <el-table-column label="Token" width="100" class-name="num">
               <template #default="{ row }">{{ fmt(row.prompt_tokens + row.completion_tokens) }}</template>
             </el-table-column>
-            <el-table-column label="平均耗时" width="90">
+            <el-table-column label="平均耗时" width="90" class-name="num">
               <template #default="{ row }">{{ row.avg_duration_ms }} ms</template>
             </el-table-column>
           </el-table>
@@ -100,12 +100,12 @@
           <template #default="{ row }">{{ SCENE_LABELS[row.scene] ?? row.scene }}</template>
         </el-table-column>
         <el-table-column prop="model" label="模型" min-width="140" show-overflow-tooltip />
-        <el-table-column prop="prompt_tokens" label="输入" width="80" />
-        <el-table-column prop="completion_tokens" label="输出" width="80" />
-        <el-table-column label="总 Token" width="90">
+        <el-table-column prop="prompt_tokens" label="输入" width="80" class-name="num" />
+        <el-table-column prop="completion_tokens" label="输出" width="80" class-name="num" />
+        <el-table-column label="总 Token" width="90" class-name="num">
           <template #default="{ row }">{{ row.prompt_tokens + row.completion_tokens }}</template>
         </el-table-column>
-        <el-table-column label="耗时" width="90">
+        <el-table-column label="耗时" width="90" class-name="num">
           <template #default="{ row }">{{ row.duration_ms }} ms</template>
         </el-table-column>
         <el-table-column label="状态" width="120">
@@ -123,7 +123,9 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import * as echarts from 'echarts'
+// echarts 按需注册（bar/line + tooltip/legend/grid），禁全量引入，见 charts/index.ts 约定
+import echarts from '../../charts'
+import type { EChartsType } from '../../charts'
 import { getLlmUsage, SCENE_LABELS, type LlmUsage } from '../../api'
 
 const range = ref('24h')
@@ -132,7 +134,7 @@ const loading = ref(false)
 const page = ref(1)
 const pageSize = 10
 const chartEl = ref<HTMLDivElement>()
-let chart: echarts.ECharts | null = null
+let chart: EChartsType | null = null
 
 const cards = computed(() => {
   const s = usage.value?.summary
@@ -152,6 +154,12 @@ const cards = computed(() => {
 
 const callRows = computed(() => usage.value?.calls?.records ?? [])
 
+/** 调用明细行中占比计算所需字段（EP 按需后 el-table 行类型为 DefaultRow，模板内断言） */
+interface CallRow {
+  prompt_tokens: number
+  completion_tokens: number
+}
+
 function fmt(value?: number) {
   return value == null ? '-' : Number(value).toLocaleString()
 }
@@ -168,7 +176,7 @@ function fmtTime(ts: number) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-function percentOf(row: { prompt_tokens: number; completion_tokens: number }) {
+function percentOf(row: CallRow) {
   const groups = usage.value?.by_scene ?? []
   const max = Math.max(...groups.map((g) => g.prompt_tokens + g.completion_tokens), 1)
   return Math.round(((row.prompt_tokens + row.completion_tokens) / max) * 1000) / 10

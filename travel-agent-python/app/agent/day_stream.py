@@ -21,17 +21,27 @@ from app.agent.generators import (
     _budget_clause,
     _budget_tier,
     _has_valid_coords,
+    _intent_clause,
     _is_authoritative_source,
     _requirements_clause,
     build_suggestions,
+    clamp_meal_cost,
+    fill_suggestion_gaps,
     _pick_hotels,
     ReferencePool,
 )
 from app.common.config import settings
+from app.common.event_publisher import (
+    publish_degraded,
+    publish_research_done,
+    publish_research_start,
+)
 from app.common.llm_client import get_llm_client
 from app.common.season import season_factor, season_label
 from app.agent.research import run_research_context
-from app.agent.trace import traced
+from app.agent.trace import current_run_id, traced
+from app.agent import pricing as live_pricing
+from app.prompts.open_generation import open_day_system_prompt, open_trip_system_prompt
 from app.schemas.trip import (
     DailyPlan,
     FactEvidence,
@@ -50,14 +60,86 @@ DAY_ATTRACTION_CONTEXT_LIMIT = 16
 DAY_FOOD_CONTEXT_LIMIT = 6
 
 
-def run_plan_context(city: str, preferences: list[str]) -> dict:
+# 进度事件里的研究领域清单：与 Supervisor.decompose 派发的三域一致
+# （attraction/hotel/food），顺序沿用协议示例（attraction 在前）。
+_RESEARCH_EVENT_DOMAINS = ("attraction", "food", "hotel")
+
+# 开放模式生成温度：单日/多日共用同一值；真实 LLM 评测报告（tests/agent_eval/
+# llm_eval.py）头部引用本常量，保证"报告固定的 temperature"与真实调用同源。
+GENERATION_TEMPERATURE = 0.4
+
+
+def _research_event_stats(context: dict) -> tuple[int, bool, list[dict], str | None]:
+    """从研究上下文如实统计事件字段，供 research_done/degraded 事件使用。
+
+    真实来源（不编造）：run_research_context → synthesize 写入的
+    research_report.agents，即各域 EvidencePack.to_dict()——count 为该域
+    证据条数、degraded 为单域降级标志、gaps 为降级缺口描述；证据总量取
+    实际返回的 candidates/foods/hotels 三列表长度之和。研究报告缺失时
+    （如测试 stub）退回列表长度口径，且无法确认降级则按未降级处理。
+
+    返回 (evidence_count, degraded, domains, degraded_reason)。
+    """
+    candidates = context.get("candidates") or []
+    foods = context.get("foods") or []
+    hotels = context.get("hotels") or []
+    evidence_count = len(candidates) + len(foods) + len(hotels)
+    report = context.get("research_report")
+    agents = report.get("agents") if isinstance(report, dict) else None
+    agents = agents if isinstance(agents, dict) else {}
+    fallback_counts = {"attraction": len(candidates), "food": len(foods), "hotel": len(hotels)}
+    domains: list[dict] = []
+    degraded = False
+    gaps: list[str] = []
+    for domain in _RESEARCH_EVENT_DOMAINS:
+        info = agents.get(domain)
+        count = fallback_counts[domain]
+        if isinstance(info, dict):
+            try:
+                count = int(info.get("count", count))
+            except (TypeError, ValueError):
+                count = fallback_counts[domain]
+            if info.get("degraded"):
+                degraded = True
+            gaps.extend(str(g) for g in (info.get("gaps") or []) if g)
+        domains.append({"domain": domain, "count": count})
+    # 缺口描述可能很长，截断到前几条，避免单个事件塞爆 SSE 帧
+    reason = "；".join(gaps[:5]) if degraded else None
+    return evidence_count, degraded, domains, reason
+
+
+def run_plan_context(city: str, preferences: list[str],
+                     itinerary_id: int | None = None) -> dict:
     """构建单日生成上下文：Supervisor 并行派发三个研究 Agent 产出证据。
 
     与整段生成的 search 节点共用同一条研究链路（多 Agent 编排），
     返回形状保持 {candidates, foods, hotels, consumption} 不变。
+
+    itinerary_id 可选：携带时向 Redis 发布研究进度事件（research_start /
+    research_done / degraded），由 Java SSE 网关转发前端；事件是尽力而为
+    通知，缺失或 Redis 故障都不影响本函数返回。当前 trace 上下文的 run_id
+    （M5）会随事件 data（key=runId）下发并落轨迹，无 trace 上下文时退化为
+    旧形态。
     """
-    req = GenerateRequest(city=city, days=1, persons=1, preferences=preferences)
-    context = run_research_context(req)
+    # M5 三向关联：事件 ↔ 行程 ↔ 轨迹。run_id 在函数入口取一次，
+    # 保证同一轮研究的三类事件关联到同一条轨迹。
+    run_id = current_run_id()
+    publish_research_start(itinerary_id, list(_RESEARCH_EVENT_DOMAINS), run_id=run_id)
+    try:
+        req = GenerateRequest(city=city, days=1, persons=1, preferences=preferences)
+        context = run_research_context(req)
+    except Exception as exc:  # noqa: BLE001 - 研究整体失败也要先发降级事件
+        # 兜底口径：研究失败时 HTTP 层会转错误信封，由编排器决定重试
+        publish_degraded(itinerary_id, "research", f"研究失败：{exc}",
+                         "该日返回错误信封，等待编排器重试", run_id=run_id)
+        raise
+    evidence_count, degraded, domains, reason = _research_event_stats(context)
+    publish_research_done(itinerary_id, evidence_count, degraded, domains, run_id=run_id)
+    if degraded:
+        # 单域研究走了降级包（Supervisor 捕获域异常后不阻塞其它域）：
+        # research_done 已带 degraded 标志，这里补充 reason/fallback 细节
+        publish_degraded(itinerary_id, "research", reason or "部分研究域降级",
+                         "以现有证据继续生成", run_id=run_id)
     return {"candidates": context["candidates"], "foods": context["foods"],
             "hotels": context["hotels"], "consumption": context["consumption"]}
 
@@ -73,6 +155,118 @@ def _parse_date(s: str | None) -> date | None:
         return date.fromisoformat(s)
     except ValueError:
         return None
+
+
+# 叙事字段规模上限（M3-① 契约 v1.1.narrative）：与 open_generation 契约、
+# app/schemas/trip.py 的截断口径一一对应。LLM 偶尔无视条数/长度约束，
+# 在 _parse_json 之后做轻量清洗兜底——超限截断、类型非法降级为空，
+# 绝不让单条脏叙事炸掉整日行程（AD4 降级精神：骨架照常交付）。
+_NARRATIVE_THEME_MAX = 40
+_NARRATIVE_WHY_MAX = 120
+_PRACTICAL_NOTES_MAX = 4
+_PHOTO_SPOTS_MAX = 4
+_BACKUP_PLAN_MAX = 3
+_DAY_OPTIONS_MAX = 2
+
+
+def _sanitize_narrative(plan: dict) -> dict:
+    """对开放模式 LLM 输出（_parse_json 结果）做叙事字段轻量清洗。
+
+    规则（方案 §4.1.2）：
+    - theme/trip_theme 超长截 40 字；item.why_this 超长截 120 字
+      （非 attraction 的 why_this 同样保留，只截不删）；
+    - practical_notes 超 4 条裁 4、photo_spots 超 4 裁 4、backup_plan 超 3 裁 3、
+      day_options 超 2 裁 2；
+    - 缺省即空、非法类型降级为空，不抛错；
+    - 兼容 camelCase 键（模型不守契约时仍能清洗），统一写回 snake_case，
+      供装配层读取。
+    """
+    if not isinstance(plan, dict):
+        # 非法结构不在这里纠偏：保持原样交给既有结构校验抛错路径
+        return plan
+    cleaned = dict(plan)
+
+    theme = cleaned.get("theme")
+    cleaned["theme"] = theme[:_NARRATIVE_THEME_MAX] if isinstance(theme, str) else None
+
+    trip_theme = cleaned.get("trip_theme")
+    if trip_theme is None:
+        trip_theme = cleaned.get("tripTheme")
+    cleaned.pop("tripTheme", None)
+    if trip_theme is None:
+        cleaned["trip_theme"] = None
+    elif isinstance(trip_theme, str):
+        cleaned["trip_theme"] = trip_theme[:_NARRATIVE_THEME_MAX]
+    else:
+        # 非字符串降级为空串：叙事字段不允许让 TripItem/DailyPlan 校验失败
+        cleaned["trip_theme"] = ""
+
+    notes = cleaned.get("practical_notes")
+    if notes is None:
+        notes = cleaned.get("practicalNotes")
+    cleaned.pop("practicalNotes", None)
+    if isinstance(notes, list):
+        # 字符串原样保留，数值标量转字符串（模型偶尔输出数字提示），其余丢弃
+        cleaned["practical_notes"] = [
+            note if isinstance(note, str) else str(note)
+            for note in notes[:_PRACTICAL_NOTES_MAX]
+            if isinstance(note, (str, int, float, bool))
+        ]
+    else:
+        cleaned["practical_notes"] = []
+
+    spots = cleaned.get("photo_spots")
+    if spots is None:
+        spots = cleaned.get("photoSpots")
+    cleaned.pop("photoSpots", None)
+    normalized_spots: list = []
+    if isinstance(spots, list):
+        for spot in spots[:_PHOTO_SPOTS_MAX]:
+            if isinstance(spot, str):
+                # 模型把出片点写成纯字符串时降级为 {name}，保住条目
+                normalized_spots.append({"name": spot})
+            elif isinstance(spot, dict):
+                normalized_spots.append(spot)
+    cleaned["photo_spots"] = normalized_spots
+
+    backups = cleaned.get("backup_plan")
+    if backups is None:
+        backups = cleaned.get("backupPlan")
+    cleaned.pop("backupPlan", None)
+    cleaned["backup_plan"] = [
+        row for row in (backups or [])[:_BACKUP_PLAN_MAX] if isinstance(row, dict)
+    ] if isinstance(backups, list) else []
+
+    options = cleaned.get("day_options")
+    if options is None:
+        options = cleaned.get("dayOptions")
+    cleaned.pop("dayOptions", None)
+    cleaned["day_options"] = [
+        row for row in (options or [])[:_DAY_OPTIONS_MAX] if isinstance(row, dict)
+    ] if isinstance(options, list) else []
+
+    items = cleaned.get("items")
+    if isinstance(items, list):
+        fixed_items: list = []
+        for item in items:
+            if not isinstance(item, dict):
+                fixed_items.append(item)  # 脏项交给 sanitize_itinerary_items 过滤
+                continue
+            row = dict(item)
+            why = row.get("why_this")
+            if why is None:
+                why = row.get("whyThis")
+            row.pop("whyThis", None)
+            if why is None:
+                row["why_this"] = None
+            elif isinstance(why, str):
+                # 非 attraction 的 why_this 同样保留：只截长度，不删字段
+                row["why_this"] = why[:_NARRATIVE_WHY_MAX]
+            else:
+                row["why_this"] = ""
+            fixed_items.append(row)
+        cleaned["items"] = fixed_items
+    return cleaned
 
 
 def _destination_line(req: GenerateDayRequest, *, suffix: str = "") -> str:
@@ -100,6 +294,8 @@ def _llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
         "城市观光/美食/打卡类偏好可安排 3-5 个景点与 2-3 餐，"
         "自然风光/慢节奏/长途跨区可 2-3 个景点并留足休息；"
         "相邻点位间预留合理交通时间，禁止为凑数堆砌远距离点位。"
+        "餐饮时段：午餐排在 11:00-13:30，晚餐排在 17:30-20:30，"
+        "禁止一天安排两顿午餐；正餐优先一午一晚。"
     )
     # 预算分档决定酒店档次与消费水准指引
     tier_label, _tier_guidance, tier_ppd = _budget_tier(req.budget, req.persons, total_days)
@@ -115,31 +311,18 @@ def _llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
     else:
         hotel_hint = ""
     hotel_clause = day_hotel_clause(req.needs_hotel)
-    system = (
-        "你是资深当地导游。基于你的目的地知识为用户安排一天行程，只输出 JSON："
-        '{"note":"当天主题","items":[{"item_type":"attraction|food|hotel","poi_name":"真实存在的地点名称",'
-        '"start_time":"HH:mm","end_time":"HH:mm","duration_min":数字,"cost":人均人民币估算数字,"tag":"标签",'
-        '"remark":"参考价","refs":[从参考资料编号中选，如3]}],'
-        '"suggestions":[{"poi_name":"真实地点名","category":"attraction|activity|food|hotel|shopping",'
-        '"intro":"一句话亮点(≤40字)","need_reservation":true或false,"estimated_cost":人均或每晚估算数字}]}。'
-        "硬性要求：poi_name 必须是简洁的正式地点名（≤10 字，如「龙门石窟」「开封府」），"
-        "禁止写成描述性句子。"
-        f"{pace}"
-        "每天至少安排正餐；餐饮必须写具体店名（如「一兰拉面 涩谷店」「Sushi Saito」），"
-        "禁止「表参道米其林餐厅」「六本木之丘米其林餐厅」这类区域+类目笼统称呼；"
-        "优先 Google 高分店与米其林指南收录/推荐餐厅（含必比登），其次本地口碑名店；"
-        f"{hotel_clause}"
-        "景点顺序必须按地理位置从近到远排列，相邻景点间预留交通时间（步行10-15分钟/公交20-30分钟）。"
-        f"{hotel_hint}"
-        f"避开已去过的地点：{json.dumps(mem.as_sorted_list(), ensure_ascii=False)}。"
-        "免费景点 cost 写 0；餐饮/酒店/付费景点必须写合理人民币估算，禁止写 0。"
-        "另必须输出 12-20 个未排入今日行程的优质备选点位 suggestions："
-        "优先热门、口碑好、有代表性的地点；"
-        "分类尽量覆盖：景点/体验/美食每类 ≥3，酒店 2-4，购物 2-4"
-        "（购物必须是具体商城或知名店铺名，如「伊势丹新宿店」「唐吉诃德涩谷」）；"
-        "禁止同一店名重复；"
-        "名称必须真实存在可搜索到，禁止编造。"
-    )
+    # 巨型 system prompt 基座已迁至 app/prompts/open_generation.py（v1.1.narrative，
+    # M3-① 契约叙事化：theme 叙事句/why_this/practical_notes/photo_spots/
+    # backup_plan/day_options，仅第 1 天输出顶层 trip_theme）；
+    # intent（最高优先级信号，置于最前）、reference/budget/requirements/feedback
+    # 追加块留在本函数。
+    system = open_day_system_prompt(day_no=req.day_no, pace=pace, hotel_clause=hotel_clause,
+                                    hotel_hint=hotel_hint, mem=mem)
+    # intent 注入点（M1 意图贯通）：用户旅行意图是最高优先级信号，必须
+    # 排在 reference block 之前，让选点与节奏优先围绕意图组织。
+    intent_text = _intent_clause(req.intent)
+    if intent_text:
+        system += intent_text
     reference_block = pool.block()
     if reference_block:
         system += "\n" + reference_block
@@ -158,15 +341,18 @@ def _llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
     raw = client.complete(
         _destination_line(req, suffix=f"（第 {req.day_no} 天，{req.persons} 人）"),
         system_prompt=system,
-        temperature=0.4,
-        # 输出要求是"一天 items + 8-12 条 suggestions"，1200 token 截断
-        # 概率高（截断即 JSON 解析失败 → 整日草案）；与 _llm_open_trip 同
-        # 样按内容规模给足预算。
-        max_tokens=2400,
+        temperature=GENERATION_TEMPERATURE,
+        # 输出要求是"一天 items + 叙事字段 + 8-12 条 suggestions"，1200 token
+        # 截断概率高（截断即 JSON 解析失败 → 整日草案）；v1.1.narrative 契约
+        # 新增的叙事字段（why_this/practical_notes/photo_spots/backup_plan/
+        # day_options）约占输出增量 30-50%，故 2400 上调至 3200。
+        max_tokens=3200,
         model=settings.llm_fast_model or None,
         json_mode=True,
+        enable_search=settings.llm_generation_web_search,
     )
-    plan = _parse_json(raw)
+    # 叙事字段轻量清洗（AD4 兜底）：超限截断/类型降级，骨架照常交付
+    plan = _sanitize_narrative(_parse_json(raw))
     plan.setdefault("items", [])
     # 备选池（发现更多）与行程点位分开返回，避免混入 items 装配
     suggestions = plan.pop("suggestions", None)
@@ -185,33 +371,13 @@ def _llm_open_trip(req: GenerateDayRequest) -> tuple[list[dict], list[dict]]:
     days = req.days or 1
     # 住宿口径：generation_core（N 天 = N-1 晚，全程默认同一家）
     hotel_clause = hotel_prompt_clause(req.needs_hotel, days)
-    system = (
-        "你是资深当地导游。基于目的地常识一次安排完整多日行程，只输出 JSON："
-        '{"daily_plans":[{"day_no":1,"note":"当天主题","items":['
-        '{"item_type":"attraction|food|hotel","poi_name":"真实正式地点名",'
-        '"start_time":"HH:mm","end_time":"HH:mm","duration_min":数字,'
-        '"cost":数字,"tag":"标签","remark":"参考价","refs":[从参考资料编号中选，如3]}]}],'
-        '"suggestions":[{"poi_name":"真实地点名","category":"attraction|activity|food|hotel|shopping",'
-        '"intro":"一句话亮点(≤40字)","need_reservation":true或false,"estimated_cost":人均或每晚估算数字}]}。'
-        f"共 {days} 天。{hotel_clause}。"
-        "每日节奏由你根据用户偏好、景点游玩时长、地理距离与游玩种类自主判断："
-        "城市观光/美食/打卡可 3-5 景 + 2-3 餐；自然风光/慢节奏/长途跨区可 2-3 景并留足休息；"
-        "相邻点位预留交通时间，禁止为凑数堆砌远距离点位。"
-        "地点名必须简洁且真实存在，避免跨天重复；免费景点 cost 写 0，"
-        "餐饮/酒店/付费景点必须写合理人民币估算，禁止写 0。"
-        "餐饮必须写具体店名（禁止「某区米其林餐厅」「某商场美食层」等笼统称呼）。"
-        "每天的景点顺序必须按地理位置从近到远排列。"
-        "另必须输出未排入行程的优质备选点位 suggestions（尽量 15-25 条）："
-        "优先热门、口碑好、有代表性的地点，不限于当日行程主题；"
-        "餐饮必须写具体餐厅店名；"
-        "景点优先知名必去与高评价体验；"
-        "分类硬性要求：景点、美食、酒店、体验/游玩每类尽量 4-12 条"
-        "（体验含潜水、SPA、冲浪课、演出、游艇等；酒店写未排入行程的正式酒店名）；"
-        "购物 2-6 条且必须是具体商城或知名店铺（如「伊势丹新宿店」「唐吉诃德涩谷」），禁止只写「伴手礼店」；"
-        "禁止同一店名重复多条；"
-        "名称必须真实存在可搜索到，禁止编造，"
-        "且不与任何一天已排入的地点重复。"
-    )
+    # 巨型 system prompt 基座已迁至 app/prompts/open_generation.py（v1.1.narrative）。
+    system = open_trip_system_prompt(days=days, hotel_clause=hotel_clause)
+    # intent 注入点（M1 意图贯通）：置于 reference block 之前，口径与
+    # _llm_open_day 一致——意图是最高优先级信号。
+    intent_text = _intent_clause(req.intent)
+    if intent_text:
+        system += intent_text
     reference_block = pool.block()
     if reference_block:
         system += "\n" + reference_block
@@ -228,18 +394,33 @@ def _llm_open_trip(req: GenerateDayRequest) -> tuple[list[dict], list[dict]]:
     raw = client.complete(
         _destination_line(req, suffix=f"，{days} 天，{req.persons} 人。"),
         system_prompt=system,
-        temperature=0.4,
-        # 多日 + 备选池体积大：给足预算，避免 JSON 截断（截断即整段开放研究失败）
-        max_tokens=max(2800, min(7000, days * 900 + 900)),
+        temperature=GENERATION_TEMPERATURE,
+        # 多日 + 备选池体积大：给足预算，避免 JSON 截断（截断即整段开放研究失败）。
+        # v1.1.narrative 叙事字段（why_this/practical_notes/photo_spots/
+        # backup_plan/day_options/trip_theme）约占输出增量 30-50%，
+        # 按天单价 900→1150、基数 900→1100 上调，上限 7000→8000。
+        max_tokens=max(2800, min(8000, days * 1150 + 1100)),
         model=settings.llm_fast_model or None,
         json_mode=True,
+        enable_search=settings.llm_generation_web_search,
     )
     data = _parse_json(raw)
     plans = data.get("daily_plans") if isinstance(data, dict) else None
     if not isinstance(plans, list):
         raise ValueError("开放模式多日行程结构无效")
     suggestions = data.get("suggestions") if isinstance(data, dict) else None
-    return [plan for plan in plans if isinstance(plan, dict)][:days], \
+    cleaned_plans = [_sanitize_narrative(plan) for plan in plans if isinstance(plan, dict)][:days]
+    # 整趟主题只由顶层输出一次：注入到每一天的 plan dict（第 1 天为权威来源，
+    # 其余天兜底），随装配透传，避免改动本函数返回签名影响存量调用方。
+    trip_theme = data.get("trip_theme") if isinstance(data, dict) else None
+    if isinstance(trip_theme, str) and trip_theme.strip():
+        clipped = trip_theme[:_NARRATIVE_THEME_MAX]
+        for plan in cleaned_plans:
+            # 清洗层已把 trip_theme 归一为 None/串，不能用 setdefault（key 已存在）；
+            # 仅在缺失时回填，保留模型自带的天级主题。
+            if not plan.get("trip_theme"):
+                plan["trip_theme"] = clipped
+    return cleaned_plans, \
         [s for s in suggestions if isinstance(s, dict)] if isinstance(suggestions, list) else []
 
 
@@ -252,7 +433,14 @@ def _has_coord(value) -> bool:
 
 
 def _amap_ground(item: dict, city: str, cache: dict) -> None:
-    """通过高德 MCP/兼容适配器检索 POI，落坐标与地址。"""
+    """通过检索链落坐标与地址：provider chain（高德→Google→Nominatim）。
+
+    海外分流由 tools.search_amap_poi 内部完成（跳过高德，直连 Google/Nominatim）；
+    此处不再提前 return——旧版的双重防御会阻断海外真实坐标落地（M5 京都 coord=0
+    的根因），海外误匹配风险已由 chain 内的海外判定收敛。
+    """
+    from app.agent.tools import _anchor_name_similar
+
     if _has_coord(item.get("latitude")) and _has_coord(item.get("longitude")):
         return
     key = f"{city}:{item.get('poi_name')}"
@@ -267,8 +455,13 @@ def _amap_ground(item: dict, city: str, cache: dict) -> None:
         return
     try:
         pois = tools.search_amap_poi(city, item.get("poi_name") or "")
-        if pois:
-            hit = pois[0]
+        query_name = str(item.get("poi_name") or "")
+        hit = None
+        for poi in pois or []:
+            if _anchor_name_similar(query_name, str(poi.get("name") or "")):
+                hit = poi
+                break
+        if hit:
             if hit.get("longitude") is not None and hit.get("latitude") is not None:
                 item["longitude"] = float(hit["longitude"])
                 item["latitude"] = float(hit["latitude"])
@@ -315,6 +508,12 @@ def _generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False)
         suggestion_rows = build_suggestions(
             [plan], candidates, foods, hotels or [],
             plan.get("suggestions") or [], allow_external=True,
+        )
+        tier_label, _g, _ppd = _budget_tier(
+            req.budget, req.persons or 1, req.days or 1
+        )
+        suggestion_rows = fill_suggestion_gaps(
+            suggestion_rows, req.city, budget_tier=tier_label or None
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("day %s open llm failed: %s", req.day_no, e)
@@ -431,11 +630,39 @@ def _generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False)
             item["cost"] = round(base * factor, 2)
             remark = f"{label}估算：系数×{factor}（基准价￥{base:g}）"
             item["remark"] = f"{item['remark']}；{remark}" if item.get("remark") else remark
+
+        # 餐饮：实时价（可选）+ 城市均价硬钳制，抑制离谱估值
+        if item.get("item_type") == "food":
+            meal_price = float((ctx.get("consumption") or {}).get("meal_price") or 0) or None
+            cost_now = item.get("cost")
+            if settings.live_food_price_search and settings.llm_api_key:
+                try:
+                    live = live_pricing.query_live_food_price(req.city, str(item.get("poi_name") or ""))
+                except Exception:  # noqa: BLE001
+                    live = None
+                if live and live.get("price"):
+                    item["cost"] = float(live["price"])
+                    remark = f"联网实时价￥{live['price']:g}：{live.get('note') or ''}".rstrip("：")
+                    item["remark"] = f"{item['remark']}；{remark}" if item.get("remark") else remark
+            new_cost, clamp_note = clamp_meal_cost(
+                item.get("cost"), meal_price,
+                hard_ratio=settings.meal_price_hard_cap_ratio,
+                soft_ratio=settings.meal_price_soft_cap_ratio,
+            )
+            if clamp_note:
+                item["cost"] = new_cost
+                item["remark"] = f"{item['remark']}；{clamp_note}" if item.get("remark") else clamp_note
+                item["verification_status"] = item.get("verification_status") or "unverified"
+            elif cost_now is not None and meal_price and not settings.live_food_price_search:
+                pass  # 仅钳制路径已处理
         items.append(TripItem(**item))
 
     note = plan.get("note") or f"第 {req.day_no} 天行程"
     if source == "open":
         note = (note + "（开放模式，价格供参考）").strip()
+    # 叙事层透传（M3-①）：why_this 随 TripItem(**item) 自然携带（schema 新增
+    # 字段，sanitize_itinerary_items 按 dict(item) 原样保留）；day_options /
+    # trip_theme 在此显式装配。兼容 camelCase 读取（清洗层通常已归一）。
     return DailyPlan(
         day_no=req.day_no,
         note=note,
@@ -445,6 +672,8 @@ def _generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False)
         backup_plan=plan.get("backup_plan") or plan.get("backupPlan") or [],
         photo_spots=plan.get("photo_spots") or plan.get("photoSpots") or [],
         practical_notes=plan.get("practical_notes") or plan.get("practicalNotes") or [],
+        day_options=plan.get("day_options") or plan.get("dayOptions") or [],
+        trip_theme=plan.get("trip_theme") or plan.get("tripTheme"),
         suggestions=[Suggestion(**row) for row in suggestion_rows],
     ), source
 

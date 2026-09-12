@@ -103,9 +103,9 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
 
-import { applyHotelOption, type HotelOption } from '../api'
+import type { HotelOption } from '../api'
+import { useItineraryActions } from '../composables/useItineraryActions'
 import type { ItineraryDetail } from '../types/itinerary'
 
 type Selection = { roomTypeId: string; dayNos: number[] }
@@ -123,6 +123,9 @@ const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   applied: [detail: ItineraryDetail]
 }>()
+
+// 酒店替换统一走行程写操作入口：乐观快照 + 失败回滚 + 409 冲突对账（M4-①）
+const actions = useItineraryActions()
 
 const applying = ref(false)
 
@@ -171,7 +174,7 @@ async function onChoose(option: HotelOption) {
   }
   applying.value = true
   try {
-    const res = await applyHotelOption(
+    const nextDetail = await actions.applyHotelOption(
       props.itineraryId,
       option,
       room.roomName,
@@ -180,10 +183,10 @@ async function onChoose(option: HotelOption) {
       props.baseRevision || option.baseRevision,
     )
     ElMessage.success(`已应用「${option.hotelName}」`)
-    emit('applied', res.data)
+    emit('applied', nextDetail)
     emit('update:modelValue', false)
   } catch {
-    // 错误提示已由拦截器处理
+    // 错误提示已由拦截器处理（本地状态已由 actions 回滚）
   } finally {
     applying.value = false
   }

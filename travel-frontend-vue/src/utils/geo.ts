@@ -1,32 +1,19 @@
 // 目的地国内/国外判定：国外城市走 Leaflet+OSM 免 key 地图，国内走高德 JSAPI。
 // 判定基于内置中国城市/省份集合；未命中且不含中国省份名的城市视为国外。
+// 城市/省份表维护入口见 constants/geo.ts（本文件仅保留判定函数导出，调用方 import 路径不变）。
 
-const DOMESTIC_CITIES = new Set([
-  // 知识库 6 城
-  '北京', '上海', '杭州', '成都', '西安', '三亚',
-  // 直辖市/省会/计划单列市
-  '重庆', '天津', '广州', '深圳', '南京', '苏州', '无锡', '武汉', '长沙',
-  '郑州', '洛阳', '开封', '青岛', '济南', '烟台', '厦门', '福州', '泉州',
-  '昆明', '大理', '丽江', '桂林', '张家界', '黄山', '合肥', '南昌',
-  '哈尔滨', '沈阳', '大连', '长春', '太原', '呼和浩特', '乌鲁木齐', '拉萨',
-  '兰州', '西宁', '银川', '南宁', '海口', '贵阳', '石家庄', '宁波', '嘉兴',
-  '乐山', '都江堰', '宜昌', '襄阳', '咸阳', '延安', '汕头', '珠海', '佛山',
-  '扬州', '镇江', '常州', '徐州', '绍兴', '温州', '台州', '金华', '湖州',
-  '衢州', '丽水', '舟山', '洛阳', '无锡', '威海', '秦皇岛', '承德',
-])
+import { DOMESTIC_CITIES, DOMESTIC_PROVINCES } from '../constants/geo'
 
-const DOMESTIC_PROVINCES = new Set([
-  '浙江', '福建', '河南', '广东', '云南', '四川', '江苏', '山东', '湖南',
-  '湖北', '陕西', '安徽', '江西', '河北', '山西', '辽宁', '吉林', '黑龙江',
-  '甘肃', '青海', '贵州', '广西', '海南', '内蒙古', '宁夏', '西藏', '新疆',
-  '重庆', '北京', '上海', '天津',
-])
+const CITY_SET = new Set(DOMESTIC_CITIES)
+const PROVINCE_SET = new Set(DOMESTIC_PROVINCES)
 
 export function isForeignCity(city: string | null | undefined): boolean {
   const name = (city || '').trim()
   if (!name) return false
-  if (DOMESTIC_CITIES.has(name) || DOMESTIC_PROVINCES.has(name)) return false
+  if (CITY_SET.has(name) || PROVINCE_SET.has(name)) return false
   // 形如"云南丽江"：含中国省份名 → 国内
-  if ([...DOMESTIC_PROVINCES].some((province) => name.includes(province))) return false
+  for (const province of PROVINCE_SET) {
+    if (name.includes(province)) return false
+  }
   return true
 }

@@ -53,8 +53,17 @@ public class ItineraryChatService {
         this.queryService = queryService;
     }
 
-    public Map<String, Object> chatEdit(Long userId, Long itineraryId, String message,
-                                        List<Map<String, Object>> history) {
+    /**
+     * chatTurn 请求上下文：chatBody 发给 Python；baseRevision 供草稿一致性校验与 chat_draft 事件复用。
+     */
+    public record ChatTurnContext(Map<String, Object> chatBody, String baseRevision) {}
+
+    /**
+     * 构建 chatTurn 请求上下文——阻塞版 chatEdit 与 SSE 流式版（/chat-edit/stream）
+     * 的「同参构造」入口，保证两条路径发给 Agent 的输入完全一致。
+     */
+    public ChatTurnContext buildChatTurnContext(Long userId, Long itineraryId, String message,
+                                                List<Map<String, Object>> history) {
         ItineraryMain main = queryService.findOwnedMain(userId, itineraryId);
         List<Map<String, Object>> persistedHistory = chatHistory(userId, itineraryId);
         List<Map<String, Object>> effectiveHistory = persistedHistory.isEmpty()
@@ -92,12 +101,29 @@ public class ItineraryChatService {
         chatBody.put("history", effectiveHistory.size() <= 20 ? effectiveHistory
                 : effectiveHistory.subList(effectiveHistory.size() - 20, effectiveHistory.size()));
         chatBody.put("message", message == null ? "" : message);
+        return new ChatTurnContext(chatBody, baseRevision);
+    }
 
-        JsonNode node = agentService.chatTurn(chatBody);
+    public Map<String, Object> chatEdit(Long userId, Long itineraryId, String message,
+                                        List<Map<String, Object>> history) {
+        ChatTurnContext ctx = buildChatTurnContext(userId, itineraryId, message, history);
+        JsonNode node = agentService.chatTurn(ctx.chatBody());
+        return finalizeChatTurn(userId, itineraryId, message, ctx, node);
+    }
+
+    /**
+     * 把 chatTurn 结果组装为与 /chat-edit 响应一致的出参，并落库对话记忆（用户 + AI 两条）。
+     * 抽成公共收尾方法供 SSE 流式变体复用：流式路径必须与非流式路径同样落库，否则
+     * 对话历史缺失、酒店提案的 pendingAction 语义（requirePendingAction 依赖落库消息）失效。
+     */
+    public Map<String, Object> finalizeChatTurn(Long userId, Long itineraryId, String message,
+                                                ChatTurnContext ctx, JsonNode node) {
+        String baseRevision = ctx.baseRevision();
+
         Map<String, Object> out = new HashMap<>();
         out.put("reply", node.path("reply").asText("已更新草稿"));
         out.put("changed", node.path("changed").asBoolean(false));
-        List<Object> responsePlans = attachBaseRevision(objectMapperTreeList(node.get("plans")), baseRevision, false);
+        List<Object> responsePlans = draftPlansFromTurn(node, baseRevision);
         List<Object> responseHotelOptions = attachBaseRevision(
                 objectMapperTreeList(node.get("hotelOptions")), baseRevision, true);
         out.put("plans", responsePlans);
@@ -117,6 +143,14 @@ public class ItineraryChatService {
                 Boolean.TRUE.equals(out.get("changed")));
         out.put("messageId", aiMessage.getId());
         return out;
+    }
+
+    /**
+     * 从 chatTurn 结果取出与 /chat-edit 响应字段一致的 plans（逐项附 _baseRevision），
+     * 供 SSE chat_draft 事件复用，保证流式与非流式响应结构一致。
+     */
+    public List<Object> draftPlansFromTurn(JsonNode node, String baseRevision) {
+        return attachBaseRevision(objectMapperTreeList(node.get("plans")), baseRevision, false);
     }
 
     public List<Map<String, Object>> chatHistory(Long userId, Long itineraryId) {

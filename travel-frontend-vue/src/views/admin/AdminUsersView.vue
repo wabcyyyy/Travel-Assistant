@@ -22,7 +22,7 @@
     </div>
 
     <el-table :data="rows" v-loading="loading" size="large">
-      <el-table-column prop="id" label="ID" width="70" />
+      <el-table-column prop="id" label="ID" width="70" class-name="num" />
       <el-table-column prop="username" label="用户名" min-width="140" />
       <el-table-column prop="nickname" label="昵称" min-width="120" />
       <el-table-column prop="phone" label="手机号" width="130" />
@@ -42,7 +42,7 @@
       <el-table-column prop="createdAt" label="注册时间" width="180" />
       <el-table-column label="操作" width="240" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="viewItineraries(row)">
+          <el-button link type="primary" @click="viewItineraries(row as AdminUser)">
             行程({{ row.itineraryCount ?? 0 }})
           </el-button>
           <el-button
@@ -50,16 +50,16 @@
             link
             type="danger"
             :disabled="row.role === 'admin'"
-            @click="onToggleStatus(row, 0)"
+            @click="onToggleStatus(row as AdminUser, 0)"
           >
             禁用
           </el-button>
-          <el-button v-else link type="success" @click="onToggleStatus(row, 1)">启用</el-button>
+          <el-button v-else link type="success" @click="onToggleStatus(row as AdminUser, 1)">启用</el-button>
           <el-button
             link
             type="danger"
             :disabled="row.role === 'admin'"
-            @click="onDelete(row)"
+            @click="onDelete(row as AdminUser)"
           >
             删除
           </el-button>
@@ -85,7 +85,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { deleteAdminUser, getAdminUsers, updateAdminUserStatus, type AdminUser } from '../../api'
 
 const router = useRouter()
