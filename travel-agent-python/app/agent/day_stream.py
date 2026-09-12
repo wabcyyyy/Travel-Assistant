@@ -433,17 +433,15 @@ def _has_coord(value) -> bool:
 
 
 def _amap_ground(item: dict, city: str, cache: dict) -> None:
-    """通过高德 MCP/兼容适配器检索 POI，落坐标与地址。
+    """通过检索链落坐标与地址：provider chain（高德→Google→Nominatim）。
 
-    海外目的地禁止用高德落坐标：会把「岚山」等匹配成国内收费站/餐馆，
-    坐标与地址全错。海外保持空坐标，由 Google/联网补池或前端再补。
+    海外分流由 tools.search_amap_poi 内部完成（跳过高德，直连 Google/Nominatim）；
+    此处不再提前 return——旧版的双重防御会阻断海外真实坐标落地（M5 京都 coord=0
+    的根因），海外误匹配风险已由 chain 内的海外判定收敛。
     """
-    from app.agent.tools import is_overseas_destination, _anchor_name_similar
+    from app.agent.tools import _anchor_name_similar
 
     if _has_coord(item.get("latitude")) and _has_coord(item.get("longitude")):
-        return
-    if is_overseas_destination(city):
-        cache[f"{city}:{item.get('poi_name')}"] = None
         return
     key = f"{city}:{item.get('poi_name')}"
     if key in cache:
