@@ -48,10 +48,25 @@ class Settings:
     llm_pool_max_keepalive: int = int(_get("LLM_POOL_MAX_KEEPALIVE", "10"))
     llm_connect_timeout: float = float(_get("LLM_CONNECT_TIMEOUT", "5"))
     agent_internal_token: str = _get("AGENT_INTERNAL_TOKEN", "")
-    # 实时酒店价格会额外触发联网搜索/模型调用，默认关闭以保证行程先快速可用；
-    # 需要价格核实时可显式设置 LIVE_PRICE_SEARCH=true，并限制查询数量。
-    live_price_search: bool = _get("LIVE_PRICE_SEARCH", "false").lower() in ("1", "true", "yes")
-    max_live_queries: int = int(_get("MAX_LIVE_QUERIES", "1"))
+    # 实时酒店价格会额外触发联网搜索/模型调用，默认开启以核实价格；
+    # 需要更快出首版行程可显式设置 LIVE_PRICE_SEARCH=false，并限制查询数量。
+    live_price_search: bool = _get("LIVE_PRICE_SEARCH", "true").lower() in ("1", "true", "yes")
+    max_live_queries: int = int(_get("MAX_LIVE_QUERIES", "3"))
+    # 餐饮实时价（百炼联网）：与酒店实时价独立开关，同样受 max_live_queries 约束
+    live_food_price_search: bool = _get("LIVE_FOOD_PRICE_SEARCH", "true").lower() in ("1", "true", "yes")
+    max_live_food_queries: int = int(_get("MAX_LIVE_FOOD_QUERIES", "4"))
+    # 研究/备选池证据不足时用联网搜索补候选（百炼 enable_search）
+    web_search_enabled: bool = _get("WEB_SEARCH_ENABLED", "true").lower() in ("1", "true", "yes")
+    max_web_search_queries: int = int(_get("MAX_WEB_SEARCH_QUERIES", "6"))
+    # 主行程生成 Prompt 是否开 enable_search（更准但更慢，默认关；研究阶段已联网补池）
+    llm_generation_web_search: bool = _get("LLM_GENERATION_WEB_SEARCH", "false").lower() in ("1", "true", "yes")
+    # 生成后按估算总价是否触发超支修复（reflect 反馈重排）
+    budget_hard_constraint: bool = _get("BUDGET_HARD_CONSTRAINT", "true").lower() in ("1", "true", "yes")
+    # 超过预算多少比例才触发修复（避免贴近预算反复重试）
+    budget_overage_ratio: float = float(_get("BUDGET_OVERAGE_RATIO", "0.08"))
+    # 餐饮单价相对城市人均餐价的钳制倍数（硬顶/软顶）
+    meal_price_hard_cap_ratio: float = float(_get("MEAL_PRICE_HARD_CAP_RATIO", "8"))
+    meal_price_soft_cap_ratio: float = float(_get("MEAL_PRICE_SOFT_CAP_RATIO", "4"))
     amap_web_key: str = _get("AMAP_WEB_KEY", "")
     # 高德官方 MCP Server（推荐 Agent 侧使用）。URL 可填完整的
     # https://mcp.amap.com/mcp?key=...，也可单独配置 AMAP_MCP_KEY。
@@ -77,8 +92,10 @@ class Settings:
     # 每次 Agent 请求允许的工具调用总数；单工具上限由 Tool Registry 控制。
     tool_max_calls: int = int(_get("TOOL_MAX_CALLS", "32"))
     agent_deadline_seconds: float = float(_get("AGENT_DEADLINE_SECONDS", "90"))
-    max_llm_calls: int = int(_get("MAX_LLM_CALLS", "8"))
-    max_token_budget: int = int(_get("MAX_TOKEN_BUDGET", "12000"))
+    # 研究三域（plan/evaluate×2 轮）+ 联网补池 + 整段生成 + 修复重试：
+    # 旧默认 8 次会在研究阶段就耗尽，导致「开放研究重试耗尽」草案。
+    max_llm_calls: int = int(_get("MAX_LLM_CALLS", "32"))
+    max_token_budget: int = int(_get("MAX_TOKEN_BUDGET", "80000"))
     # 单次 run 内检索/证据类调用上限（研究补查、RAG、外部 POI）
     max_retrievals: int = int(_get("MAX_RETRIEVALS", "48"))
     max_replans: int = int(_get("MAX_REPLANS", "3"))
@@ -124,6 +141,9 @@ class Settings:
     db_name: str = _get("DB_NAME", "travel_assistant")
     # MySQL 连接池上限（Agent 侧只读知识库；管线写库共用同一池）
     db_pool_max: int = int(_get("DB_POOL_MAX", "10"))
+    # Redis Pub/Sub（AD2 SSE）：Python 节点向 gen:events:{itineraryId} 发布
+    # 进度事件，由 Java SSE 网关订阅转发前端；事件是尽力而为通知，连不上只降级。
+    redis_url: str = _get("REDIS_URL", "redis://localhost:6379/0")
 
 
 settings = Settings()

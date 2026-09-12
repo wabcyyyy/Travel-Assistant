@@ -88,6 +88,8 @@ def _run_search(state: ResearchAgentState) -> dict:
         limits.record_retrieval(1)
     extras = list(dict.fromkeys((plan.get("extra_keywords") or [])
                                 + (state.get("extra_keywords") or [])))
+    # M3-②（AD5）最小增量：任务卡携带的意图关键词并入补池链（新旧行为兼容，仅追加）
+    extras = list(dict.fromkeys(extras + list(task.intent_keywords or [])))
     if extras:
         for keyword in extras:
             if limits:
@@ -96,6 +98,15 @@ def _run_search(state: ResearchAgentState) -> dict:
             if limits:
                 limits.record_retrieval(1)
             items = _merge_supplement(items, remote)
+    # 本地/高德仍偏少时：联网搜索补真实地点名（池空/海外城市的证据缺口）
+    if len(items) < 3:
+        from app.agent.web_search import search_places_via_web, web_search_enabled
+        if web_search_enabled():
+            web_rows = search_places_via_web(
+                task.city, task.domain, limit=max(4, 6 - len(items)),
+                intent_keywords=task.intent_keywords,
+            )
+            items = _merge_supplement(items, web_rows)
     return {"items": items, "round": int(state.get("round", 0)) + 1}
 
 

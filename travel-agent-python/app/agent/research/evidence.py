@@ -31,6 +31,10 @@ class ResearchTask:
     budget: float | None = None
     hotel_tier: str | None = None
     limit: int = 30
+    # M1 意图贯通：仅铺设字段，研究链路暂不消费；从 intent 抽关键词补池
+    # （intent_keywords）留 M3 接入。
+    intent: str | None = None
+    intent_keywords: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.domain not in RESEARCH_DOMAINS:

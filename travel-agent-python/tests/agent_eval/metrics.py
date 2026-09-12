@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from app.agent.intent import build_intent_keywords
 from app.agent.reflect import _item_end, _item_start, estimate_transfer_minutes
 
 
@@ -10,6 +11,70 @@ def _items(response) -> list[dict]:
     return [item.model_dump() if hasattr(item, "model_dump") else item
             for plan in response.daily_plans
             for item in plan.items]
+
+
+def _has_coord(value) -> bool:
+    """坐标有效：非 None 且非 0（0/0 是缺失哨兵，与生成链路 _has_coord 口径一致）。"""
+    try:
+        return value is not None and abs(float(value)) > 1e-6
+    except (TypeError, ValueError):
+        return False
+
+
+def evaluate_narrative(response, case: dict) -> dict:
+    """M5 叙事化指标：度量契约 v1.1.narrative 叙事字段的质量与意图贴合度。
+
+    与 evaluate_response（权威/冲突/预算口径）互补，只读叙事层字段，不改
+    既有函数签名。各指标定义：
+    - theme_sentence_rate：每日 theme 是叙事句（非空且非「A→B→C」纯路径串，
+      即不含 "→"）的比例；
+    - why_coverage：attraction 项 why_this 非空的比例；
+    - practical_notes_rate：每日 practical_notes 非空的比例；
+    - theme_hit_rate：意图关键词（build_intent_keywords(case.intent)）在
+      （trip_theme + 各日 theme + 全部 why_this + remark）拼接文本中的
+      命中关键词占比；case 无 intent 时为 None；
+    - poi_relevance：attraction 项中 why_this/remark 命中任一意图关键词的
+      比例（「主题相关点占比」）；case 无 intent 时为 None；
+    - coord_available_rate：attraction 项坐标非空（lat/lon 均非 None 非 0）
+      的比例；
+    - pending_review_count：verification_status=="unverified" 的 item 数
+      （「待复核占比」的分子）。
+    """
+    keywords = build_intent_keywords(case.get("intent"))
+    plans = list(response.daily_plans)
+    items = _items(response)
+    attractions = [i for i in items if i.get("item_type") == "attraction"]
+
+    theme_sentence_days = sum(1 for plan in plans if plan.theme and "→" not in plan.theme)
+    practical_days = sum(1 for plan in plans if plan.practical_notes)
+    why_filled = sum(1 for i in attractions if (i.get("why_this") or "").strip())
+    coord_ok = sum(1 for i in attractions
+                   if _has_coord(i.get("latitude")) and _has_coord(i.get("longitude")))
+    pending_review = sum(1 for i in items if i.get("verification_status") == "unverified")
+
+    theme_hit_rate = None
+    poi_relevance = None
+    if keywords:
+        # 关键词命中语料：行程级主题 + 每日主题 + 全部条目的 why_this/remark
+        corpus = [response.trip_theme or ""]
+        corpus += [plan.theme or "" for plan in plans]
+        corpus += [(i.get("why_this") or "") + (i.get("remark") or "") for i in items]
+        text = "".join(corpus)
+        theme_hit_rate = sum(1 for k in keywords if k in text) / len(keywords)
+        poi_relevance = sum(
+            1 for i in attractions
+            if any(k in (i.get("why_this") or "") + (i.get("remark") or "") for k in keywords)
+        ) / max(len(attractions), 1)
+
+    return {
+        "theme_sentence_rate": round(theme_sentence_days / max(len(plans), 1), 4),
+        "why_coverage": round(why_filled / max(len(attractions), 1), 4),
+        "practical_notes_rate": round(practical_days / max(len(plans), 1), 4),
+        "theme_hit_rate": round(theme_hit_rate, 4) if theme_hit_rate is not None else None,
+        "poi_relevance": round(poi_relevance, 4) if poi_relevance is not None else None,
+        "coord_available_rate": round(coord_ok / max(len(attractions), 1), 4),
+        "pending_review_count": pending_review,
+    }
 
 
 def evaluate_response(response, case: dict, catalog: dict, trace: dict) -> dict:

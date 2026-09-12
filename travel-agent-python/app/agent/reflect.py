@@ -17,6 +17,7 @@ import re
 from typing import Any
 
 from app.agent.geo import haversine_meters
+from app.agent.generation_core import estimate_plans_total, has_double_lunch, meal_slot_of
 
 MAX_DAILY_MINUTES = 480
 MAX_DAILY_ATTRACTIONS = 6
@@ -104,7 +105,10 @@ def _route_from_matrix(first: dict, second: dict, route_matrix: dict | None) -> 
     return None
 
 
-def validate_plans(daily_plans: list[dict], route_matrix: dict | None = None) -> tuple[list[str], list[str]]:
+def validate_plans(daily_plans: list[dict], route_matrix: dict | None = None,
+                   *, budget: float | None = None, persons: int = 1,
+                   consumption: dict | None = None,
+                   budget_overage_ratio: float = 0.08) -> tuple[list[str], list[str]]:
     issues: list[str] = []
     log: list[str] = []
     for plan in daily_plans:
@@ -181,6 +185,16 @@ def validate_plans(daily_plans: list[dict], route_matrix: dict | None = None) ->
             )
         if not foods and attractions:
             issues.append(f"第 {day_no} 天未安排餐饮")
+        # 两顿午餐：午间窗口安排了 ≥2 家餐厅，应改为一午一晚
+        if has_double_lunch(foods):
+            lunch_names = [
+                str(it.get("poi_name") or "") for it in foods
+                if meal_slot_of(it.get("start_time")) == "lunch"
+            ]
+            issues.append(
+                f"第 {day_no} 天出现两顿午餐（{('、'.join(lunch_names) or '多条餐饮')}），"
+                "请将其中一餐改到晚餐时段（17:00 后），保证午、晚各至多一餐"
+            )
         # 付费餐饮写 0：预算会失效
         for it in foods:
             cost = it.get("cost")
@@ -192,6 +206,23 @@ def validate_plans(daily_plans: list[dict], route_matrix: dict | None = None) ->
                 issues.append(
                     f"第 {day_no} 天餐饮「{it.get('poi_name')}」cost 为 0，请填写合理人均消费（免费/含在门票内除外）"
                 )
+
+    # 预算硬约束：估算合计超过用户预算一定比例时，要求换平价点/降酒店档
+    if budget is not None and float(budget) > 0 and daily_plans:
+        try:
+            est = estimate_plans_total(daily_plans, persons=persons or 1,
+                                       days=len(daily_plans), consumption=consumption)
+            total = float(est.get("合计") or 0)
+            limit = float(budget)
+            over = total - limit
+            if over > limit * max(float(budget_overage_ratio), 0.0):
+                issues.append(
+                    f"估算总价约 ¥{total:.0f}，超出预算 ¥{limit:.0f} 约 ¥{over:.0f}。"
+                    "请压缩花费：优先更换高价酒店/餐饮为预算内选项，减少付费体验，"
+                    "选择免费或低价景点，确保总花费不超过预算"
+                )
+        except Exception:  # noqa: BLE001 —— 预算校验失败不应阻塞其它问题
+            pass
 
     if issues:
         log.append(f"发现 {len(issues)} 个问题：")

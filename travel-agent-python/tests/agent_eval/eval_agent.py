@@ -23,6 +23,7 @@ from app.agent import tools, workflow
 from app.agent.research import reasoning
 from app.agent.route_service import clear_route_cache
 from app.agent.trace import trace_run
+from app.prompts.open_generation import OPEN_DAY_PROMPT_VERSION, OPEN_TRIP_PROMPT_VERSION
 from app.schemas.trip import GenerateRequest
 from tests.agent_eval import mock_llm
 from tests.agent_eval.metrics import evaluate_response
@@ -31,8 +32,23 @@ from tests.agent_eval.metrics import evaluate_response
 CASES_PATH = Path(__file__).with_name("cases.json")
 REPORT_DIR = Path(__file__).with_name("report")
 
+# 生成契约字段白名单：case 里的 name/prompt_version 是评测元数据，
+# 不属于 GenerateRequest；intent 等契约字段按白名单自然透传（M5）。
+_REQUEST_FIELDS = frozenset(GenerateRequest.model_fields)
+
+
+def build_generate_request(case: dict) -> GenerateRequest:
+    """case → 生成请求：过滤评测元数据（name/prompt_version），intent 透传给生成链路。"""
+    return GenerateRequest(**{k: v for k, v in case.items() if k in _REQUEST_FIELDS})
+
+
+def with_prompt_version(case: dict) -> dict:
+    """运行时填充 prompt_version 占位：报告里的 case 记录实际生成契约版本。"""
+    return {**case, "prompt_version": f"{OPEN_DAY_PROMPT_VERSION}/{OPEN_TRIP_PROMPT_VERSION}"}
+
 
 def run_case(case: dict) -> dict:
+    case = with_prompt_version(case)
     # 路线缓存属于进程级优化；每个 fixture 用例先清空，避免前一个城市的
     # 缓存改变本用例的 Trace 工具数和耗时，保证报告可复现。
     clear_route_cache()
@@ -51,7 +67,7 @@ def run_case(case: dict) -> dict:
             patch.object(workflow, "_llm_open_day", mock_llm.fixture_open_day), \
             patch.object(workflow, "_llm_open_trip", mock_llm.fixture_open_trip), \
             trace_run(f"fixture-{case['city']}-{case['days']}") as recorder:
-        response = workflow.run_generate(GenerateRequest(**case))
+        response = workflow.run_generate(build_generate_request(case))
     return evaluate_response(response, case, fixture, recorder.to_dict())
 
 
@@ -114,8 +130,10 @@ def write_report(report: dict) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=0, help="只运行前 N 个用例")
+    parser.add_argument("--cases", default=str(CASES_PATH),
+                        help="用例文件：默认 cases.json；主题化同题评测传 themed_cases.json")
     args = parser.parse_args()
-    cases = json.loads(CASES_PATH.read_text(encoding="utf-8"))
+    cases = json.loads(Path(args.cases).read_text(encoding="utf-8"))
     report = build_report(cases[:args.limit] if args.limit else cases)
     write_report(report)
     print(json.dumps(report["metrics"], ensure_ascii=False, indent=2))

@@ -21,6 +21,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 
 from app.agent import tools
+from app.agent.intent import build_intent_keywords
 from app.agent.observability import metrics
 from app.agent.research.evidence import EvidencePack, ResearchDomain, ResearchTask
 from app.agent.research.factory import run_research
@@ -36,12 +37,17 @@ _RESEARCH_WORKERS = 3
 
 def decompose(req: GenerateRequest) -> list[ResearchTask]:
     """按用户请求分解研究任务；各域规模支撑「发现更多」候选池。"""
+    # M3-②（AD5）：intent 纯规则抽词随任务卡下发，驱动补池检索与意图覆盖评估。
+    intent_keywords = build_intent_keywords(req.intent)
     return [
         ResearchTask(domain="attraction", city=req.city,
-                     preferences=req.preferences, budget=req.budget, limit=40),
-        ResearchTask(domain="food", city=req.city, budget=req.budget, limit=16),
+                     preferences=req.preferences, budget=req.budget, limit=40,
+                     intent=req.intent, intent_keywords=intent_keywords),
+        ResearchTask(domain="food", city=req.city, budget=req.budget, limit=16,
+                     intent=req.intent, intent_keywords=intent_keywords),
         ResearchTask(domain="hotel", city=req.city, budget=req.budget,
-                     hotel_tier=req.hotel_tier, limit=10),
+                     hotel_tier=req.hotel_tier, limit=10, intent=req.intent,
+                     intent_keywords=intent_keywords),
     ]
 
 

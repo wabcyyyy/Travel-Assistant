@@ -165,6 +165,69 @@ def spread_hotels(plans: list[dict], nights: int | None = None, days: int | None
     return added
 
 
+def meal_slot_of(start_time: str | None, end_time: str | None = None) -> str | None:
+    """按开始时间粗分餐次：lunch(10:30-14:30) / dinner(17:00-21:30) / breakfast(05:00-10:30)。"""
+    raw = str(start_time or "").strip()
+    if not raw or ":" not in raw:
+        return None
+    try:
+        hour, minute = raw.split(":", 1)
+        mins = int(hour) * 60 + int(minute)
+    except ValueError:
+        return None
+    if 5 * 60 <= mins < 10 * 60 + 30:
+        return "breakfast"
+    if 10 * 60 + 30 <= mins < 14 * 60 + 30:
+        return "lunch"
+    if 17 * 60 <= mins <= 21 * 60 + 30:
+        return "dinner"
+    return "other"
+
+
+def has_double_lunch(foods: list[dict]) -> bool:
+    """当日是否出现两顿午餐（两条餐饮都落在午间窗口）。"""
+    lunches = [f for f in foods or [] if meal_slot_of(f.get("start_time")) == "lunch"]
+    return len(lunches) >= 2
+
+
+def estimate_plans_total(plans: list[dict], persons: int, days: int | None,
+                         consumption: dict | None = None,
+                         rooms: int | None = None) -> dict:
+    """按与 Java BudgetEngine 对齐的口径估算行程总价（用于超支硬约束）。
+
+    门票/餐饮：单价 × 人数；酒店：单价 × 房间数（默认 2 人间）；交通：城市日均。
+    """
+    p = max(int(persons or 1), 1)
+    d = max(int(days or len(plans or []) or 1), 1)
+    room_n = rooms if rooms is not None else max((p + 1) // 2, 1)
+    ticket = 0.0
+    meal = 0.0
+    hotel = 0.0
+    for plan in plans or []:
+        day_no = int(plan.get("day_no") or 0)
+        for item in plan.get("items") or []:
+            try:
+                cost = float(item.get("cost") or 0)
+            except (TypeError, ValueError):
+                cost = 0.0
+            t = str(item.get("item_type") or "")
+            if t == "attraction":
+                ticket += cost
+            elif t == "food":
+                meal += cost
+            elif t == "hotel" and count_hotel_nights_in_budget(day_no, days or len(plans or []), "hotel"):
+                hotel += cost
+    transport = float((consumption or {}).get("transport_price", 35.0) or 35.0)
+    total = round(ticket * p + meal * p + hotel * room_n + transport * d * p, 2)
+    return {
+        "门票": round(ticket * p, 2),
+        "餐饮": round(meal * p, 2),
+        "酒店": round(hotel * room_n, 2),
+        "交通": round(transport * d * p, 2),
+        "合计": total,
+    }
+
+
 def draft_day_plans(city: str, days: int, reason: str) -> list[dict]:
     """LLM 失败后的「待研究草案」：如实空日，绝不冒充生成结果。"""
     try:

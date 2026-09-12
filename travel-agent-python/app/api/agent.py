@@ -35,6 +35,9 @@ from app.agent.tools import find_nearby_pois
 from app.agent.tool_registry import registry
 from app.agent.usage_store import usage_store
 from app.schemas.common import ApiResponse
+from app.schemas.agent_ops import (ButlerNoteRequest, ButlerNoteResponse, CityGuideRequest,
+                                   CityGuideResponse, PoiIntrosRequest, PoiIntrosResponse,
+                                   PoiNearbyItem, PoiNearbyRequest, PoiNearbyResponse)
 from app.schemas.trip import (AdjustRequest, AdjustResponse, ChatTurnRequest, ChatTurnResponse,
                               ClarifyRequest, ClarifyResponse, DailyPlan, EditOp, EditOpRequest,
                               GenerateDayRequest, GenerateRequest, GenerateResponse,
@@ -237,7 +240,9 @@ def edit_ops(req: EditOpRequest, _auth: None = Depends(require_internal_token)) 
 @router.post("/v1/plan-context")
 @scene("assist")
 def plan_context(req: PlanContextRequest, _auth: None = Depends(require_internal_token)) -> ApiResponse[dict]:
-    return ApiResponse.ok(run_plan_context(req.city, req.preferences))
+    # itinerary_id 透传给研究链路发布进度事件；旧调用方不传则不发布
+    return ApiResponse.ok(run_plan_context(req.city, req.preferences,
+                                           itinerary_id=req.itinerary_id))
 
 
 @router.post("/v1/generate-day")
@@ -292,53 +297,62 @@ def chat_turn(req: ChatTurnRequest,
 
 @router.post("/v1/butler-note")
 @scene("assist")
-def butler_note(req: dict, _auth: None = Depends(require_internal_token)) -> ApiResponse[dict]:
+def butler_note(req: ButlerNoteRequest,
+                _auth: None = Depends(require_internal_token)) -> ApiResponse[ButlerNoteResponse]:
     try:
-        return ApiResponse.ok({"note": run_butler_note(req)})
+        # model_dump() 输出 snake_case 键，与 run_butler_note 读取的键一致
+        return ApiResponse.ok(ButlerNoteResponse(note=run_butler_note(req.model_dump())))
     except Exception as exc:
         logger.warning("butler_note failed: %s", exc)
-        return ApiResponse.ok({"note": ""})
+        return ApiResponse.ok(ButlerNoteResponse(note=""))
 
 
 @router.post("/v1/poi-intros")
 @scene("assist")
-def poi_intros(req: dict, _auth: None = Depends(require_internal_token)) -> ApiResponse[dict]:
+def poi_intros(req: PoiIntrosRequest,
+               _auth: None = Depends(require_internal_token)) -> ApiResponse[PoiIntrosResponse]:
     try:
-        names = [n for n in (req.get("names") or []) if isinstance(n, str) and n]
-        return ApiResponse.ok({"intros": run_poi_intros(req.get("city", ""), names)})
+        # Pydantic 已保证 list[str]；沿用历史行为过滤空名
+        names = [n for n in req.names if n]
+        # M3-②：intent 透传进介绍 Prompt（为空时由 butler 层降级为口碑/地理理由）
+        return ApiResponse.ok(PoiIntrosResponse(
+            intros=run_poi_intros(req.city, names, intent=req.intent)))
     except Exception:
-        return ApiResponse.ok({"intros": {}})
+        return ApiResponse.ok(PoiIntrosResponse())
 
 
 @router.post("/v1/poi-nearby")
 @scene("assist")
-def poi_nearby(req: dict, _auth: None = Depends(require_internal_token)) -> ApiResponse[dict]:
+def poi_nearby(req: PoiNearbyRequest,
+               _auth: None = Depends(require_internal_token)) -> ApiResponse[PoiNearbyResponse]:
     """同城权威 POI 近邻（轻量 GraphRAG）：名称解析坐标或直接传坐标。
 
     坐标缺失时返回空列表——附近推荐只使用权威库真实坐标，不伪造。
+    参数换算保持与改造前逐项一致：0 值 falsy 归默认/None；坐标经
+    Pydantic lax 转换后原样透传（0.0 仍传 0.0，由底层判无效坐标）。
     """
     try:
-        limit = req.get("limit")
-        radius = req.get("radius_m")
-        latitude = req.get("latitude")
-        longitude = req.get("longitude")
         rows = find_nearby_pois(
-            str(req.get("city") or ""),
-            name=(str(req["name"]) if req.get("name") else None),
-            latitude=(float(latitude) if latitude is not None else None),
-            longitude=(float(longitude) if longitude is not None else None),
-            limit=(int(limit) if limit else 5),
-            radius_m=(int(radius) if radius else None),
-            category=(str(req["category"]) if req.get("category") else None),
+            req.city,
+            name=(req.name or None),
+            latitude=req.latitude,
+            longitude=req.longitude,
+            limit=(req.limit or 5),
+            radius_m=(req.radius_m or None),
+            category=(req.category or None),
         )
-        return ApiResponse.ok({"items": rows})
+        return ApiResponse.ok(PoiNearbyResponse(items=[PoiNearbyItem.model_validate(r) for r in rows]))
     except Exception:
-        return ApiResponse.ok({"items": []})
+        return ApiResponse.ok(PoiNearbyResponse())
+
 
 @router.post("/v1/city-guide")
 @scene("assist")
-def city_guide(req: dict, _auth: None = Depends(require_internal_token)) -> ApiResponse[dict]:
+def city_guide(req: CityGuideRequest,
+               _auth: None = Depends(require_internal_token)) -> ApiResponse[CityGuideResponse]:
     try:
-        return ApiResponse.ok(run_city_guide(req))
+        # by_alias=True：user_input 字段 dump 成 wire 键 "input"，与 run_city_guide 读取的键一致
+        data = run_city_guide(req.model_dump(by_alias=True))
+        return ApiResponse.ok(CityGuideResponse.model_validate(data))
     except Exception:
         return ApiResponse.fail("城市引导服务暂不可用")

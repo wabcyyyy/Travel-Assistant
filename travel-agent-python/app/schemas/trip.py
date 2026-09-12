@@ -14,13 +14,43 @@
 - app.schemas.common.WireModel。
 """
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import BeforeValidator, Field, model_validator
 
 from app.schemas.common import WireModel
 
 MAX_TRIP_DAYS = 7
+
+
+def _clip_text(limit: int):
+    """生成「超长静默截断」校验器（M3-① 契约叙事化 AD5）。
+
+    为什么不用裸 Field(max_length=...) 直接抛错：叙事字段由 LLM 产出，
+    模型偶尔无视长度约束；旧持久化数据也可能超长。若在校验层抛错，
+    一条超长文案会让整份行程（乃至整日生成）校验失败。这里统一
+    「先截断、后声明 max_length」——max_length 表达契约意图，
+    BeforeValidator 保证超限输入被裁剪而不是拒绝（旧数据兼容）。
+    """
+    def _clip(value: object) -> object:
+        if isinstance(value, str) and len(value) > limit:
+            return value[:limit]
+        return value
+    return _clip
+
+
+# 叙事文本类型（截断 + max_length 兜底）：40=主题句级，60=名称级，120=句子级。
+# Opt 后缀为可空版本。字数与 prompt 契约（open_generation）一一对照。
+_Str40 = Annotated[str, Field(max_length=40)]
+_Str60 = Annotated[str, Field(max_length=60)]
+_Str120 = Annotated[str, Field(max_length=120)]
+Clip40 = Annotated[_Str40, BeforeValidator(_clip_text(40))]
+Clip60 = Annotated[_Str60, BeforeValidator(_clip_text(60))]
+Clip120 = Annotated[_Str120, BeforeValidator(_clip_text(120))]
+# 可空版本：max_length 必须挂在 union 的 str 成员上——直接对 str|None 整体
+# 加 Field(max_length) 会让 None 也进 max_length 校验而 TypeError。
+Clip40Opt = Annotated[Clip40 | None, BeforeValidator(_clip_text(40))]
+Clip120Opt = Annotated[Clip120 | None, BeforeValidator(_clip_text(120))]
 
 
 class FactEvidence(WireModel):
@@ -76,7 +106,11 @@ class GenerateRequest(WireModel):
     start_date: str | None = None
     preferences: list[str] = Field(default_factory=list)
     hotel_tier: str | None = Field(default=None)  # 经济型/舒适型/高档型/豪华型/奢华型
-    requirements: str | None = Field(default=None, max_length=2000)  # 客户额外要求（自然语言）
+    requirements: str | None = Field(default=None, max_length=4000)  # 客户额外要求（自然语言）
+    # 用户一句话旅行意图（M1 意图贯通的一等字段）。用户输入建议 ≤800 字
+    # （前端 maxlength 限制）；Java 兜底 intent=requirements 时可达 4000，
+    # 故线级上限与 requirements 对齐。
+    intent: str | None = Field(default=None, max_length=4000)
     # 用户最初输入的省/区域提示（如"云南"→city 已解析为"丽江"）。此前 Java
     # 会发送但 pydantic 默认 ignore extra 直接丢弃；保留以便开放模式提示模型
     # 目的地所属区域，并为管家讲解提供上下文。
@@ -97,6 +131,11 @@ class TripItem(WireModel):
     cost: float | None = None
     tag: str | None = None
     remark: str | None = None
+    # 入选理由（≤120 字，M3-① 叙事层字段）：attraction 必填，讲该点与本趟
+    # 意图的具体关系。why_this 属于 value_kind="generated" 的叙事层文案，
+    # 只解释「为什么来」，不代表 POI 事实（坐标/价格/营业时间）被核实，
+    # 不影响 fact_evidence 的核验状态。
+    why_this: Clip120Opt = None
     image: str | None = None  # POI 图片 URL（高德检索，可选）
     source: str | None = None
     source_updated_at: str | None = None
@@ -126,15 +165,77 @@ class Suggestion(WireModel):
     used: bool = False
 
 
+class PhotoSpot(WireModel):
+    """出片点位（M3-① 叙事层）：名称 + 拍摄建议 + 最佳时段。
+
+    纯叙事建议，不参与事实核验；每日 0-4 个，意图为空时模型可整体省略。
+    """
+
+    name: Clip60
+    tip: Clip120Opt = None
+    best_time: Clip40Opt = None
+
+
+class BackupRule(WireModel):
+    """备用方案规则（M3-① 叙事层）：if 触发条件 → action 替换动作。
+
+    wire 键为 "if"（显式别名，覆盖 to_camel 生成器，因为 if_ 的 camel
+    形态没有意义）；每日 0-3 条。
+    """
+
+    if_: Clip120 = Field(alias="if")
+    action: Clip120
+
+    @model_validator(mode="before")
+    @classmethod
+    def _forward_compat(cls, data: object) -> object:
+        """旧输入前向兼容：补齐缺失 key，避免整份行程校验失败。
+
+        历史数据/模型输出可能出现三种形态：wire 键 "if"、python 键 "if_"、
+        以及两者皆缺的残缺 dict（如旧版 {"name": ...}）。缺 key 一律补
+        空串而不是抛错——备用方案是辅助叙事，不能因为一条脏规则毁掉
+        整日行程（AD4 降级精神）。
+        """
+        if isinstance(data, dict):
+            row = dict(data)
+            if row.get("if_") is None and row.get("if") is not None:
+                row["if_"] = row["if"]
+            row.setdefault("if_", "")
+            row.setdefault("action", "")
+            return row
+        return data
+
+
+class DayOption(WireModel):
+    """当日可选方案（M3-① 叙事层）：方案名 + 概述 + 取舍说明。
+
+    每日 0-2 组，仅当天存在值得取舍的分叉（如「暴走版 vs 休闲版」）时输出；
+    意图为空时模型可整体省略。items 为该方案对应的点位引用（开放结构，
+    M3 仅承接不消费）。
+    """
+
+    label: Clip40
+    summary: Clip120
+    tradeoff: Clip120
+    items: list = Field(default_factory=list)
+
+
 class DailyPlan(WireModel):
     day_no: int
     note: str | None = None
     items: list[TripItem] = Field(default_factory=list)
-    theme: str | None = None
+    # 当日主题：叙事句语义（≤40 字）——一句说清「当天怎么玩」的主线，
+    # 禁止「A→B→C」纯路径串（M3-① 契约 v1.1.narrative 硬约束）。
+    theme: Clip40Opt = None
     mini_route: dict = Field(default_factory=dict)
-    backup_plan: list[dict] = Field(default_factory=list)
-    photo_spots: list[dict] = Field(default_factory=list)
+    backup_plan: list[BackupRule] = Field(default_factory=list)
+    photo_spots: list[PhotoSpot] = Field(default_factory=list)
     practical_notes: list[str] = Field(default_factory=list)
+    # 当日可选方案（0-2 组）：叙事层，见 DayOption。
+    day_options: list[DayOption] = Field(default_factory=list)
+    # 整趟主题标题（≤40 字）：由第 1 天（open_day day_no==1 或 open_trip
+    # 顶层）生成后随行程透传，第 2 天起模型省略该字段。
+    trip_theme: Clip40Opt = None
     suggestions: list[Suggestion] = Field(default_factory=list)
 
 
@@ -143,6 +244,9 @@ class GenerateResponse(WireModel):
     city: str
     days: int
     title: str
+    # 整趟主题标题（≤40 字）：承接第 1 天 daily_plans[0].trip_theme，
+    # 供前端整段行程页头部展示（M3-① 叙事层）。
+    trip_theme: Clip40Opt = None
     daily_plans: list[DailyPlan]
     budget_estimate: dict[str, float] = Field(default_factory=dict)
     suggestions: list[Suggestion] = Field(default_factory=list)
@@ -215,6 +319,9 @@ class EditOp(WireModel):
 class PlanContextRequest(WireModel):
     city: str = Field(min_length=1)
     preferences: list[str] = Field(default_factory=list)
+    # 行程会话 ID（wire 名 itineraryId）：用于进度事件发布到对应 Redis 通道；
+    # 可选兼容旧调用方，缺失时 Python 侧不发布任何事件。
+    itinerary_id: int | None = None
 
 
 class GenerateDayRequest(WireModel):
@@ -231,7 +338,10 @@ class GenerateDayRequest(WireModel):
     hotel_tier: str | None = None
     chosen_hotel: str | None = None
     needs_hotel: bool = True
-    requirements: str | None = Field(default=None, max_length=2000)  # 客户额外要求（自然语言）
+    requirements: str | None = Field(default=None, max_length=4000)  # 客户额外要求（自然语言）
+    # 用户一句话旅行意图（M1 意图贯通）：上限与 requirements 对齐 4000
+    # （Java 兜底 intent=requirements 时可达 4000）。
+    intent: str | None = Field(default=None, max_length=4000)
     region_hint: str | None = Field(default=None, max_length=64)  # 用户最初输入的省/区域
     feedback: str = Field(default="", max_length=4000)
     context: dict = Field(default_factory=dict)

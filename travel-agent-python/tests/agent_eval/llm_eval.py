@@ -15,14 +15,26 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from app.agent import poi_repository, workflow
+from app.agent.day_stream import GENERATION_TEMPERATURE
 from app.agent.observability import observe_run
 from app.common.config import settings
+from app.prompts.open_generation import OPEN_DAY_PROMPT_VERSION, OPEN_TRIP_PROMPT_VERSION
 from app.schemas.trip import GenerateRequest
-from tests.agent_eval.metrics import evaluate_response
+from tests.agent_eval.metrics import evaluate_narrative, evaluate_response
 
 CASES_PATH = Path(__file__).with_name("cases.json")
+THEMED_CASES_PATH = Path(__file__).with_name("themed_cases.json")
 REPORT_DIR = Path(__file__).with_name("report")
 PROMPT_VERSION = "workflow-v2-authority-route-20260828"
+
+# 生成契约字段白名单：case 里的 name/prompt_version 是评测元数据，
+# 不属于 GenerateRequest；intent 等契约字段按白名单自然透传（M5）。
+_REQUEST_FIELDS = frozenset(GenerateRequest.model_fields)
+
+
+def build_generate_request(case: dict) -> GenerateRequest:
+    """case → 生成请求：过滤评测元数据（name/prompt_version），intent 透传给生成链路。"""
+    return GenerateRequest(**{k: v for k, v in case.items() if k in _REQUEST_FIELDS})
 
 
 def _catalog(city: str) -> dict:
@@ -77,7 +89,7 @@ def _run_once(case: dict, suffix: str) -> tuple[dict, str]:
     failure: Exception | None = None
     with observe_run(f"llm-{case['city']}-{case['days']}-{suffix}") as trace:
         try:
-            response = workflow.run_generate(GenerateRequest(**case))
+            response = workflow.run_generate(build_generate_request(case))
         except Exception as exc:
             failure = exc
     trace_data = trace.to_dict()
@@ -89,6 +101,7 @@ def _run_once(case: dict, suffix: str) -> tuple[dict, str]:
             "stats": _trace_stats(trace_data),
             "trace": trace_data,
             "quality": None,
+            "narrative": None,
         }, ""
     assert response is not None
     quality = evaluate_response(response, case, catalog, trace_data)
@@ -99,8 +112,66 @@ def _run_once(case: dict, suffix: str) -> tuple[dict, str]:
         "stats": _trace_stats(trace_data),
         "trace": trace_data,
         "quality": quality,
+        # M5 叙事化指标：与质量指标并列落报告，主题化评测的核心观测面
+        "narrative": evaluate_narrative(response, case),
     }
     return run, _signature(response)
+
+
+def _themed_markdown(report: dict) -> str:
+    """主题化报告的 Markdown 渲染：每 case 一节（固定运行头部 + 指标表）。
+
+    头部固定 model/temperature/两套开放生成 Prompt 版本，指标表合并
+    evaluate_response 的质量指标与 evaluate_narrative 的叙事指标；
+    无 intent 的基线 case 的主题命中类指标为 None，渲染为 "-"。
+    """
+    lines = [
+        "# 主题化评测报告（真实 LLM）", "",
+        f"- model：`{report['model']}` ｜ temperature：{report['temperature']} ｜ "
+        f"open_day prompt：`{report['open_day_prompt_version']}` ｜ "
+        f"open_trip prompt：`{report['open_trip_prompt_version']}`",
+        f"- 用例数：{report['case_count']} ｜ 两遍一致率：{report['consistency_rate']:.2%}",
+        "",
+    ]
+    for detail in report["details"]:
+        case = detail["case"]
+        run1 = detail["run1"]
+        run2 = detail["run2"]
+        quality = run1.get("quality") or {}
+        narrative = run1.get("narrative") or {}
+        title = case.get("name") or f"{case['city']}-{case['days']}d"
+        lines += [
+            f"## {title}（{case['city']} {case['days']} 日）", "",
+            f"- prompt_version：`{case.get('prompt_version')}` ｜ "
+            f"run1 status：{run1['status']} ｜ run2 status：{run2['status']} ｜ "
+            f"两遍一致：{'是' if detail['consistent'] else '否'}",
+            "", "| 指标 | 结果 |", "| --- | ---: |",
+        ]
+        rows = [
+            ("poi_authority_rate", quality.get("poi_authority_rate")),
+            ("field_reference_rate", quality.get("field_reference_rate")),
+            ("time_conflict_rate", quality.get("time_conflict_rate")),
+            ("route_violation_rate", quality.get("route_violation_rate")),
+            ("attraction_duplicate_rate", quality.get("attraction_duplicate_rate")),
+            ("budget_deviation_rate", quality.get("budget_deviation_rate")),
+            ("theme_sentence_rate", narrative.get("theme_sentence_rate")),
+            ("why_coverage", narrative.get("why_coverage")),
+            ("practical_notes_rate", narrative.get("practical_notes_rate")),
+            ("theme_hit_rate", narrative.get("theme_hit_rate")),
+            ("poi_relevance", narrative.get("poi_relevance")),
+            ("coord_available_rate", narrative.get("coord_available_rate")),
+            ("pending_review_count", narrative.get("pending_review_count")),
+        ]
+        for name, value in rows:
+            if value is None:
+                shown = "-"
+            elif isinstance(value, int) and not isinstance(value, bool):
+                shown = str(value)  # 计数型指标（pending_review_count）不按百分比渲染
+            else:
+                shown = f"{float(value):.2%}"
+            lines.append(f"| {name} | {shown} |")
+        lines.append("")
+    return "\n".join(lines)
 
 
 def main() -> int:
@@ -109,10 +180,19 @@ def main() -> int:
         return 2
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--cases", default=str(CASES_PATH),
+                        help="用例文件：默认 cases.json；主题化同题评测传 themed_cases.json")
     args = parser.parse_args()
-    cases = json.loads(CASES_PATH.read_text(encoding="utf-8"))
+    cases_path = Path(args.cases)
+    # 文件名以 themed 开头即走主题化报告输出（themed_report.json + .md）
+    themed = cases_path.name.startswith("themed")
+    cases = json.loads(cases_path.read_text(encoding="utf-8"))
     if args.limit:
         cases = cases[:args.limit]
+    # prompt_version 占位在运行时填充实际契约版本（M5），随 case 落报告
+    cases = [{**case,
+              "prompt_version": f"{OPEN_DAY_PROMPT_VERSION}/{OPEN_TRIP_PROMPT_VERSION}"}
+             for case in cases]
     details = []
     same_count = 0
     status_counts = {"success": 0, "degraded": 0, "failed": 0}
@@ -147,10 +227,14 @@ def main() -> int:
             ],
         })
     report = {
-        "mode": "real-llm",
+        "mode": "real-llm-themed" if themed else "real-llm",
         "model": settings.llm_model,
-        "temperature": 0.3,
+        # 与开放模式真实生成调用同源（day_stream.GENERATION_TEMPERATURE）
+        "temperature": GENERATION_TEMPERATURE,
         "prompt_version": PROMPT_VERSION,
+        # M5：报告头部固定两套开放生成 Prompt 的契约版本
+        "open_day_prompt_version": OPEN_DAY_PROMPT_VERSION,
+        "open_trip_prompt_version": OPEN_TRIP_PROMPT_VERSION,
         "case_count": len(details),
         "run_count": len(details) * 2,
         "consistency_rate": round(same_count / max(len(details), 1), 4),
@@ -169,9 +253,15 @@ def main() -> int:
         "details": details,
     }
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    (REPORT_DIR / "llm_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 主题化同题评测（--cases themed_cases.json）输出 themed_report.json+md，
+    # 不覆盖既有 llm_report.json
+    report_stem = "themed_report" if themed else "llm_report"
+    report_path = REPORT_DIR / f"{report_stem}.json"
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    if themed:
+        (REPORT_DIR / f"{report_stem}.md").write_text(_themed_markdown(report), encoding="utf-8")
     print(json.dumps({k: report[k] for k in ("mode", "model", "temperature", "prompt_version", "case_count", "consistency_rate")}, ensure_ascii=False, indent=2))
-    print(f"报告已生成：{REPORT_DIR / 'llm_report.json'}")
+    print(f"报告已生成：{report_path}")
     return 0
 
 

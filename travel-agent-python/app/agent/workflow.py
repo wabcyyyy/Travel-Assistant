@@ -41,12 +41,15 @@ from app.agent.generation_core import (
 )
 from app.agent.generators import (
     ReferencePool,
+    _budget_tier,
     _has_valid_coords,
     build_suggestions,
+    clamp_meal_cost,
+    fill_suggestion_gaps,
 )
 from app.agent.day_stream import _amap_ground, _has_coord, _llm_open_day, _llm_open_trip
 from app.agent.observability import metrics
-from app.agent.pricing import query_live_price
+from app.agent.pricing import query_live_price, query_live_food_price
 from app.agent.reflect import build_feedback, validate_plans
 from app.agent.route_service import get_route_matrix
 from app.agent.tool_registry import registry
@@ -321,7 +324,8 @@ def _generate_open_plans(req: GenerateRequest, feedback: str,
                 start_date=(str(req.start_date) if req.start_date else None),
                 day_no=1, days=req.days, used_names=[],
                 hotel_tier=req.hotel_tier, needs_hotel=True, context=context,
-                requirements=req.requirements, region_hint=req.region_hint, feedback=feedback,
+                requirements=req.requirements, intent=req.intent,
+                region_hint=req.region_hint, feedback=feedback,
             )
             try:
                 trip_plans, trip_suggestions = _llm_open_trip(trip_req)
@@ -352,7 +356,7 @@ def _generate_open_plans(req: GenerateRequest, feedback: str,
                     start_date=(str(req.start_date) if req.start_date else None),
                     day_no=day_no, days=req.days, used_names=sorted(used),
                     hotel_tier=req.hotel_tier, needs_hotel=day_no <= stay_nights(req.days),
-                    context=context, requirements=req.requirements,
+                    context=context, requirements=req.requirements, intent=req.intent,
                     region_hint=req.region_hint, feedback=feedback,
                 )
                 try:
@@ -382,6 +386,11 @@ def _generate_open_plans(req: GenerateRequest, feedback: str,
                 "backup_plan": plan.get("backup_plan") or plan.get("backupPlan") or [],
                 "photo_spots": plan.get("photo_spots") or plan.get("photoSpots") or [],
                 "practical_notes": plan.get("practical_notes") or plan.get("practicalNotes") or [],
+                # M3-① 叙事层透传：day_options（当日可选方案）与 trip_theme
+                # （整趟主题，open_trip 顶层/open_day 第 1 天产出，见
+                # _llm_open_trip 的注入逻辑）；items 内 why_this 随 dict 原样携带。
+                "day_options": plan.get("day_options") or plan.get("dayOptions") or [],
+                "trip_theme": plan.get("trip_theme") or plan.get("tripTheme"),
                 "items": plan.get("items") or [],
             })
         if research_errors and not any(p.get("items") for p in plans):
@@ -491,7 +500,17 @@ def reflect(state: AgentState) -> dict:
         route_matrix = None
         if settings.route_service_enabled:
             route_matrix = _route_matrix_for_plans(plans)
-        issues, log = validate_plans(plans, route_matrix=route_matrix)
+        req = state.get("request")
+        budget = getattr(req, "budget", None) if req is not None else None
+        persons = getattr(req, "persons", 1) or 1 if req is not None else 1
+        issues, log = validate_plans(
+            plans,
+            route_matrix=route_matrix,
+            budget=budget if settings.budget_hard_constraint else None,
+            persons=persons,
+            consumption=state.get("consumption"),
+            budget_overage_ratio=settings.budget_overage_ratio,
+        )
     record_event("decision", "reflect_result", metadata={
         "issue_count": len(issues), "needs_fix": bool(issues),
     })
@@ -603,6 +622,8 @@ def format_output(state: AgentState) -> dict:
     # 酒店定价链：联网实时价 → 知识库基准价×季节系数（估算）
     live_cache: dict[str, dict | None] = {}
     remaining = {"n": settings.max_live_queries if settings.live_price_search else 0}
+    food_live_cache: dict[str, dict | None] = {}
+    food_live_budget = {"n": settings.max_live_food_queries if settings.live_food_price_search else 0}
 
     def price_hotel(item: dict) -> None:
         name = item.get("poi_name") or ""
@@ -698,6 +719,29 @@ def format_output(state: AgentState) -> dict:
                 price_hotel(item)
                 if count_hotel_nights_in_budget(plan["day_no"], req.days, "hotel"):
                     hotel_total += float(item.get("cost") or 0)
+            elif item.get("item_type") == "food":
+                meal_price = float((state.get("consumption") or {}).get("meal_price") or 0) or None
+                food_name = str(item.get("poi_name") or "")
+                if settings.live_food_price_search and settings.llm_api_key:
+                    if food_name not in food_live_cache:
+                        if food_live_budget["n"] > 0:
+                            food_live_budget["n"] -= 1
+                            food_live_cache[food_name] = query_live_food_price(req.city, food_name)
+                        else:
+                            food_live_cache[food_name] = None
+                    live_food = food_live_cache.get(food_name)
+                    if live_food and live_food.get("price"):
+                        item["cost"] = float(live_food["price"])
+                        remark = f"联网实时价￥{live_food['price']:g}：{live_food.get('note') or ''}".rstrip("：")
+                        item["remark"] = f"{item.get('remark')}；{remark}" if item.get("remark") else remark
+                new_cost, clamp_note = clamp_meal_cost(
+                    item.get("cost"), meal_price,
+                    hard_ratio=settings.meal_price_hard_cap_ratio,
+                    soft_ratio=settings.meal_price_soft_cap_ratio,
+                )
+                if clamp_note:
+                    item["cost"] = new_cost
+                    item["remark"] = f"{item.get('remark')}；{clamp_note}" if item.get("remark") else clamp_note
             elif item.get("item_type") == "attraction":
                 attraction_total += float(item.get("cost") or 0)
             # 时间窗优先：库内典型时长可能与已排 start/end 冲突（西湖 480 vs 150）。
@@ -711,7 +755,9 @@ def format_output(state: AgentState) -> dict:
                                      theme=plan.get("theme"), mini_route=plan.get("mini_route") or {},
                                      backup_plan=plan.get("backup_plan") or [],
                                      photo_spots=plan.get("photo_spots") or [],
-                                     practical_notes=plan.get("practical_notes") or []))
+                                     practical_notes=plan.get("practical_notes") or [],
+                                     day_options=plan.get("day_options") or [],
+                                     trip_theme=plan.get("trip_theme")))
 
     # 预算只把 LLM/候选池预算当作初始估计，最终按本次实际选中的 POI 重算，
     # 避免“候选平均票价”与用户看到的具体景点不一致。
@@ -753,6 +799,10 @@ def format_output(state: AgentState) -> dict:
             "backup_plan": plan.backup_plan,
             "photo_spots": plan.photo_spots,
             "practical_notes": plan.practical_notes,
+            # M3-① 叙事层随行：校验/评审链路按 key 读取、不消费这两个字段，
+            # 保留以使最终校验的输入与真实输出形状一致。
+            "day_options": plan.day_options,
+            "trip_theme": plan.trip_theme,
             "items": [item.model_dump() for item in plan.items],
         }
         for plan in daily_plans
@@ -766,7 +816,14 @@ def format_output(state: AgentState) -> dict:
             schedule_report["degraded"] = bool(schedule_report.get("degraded")) or any(
                 source != "amap" for source in route_sources
             )
-    final_issues, final_log = validate_plans(final_raw_plans, route_matrix=final_route_matrix)
+    final_issues, final_log = validate_plans(
+        final_raw_plans,
+        route_matrix=final_route_matrix,
+        budget=req.budget if settings.budget_hard_constraint else None,
+        persons=req.persons,
+        consumption=state.get("consumption"),
+        budget_overage_ratio=settings.budget_overage_ratio,
+    )
     # critique_plans 是纯内存的轻量软评审，直接同步调用即可。
     # （此前每请求新建 ThreadPoolExecutor 且从不 shutdown，会泄漏常驻线程。）
     try:
@@ -855,21 +912,25 @@ def format_output(state: AgentState) -> dict:
         {**row, "_authoritative": True}
         for row in poi_repository.search_pois(req.city, category="activity", limit=12)
     ]
-    suggestion_models = [
-        Suggestion(**row)
-        for row in build_suggestions(
-            raw_plans,
-            (state.get("candidates") or []) + activities,
-            state.get("foods"),
-            state.get("hotels") or [],
-            state.get("raw_suggestions") or [],
-            allow_external=open_research,
-        )
-    ]
+    suggestion_rows = build_suggestions(
+        raw_plans,
+        (state.get("candidates") or []) + activities,
+        state.get("foods"),
+        state.get("hotels") or [],
+        state.get("raw_suggestions") or [],
+        allow_external=open_research,
+    )
+    tier_label, _tier_g, _tier_ppd = _budget_tier(req.budget, req.persons, req.days)
+    suggestion_rows = fill_suggestion_gaps(
+        suggestion_rows, req.city, budget_tier=tier_label or None
+    )
+    suggestion_models = [Suggestion(**row) for row in suggestion_rows]
     result = GenerateResponse(
         city=req.city,
         days=req.days,
         title=f"{req.city}{req.days}日游",
+        # 整趟主题承接第 1 天（open_trip 顶层 / open_day day_no==1 产出）
+        trip_theme=(daily_plans[0].trip_theme if daily_plans else None),
         daily_plans=daily_plans,
         budget_estimate=budget_estimate,
         suggestions=suggestion_models,

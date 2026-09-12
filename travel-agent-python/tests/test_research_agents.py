@@ -27,6 +27,14 @@ def _mock_research_reasoning(monkeypatch):
     monkeypatch.setattr(reasoning, "evaluate_research", mock_llm.evaluate_research)
 
 
+@pytest.fixture(autouse=True)
+def _disable_web_refill(monkeypatch):
+    """研究 Agent 单测关闭联网补池：.env 带 LLM_API_KEY 时 _run_search 的
+    web 分支会真实出网（成功/401 均有可能），导致证据条数断言环境性抖动。
+    基线行为即"联网不可用"，这里显式固定，保证单测封闭可复现。"""
+    monkeypatch.setattr("app.agent.web_search.settings.web_search_enabled", False)
+
+
 def _patch_catalog():
     """与其它 workflow 测试一致的工具注入：研究 Agent 运行时经 tools 模块解析。"""
     return (
