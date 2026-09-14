@@ -67,9 +67,14 @@ router.beforeEach((to) => {
   // 凭据在 HttpOnly Cookie；本地仅保存展示用 username/role
   const authed = Boolean(localStorage.getItem('username'))
   if (!authed && to.name !== 'login') {
-    return { name: 'login' }
+    // 携带原目标：登录/注册成功后回跳（分享链接 /trips/58 → 登录 → 回到该行程）
+    return { name: 'login', query: { redirect: to.fullPath } }
   }
   if (authed && to.name === 'login') {
+    const redirect = to.query.redirect
+    if (typeof redirect === 'string' && redirect.startsWith('/')) {
+      return redirect
+    }
     return { name: 'home' }
   }
   if (to.meta.requiresAdmin && localStorage.getItem('role') !== 'admin') {

@@ -2,7 +2,8 @@
   <el-dialog :model-value="visible" title="编辑行程项" width="420px" @update:model-value="emit('update:visible', $event)">
     <el-form label-width="90px" size="default">
       <el-form-item label="开始时间">
-        <el-time-picker v-model="form.startTime" format="HH:mm" style="width: 100%" />
+        <!-- value-format 让字符串 "HH:mm:ss" 直接回填/写回，否则选择器把字符串当非法 Date 显示为空 -->
+        <el-time-picker v-model="form.startTime" value-format="HH:mm:ss" format="HH:mm" style="width: 100%" />
       </el-form-item>
       <el-form-item label="时长(分钟)">
         <el-input-number v-model="form.durationMin" :min="0" style="width: 100%" />

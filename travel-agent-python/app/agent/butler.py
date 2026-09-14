@@ -25,6 +25,8 @@ def run_butler_note(req: dict) -> str:
         "并提到想去省内其他城市可随时调整；特别要求如何落实也并入本段）；"
         "第二段讲酒店选址与旅行意图的关系；第三段讲预算怎么花、哪里可以省；"
         "第四段给出出发前 1~2 条必做事项。"
+        "第三段涉及金额时，只能引用下方「预算」字段与行程 items 里的 cost 数字，"
+        "禁止自行编造或估算任何具体金额；预算数据未提供时不写具体数字，只谈取舍思路。"
         "亲切专业；当用户输入包含旅行意图与实际行程时，四段须与上述结构逐段对应、结合具体点位展开。"
         "不要用 markdown 标题符号，不要输出字面的反斜杠n或转义符。"
     )
@@ -53,15 +55,18 @@ def run_poi_intros(city: str, names: list[str], intent: str | None = None) -> di
     intent 非空时要求每段介绍带一句与旅行意图的连接；为空时写口碑/地理理由。
     """
     client = get_llm_client()
-    # M3-②：意图连接句规则随 intent 有无切换（默认降级为口碑/地理理由）
+    # 意图连接句规则随 intent 有无切换（无 intent 时降级为口碑/地理理由）
     link_rule = (
         f"每段末尾用一句话点出该地点与本趟旅行意图「{intent}」的连接。"
         if (intent or "").strip() else
         "每段末尾用一句话点出该地点的口碑理由或地理优势。"
     )
     system = (
-        "你是目的地百科编辑。为每个地点写一段 80~140 字的详细介绍：涵盖特色亮点、"
-        "历史/文化背景一句话、实用游玩建议（如最佳时段/玩法），"
+        "你是目的地百科编辑。为每个地点写一段 200~300 字的详细介绍（硬性要求：低于 180 字视为不合格，"
+        "必须把特色讲透、把背景写实、把建议给具体来凑足篇幅），分三个自然段："
+        "第一段讲特色亮点与定位（这里以什么闻名、最值得看的是什么）；"
+        "第二段讲历史/文化/建筑背景（一两句有信息量的事实，不确定的细节宁可不写）；"
+        "第三段给实用游玩建议（建议停留时长、最佳时段、门票预约方式、周边顺游 tips）。"
         + link_rule +
         "若对某地点事实不确定，可先调用 search_pois 工具检索该城市候选再写；"
         "工具只读，禁止编造具体价格。只输出 JSON："
@@ -72,11 +77,15 @@ def run_poi_intros(city: str, names: list[str], intent: str | None = None) -> di
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
+    # 200-300 字/地点：按地点数给足输出预算，避免批量生成被 max_tokens 截断
+    # （截断即 JSON 解析失败 → 全部介绍为空）。
+    max_tokens = max(2600, min(8000, len(names) * 500 + 800))
     raw = ""
     try:
         loop = run_tool_call_loop(
             client, messages, max_rounds=2,
             model=settings.llm_fast_model or None,
+            max_tokens=max_tokens,
         )
         message = loop.get("message") or {}
         raw = str(message.get("content") or "")
@@ -89,7 +98,7 @@ def run_poi_intros(city: str, names: list[str], intent: str | None = None) -> di
         raw = ""
     if not raw.strip():
         raw = client.complete(
-            user, system_prompt=system, temperature=0.3, max_tokens=2600,
+            user, system_prompt=system, temperature=0.3, max_tokens=max_tokens,
             model=settings.llm_fast_model or None,
         )
     text = raw.strip()
@@ -102,4 +111,36 @@ def run_poi_intros(city: str, names: list[str], intent: str | None = None) -> di
     intros = data.get("intros")
     if not isinstance(intros, dict) and isinstance(data.get("plans"), dict):
         intros = data.get("plans")
-    return intros if isinstance(intros, dict) else {}
+    if not isinstance(intros, dict):
+        return {}
+    # 长度硬校验：fast model 对 200~300 字契约遵循度不足（实测均 ~90 字），
+    # 对过短项再发一轮扩写（引用上轮介绍，要求补足篇幅），失败保留原值。
+    MIN_INTRO_LEN = 180
+    short = {n: str(t or "") for n, t in intros.items() if len(str(t or "")) < MIN_INTRO_LEN}
+    if short:
+        try:
+            retry_system = (
+                system +
+                "\n上一轮生成的介绍过短未达标。本轮只针对下列地点重写介绍，"
+                "每段必须达到 200~300 字，直接沿用并扩充上一轮的事实，不得缩水。"
+            )
+            retry_user = (
+                f"城市：{city}\n地点列表：{json.dumps(list(short.keys()), ensure_ascii=False)}\n"
+                f"上一轮过短介绍：{json.dumps(short, ensure_ascii=False)}"
+            )
+            raw2 = client.complete(
+                retry_user, system_prompt=retry_system, temperature=0.3,
+                max_tokens=max_tokens, model=settings.llm_fast_model or None,
+            )
+            text2 = raw2.strip()
+            if text2.startswith("```"):
+                text2 = text2.split("\n", 1)[-1].rsplit("```", 1)[0]
+            data2 = json.loads(text2[text2.find("{") : text2.rfind("}") + 1])
+            fixed = data2.get("intros")
+            if isinstance(fixed, dict):
+                for n, t in fixed.items():
+                    if n in intros and isinstance(t, str) and len(t) > len(str(intros[n] or "")):
+                        intros[n] = t
+        except Exception as exc:  # noqa: BLE001 - 扩写失败保留过短原值
+            logger.warning("poi_intros rewrite pass failed: %s", exc)
+    return intros

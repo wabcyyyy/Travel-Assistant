@@ -1,7 +1,7 @@
 package com.travel.backend.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import com.travel.backend.vo.AdminItineraryVO;
 import com.travel.backend.vo.AdminStatsVO;
 import com.travel.backend.vo.AdminUserVO;

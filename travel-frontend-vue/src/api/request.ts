@@ -53,7 +53,10 @@ request.interceptors.response.use(
         localStorage.removeItem('username')
         localStorage.removeItem('role')
       }
-      router.push({ name: 'login' })
+      // 携带当前页地址：重新登录后回跳（如正在看的行程详情页）
+      const current = router.currentRoute.value
+      const redirect = current && current.name !== 'login' && current.fullPath !== '/' ? { redirect: current.fullPath } : {}
+      router.push({ name: 'login', query: redirect })
       ElMessage.warning('登录已过期，请重新登录')
       return Promise.reject(error)
     }

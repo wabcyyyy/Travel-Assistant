@@ -1,13 +1,16 @@
 # Travel Assistant one-click launcher
 # Starts redis(6380), backend-java(8080), agent-python(8000), frontend-vue(5173).
 # Services already running are skipped. Background services run without extra console windows.
+# NOTE: keep this file ASCII-only. Windows PowerShell 5.1 reads BOM-less files as ANSI and
+# non-ASCII comments break parsing (start-all.cmd calls powershell.exe, i.e. 5.1).
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# 使用项目级 uv 缓存，避免用户全局缓存路径异常导致 Agent 无法启动。
+# Use a project-local uv cache; a broken global cache path would block the Agent from starting.
 $env:UV_CACHE_DIR = Join-Path $root ".uv-cache"
 
-# 加载根目录共享 .env 到当前进程环境变量，子服务自动继承（模块本地 .env / 真实环境变量仍可覆盖）
+# Load repo-root .env into this process; child services inherit it.
+# (module-local .env files / real environment variables can still override.)
 $rootEnv = Join-Path $root ".env"
 if (Test-Path $rootEnv) {
     Get-Content $rootEnv | ForEach-Object {
@@ -18,12 +21,12 @@ if (Test-Path $rootEnv) {
     Write-Host "[env   ] loaded $rootEnv"
 }
 
-# 安全启动检查：JWT_SECRET / AGENT_INTERNAL_TOKEN 缺失时 Java 会 fail-fast
+# Safety check: Java fails fast when JWT_SECRET / AGENT_INTERNAL_TOKEN are missing.
 if (-not $env:JWT_SECRET -or $env:JWT_SECRET.Length -lt 32) {
-    Write-Warning "JWT_SECRET 未配置或过短（需 ≥32）。请写入根目录 .env；详见 travel-backend-java/.env.example"
+    Write-Warning "JWT_SECRET is missing or too short (need >= 32 chars). Put it in repo-root .env; see travel-backend-java/.env.example"
 }
 if (-not $env:AGENT_INTERNAL_TOKEN) {
-    Write-Warning "AGENT_INTERNAL_TOKEN 未配置：Java/Python 生成类内部调用将无鉴权（仅本机演示勉强可接受）"
+    Write-Warning "AGENT_INTERNAL_TOKEN is not set: internal generate calls between Java/Python will be unauthenticated (acceptable only for local demos)"
 }
 
 function Test-Port([int]$p) {
@@ -31,7 +34,7 @@ function Test-Port([int]$p) {
 }
 
 function Start-ServiceWindow([string]$title, [string]$workdir, [string]$cmdline) {
-    # 输出重定向到 logs\<title>.log，随时可用 Get-Content logs\<title>.log -Wait -Tail 100 查看
+    # Output goes to logs\<title>.log; watch it with: Get-Content logs\<title>.log -Wait -Tail 100
     $logFile = Join-Path $root "logs\$title.log"
     $args_ = "/k title $title && cd /d `"$workdir`" && $cmdline > `"$logFile`" 2>&1"
     Start-Process -FilePath "cmd.exe" -ArgumentList $args_ -WindowStyle Hidden
@@ -63,8 +66,12 @@ if (-not (Test-Port 8080)) {
 
 # --- agent python :8000 ---
 if (-not (Test-Port 8000)) {
+    # --no-sync: when the local venv drifts from uv.lock (e.g. torch/embedding deps bumped
+    # without uv sync yet), bare "uv run" does an implicit sync that can stall on the pytorch
+    # CPU index. Start from the installed environment here; explicit sync is done by
+    # "uv sync" (local) and CI ("uv sync --frozen").
     Start-ServiceWindow "agent-python" "$root\travel-agent-python" `
-        "uv run python main.py"
+        "uv run --no-sync python main.py"
     Write-Host "[start] agent-python :8000"
 } else {
     Write-Host "[skip ] agent-python :8000 already running"
@@ -102,4 +109,4 @@ while ($pending.Count -gt 0 -and (Get-Date) -lt $deadline) {
 foreach ($t in $pending) { Write-Host "[TIMEOUT] $($t.Name) not responding yet - check its window for errors" }
 
 Write-Host ""
-Write-Host "Done. Web UI: http://localhost:5173  (首次使用请先注册账号)"
+Write-Host "Done. Web UI: http://localhost:5173  (register an account on first use)"

@@ -121,6 +121,7 @@ public class ItineraryEventChannelManager {
         try {
             return connectionFactory.getConnection().ping() != null;
         } catch (Exception e) {
+            log.debug("redis ping failed; treating pub/sub channel as unavailable", e);
             return false;
         }
     }

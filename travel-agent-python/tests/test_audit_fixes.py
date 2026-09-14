@@ -117,7 +117,8 @@ def test_route_matrix_tool_budget_covers_longest_trip():
 
 
 def test_route_matrix_skips_days_with_single_item(monkeypatch):
-    from app.agent import workflow as wf
+    from app.agent.route_matrix import registry, route_matrix_for_plans
+    from app.common.config import settings
 
     invocations = []
 
@@ -125,15 +126,15 @@ def test_route_matrix_skips_days_with_single_item(monkeypatch):
         invocations.append(params["items"])
         return {}
 
-    monkeypatch.setattr(wf.settings, "route_service_enabled", True)
-    monkeypatch.setattr(wf.registry, "invoke", fake_invoke)
+    monkeypatch.setattr(settings, "route_service_enabled", True)
+    monkeypatch.setattr(registry, "invoke", fake_invoke)
     plans = [
         {"day_no": 1, "items": [{"item_type": "attraction", "poi_name": "A"},
                                  {"item_type": "food", "poi_name": "B"}]},
         {"day_no": 2, "items": [{"item_type": "attraction", "poi_name": "C"}]},  # <2 项跳过
         {"day_no": 3, "items": []},  # 空日跳过
     ]
-    wf._route_matrix_for_plans(plans)
+    route_matrix_for_plans(plans)
     assert len(invocations) == 1
 
 
@@ -545,7 +546,7 @@ def test_sync_failure_keeps_serving_old_index(tmp_path, monkeypatch):
         assert store._loaded
 
     # 二次同步抛错（如 embedding 崩溃）：保留旧目录、纳入退避，不冒泡。
-    with patch.object(store, "_sync", side_effect=RuntimeError("chroma down")), \
+    with patch.object(store, "_sync", side_effect=RuntimeError("vector store down")), \
             patch.object(poi_repository, "list_all_pois_with_status",
                          return_value=(good, True)):
         store._loaded = False

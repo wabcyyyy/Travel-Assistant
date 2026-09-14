@@ -1,7 +1,9 @@
 """memory 模块单测：WorkingMemory 过滤与 dialogue 滑窗。"""
 
+from app.agent.day_stream import _filter_used
 from app.agent.memory import WorkingMemory, dialogue_messages, recent_turns
 from app.agent.memory.dialogue import dialogue_fence_block
+from app.agent.observability import observe_run
 
 
 def test_working_memory_filter_and_mark():
@@ -10,9 +12,19 @@ def test_working_memory_filter_and_mark():
     kept = mem.filter_unused(items)
     assert [i["name"] for i in kept] == ["灵隐寺"]
     mem.mark_used("灵隐寺")
-    # 全部已用时回退全集（与历史 _filter_used 一致）
-    assert mem.filter_unused(items) == items
+    # 全部已用时返回空（候选耗尽），绝不回退已用点位——回退会破坏跨天去重
+    assert mem.filter_unused(items) == []
     assert "灵隐寺" in mem.exclude_names()
+
+
+def test_filter_used_records_candidate_exhaustion():
+    items = [{"name": "西湖"}, {"name": "灵隐寺"}]
+    with observe_run("exhausted-run") as trace:
+        kept = _filter_used(items, {"西湖", "灵隐寺"})
+    assert kept == []
+    assert any(e["name"] == "candidates_exhausted"
+               and e["metadata"] == {"input": 2, "used": 2}
+               for e in trace.to_dict()["events"])
 
 
 def test_working_memory_hotel_and_feedback():

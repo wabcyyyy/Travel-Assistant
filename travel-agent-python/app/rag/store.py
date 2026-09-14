@@ -1,4 +1,4 @@
-"""POI 权威知识库到 Chroma 的同步与统一混合检索适配层。"""
+"""POI 权威知识库到 Qdrant 的同步与统一混合检索适配层。"""
 
 from __future__ import annotations
 
@@ -10,9 +10,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-import chromadb
-from chromadb.config import Settings
-
 from app.agent import poi_repository
 from app.common.config import BASE_DIR, settings
 from app.rag.cache import RetrievalCache, make_cache_key
@@ -23,10 +20,10 @@ from app.rag.retriever import (
     build_poi_document,
     create_embedding_provider,
 )
+from app.rag.vector_collection import QdrantVectorCollection
 
 logger = logging.getLogger(__name__)
 _DATA_DIR = BASE_DIR / "data"
-_COLLECTION_NAME = "poi_knowledge"
 
 
 def record_cache_event(cache_key: tuple, *, kind: str) -> None:
@@ -44,7 +41,7 @@ def record_cache_event(cache_key: tuple, *, kind: str) -> None:
 
 
 class PoIKnowledgeStore:
-    """保持 Chroma 索引与 MySQL 权威 POI 数据一致。
+    """保持 Qdrant 索引与 MySQL 权威 POI 数据一致。
 
     同一 embedding/document 版本下只 upsert 指纹变化的记录；版本变化时
     全量重建，避免使用不同模型的向量混在同一个集合中。
@@ -56,20 +53,14 @@ class PoIKnowledgeStore:
         embedding_provider: EmbeddingProvider | None = None,
     ) -> None:
         self._persist_dir = persist_dir or _DATA_DIR
-        self._persist_dir.mkdir(parents=True, exist_ok=True)
         self.embedding_provider = embedding_provider or create_embedding_provider()
-        self._client = chromadb.PersistentClient(
-            path=str(self._persist_dir),
-            settings=Settings(anonymized_telemetry=False),
-        )
-        self._collection = self._client.get_or_create_collection(
-            name=_COLLECTION_NAME, metadata=self._collection_metadata()
-        )
+        # Qdrant 连接与检索器惰性创建（_ensure_index）：import 本模块不应触碰
+        # 向量库——本地模式对存储目录加进程间文件锁，急切连接会让"运行中的
+        # Agent + 并行测试/第二个进程"直接撞锁。
+        self._collection: QdrantVectorCollection | None = None
+        self._retriever: HybridRetriever | None = None
         self._documents: dict[str, dict[str, Any]] = {}
-        self._retriever = HybridRetriever(
-            self._collection, self.embedding_provider, rrf_k=settings.rag_rrf_k
-        )
-        # P2：语义缓存与轻量近邻图（都在索引同步点重建/失效）。
+        # 语义缓存与轻量近邻图（纯内存，都在索引同步点重建/失效）。
         self._cache = RetrievalCache()
         self._graph = PoiGraph()
         self._loaded = False
@@ -80,17 +71,34 @@ class PoIKnowledgeStore:
         self._sync_lock = threading.RLock()
         self._last_sync: dict[str, Any] = {}
 
-    def _collection_metadata(self, *, index_version: str | None = None) -> dict[str, Any]:
-        metadata: dict[str, Any] = {
-            "hnsw:space": "cosine",
+    def _ensure_index(self) -> None:
+        """首次访问时创建 Qdrant 集合句柄与检索器（幂等）。"""
+        if self._retriever is not None:
+            return
+        # 向量维度由 provider 探测决定（hashed=256 / bge 语义模型=512/1024），换模型即换维度。
+        vector_size = len(self.embedding_provider.embed_query("dimension-probe"))
+        self._collection = QdrantVectorCollection(
+            collection_name=settings.qdrant_collection,
+            vector_size=vector_size,
+            path=str(self._persist_dir / "qdrant") if self._persist_dir != _DATA_DIR else settings.qdrant_path,
+            url=settings.qdrant_url or None,
+            timeout=settings.qdrant_timeout,
+        )
+        # 维度守护（兜底）：既有集合维度与当前 provider 不符时重置，避免
+        # 「保留旧索引」恢复分支用错误维度查询直接报错（正常路径由版本签名重建覆盖）。
+        self._collection.reset_if_dimension_mismatch(vector_size)
+        self._retriever = HybridRetriever(
+            self._collection, self.embedding_provider, rrf_k=settings.rag_rrf_k
+        )
+
+    def _version_signature(self) -> dict[str, Any]:
+        """索引版本签名：任一点的 payload 与此不一致即触发全量重建。"""
+        return {
             "embedding_provider": self.embedding_provider.provider_name,
             "embedding_model": self.embedding_provider.model_name,
             "embedding_version": self.embedding_provider.version,
             "document_version": settings.rag_document_version,
         }
-        if index_version:
-            metadata["index_version"] = index_version
-        return metadata
 
     @property
     def collection(self):
@@ -102,6 +110,7 @@ class PoIKnowledgeStore:
 
     def ensure_loaded(self, force: bool = False) -> None:
         with self._sync_lock:
+            self._ensure_index()
             now = time.monotonic()
             stale = (settings.rag_refresh_seconds > 0
                      and now - self._last_load_at > settings.rag_refresh_seconds)
@@ -123,7 +132,7 @@ class PoIKnowledgeStore:
                     "poi_count": len(self._documents),
                     "fallback": True,
                 }
-                logger.warning("POI 数据源不可用，保留已有 Chroma 索引并降级检索")
+                logger.warning("POI 数据源不可用，保留已有 Qdrant 索引并降级检索")
                 return
             try:
                 self._sync(pois)
@@ -139,22 +148,22 @@ class PoIKnowledgeStore:
             self._last_load_at = time.monotonic()
 
     def _restore_from_collection(self) -> None:
-        """数据库不可用时从已有 Chroma 元数据恢复词法检索所需的内存目录。"""
+        """数据库不可用时从已有 Qdrant payload 恢复词法检索所需的内存目录。"""
         try:
-            result = self._collection.get(include=["documents", "metadatas"])
+            payloads = self._collection.all_payloads()
         except Exception as exc:
-            logger.warning("恢复已有 Chroma 索引失败: %s", exc)
+            logger.warning("恢复已有 Qdrant 索引失败: %s", exc)
             self._documents = {}
             self._retriever.set_documents(self._documents)
             return
-        documents = result.get("documents") or []
-        metadatas = result.get("metadatas") or []
         restored: dict[str, dict[str, Any]] = {}
-        for document, metadata in zip(documents, metadatas):
-            if not metadata or metadata.get("id") is None:
+        for payload in payloads:
+            if not payload or payload.get("id") is None:
                 continue
-            pid = str(metadata["id"])
-            restored[pid] = {"document": document or "", "metadata": metadata,
+            pid = str(payload["id"])
+            document = str(payload.get("document") or "")
+            metadata = {key: value for key, value in payload.items() if key != "document"}
+            restored[pid] = {"document": document, "metadata": metadata,
                              "fingerprint": metadata.get("content_fingerprint", "")}
         self._documents = restored
         self._retriever.set_documents(self._documents)
@@ -187,12 +196,13 @@ class PoIKnowledgeStore:
             "open_time": poi.get("open_time") or "", "tags": poi.get("tags") or "",
             "rating": float(poi.get("rating") or 0.0), "description": poi.get("description") or "",
             "source": source, "source_updated_at": source_updated_at,
+            "embedding_provider": self.embedding_provider.provider_name,
             "embedding_model": self.embedding_provider.model_name,
             "embedding_version": self.embedding_provider.version,
             "document_version": settings.rag_document_version,
             "content_fingerprint": fingerprint,
         }
-        # Chroma 不接受 None：缺价字段直接省略，禁止把 NULL 写成 0.0 哨兵
+        # 缺价字段（None）直接省略，禁止把 NULL 写成 0.0 哨兵
         # （否则下游把 0 当成真实免费价，0 价覆盖与 Reflect 会失效）。
         ticket_price = poi.get("ticket_price")
         avg_cost = poi.get("avg_cost")
@@ -216,45 +226,43 @@ class PoIKnowledgeStore:
             pid, document, metadata, fingerprint = self._row_payload(poi)
             desired[pid] = {"document": document, "metadata": metadata, "fingerprint": fingerprint}
 
-        existing_meta = self._collection.metadata or {}
-        signature = self._collection_metadata()
-        # hnsw:space 是建集合时的静态配置，modify(index_version) 后可能不再出现在
-        # 返回的 metadata 中；模型/文档版本才决定是否必须全量重建。
-        version_keys = ("embedding_provider", "embedding_model", "embedding_version", "document_version")
-        version_mismatch = any(existing_meta.get(key) != signature[key] for key in version_keys)
-        existing = self._collection.get(include=["metadatas"])
-        existing_ids = {str(pid) for pid in existing.get("ids", [])}
+        signature = self._version_signature()
+        version_keys = tuple(signature)
+        existing_payloads = self._collection.all_payloads()
         existing_by_id = {
-            str(meta.get("id")): meta
-            for meta in (existing.get("metadatas") or [])
-            if meta and meta.get("id") is not None
+            str(payload.get("id")): payload
+            for payload in existing_payloads
+            if payload and payload.get("id") is not None
         }
-        legacy = any("content_fingerprint" not in meta for meta in existing_by_id.values())
+        # 任一点的版本签名与当前不一致（或旧数据缺指纹）即触发全量重建，
+        # 避免不同 embedding/文档版本的向量混在同一集合。
+        version_mismatch = any(
+            any(payload.get(key) != signature[key] for key in version_keys)
+            for payload in existing_payloads
+        )
+        legacy = any("content_fingerprint" not in payload for payload in existing_payloads)
         full_rebuild = version_mismatch or legacy
         if full_rebuild:
             self._rebuild(desired)
             changed_count = len(desired)
-            deleted_count = len(existing_ids)
+            deleted_count = len(existing_by_id)
         else:
             changed_ids = [pid for pid, item in desired.items()
                            if existing_by_id.get(pid, {}).get("content_fingerprint") != item["fingerprint"]]
-            deleted = existing_ids - set(desired)
+            deleted = set(existing_by_id) - set(desired)
             if deleted:
                 self._collection.delete(ids=sorted(deleted))
             if changed_ids:
                 changed = [desired[pid] for pid in changed_ids]
                 self._collection.upsert(
                     ids=changed_ids,
-                    documents=[item["document"] for item in changed],
-                    metadatas=[item["metadata"] for item in changed],
-                    embeddings=self.embedding_provider.embed_documents([item["document"] for item in changed]),
+                    payloads=[{**item["metadata"], "document": item["document"]} for item in changed],
+                    vectors=self.embedding_provider.embed_documents([item["document"] for item in changed]),
                 )
             changed_count = len(changed_ids)
             deleted_count = len(deleted)
-            self._update_collection_metadata(self._index_version(desired))
 
         self._documents = desired
-        self._retriever.collection = self._collection
         self._retriever.set_documents(self._documents)
         self._graph.rebuild(self._documents)
         self._cache.clear()  # 索引内容已变化，旧缓存整体失效。
@@ -278,33 +286,16 @@ class PoIKnowledgeStore:
         payload = "|".join([self.embedding_provider.identity, settings.rag_document_version, *values])
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
-    def _update_collection_metadata(self, index_version: str) -> None:
-        try:
-            # Chroma 不允许通过 modify 改变 hnsw:space；该静态配置只在建集合时写入。
-            metadata = self._collection_metadata(index_version=index_version)
-            metadata.pop("hnsw:space", None)
-            self._collection.modify(metadata=metadata)
-        except Exception as exc:
-            logger.warning("更新 Chroma 索引元数据失败: %s", exc)
-
     def _rebuild(self, desired: dict[str, dict[str, Any]]) -> None:
         logger.info("构建 RAG 索引：%s 条", len(desired))
-        try:
-            self._client.delete_collection(_COLLECTION_NAME)
-        except Exception:
-            pass
-        self._collection = self._client.get_or_create_collection(
-            name=_COLLECTION_NAME,
-            metadata=self._collection_metadata(index_version=self._index_version(desired)),
-        )
+        self._collection.reset()
         if not desired:
             return
         ids = list(desired)
-        self._collection.add(
+        self._collection.upsert(
             ids=ids,
-            documents=[desired[pid]["document"] for pid in ids],
-            metadatas=[desired[pid]["metadata"] for pid in ids],
-            embeddings=self.embedding_provider.embed_documents([desired[pid]["document"] for pid in ids]),
+            payloads=[{**desired[pid]["metadata"], "document": desired[pid]["document"]} for pid in ids],
+            vectors=self.embedding_provider.embed_documents([desired[pid]["document"] for pid in ids]),
         )
 
     def search(
@@ -372,3 +363,25 @@ poi_store = PoIKnowledgeStore()
 
 def warmup_rag() -> None:
     poi_store.ensure_loaded()
+    log_embedding_provider()
+
+
+def log_embedding_provider() -> None:
+    """启动日志如实标注生效的 embedding provider（正向可见，避免「默认名不副实」）。
+
+    语义 provider 生效 → INFO 一行；降级为哈希向量 → WARN 并给出修复指引
+    （降级的另一处可见性：索引遥测 fallback 标记 / RAG 检索遥测 fallback）。
+    """
+    provider = poi_store.embedding_provider
+    if getattr(provider, "fallback", False):
+        logger.warning(
+            "[rag] 语义 embedding 不可用，已降级为哈希向量（%s）；"
+            "修复：uv sync 安装依赖后执行 `uv run python scripts/fetch_rag_model.py` 预置模型"
+            "（国内可设 HF_ENDPOINT=https://hf-mirror.com）", provider.identity)
+        return
+    try:
+        dim = len(provider.embed_query("dimension-probe"))
+    except Exception as exc:  # noqa: BLE001 - 探测失败不影响启动，交由检索层降级
+        logger.warning("[rag] embedding provider=%s 探测维度失败: %s", provider.identity, exc)
+        return
+    logger.info("[rag] embedding provider=%s dim=%s（检索默认口径）", provider.identity, dim)

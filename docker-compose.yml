@@ -18,8 +18,8 @@ services:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - ta-mysql-data:/var/lib/mysql
-      # 首次初始化可选：挂载 schema（需幂等脚本，或手工导入）
-      # - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      # 表结构由 Java 后端启动时的 Flyway 迁移创建（见 travel-backend-java/src/main/resources/db/migration/），
+      # 不需要挂载初始化 SQL；如需兜底种子，后端建表后手工导入 sql/seed_data.sql
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -47,6 +47,22 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # 向量数据库（RAG 检索）：默认 Agent 用本地嵌入式模式即可起跑；
+  # 配置 QDRANT_URL=http://qdrant:6333 后切到本服务（持久化 + 多实例共享）。
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ta-qdrant
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+    volumes:
+      - ta-qdrant-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   # ---- 应用层（可选 profile）----
   # 镜像需自行 build；模型/密钥通过 .env 注入。未开启 apps profile 时不会启动。
 
@@ -62,6 +78,8 @@ services:
       AGENT_HOST: 0.0.0.0
       DB_HOST: mysql
       REDIS_HOST: redis
+      # 容器网络内 Redis 监听 6379（宿主机才映射为 6380）
+      REDIS_PORT: "6379"
     ports:
       - "8000:8000"
     depends_on:
@@ -80,8 +98,10 @@ services:
   backend-java:
     profiles: ["apps"]
     build:
-      context: ./travel-backend-java
-      dockerfile: Dockerfile
+      # 上下文必须是仓库根：镜像内需要 contracts/（跨语言流事件 schema，
+      # 由 maven-resources-plugin 从 ../contracts 拷入 classpath）
+      context: .
+      dockerfile: travel-backend-java/Dockerfile
     container_name: ta-backend
     env_file:
       - ./travel-backend-java/.env
@@ -89,6 +109,8 @@ services:
       SERVER_ADDRESS: 0.0.0.0
       MYSQL_HOST: mysql
       REDIS_HOST: redis
+      # 容器网络内 Redis 监听 6379（宿主机才映射为 6380）
+      REDIS_PORT: "6379"
       AGENT_SERVICE_URL: http://agent-python:8000
     ports:
       - "8080:8080"
@@ -116,3 +138,4 @@ services:
 volumes:
   ta-mysql-data:
   ta-redis-data:
+  ta-qdrant-data:

@@ -76,6 +76,7 @@ public class SecurityStartupValidator implements InitializingBean {
         try {
             return InetAddress.getByName(host).isLoopbackAddress();
         } catch (Exception ex) {
+            log.warn("cannot resolve configured host, treated as non-loopback: host={}", host, ex);
             return false;
         }
     }

@@ -13,22 +13,26 @@ jobs:
         working-directory: travel-agent-python
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: '3.12'
-      - name: Install deps
-        run: |
-          python -m pip install -U pip
-          pip install fastapi==0.111.0 "uvicorn[standard]==0.30.1" pydantic==2.8.2 \
-            httpx==0.27.0 "mcp>=1.10,<2" python-dotenv==1.0.1 langgraph==0.2.44 \
-            langchain-core==0.3.15 pymysql==1.2.0 chromadb==1.5.9 pytest==8.2.2 \
-            redis==5.3.1
+          enable-cache: true
+      - name: Sync deps (lockfile-driven)
+        # 依赖一律由 uv.lock 驱动，禁止手写 pin 列表：此前 CI 装 chromadb、
+        # 运行时用 qdrant-client 的漂移即由此而来
+        run: uv sync --frozen
       - name: Offline unit tests
         env:
-          # 单测不依赖真实密钥
+          # 单测不依赖真实密钥；固定 hashed 向量（零模型加载，离线确定性）
           AGENT_INTERNAL_TOKEN: ''
           LLM_API_KEY: ''
-        run: pytest tests/ --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval -q
+          RAG_EMBEDDING_PROVIDER: hashed
+        run: uv run pytest tests/ --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval -q
+      - name: Contract schema drift check
+        # 事件契约唯一源是 app/schemas/stream_events.py；入仓 schema 与模型不同步即红
+        run: |
+          uv run python scripts/export_contracts.py
+          git diff --exit-code -- ../contracts/
       - name: Compose config
         working-directory: .
         run: docker compose config -q
@@ -46,8 +50,63 @@ jobs:
           java-version: '17'
           cache: maven
       - name: Unit tests
-        # 全量跑（106 用例均 mock、不依赖外部服务）；避免 -Dtest 白名单漏掉新增测试类
+        # 全量跑（全部 mock、不依赖外部服务）；避免 -Dtest 白名单漏掉新增测试类
         run: mvn -B test
+
+  frontend:
+    # 前端门禁：类型检查 + 生产构建 + 纯逻辑单测（store reducer / SSE 帧解析）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: travel-frontend-vue
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: travel-frontend-vue/package-lock.json
+      - name: Install deps
+        run: npm ci
+      - name: Type check & build
+        run: npm run build
+      - name: Unit tests
+        run: npm run test:unit
+
+  schema-migration:
+    # 迁移门禁：把 Flyway V1 基线应用到空库，验证「新环境可复现正确 schema」
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-password
+          MYSQL_DATABASE: travel_assistant
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h127.0.0.1 -uroot -pci-only-password"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply V1 baseline to empty schema
+        env:
+          MYSQL_PWD: ci-only-password
+        run: |
+          mysql -h127.0.0.1 -uroot travel_assistant \
+            < travel-backend-java/src/main/resources/db/migration/V1__baseline_schema.sql
+          tables=$(mysql -h127.0.0.1 -uroot -N -B travel_assistant \
+            -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='travel_assistant'")
+          echo "created tables: $tables"
+          test "$tables" -ge 12
+          # 采集管线依赖的关键列必须存在（fail-fast 契约）
+          mysql -h127.0.0.1 -uroot -N -B travel_assistant \
+            -e "SHOW COLUMNS FROM poi_knowledge LIKE 'avg_cost'" | grep -q avg_cost
+      - name: Cross-check schema contract (Python 只读列 / Java 实体列 vs V1)
+        # 防双端 schema 漂移：V1 基线必须覆盖两端查询/映射用到的全部列（纯静态，无需 DB）
+        run: python3 travel-agent-python/scripts/check_schema_contract.py
 
   secret-scan:
     runs-on: ubuntu-latest

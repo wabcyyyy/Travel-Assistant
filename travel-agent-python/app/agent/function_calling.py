@@ -20,7 +20,8 @@ class FunctionCallingError(RuntimeError):
 
 
 def run_tool_call_loop(client: Any, messages: list[dict], *,
-                      max_rounds: int = 3, model: str | None = None) -> dict[str, Any]:
+                      max_rounds: int = 3, model: str | None = None,
+                      max_tokens: int | None = None) -> dict[str, Any]:
     """执行 OpenAI-compatible tools 协议并返回最终 assistant message。"""
     conversation = [dict(message) for message in messages]
     seen: set[str] = set()
@@ -30,8 +31,9 @@ def run_tool_call_loop(client: Any, messages: list[dict], *,
         limits = current_limits()
         if limits:
             limits.check("llm")
+        extra: dict[str, Any] = {"max_tokens": max_tokens} if max_tokens else {}
         response = client.chat_response(conversation, model=model, tools=schemas,
-                                        tool_choice="auto")
+                                        tool_choice="auto", **extra)
         message = response.get("message") or {}
         calls = message.get("tool_calls") or []
         conversation.append(message)

@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 _HOTEL_SYSTEM_PROMPT = (
     "你是酒店价格查询助手。基于联网搜索结果回答，不要编造。只输出 JSON，格式："
-    '{"found": true或false, "price_per_night": 数字或null, "note": "价格来源与适用条件，20字内"}'
+    '{"found": true或false, "price_per_night": 每晚人民币数字或null, "note": "价格来源与适用条件，20字内"}'
+    "注意 price_per_night 与 note 中出现的价格一律换算成人民币，不要报日元/美元原币数字。"
 )
 
 _FOOD_SYSTEM_PROMPT = (

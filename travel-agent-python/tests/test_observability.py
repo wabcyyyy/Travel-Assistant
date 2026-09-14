@@ -66,6 +66,20 @@ def test_observe_run_keeps_error_as_failed_run():
     )
 
 
+def test_cancelled_run_counted_separately_from_success_and_failure():
+    """客户端断开取消：单列 cancelled_runs，既不算成功也不算失败。"""
+    metrics.reset()
+    with observe_run("cancelled-run"):
+        record_event("decision", "run_status", status="cancelled",
+                     metadata={"status": "cancelled"})
+    snapshot = metrics.snapshot()
+    assert snapshot["runs"] == 1
+    assert snapshot["cancelled_runs"] == 1
+    assert snapshot["successes"] == 0
+    assert snapshot["failures"] == 0
+    assert snapshot["degraded_runs"] == 0
+
+
 def test_observe_run_keeps_recent_memory_and_persistent_trace_lookup():
     metrics.reset()
     with observe_run("lookup-run"):

@@ -1,10 +1,8 @@
 """统一生成图：整段行程（trip）与单日（day）共用一张 LangGraph StateGraph。
 
-此前存在两套编排图：
-- ``workflow.build_graph``：parse → research → generate → reflect → refill → format
-- ``day_workflow.build_day_graph``：generate → reflect → retry/fallback
-
-本模块将二者合并为 **一张** ``unified_agent_graph``，用 ``mode`` 字段分流：
+历史上 workflow 与 day_workflow 各持一张图，现已合并为 **一张**
+``unified_agent_graph``，用 ``mode`` 字段分流（workflow 提供整段节点函数、
+day_stream 提供逐日节点函数）：
 
 ```text
 dispatch ──mode=day──► day_generate ⇄ day.reflect/retry/fallback ──► END
@@ -357,9 +355,3 @@ def run_day(req: GenerateDayRequest) -> DailyPlan:
     if result.get("plan") is None:
         raise ValueError(result.get("error") or "单日行程生成失败")
     return result["plan"]
-
-
-# 兼容旧内部名
-def build_graph() -> Any:
-    """兼容入口：返回统一图（非 StateGraph，仅保留调用名）。"""
-    return unified_agent_graph

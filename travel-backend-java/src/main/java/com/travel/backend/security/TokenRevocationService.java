@@ -91,6 +91,7 @@ public class TokenRevocationService {
             return sb.toString();
         } catch (Exception ex) {
             // SHA-256 必存在；若异常则退化为不可逆长度截断（仅兜底）
+            log.warn("sha-256 unavailable, token index degraded to hashCode", ex);
             return Integer.toHexString(token.hashCode());
         }
     }

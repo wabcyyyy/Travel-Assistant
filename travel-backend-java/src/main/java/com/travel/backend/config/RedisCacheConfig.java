@@ -1,9 +1,10 @@
 package com.travel.backend.config;
 
+import tools.jackson.databind.DefaultTyping;
+import tools.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.Cache;
 import org.springframework.cache.interceptor.CacheErrorHandler;
@@ -16,7 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 
 import java.time.Duration;
@@ -31,17 +32,8 @@ public class RedisCacheConfig implements CachingConfigurer {
 
     @Bean
     public CacheManager cacheManager(RedisConnectionFactory connectionFactory) {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new JavaTimeModule());
-        BasicPolymorphicTypeValidator validator = BasicPolymorphicTypeValidator.builder()
-                .allowIfSubType("com.travel.backend.")
-                .allowIfSubType("java.util.")
-                .allowIfSubType("java.time.")
-                .allowIfSubType("java.math.")
-                .build();
-        mapper.activateDefaultTyping(validator,
-                ObjectMapper.DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY);
-        GenericJackson2JsonRedisSerializer valueSerializer = new GenericJackson2JsonRedisSerializer(mapper);
+        GenericJacksonJsonRedisSerializer valueSerializer =
+                new GenericJacksonJsonRedisSerializer(cacheValueMapper());
         RedisCacheConfiguration defaults = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofMinutes(10))
                 .disableCachingNullValues()
@@ -53,6 +45,22 @@ public class RedisCacheConfig implements CachingConfigurer {
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(defaults)
                 .withInitialCacheConfigurations(cacheConfigs)
+                .build();
+    }
+
+    /**
+     * 缓存值 mapper（含类型信息 + 子类型白名单）。抽成静态工厂便于单测直接验证
+     * 序列化往返（Jackson 3 迁移后 GenericJacksonJsonRedisSerializer 为换型后的实现）。
+     */
+    static ObjectMapper cacheValueMapper() {
+        BasicPolymorphicTypeValidator validator = BasicPolymorphicTypeValidator.builder()
+                .allowIfSubType("com.travel.backend.")
+                .allowIfSubType("java.util.")
+                .allowIfSubType("java.time.")
+                .allowIfSubType("java.math.")
+                .build();
+        return JsonMapper.builder()
+                .activateDefaultTyping(validator, DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY)
                 .build();
     }
 

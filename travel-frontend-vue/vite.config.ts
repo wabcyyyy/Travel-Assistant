@@ -1,6 +1,6 @@
 import { fileURLToPath, URL } from 'node:url'
 
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
@@ -54,6 +54,18 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,
+      },
+    },
+  },
+  test: {
+    // 单测只覆盖纯逻辑（store reducer / SSE 帧解析）；happy-dom 提供 window/localStorage。
+    // element-plus 必须内联交给 Vite transform：其 ESM 内含 .css 副作用导入，
+    // 被 vitest 外部化后 Node 的 ESM loader 会直接抛 "Unknown file extension .css"。
+    environment: 'happy-dom',
+    include: ['src/**/*.test.ts'],
+    server: {
+      deps: {
+        inline: ['element-plus'],
       },
     },
   },

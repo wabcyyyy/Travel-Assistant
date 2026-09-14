@@ -31,8 +31,8 @@ public class ItinerarySseGateway {
     /** 同一行程最多 5 个并发 SSE 连接：防止前端重连风暴或恶意刷新耗尽容器资源。 */
     private static final int MAX_EMITTERS_PER_ITINERARY = 5;
 
-    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper =
-            new com.fasterxml.jackson.databind.ObjectMapper();
+    private final tools.jackson.databind.ObjectMapper objectMapper =
+            new tools.jackson.databind.ObjectMapper();
     /** 注册表：key=itineraryId；增删统一走 {@code ConcurrentHashMap.compute}（同 key 串行化，防孤儿条目）。 */
     private final ConcurrentHashMap<Long, CopyOnWriteArrayList<SseEmitter>> emitters = new ConcurrentHashMap<>();
 
@@ -208,6 +208,7 @@ public class ItinerarySseGateway {
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (Exception e) {
+            log.warn("sse payload serialization failed, sent empty object instead", e);
             return "{}";
         }
     }

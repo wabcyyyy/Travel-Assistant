@@ -23,7 +23,7 @@ import java.util.Map;
  *
  * <p>所有写操作均通过 {@link com.travel.backend.common.BizException} 抛出业务异常。</p>
  *
- * @see com.travel.backend.serviceImpl.ItineraryServiceImpl
+ * @see com.travel.backend.service.impl.ItineraryServiceImpl
  */
 public interface ItineraryService {
 

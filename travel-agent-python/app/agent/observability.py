@@ -56,6 +56,8 @@ class MetricsRegistry:
             "runs": 0,
             "successes": 0,
             "degraded_runs": 0,
+            # 客户端断开导致的取消：用户/连接侧行为，既不算成功也不算失败
+            "cancelled_runs": 0,
             "failures": 0,
             "llm_calls": 0,
             "tool_calls": 0,
@@ -133,12 +135,15 @@ class MetricsRegistry:
         run_status = ((status_events[-1].get("metadata") or {}).get("status")
                       if status_events else None)
         is_degraded = run_status == "degraded"
+        is_cancelled = run_status == "cancelled"
         is_failed = not success or run_status == "failed"
         delta = {
             "runs": 1,
-            # 三态互斥：fallback 完成属于 degraded，不计入 successes。
-            "successes": int(success and not is_degraded and not is_failed),
+            # 三态互斥：fallback 完成属于 degraded，不计入 successes；
+            # cancelled（客户端断开）单列，不计成功也不计失败。
+            "successes": int(success and not is_degraded and not is_failed and not is_cancelled),
             "failures": int(is_failed),
+            "cancelled_runs": int(is_cancelled),
             # llm_calls / token 用量由 llm_client.record_llm_call 直接上报，
             # 避免遗漏未包 trace 的调用（clarify/city-guide 等）造成双算或漏算。
             "tool_calls": sum(e.get("kind") == "tool" for e in events),

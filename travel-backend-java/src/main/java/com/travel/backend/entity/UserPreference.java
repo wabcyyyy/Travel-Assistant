@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
  *
  * <p>唯一键：(user_id, pref_label)，同一用户的同一偏好只有一条记录，count 递增。</p>
  *
- * @see com.travel.backend.serviceImpl.UserPreferenceService
+ * @see com.travel.backend.service.impl.UserPreferenceService
  */
 @Data
 @TableName("user_preference")

@@ -1,7 +1,12 @@
 #!/usr/bin/env powershell
 # Pre-commit / pre-push secret scan for Travel-Assistant.
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-secrets.ps1
-# Exit 1 if suspicious secrets found in project sources (skips local .env and vendor dirs).
+# Exit 1 if suspicious secrets found in project sources, or if a real .env got tracked.
+#
+# Note: local .env contents are intentionally not scanned (live keys live only in
+# gitignored local files). The dangerous case is a .env file being tracked by git,
+# which the git ls-files check below catches. Keep this file ASCII-only: Windows
+# PowerShell 5.1 reads UTF-8 without BOM as ANSI and can mangle non-ASCII comments.
 
 $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
@@ -13,13 +18,38 @@ $patterns = @(
     'eyJhbGciOi[A-Za-z0-9_-]{20,}'
     '-----BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY-----'
     'AKIA[0-9A-Z]{16}'
+    'AIza[0-9A-Za-z_\-]{35}'
     'AMAP_WEB_KEY=[a-f0-9]{25,}'
     'UNSPLASH_ACCESS_KEY=[A-Za-z0-9_-]{25,}'
+    'PEXELS_API_KEY=[A-Za-z0-9]{25,}'
 )
+
+# Generic high-entropy assignment: key names containing PASSWORD/SECRET/TOKEN/
+# API_KEY/ACCESS_KEY/APP_KEY followed by a 32+ char token. Placeholders are
+# excluded afterwards via $placeholderMarkers.
+$entropyPattern = '(?i)(?:PASSWORD|SECRET|TOKEN|API_KEY|ACCESS_KEY|APP_KEY)[A-Z_]*\s*[=:]\s*[''"]?([A-Za-z0-9+/_\-]{32,})'
+$placeholderMarkers = @('replace', 'your-', 'change-me', 'changeme', 'example', 'placeholder', 'xxxx')
 
 $skip = '\\(\.git|node_modules|\.venv[^\\]*|\.uv-cache|\.uv-python|\.pnpm-store|models|dist|target|\.idea|\.vscode|data|logs|\.test-report|site-packages)\\'
 $found = New-Object System.Collections.Generic.List[string]
 
+function Add-Hit([string]$rel, [string]$line, [int]$lineNumber) {
+    Write-Host "HIT $rel"
+    if ($line.Length -gt 140) { $line = $line.Substring(0, 140) }
+    Write-Host ("  L{0}: {1}" -f $lineNumber, $line)
+    if (-not $found.Contains($rel)) { $found.Add($rel) | Out-Null }
+}
+
+# ---- 1. Tracked .env files (except *.example templates) fail immediately ----
+# Once a .env is committed the keys are in git history: rotation alone is not
+# enough, history must be rewritten. Catching it before the commit is cheaper.
+$trackedEnv = git -C $root ls-files -- '.env' '.env.*' 2>$null |
+    Where-Object { $_ -and $_ -notmatch '\.example$' }
+foreach ($rel in $trackedEnv) {
+    Add-Hit $rel "tracked .env file (real env files must stay gitignored)" 0
+}
+
+# ---- 2. Real key shapes in project sources ----
 $files = Get-ChildItem -Path $root -Recurse -File -Force -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch $skip -and $_.Length -lt 2MB } |
     Where-Object {
@@ -34,17 +64,22 @@ foreach ($file in $files) {
     if ($file.Name -eq 'check-secrets.ps1') { continue }
     if ($file.FullName -match 'package-lock|pnpm-lock|\.min\.(js|css)') { continue }
 
-    $hits = Select-String -Path $file.FullName -Pattern $patterns -ErrorAction SilentlyContinue
-    if (-not $hits) { continue }
-
     $rel = $file.FullName.Substring($root.Length).TrimStart('\', '/')
-    Write-Host "HIT $rel"
+
+    $hits = Select-String -Path $file.FullName -Pattern $patterns -ErrorAction SilentlyContinue
     foreach ($h in ($hits | Select-Object -First 5)) {
-        $line = $h.Line
-        if ($line.Length -gt 140) { $line = $line.Substring(0, 140) }
-        Write-Host ("  L{0}: {1}" -f $h.LineNumber, $line)
+        Add-Hit $rel $h.Line $h.LineNumber
     }
-    $found.Add($rel) | Out-Null
+
+    $entropyHits = Select-String -Path $file.FullName -Pattern $entropyPattern -ErrorAction SilentlyContinue
+    foreach ($h in ($entropyHits | Select-Object -First 5)) {
+        $value = [string]$h.Matches[0].Groups[1].Value
+        $isPlaceholder = $false
+        foreach ($marker in $placeholderMarkers) {
+            if ($value.ToLower().Contains($marker)) { $isPlaceholder = $true; break }
+        }
+        if (-not $isPlaceholder) { Add-Hit $rel $h.Line $h.LineNumber }
+    }
 }
 
 if ($found.Count -gt 0) {

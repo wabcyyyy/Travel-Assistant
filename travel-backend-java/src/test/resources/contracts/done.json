@@ -1,0 +1,11 @@
+{
+  "type": "done",
+  "daysExpected": 3,
+  "daysEmitted": [
+    1,
+    2
+  ],
+  "tripTheme": "巴塞罗那·高迪之光",
+  "complete": true,
+  "message": null
+}

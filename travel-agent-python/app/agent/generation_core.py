@@ -10,13 +10,14 @@
 | ``day_workflow`` | 逐日门面 + ``_generate_day_once`` 兼容再导出 |
 | ``generation_core`` | 产品口径（N-1 晚/草案/重试常量/摊铺） |
 
-历史说明：曾存在 workflow / day_workflow 两张图；已合并进 trip_graph。
 改动产品规则只改本模块；改编排拓扑只改 ``trip_graph``。
 """
 
 from __future__ import annotations
 
 import copy
+import re
+from math import asin, cos, radians, sin, sqrt
 from typing import Any
 
 # 单日/兼容路径的校验修复次数
@@ -258,3 +259,104 @@ def _max_day_no(plans: list[dict]) -> int:
         except (TypeError, ValueError):
             continue
     return m or 1
+
+
+# 归一化去重键：剥括号注记（"圣家堂（Sagrada Família）"→"圣家堂"）、
+# 去空白与常见分隔标点、小写。模型对同一地点常输出名称变体（中英混注、
+# 带括号别名），精确字符串比对会漏判跨天重复。
+_BRACKET_ANNOTATION_RE = re.compile(r"[（(【\[〔].*?[）)】\]〕]", re.S)
+_NAME_SEPARATOR_RE = re.compile(r"[\s·・、,，。．.\-—_]+")
+
+_EARTH_RADIUS_M = 6371000.0
+
+
+def norm_poi_key(name) -> str:
+    """POI 名称归一化键：同名判定（同日/跨天去重）与 used 比对共用。"""
+    s = _BRACKET_ANNOTATION_RE.sub("", str(name or ""))
+    s = _NAME_SEPARATOR_RE.sub("", s)
+    return s.lower().casefold()
+
+
+def haversine_m(lat1, lng1, lat2, lng2) -> float:
+    """两点球面距离（米）；坐标无效返回 inf（0/0 是缺失哨兵）。"""
+
+    def _v(v):
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return None
+        return f if abs(f) > 1e-6 else None
+
+    a, b, c, d = _v(lat1), _v(lng1), _v(lat2), _v(lng2)
+    if None in (a, b, c, d):
+        return float("inf")
+    p1, p2 = radians(a), radians(c)
+    dp = radians(c - a)
+    dl = radians(d - b)
+    h = sin(dp / 2) ** 2 + cos(p1) * cos(p2) * sin(dl / 2) ** 2
+    return 2 * _EARTH_RADIUS_M * asin(min(1.0, sqrt(h)))
+
+
+class PoiSeenRegistry:
+    """跨天/同日重复点位登记表：归一化同名 + 同类型近距离坐标双通道。
+
+    名称变体（"圣家堂" vs "圣家堂大教堂"）光靠字符串归一抓不住；落地
+    （引用背书/高德/Google）补上真实坐标后，同类型点位相距 <80m 即视为
+    同一地点。坐标缺失时退化为纯名称判定。
+    酒店不参与判重：全程同一家酒店跨天重复是摊铺语义（N-1 晚口径）。
+    """
+
+    def __init__(self, max_proximity_m: float = 80.0) -> None:
+        self.max_proximity_m = max_proximity_m
+        self._keys: set[str] = set()
+        self._coords: list[tuple[str, float, float]] = []
+
+    def is_duplicate(self, name, item_type, latitude=None, longitude=None) -> bool:
+        if str(item_type or "") == "hotel":
+            # 酒店全程同一家是摊铺语义：跨天同名合法，不参与判重
+            return False
+        key = norm_poi_key(name)
+        if key and key in self._keys:
+            return True
+        dist = min(
+            (haversine_m(latitude, longitude, la, ln) for _t, la, ln in self._coords),
+            default=float("inf"),
+        )
+        return dist < self.max_proximity_m
+
+    def register(self, name, item_type, latitude=None, longitude=None) -> None:
+        if str(item_type or "") == "hotel":
+            return
+        key = norm_poi_key(name)
+        if key:
+            self._keys.add(key)
+        try:
+            lat, lng = float(latitude), float(longitude)
+        except (TypeError, ValueError):
+            return
+        if abs(lat) > 1e-6 and abs(lng) > 1e-6:
+            self._coords.append((str(item_type or ""), lat, lng))
+
+
+def drop_cross_day_duplicates(plans: list[dict],
+                              *, max_proximity_m: float = 80.0) -> list[dict]:
+    """对整组日计划做跨天重复清洗（原地修改），返回被丢弃项的遥测列表。
+
+    用于整段一次生成的后处理：同名/同地不同名的重复只保留首次出现。
+    """
+    registry = PoiSeenRegistry(max_proximity_m=max_proximity_m)
+    dropped: list[dict] = []
+    for plan in sorted(plans, key=lambda p: int(p.get("day_no") or 0)):
+        kept: list[dict] = []
+        for item in plan.get("items") or []:
+            name = str(item.get("poi_name") or "").strip()
+            item_type = str(item.get("item_type") or "")
+            if name and registry.is_duplicate(name, item_type,
+                                              item.get("latitude"), item.get("longitude")):
+                dropped.append({"day_no": plan.get("day_no"), "poi_name": name})
+                continue
+            if name:
+                registry.register(name, item_type, item.get("latitude"), item.get("longitude"))
+            kept.append(item)
+        plan["items"] = kept
+    return dropped

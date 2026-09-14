@@ -1,0 +1,192 @@
+name: release
+
+# CI 分层第三层（评审报告 §4.2）：打 tag 时跑全量评测与门禁，产物存档。
+# 日常提交走 ci.yml（PR 层）；定时走 nightly.yml（冒烟 + 语义检索）。
+# 手动触发：Actions → release → Run workflow。
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  eval-suite:
+    name: Offline eval suite (agent / research / retrieval)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: travel-agent-python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+          enable-cache: true
+      - name: Sync deps (lockfile-driven)
+        run: uv sync --frozen
+      - name: Unit tests
+        env:
+          AGENT_INTERNAL_TOKEN: ''
+          LLM_API_KEY: ''
+          RAG_EMBEDDING_PROVIDER: hashed
+        run: uv run pytest tests/ --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval -q
+      - name: Agent / research / retrieval evals (hashed)
+        run: |
+          mkdir -p eval-artifacts
+          uv run python tests/agent_eval/eval_agent.py | tee eval-artifacts/eval_agent.json
+          uv run python tests/agent_eval/eval_research.py | tee eval-artifacts/eval_research.json
+          uv run python tests/agent_eval/eval_retrieval.py --provider hashed | tee eval-artifacts/eval_retrieval_hashed.json
+      - name: Cache RAG embedding model
+        uses: actions/cache@v4
+        with:
+          path: travel-agent-python/models
+          key: rag-model-bge-small-zh-v1.5
+      - name: Fetch RAG model (HF mirror)
+        env:
+          HF_ENDPOINT: https://hf-mirror.com
+        run: uv run python scripts/fetch_rag_model.py
+      - name: Retrieval eval (semantic)
+        run: uv run python tests/agent_eval/eval_retrieval.py --provider semantic | tee eval-artifacts/eval_retrieval_semantic.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-artifacts
+          path: |
+            travel-agent-python/eval-artifacts
+            travel-agent-python/tests/agent_eval/report
+
+  java-frontend-gates:
+    name: Java + frontend gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Java tests
+        working-directory: travel-backend-java
+        run: mvn -B test
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: travel-frontend-vue/package-lock.json
+      - name: Frontend build + unit tests
+        working-directory: travel-frontend-vue
+        run: |
+          npm ci
+          npm run build
+          npm run test:unit
+
+  perf:
+    name: Load test (services up) + report artifact
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-password
+          MYSQL_DATABASE: travel_assistant
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h127.0.0.1 -uroot -pci-only-password"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard (require LLM_API_KEY)
+        id: guard
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          if [ -z "$LLM_API_KEY" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::未配置 LLM_API_KEY secret，跳过压测（generate 端点需要真实生成）"
+          fi
+      - uses: astral-sh/setup-uv@v5
+        if: steps.guard.outputs.skip != 'true'
+        with:
+          python-version: '3.12'
+          enable-cache: true
+      - uses: actions/setup-java@v4
+        if: steps.guard.outputs.skip != 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Install python deps
+        if: steps.guard.outputs.skip != 'true'
+        working-directory: travel-agent-python
+        run: uv sync --frozen
+      - name: Start agent
+        if: steps.guard.outputs.skip != 'true'
+        working-directory: travel-agent-python
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          DB_HOST: 127.0.0.1
+          DB_PASSWORD: ci-only-password
+          DB_NAME: travel_assistant
+          REDIS_URL: redis://127.0.0.1:6379/0
+          RAG_EMBEDDING_PROVIDER: hashed
+          AGENT_INTERNAL_TOKEN: ci-internal-token
+        run: |
+          nohup uv run python main.py > /tmp/agent.log 2>&1 &
+      - name: Start backend
+        if: steps.guard.outputs.skip != 'true'
+        working-directory: travel-backend-java
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: '3306'
+          MYSQL_USER: root
+          MYSQL_PASSWORD: ci-only-password
+          MYSQL_DB: travel_assistant
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: '6379'
+          JWT_SECRET: ci-example-jwt-secret-at-least-32-chars
+          AGENT_SERVICE_URL: http://127.0.0.1:8000
+          AGENT_INTERNAL_TOKEN: ci-internal-token
+        run: |
+          nohup mvn -B -q spring-boot:run > /tmp/backend.log 2>&1 &
+      - name: Wait for services
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8000/api/agent/health >/dev/null && break || sleep 2
+          done
+          curl -sf http://127.0.0.1:8000/api/agent/health
+          for _ in $(seq 1 90); do
+            curl -sf http://127.0.0.1:8080/api/test/hello >/dev/null && break || sleep 2
+          done
+          curl -sf http://127.0.0.1:8080/api/test/hello
+      - name: Load test (all endpoints)
+        if: steps.guard.outputs.skip != 'true'
+        working-directory: travel-agent-python
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: uv run python tests/perf/load_test.py --endpoint all
+      - uses: actions/upload-artifact@v4
+        if: steps.guard.outputs.skip != 'true'
+        with:
+          name: perf-report
+          path: travel-agent-python/tests/perf/report
+      - name: Dump service logs on failure
+        if: failure()
+        run: |
+          echo "=== agent.log (tail) ==="; tail -200 /tmp/agent.log || true
+          echo "=== backend.log (tail) ==="; tail -200 /tmp/backend.log || true

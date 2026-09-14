@@ -19,7 +19,7 @@ from app.common import db_pool
 
 logger = logging.getLogger(__name__)
 
-# 注意：poi_knowledge 另有 avg_cost 列（人均消费，见 sql/add_poi_avg_cost_and_unique.sql）。
+# 注意：poi_knowledge 另有 avg_cost 列（人均消费，随 Flyway V1 基线创建）。
 # 预算契约：ticket_price 优先；food/hotel 在 ticket_price 为空时回落 avg_cost
 # （海外种子与部分采集管线把人均/房价写在 avg_cost）。
 _POI_COLUMNS = (

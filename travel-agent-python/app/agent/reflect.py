@@ -169,8 +169,8 @@ def validate_plans(daily_plans: list[dict], route_matrix: dict | None = None,
         active = [it for it in items if it.get("item_type") in ("attraction", "food")]
         # 负时长（end<start 的跨午夜脏数据）按 0 计，避免抵消其它项而掩盖超满。
         total = sum(max(0, _item_end(it) - _item_start(it)) for it in active)
-        # 只有酒店/餐饮没有景点的"行程"不可交付：这类结果必须进反思循环修复，
-        # 而不是以 READY_WITH_WARNINGS 交付（丽江占位酒店事故的校验缺口）。
+        # 只有酒店/餐饮没有景点的行程不可交付：必须进反思循环修复，
+        # 禁止以 READY_WITH_WARNINGS 交付。
         if not attractions and items:
             issues.append(f"第 {day_no} 天未安排任何景点")
         if len(attractions) > MAX_DAILY_ATTRACTIONS:

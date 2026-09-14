@@ -49,7 +49,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Avatar, Lock, User } from '@element-plus/icons-vue'
 // ElMessage 由 AutoImport resolver 按需注入（含样式）；表单类型仍显式声明
 import type { FormInstance, FormRules } from 'element-plus'
@@ -57,6 +57,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { login, register } from '../api'
 import { useUserStore } from '../store/user'
 
+const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 const formRef = ref<FormInstance>()
@@ -120,7 +121,13 @@ async function onSubmit() {
     userStore.setToken('')
     userStore.setUsername(res.data.user.username)
     userStore.setRole(res.data.user.role)
-    router.push({ name: 'home' })
+    // 回跳登录前访问的页面（如分享链接 /trips/58）；仅接受站内路径防开放跳转
+    const redirect = route.query.redirect
+    if (typeof redirect === 'string' && redirect.startsWith('/')) {
+      router.push(redirect)
+    } else {
+      router.push({ name: 'home' })
+    }
   } catch {
     /* 错误提示已由拦截器处理 */
   } finally {

@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.5</version>
+        <version>4.1.1</version>
         <relativePath/>
     </parent>
 
@@ -19,7 +19,7 @@
 
     <properties>
         <java.version>17</java.version>
-        <mybatis-plus.version>3.5.5</mybatis-plus.version>
+        <mybatis-plus.version>3.5.17</mybatis-plus.version>
         <jjwt.version>0.12.5</jjwt.version>
     </properties>
 
@@ -45,11 +45,6 @@
             <artifactId>spring-boot-starter-thymeleaf</artifactId>
         </dependency>
         <dependency>
-            <groupId>me.paulschwarz</groupId>
-            <artifactId>spring-dotenv</artifactId>
-            <version>4.0.0</version>
-        </dependency>
-        <dependency>
             <groupId>org.xhtmlrenderer</groupId>
             <artifactId>flying-saucer-pdf-openpdf</artifactId>
             <version>9.1.22</version>
@@ -61,8 +56,24 @@
         </dependency>
         <dependency>
             <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+            <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
             <version>${mybatis-plus.version}</version>
+        </dependency>
+        <dependency>
+            <!-- 3.5.9+ 起分页等 JSqlParser 依赖拆分为独立模块（PaginationInnerInterceptor 在此） -->
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-jsqlparser</artifactId>
+            <version>${mybatis-plus.version}</version>
+        </dependency>
+        <dependency>
+            <!-- Boot 4 自动配置按技术模块拆分：Flyway 自动配置在 spring-boot-flyway，
+                 必须经 starter 引入（否则迁移静默不执行） -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
         </dependency>
         <dependency>
             <groupId>com.mysql</groupId>
@@ -93,6 +104,11 @@
             <scope>runtime</scope>
         </dependency>
         <dependency>
+            <groupId>com.networknt</groupId>
+            <artifactId>json-schema-validator</artifactId>
+            <version>3.0.7</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
@@ -105,11 +121,55 @@
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <!-- 跨语言流事件契约：唯一源在 travel-agent-python/app/schemas/stream_events.py，
+                     CI 校验漂移；此处拷入 classpath 供运行时校验与测试读取 -->
+                <directory>${project.basedir}/../contracts</directory>
+                <targetPath>contracts</targetPath>
+                <includes>
+                    <include>*.schema.json</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
+                <!-- 契约 schema 在仓库根 contracts/（资源插件从 ../contracts 拷入 classpath）。
+                     缺目录时 maven-resources-plugin 只告警不失败 → 会产出「能构建、启动即崩」的镜像；
+                     这里在 validate 阶段直接拦下。 -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.4.1</version>
+                <executions>
+                    <execution>
+                        <id>require-cross-language-contract</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireFilesExist>
+                                    <files>
+                                        <file>../contracts/stream_events.schema.json</file>
+                                    </files>
+                                    <message>
+                                        缺少跨语言契约 contracts/stream_events.schema.json：
+                                        构建上下文必须是仓库根（见 docker-compose backend-java 的 build.context 与 Dockerfile）
+                                    </message>
+                                </requireFilesExist>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <!-- 版本交由 Boot 父 POM 管理：旧 pin（3.11.0）在新 JDK 上会抛
+                     CompilerException: ConcurrentModificationException -->
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
                 <configuration>
                     <annotationProcessorPaths>
                         <path>

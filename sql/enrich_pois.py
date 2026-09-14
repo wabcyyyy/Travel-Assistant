@@ -38,8 +38,8 @@ Nominatim 免 key 采集 + Wikivoyage 原文入库（零 LLM、零模型费）�
   到几十分钟（主要耗时在 LLM 批量补齐/翻译）。
 - 脚本会在同进程内同步 Chroma 索引文件；运行中的 FastAPI 服务会在
   RAG_REFRESH_SECONDS（默认 60s）内惰性感知数据变化并增量同步，无需重启。
-- 首次部署需先执行 sql/add_poi_avg_cost_and_unique.sql（avg_cost 列 +
-  (city,name) 唯一键 + 历史重复行收敛），否则本脚本写库会因缺列失败。
+- 表结构由 Java 后端的 Flyway 迁移创建（V1 基线已含 avg_cost 列与
+  (city,name,category) 唯一键）；旧库（Flyway 之前）请参考 sql/archive/。
 - --prune-seed 为可选的种子清理：删除本次运行城市中 source 仍为
   'mysql.poi_knowledge'（默认种子来源）且未被本管线匹配更新的旧行；
   手工增补 SQL（如杭州分档酒店）若未被高德命中也会被删，请谨慎使用。
@@ -1102,13 +1102,14 @@ def upsert_pois(records: list[dict]) -> tuple[int, int, int]:
     inserted = updated = unchanged = 0
     try:
         with conn.cursor() as cursor:
-            # fail-fast：库若被 schema.sql 重建（avg_cost 列与唯一键消失），必须
-            # 在写库入口立刻报清楚，而不是采集 50 分钟后才抛 1054 让全部工作作废。
+            # fail-fast：库若被手工重建（avg_cost 列与唯一键消失），必须在写库
+            # 入口立刻报清楚，而不是采集 50 分钟后才抛 1054 让全部工作作废。
             cursor.execute("SHOW COLUMNS FROM poi_knowledge LIKE 'avg_cost'")
             if cursor.fetchone() is None:
                 raise RuntimeError(
-                    "poi_knowledge 缺少 avg_cost 列（库可能被 sql/schema.sql 重建过）："
-                    "请先执行 sql/add_poi_avg_cost_and_unique.sql 再跑管线")
+                    "poi_knowledge 缺少 avg_cost 列（库可能被手工重建过）："
+                    "请让 Java 后端启动一次以执行 Flyway 迁移（V1 基线），"
+                    "或参考 sql/archive/ 下的旧增量脚本补列")
             cursor.execute(
                 "SELECT id, city, name, category, address, latitude, longitude, ticket_price, "
                 "avg_cost, duration_min, open_time, tags, rating, description, source FROM poi_knowledge"

@@ -1,7 +1,6 @@
 <template>
   <div v-if="hasNarrative" class="day-narrative">
-    <!-- theme：衬线叙事句标题 + --lp-theme-accent 下划线（§5.3.2，衬线只承担叙事标题） -->
-    <h4 v-if="day.theme" class="narr-theme">{{ day.theme }}</h4>
+    <!-- theme 不在此重复展示：日卡 summary 已用衬线大字渲染（旧版两处重复撑高页面） -->
 
     <!-- note：本章导语正文 -->
     <p v-if="day.note" class="narr-note">{{ day.note }}</p>
@@ -76,7 +75,6 @@ function ruleIf(r: BackupPlanEntry) {
 
 const hasNarrative = computed(
   () =>
-    !!props.day.theme ||
     !!(props.day.note || '').trim() ||
     practicalNotes.value.length > 0 ||
     photoSpots.value.length > 0 ||
@@ -93,22 +91,7 @@ const hasNarrative = computed(
   margin: 4px 0 16px;
 }
 
-/* ---------- theme：叙事句标题，theme-accent 渐变下划线（文本宽） ---------- */
-.narr-theme {
-  margin: 0;
-  font-family: var(--lp-font-display);
-  font-weight: 500;
-  font-size: 19px;
-  line-height: 1.45;
-  letter-spacing: -0.01em;
-  color: var(--lp-ink);
-  padding-bottom: 6px;
-  background-image: var(--lp-theme-accent);
-  background-repeat: no-repeat;
-  background-size: 100% 2px;
-  background-position: 0 100%;
-}
-
+/* ---------- note：本章导语正文 ---------- */
 .narr-note {
   margin: 0;
   font-size: 13.5px;

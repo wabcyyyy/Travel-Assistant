@@ -1,6 +1,7 @@
 package com.travel.backend.common;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -39,7 +40,7 @@ public class ItineraryEventPublisher {
 
     private final StringRedisTemplate redis;
     /** 事件 JSON 用独立 ObjectMapper：不受 Spring 全局/Redis 序列化配置影响，保证与 Python 端信封格式一致。 */
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = JsonMapper.builder().build();
     /** Redis 不可用时 chat 流等本地事件的 seq 兜底：进程内自增即可满足单调递增。 */
     private final AtomicLong fallbackSeq = new AtomicLong();
 

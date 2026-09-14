@@ -19,6 +19,7 @@
 import time
 import json
 import threading
+from collections.abc import Iterator
 
 import httpx
 
@@ -91,6 +92,14 @@ DEFAULT_SYSTEM_PROMPT = "你是一个专业的旅游行程规划助手，请用�
 # 的问题，重试只会放大失败，不重试。
 _RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
 _LLM_MAX_ATTEMPTS = 2  # 含首次，即对可重试错误额外重试一次
+
+
+class StreamCancelled(Exception):
+    """流式生成被取消（客户端断开）。
+
+    语义：在途 HTTP 流随即中断（退出 with 块即断开连接，网关侧停止生成），
+    不属于服务故障——不重试、不计入失败指标。
+    """
 
 
 def _is_retryable(exc: Exception) -> bool:
@@ -202,10 +211,21 @@ class LLMClient:
         return {"message": choices[0]["message"], "usage": usage,
                 "finish_reason": choices[0].get("finish_reason")}
 
-    def stream_chat(self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 2048,
-                    enable_search: bool = False, model: str | None = None,
-                    json_mode: bool = False) -> str:
-        """流式调用 LLM，返回完整响应文本。适用于多日整段生成等长响应场景。"""
+    def stream_chat_deltas(self, messages: list[dict], temperature: float = 0.7,
+                           max_tokens: int = 2048, enable_search: bool = False,
+                           model: str | None = None, json_mode: bool = False,
+                           cancel: threading.Event | None = None) -> Iterator[str]:
+        """流式调用 LLM，逐段 yield 内容增量（不做重试；异常在迭代时抛出）。
+
+        适用于整段多日生成的「边流边解析」场景：调用方增量喂给 JSON 解析器，
+        每解析出一个完整对象即可开始处理，无需等全部 token 生成完毕。
+        成功结束时在本生成器内完成一次用量上报（与 stream_chat 成功路径一致）。
+
+        cancel：客户端断开的取消信号（可选）。置位后：请求前直接拒绝发起；
+        请求中在每行到达时检查并抛 StreamCancelled——退出 with 块即断开在途
+        HTTP 流。取消时 token 用量未知，不写 usage 行（避免把取消误计为失败），
+        只落一条 cancelled 轨迹事件。
+        """
         url = self._base_url.rstrip("/") + "/chat/completions"
         headers = {
             "Authorization": f"Bearer {self._api_key}",
@@ -225,52 +245,77 @@ class LLMClient:
         # 让网关在最后一个分片返回 usage，用于 token 统计。
         payload["stream_options"] = {"include_usage": True}
 
+        if cancel is not None and cancel.is_set():
+            # 已取消：连请求都不发起（调用方已在取消态）
+            raise StreamCancelled("客户端已断开，未发起 LLM 请求")
+
         limits = current_limits()
+        if limits:
+            limits.check("llm")
+        timeout = self._timeout
+        if limits and limits.deadline_seconds > 0:
+            remaining = limits.deadline_seconds - (time.monotonic() - limits.started_at)
+            timeout = min(timeout, max(0.1, remaining))
+
+        started = time.monotonic()
+        stream_usage: dict = {}
+        content_length = 0
+        with _get_http_client().stream(
+            "POST", url, json=payload, headers=headers,
+            timeout=_build_timeout(timeout),
+        ) as resp:
+            resp.raise_for_status()
+            for line in resp.iter_lines():
+                if cancel is not None and cancel.is_set():
+                    # 深度取消：抛异常退出 with 块即断开在途 HTTP 流（网关侧停止生成）。
+                    # 用量分片未到（token 未知）故不写 usage 行；轨迹事件供成本排查。
+                    record_event("llm", "llm.stream_request", status="cancelled", metadata={
+                        "model": model or self._model,
+                        "content_length": content_length,
+                        "duration_ms": int((time.monotonic() - started) * 1000),
+                    })
+                    raise StreamCancelled("客户端断开，LLM 流已中断")
+                if not line or not line.startswith("data: "):
+                    continue
+                data_str = line[6:]
+                if data_str.strip() == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data_str)
+                except json.JSONDecodeError:
+                    continue
+                if chunk.get("usage"):
+                    stream_usage = chunk["usage"]
+                # usage-only 末分片的 choices 为空列表，注意防空。
+                delta = chunk.get("choices", [{}])[0].get("delta", {}) if chunk.get("choices") else {}
+                content = delta.get("content")
+                if content:
+                    content_length += len(content)
+                    yield content
+
+        prompt = int(stream_usage.get("prompt_tokens") or 0)
+        completion = int(stream_usage.get("completion_tokens") or 0)
+        metrics.record_llm_call(prompt, completion)
+        _record_usage(model, prompt, completion, started, True)
+        record_event("llm", "llm.stream_request", metadata={
+            "model": model or self._model,
+            "content_length": content_length,
+            "prompt_tokens": prompt,
+            "completion_tokens": completion,
+        })
+
+    def stream_chat(self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 2048,
+                    enable_search: bool = False, model: str | None = None,
+                    json_mode: bool = False) -> str:
+        """流式调用 LLM，返回完整响应文本。适用于多日整段生成等长响应场景。"""
+        started = time.monotonic()
+        content_parts: list[str] = []
         try:
-            if limits:
-                limits.check("llm")
-            timeout = self._timeout
-            if limits and limits.deadline_seconds > 0:
-                remaining = limits.deadline_seconds - (time.monotonic() - limits.started_at)
-                timeout = min(timeout, max(0.1, remaining))
-
-            started = time.monotonic()
-            content_parts = []
-            stream_usage: dict = {}
-            with _get_http_client().stream(
-                "POST", url, json=payload, headers=headers,
-                timeout=_build_timeout(timeout),
-            ) as resp:
-                resp.raise_for_status()
-                for line in resp.iter_lines():
-                    if not line or not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str.strip() == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data_str)
-                    except json.JSONDecodeError:
-                        continue
-                    if chunk.get("usage"):
-                        stream_usage = chunk["usage"]
-                    # usage-only 末分片的 choices 为空列表，注意防空。
-                    delta = chunk.get("choices", [{}])[0].get("delta", {}) if chunk.get("choices") else {}
-                    if delta.get("content"):
-                        content_parts.append(delta["content"])
-
-            full_content = "".join(content_parts)
-            prompt = int(stream_usage.get("prompt_tokens") or 0)
-            completion = int(stream_usage.get("completion_tokens") or 0)
-            metrics.record_llm_call(prompt, completion)
-            _record_usage(model, prompt, completion, started, True)
-            record_event("llm", "llm.stream_request", metadata={
-                "model": model or self._model,
-                "content_length": len(full_content),
-                "prompt_tokens": prompt,
-                "completion_tokens": completion,
-            })
-            return full_content
+            for delta in self.stream_chat_deltas(messages, temperature=temperature,
+                                                 max_tokens=max_tokens,
+                                                 enable_search=enable_search, model=model,
+                                                 json_mode=json_mode):
+                content_parts.append(delta)
         except RunLimitExceeded as exc:
             record_event("llm", "llm.stream_request", status="error", error=str(exc),
                          metadata={"budget_exhausted": True})
@@ -278,6 +323,7 @@ class LLMClient:
         except Exception as exc:
             _record_usage(model, 0, 0, started, False, str(exc))
             raise
+        return "".join(content_parts)
 
     def chat(self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 2048,
              enable_search: bool = False, model: str | None = None,

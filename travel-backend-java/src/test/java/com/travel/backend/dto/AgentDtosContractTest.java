@@ -1,7 +1,8 @@
 package com.travel.backend.dto;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import jakarta.validation.Validation;
 import jakarta.validation.ValidatorFactory;
 import org.junit.jupiter.api.Test;
@@ -27,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class AgentDtosContractTest {
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper = JsonMapper.builder().build();
 
     @Test
     void butlerNoteResponseShouldDeserializeNote() throws Exception {
@@ -202,15 +203,6 @@ class AgentDtosContractTest {
     }
 
     // ===== M1：intent 贯通契约 =====
-
-    @Test
-    void agentGenerateRequestShouldSerializeIntentKey() throws Exception {
-        AgentGenerateRequest request = new AgentGenerateRequest();
-        request.setIntent("想去杭州看西湖");
-        JsonNode wire = mapper.readTree(mapper.writeValueAsString(request));
-        assertTrue(wire.has("intent"), "AgentGenerateRequest wire 键应含 camel 同名 intent");
-        assertEquals("想去杭州看西湖", wire.get("intent").asText());
-    }
 
     @Test
     void butlerNoteRequestShouldSerializeIntentKey() throws Exception {

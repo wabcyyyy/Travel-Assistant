@@ -38,11 +38,10 @@ class Settings:
     llm_base_url: str = _get("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
     llm_api_key: str = _get("LLM_API_KEY", "")
     llm_model: str = _get("LLM_MODEL", "qwen-plus")
-    # 结构化意图识别/行程草稿编辑优先使用低延迟模型；可留空以复用主模型。
-    llm_fast_model: str = _get("LLM_FAST_MODEL", "qwen-turbo")
-    # 行程 JSON 生成默认走低延迟模型；如需更高质量可显式指定主模型。
-    llm_generation_model: str = _get("LLM_GENERATION_MODEL", "")
-    llm_timeout: float = float(_get("LLM_TIMEOUT", "60"))
+    # 内容生成（行程/介绍/研究/对话决策）统一走低延迟模型；可留空以复用主模型。
+    # qwen-turbo 省钱但对篇幅类软约束遵循差，默认 qwen-plus。
+    llm_fast_model: str = _get("LLM_FAST_MODEL", "qwen-plus")
+    llm_timeout: float = float(_get("LLM_TIMEOUT", "240"))
     # httpx 连接池：限制对 LLM 网关的并发 TCP 连接，避免无界握手
     llm_pool_max_connections: int = int(_get("LLM_POOL_MAX_CONNECTIONS", "20"))
     llm_pool_max_keepalive: int = int(_get("LLM_POOL_MAX_KEEPALIVE", "10"))
@@ -107,10 +106,14 @@ class Settings:
     unsplash_access_key: str = _get("UNSPLASH_ACCESS_KEY", "")
     poi_image_wiki: bool = _get("POI_IMAGE_WIKI", "true").lower() in ("1", "true", "yes")
     default_budget: float = float(_get("DEFAULT_BUDGET", "1000"))
-    # RAG 检索配置。hashed 是零外部依赖的离线默认值；semantic 使用可选的
-    # sentence-transformers，本地模型不可用时由检索层自动降级到 hashed。
-    rag_embedding_provider: str = _get("RAG_EMBEDDING_PROVIDER", "hashed")
+    # RAG 检索配置。默认 semantic：本地 bge-small-zh-v1.5 真语义向量
+    # （需先跑 scripts/fetch_rag_model.py 预置模型；服务不隐式联网下载）。
+    # 依赖或模型不可用时由检索层降级到 hashed 哈希向量，并记录 fallback 遥测
+    # 与显式告警（不静默）。
+    rag_embedding_provider: str = _get("RAG_EMBEDDING_PROVIDER", "semantic")
     rag_embedding_model: str = _get("RAG_EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5")
+    # 语义模型本地缓存目录（fetch_rag_model.py 下载到此；相对路径按进程 cwd 解析）
+    rag_model_cache_dir: str = _get("RAG_MODEL_CACHE_DIR", str(BASE_DIR / "models"))
     rag_top_k: int = int(_get("RAG_TOP_K", "20"))
     rag_rrf_k: int = int(_get("RAG_RRF_K", "60"))
     rag_document_version: str = _get("RAG_DOCUMENT_VERSION", "poi-fields-v2")
@@ -134,6 +137,12 @@ class Settings:
     # （指纹比对，未变化的行不重新 embedding）。0 表示关闭、仅启动/force 时同步。
     # 解决"数据管线跑完后必须重启服务"的运维缺口。
     rag_refresh_seconds: int = int(_get("RAG_REFRESH_SECONDS", "60"))
+    # 向量库（Qdrant）：url 非空走独立服务（生产共享/多实例可读）；默认本地
+    # 嵌入式持久化模式（数据可随时由 MySQL 全量重建，持久化只为加速启动）。
+    qdrant_url: str = _get("QDRANT_URL", "")
+    qdrant_path: str = _get("QDRANT_PATH", str(BASE_DIR / "data" / "qdrant"))
+    qdrant_collection: str = _get("QDRANT_COLLECTION", "poi_knowledge")
+    qdrant_timeout: float = float(_get("QDRANT_TIMEOUT", "10"))
     db_host: str = _get("DB_HOST", "localhost")
     db_port: int = int(_get("DB_PORT", "3306"))
     db_user: str = _get("DB_USER", "root")
@@ -143,7 +152,12 @@ class Settings:
     db_pool_max: int = int(_get("DB_POOL_MAX", "10"))
     # Redis Pub/Sub（AD2 SSE）：Python 节点向 gen:events:{itineraryId} 发布
     # 进度事件，由 Java SSE 网关订阅转发前端；事件是尽力而为通知，连不上只降级。
-    redis_url: str = _get("REDIS_URL", "redis://localhost:6379/0")
+    # 地址与 Java 侧同口径：显式 REDIS_URL 优先，否则由 REDIS_HOST/REDIS_PORT 派生。
+    # 默认 6380 对齐 start-all.ps1 起的本机 Redis（compose 内由 environment 传 6379）。
+    redis_url: str = _get(
+        "REDIS_URL",
+        "redis://{}:{}/0".format(_get("REDIS_HOST", "localhost"), _get("REDIS_PORT", "6380")),
+    )
 
 
 settings = Settings()

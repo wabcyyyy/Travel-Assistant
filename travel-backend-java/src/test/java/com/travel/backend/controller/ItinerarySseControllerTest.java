@@ -1,13 +1,14 @@
 package com.travel.backend.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import com.travel.backend.common.ItineraryEventPublisher;
 import com.travel.backend.common.ItinerarySseGateway;
+import com.travel.backend.service.AgentService;
 import com.travel.backend.service.UserService;
-import com.travel.backend.serviceImpl.AgentServiceImpl;
-import com.travel.backend.serviceImpl.ItineraryChatService;
-import com.travel.backend.serviceImpl.ItineraryQueryService;
+import com.travel.backend.service.impl.ItineraryChatService;
+import com.travel.backend.service.impl.ItineraryQueryService;
 import com.travel.backend.vo.UserVO;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,7 +55,7 @@ class ItinerarySseControllerTest {
     @Mock
     private ItineraryChatService chatService;
     @Mock
-    private AgentServiceImpl agentService;
+    private AgentService agentService;
     @Mock
     private ItinerarySseGateway gateway;
     @Mock
@@ -63,7 +64,7 @@ class ItinerarySseControllerTest {
     private UserService userService;
 
     private ItinerarySseController controller;
-    private final ObjectMapper json = new ObjectMapper();
+    private final ObjectMapper json = JsonMapper.builder().build();
 
     @BeforeEach
     void setUp() {

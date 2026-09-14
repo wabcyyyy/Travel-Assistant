@@ -1,13 +1,13 @@
 package com.travel.backend.controller;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import com.travel.backend.common.ItineraryEventPublisher;
 import com.travel.backend.common.ItinerarySseGateway;
 import com.travel.backend.common.SecurityUtils;
+import com.travel.backend.service.AgentService;
 import com.travel.backend.service.UserService;
-import com.travel.backend.serviceImpl.AgentServiceImpl;
-import com.travel.backend.serviceImpl.ItineraryChatService;
-import com.travel.backend.serviceImpl.ItineraryQueryService;
+import com.travel.backend.service.impl.ItineraryChatService;
+import com.travel.backend.service.impl.ItineraryQueryService;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -49,7 +49,7 @@ public class ItinerarySseController {
 
     private final ItineraryQueryService queryService;
     private final ItineraryChatService chatService;
-    private final AgentServiceImpl agentService;
+    private final AgentService agentService;
     private final ItinerarySseGateway gateway;
     private final ItineraryEventPublisher eventPublisher;
     private final UserService userService;
@@ -57,7 +57,7 @@ public class ItinerarySseController {
 
     public ItinerarySseController(ItineraryQueryService queryService,
                                   ItineraryChatService chatService,
-                                  AgentServiceImpl agentService,
+                                  AgentService agentService,
                                   ItinerarySseGateway gateway,
                                   ItineraryEventPublisher eventPublisher,
                                   UserService userService,

@@ -15,22 +15,18 @@ class MemoryCollection:
         self._provider = provider
         self._items = items
 
-    def query(self, *, query_embeddings, n_results, where, include):
-        conditions = (where or {}).get("$and", []) if where and "$and" in where else ([where] if where else [])
+    def query(self, *, vector, limit, where=None):
         def allowed(item):
-            return all(next(iter(condition.items()))[1] == item["metadata"].get(next(iter(condition.items()))[0])
-                       for condition in conditions)
-        query = query_embeddings[0]
+            return all(item["metadata"].get(key) == value
+                       for key, value in (where or {}).items())
+
         scored = []
         for item in self._items:
             if allowed(item):
-                similarity = sum(a * b for a, b in zip(query, item["embedding"]))
+                similarity = sum(a * b for a, b in zip(vector, item["embedding"]))
                 scored.append((similarity, item["metadata"]))
         scored.sort(key=lambda pair: pair[0], reverse=True)
-        return {
-            "metadatas": [[meta for _, meta in scored[:n_results]]],
-            "distances": [[1 - score for score, _ in scored[:n_results]]],
-        }
+        return [(meta, score) for score, meta in scored[:limit]]
 
 
 def _retriever():

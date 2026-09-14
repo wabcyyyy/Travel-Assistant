@@ -1,32 +1,36 @@
+import sys
+import types
+
+from app.common.config import settings
 from app.rag.retriever import (
     HashedEmbeddingProvider,
     HybridRetriever,
     NoopReranker,
     build_poi_document,
+    create_embedding_provider,
 )
 
 
 class MemoryCollection:
+    """中性向量集合协议的内存实现（payload + cosine 相似度语义）。"""
+
     def __init__(self, provider, items):
         self._provider = provider
         self._items = items
 
-    def query(self, *, query_embeddings, n_results, where, include):
-        conditions = (where or {}).get("$and", []) if where and "$and" in where else ([where] if where else [])
+    def query(self, *, vector, limit, where=None):
         def allowed(item):
-            return all(next(iter(condition.items()))[1] == item["metadata"].get(next(iter(condition.items()))[0])
-                       for condition in conditions)
-        query = query_embeddings[0]
+            return all(item["metadata"].get(key) == value
+                       for key, value in (where or {}).items())
+
+        query = vector
         scored = []
         for item in self._items:
             if allowed(item):
                 similarity = sum(a * b for a, b in zip(query, item["embedding"]))
                 scored.append((similarity, item["metadata"]))
         scored.sort(key=lambda pair: pair[0], reverse=True)
-        return {
-            "metadatas": [[meta for _, meta in scored[:n_results]]],
-            "distances": [[1 - score for score, _ in scored[:n_results]]],
-        }
+        return [(meta, score) for score, meta in scored[:limit]]
 
 
 def _retriever():
@@ -68,3 +72,38 @@ def test_hybrid_retriever_keeps_lexical_results_when_semantic_provider_fails():
     rows = retriever.search("古建筑寺庙", city="杭州", category="attraction", top_k=1)
     assert rows[0]["name"] == "灵隐寺"
     assert retriever.last_telemetry["fallback"] is True
+
+
+# ---- 语义模型供给：cache_dir 透传与响亮降级 ----
+
+
+def test_semantic_provider_receives_configured_cache_dir(monkeypatch):
+    """模型缓存目录必须传给 sentence-transformers，且保持 local_files_only 离线约定。"""
+    captured: dict = {}
+
+    class _FakeSentenceTransformer:
+        def __init__(self, model_name, **kwargs):
+            captured["model_name"] = model_name
+            captured.update(kwargs)
+
+    monkeypatch.setitem(sys.modules, "sentence_transformers", types.SimpleNamespace(
+        SentenceTransformer=_FakeSentenceTransformer))
+    provider = create_embedding_provider("semantic", "BAAI/bge-small-zh-v1.5")
+    assert captured["model_name"] == "BAAI/bge-small-zh-v1.5"
+    assert captured["cache_folder"] == settings.rag_model_cache_dir
+    assert captured["model_kwargs"] == {"local_files_only": True}
+    assert provider.provider_name == "sentence-transformers"
+    assert provider.model_name == "BAAI/bge-small-zh-v1.5"
+
+
+def test_semantic_provider_falls_back_loudly_when_model_unavailable(monkeypatch):
+    """模型缺失时必须降级为 hashed 且标 fallback=True（供启动告警/遥测识别），不抛错。"""
+    class _BoomSentenceTransformer:
+        def __init__(self, *_args, **_kwargs):
+            raise OSError("model not found in local cache")
+
+    monkeypatch.setitem(sys.modules, "sentence_transformers", types.SimpleNamespace(
+        SentenceTransformer=_BoomSentenceTransformer))
+    provider = create_embedding_provider("semantic", "BAAI/bge-small-zh-v1.5")
+    assert provider.provider_name == "hashed"
+    assert getattr(provider, "fallback", False) is True

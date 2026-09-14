@@ -16,10 +16,16 @@
 """
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
+import asyncio
+import functools
+import json
 import logging
+import queue
+import threading
 import time
+from collections.abc import AsyncIterator, Callable, Iterator
 
 from pydantic import ValidationError
 
@@ -29,6 +35,7 @@ from app.agent.city_guide import run_city_guide
 from app.agent.clarify import run_clarify
 from app.agent.day_stream import run_generate_day, run_plan_context
 from app.agent.nl_edit import run_edit_ops
+from app.agent.trip_stream import run_generate_trip_stream
 from app.agent.workflow import run_adjust, run_generate
 from app.agent.local_replan import run_local_replan
 from app.agent.tools import find_nearby_pois
@@ -38,16 +45,75 @@ from app.schemas.common import ApiResponse
 from app.schemas.agent_ops import (ButlerNoteRequest, ButlerNoteResponse, CityGuideRequest,
                                    CityGuideResponse, PoiIntrosRequest, PoiIntrosResponse,
                                    PoiNearbyItem, PoiNearbyRequest, PoiNearbyResponse)
+from app.schemas.stream_events import ErrorEvent, StartEvent, to_wire
 from app.schemas.trip import (AdjustRequest, AdjustResponse, ChatTurnRequest, ChatTurnResponse,
                               ClarifyRequest, ClarifyResponse, DailyPlan, EditOp, EditOpRequest,
                               GenerateDayRequest, GenerateRequest, GenerateResponse,
                               PlanContextRequest, LocalReplanRequest)
 from app.common.config import settings
-from app.agent.observability import metrics, observe_run, scene
+from app.agent.observability import metrics, observe_run, scene, use_scene
 
 router = APIRouter()
 
 logger = logging.getLogger(__name__)
+
+# 整段流式事件队列上限：事件数约 = 2 + 2×天数，256 留足余量；
+# 队列满时生产者等待（消费端慢 = 背压），取消后立即放弃投递。
+_STREAM_QUEUE_MAXSIZE = 256
+# 队列空闲等待轮询粒度：也是取消后 worker/消费端的最大响应时延
+_STREAM_POLL_SECONDS = 0.5
+
+
+async def _bridge_worker_events(
+        producer: Callable[[threading.Event], Iterator[dict]]) -> AsyncIterator[str]:
+    """worker 线程 → 异步响应生成器 的桥接（有界队列 + 断连即取消）。
+
+    生成跑在独立 worker 线程（contextvars 完整，见 generate-stream docstring），
+    事件经有界队列转交本生成器。客户端断开时 Starlette 取消本生成器任务，
+    CancelledError 穿过 finally → 置 cancel 广播给 worker：不再发起新 LLM 调用，
+    在途流式请求由 llm_client 行级掐断（成本止损）。
+
+    队列语义：满则 worker 阻塞等待（背压）；取消后不再投递；哨兵保证正常收尾。
+    取消后不使用无界 get：空闲等待有 0.5s 上界，任务取消后线程池线程不被占用。
+    """
+    events: queue.Queue = queue.Queue(maxsize=_STREAM_QUEUE_MAXSIZE)
+    cancel = threading.Event()
+    sentinel = object()
+
+    def _put(item: object) -> bool:
+        while not cancel.is_set():
+            try:
+                events.put(item, timeout=_STREAM_POLL_SECONDS)
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    def _run() -> None:
+        try:
+            for event in producer(cancel):
+                # 取消后事件不再投递；生成端会在下个检查点自行退出
+                _put(event)
+        except Exception:  # noqa: BLE001 - 生产者兜底：哨兵必达，消费端不悬挂
+            logger.exception("generate-stream producer crashed")
+        finally:
+            _put(sentinel)
+
+    threading.Thread(target=_run, name="trip-stream-worker", daemon=True).start()
+    loop = asyncio.get_running_loop()
+    try:
+        while True:
+            try:
+                item = await loop.run_in_executor(
+                    None, functools.partial(events.get, timeout=_STREAM_POLL_SECONDS))
+            except queue.Empty:
+                continue
+            if item is sentinel:
+                break
+            yield json.dumps(item, ensure_ascii=False) + "\n"
+    finally:
+        # 客户端断开（任务取消）或正常收尾：向 worker 广播取消
+        cancel.set()
 
 
 def _fail_payload(exc: Exception, endpoint: str) -> ApiResponse[None]:
@@ -144,52 +210,6 @@ def agent_run_trace(run_id: str,
     return ApiResponse.ok(trace)
 
 
-@router.get("/test-generate")
-@scene("generate")
-def test_generate(_auth: None = Depends(require_internal_token)) -> ApiResponse[dict]:
-    """开发联通性样例；配置内部 token 后不允许匿名访问。"""
-    return ApiResponse.ok(
-        {
-            "city": "北京",
-            "days": 2,
-            "daily_plans": [
-                {
-                    "day_no": 1,
-                    "items": [
-                        {
-                            "item_type": "attraction",
-                            "poi_name": "故宫博物院",
-                            "start_time": "09:00",
-                            "duration_min": 180,
-                            "cost": 60.0,
-                        },
-                        {
-                            "item_type": "attraction",
-                            "poi_name": "景山公园",
-                            "start_time": "14:00",
-                            "duration_min": 60,
-                            "cost": 2.0,
-                        },
-                    ],
-                },
-                {
-                    "day_no": 2,
-                    "items": [
-                        {
-                            "item_type": "attraction",
-                            "poi_name": "八达岭长城",
-                            "start_time": "08:30",
-                            "duration_min": 240,
-                            "cost": 40.0,
-                        }
-                    ],
-                },
-            ],
-            "budget_estimate": {"门票": 102.0, "餐饮": 180.0, "交通": 100.0, "酒店": 500.0},
-        }
-    )
-
-
 @router.post("/v1/generate")
 @scene("generate")
 def generate(req: GenerateRequest,
@@ -264,6 +284,39 @@ def generate_day(req: GenerateDayRequest,
         headers = ({"X-Agent-Run-ID": trace.run_id, "X-Request-ID": trace.request_id}
                    if trace is not None else None)
         return JSONResponse(content=payload.model_dump(mode="json", by_alias=True), headers=headers)
+
+
+@router.post("/v1/generate-stream")
+@scene("generate")
+def generate_trip_stream(req: GenerateDayRequest,
+                         x_request_id: str | None = Header(default=None),
+                         _auth: None = Depends(require_internal_token)) -> StreamingResponse:
+    """整段流式生成：JSON Lines 逐行产出 start / day / day_patch / suggestions / done / error 事件。
+
+    与 /v1/generate 的区别：LLM 边流边解析、逐天落地即时下发，Java 逐天
+    落库（前端经既有 SSE 逐天点亮）；流中断/缺天时通过 done 事件如实上报，
+    由 Java 对缺失天走 generate-day 逐日修复。事件体已是 camelCase wire 形状，
+    并由契约 schema（contracts/stream_events.schema.json）在 Java 侧强制校验。
+
+    线程模型：Starlette 会把同步生成器丢进线程池逐次 next()，contextvar
+    的 token（trace/scene/limits）跨线程 reset 会抛 "created in a different
+    Context" 并掐断响应。因此生成整体跑在单一 worker 线程（上下文完整），
+    事件经有界队列转交异步响应生成器（见 _bridge_worker_events）；
+    客户端断开即取消生成：在途 LLM 流被掐断，token 停止消耗。
+    """
+    def _producer(cancel: threading.Event) -> Iterator[dict]:
+        try:
+            with use_scene("generate"), observe_run(request_id=req.request_id or x_request_id) as trace:
+                yield to_wire(StartEvent(type="start", run_id=trace.run_id))
+                yield from run_generate_trip_stream(req, cancel=cancel)
+        except Exception as e:  # noqa: BLE001 - 统一转安全错误行，由 Java 降级修复
+            logger.warning("generate-stream failed: %s", e)
+            yield to_wire(ErrorEvent(type="error", message="生成服务暂不可用，请稍后重试"))
+
+    return StreamingResponse(
+        _bridge_worker_events(_producer), media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/v1/replan-local")

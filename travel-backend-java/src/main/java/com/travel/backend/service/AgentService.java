@@ -1,13 +1,12 @@
 package com.travel.backend.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import com.travel.backend.dto.AgentButlerNoteRequest;
 import com.travel.backend.dto.AgentButlerNoteResponse;
 import com.travel.backend.dto.AgentCityGuideRequest;
 import com.travel.backend.dto.AgentCityGuideResponse;
 import com.travel.backend.dto.AgentClarifyRequest;
 import com.travel.backend.dto.AgentClarifyResponse;
-import com.travel.backend.dto.AgentGenerateRequest;
 import com.travel.backend.dto.AgentGenerateResponse;
 import com.travel.backend.dto.AgentPoiIntrosRequest;
 import com.travel.backend.dto.AgentPoiIntrosResponse;
@@ -16,21 +15,19 @@ import com.travel.backend.dto.AgentPoiNearbyResponse;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Python Agent 服务调用接口。
  *
- * <p>定义了对 Python FastAPI Agent 的所有远程调用方法，实现类为 {@link com.travel.backend.serviceImpl.AgentServiceImpl}。</p>
+ * <p>定义了对 Python FastAPI Agent 的所有远程调用方法，实现类为 {@link com.travel.backend.service.impl.AgentServiceImpl}。</p>
  *
  * <p>所有方法均为同步 HTTP 调用；强类型端点直接收发 DTO（wire 层键名与 Python
  * 契约一致），其余端点返回 Jackson JsonNode（由调用方按需转换）。</p>
  *
- * @see com.travel.backend.serviceImpl.AgentServiceImpl
+ * @see com.travel.backend.service.impl.AgentServiceImpl
  */
 public interface AgentService {
-
-    /** 行程生成（首次）。 */
-    AgentGenerateResponse generate(AgentGenerateRequest request);
 
     /** 意图确认（槽位抽取 + 缺失字段追问）。 */
     AgentClarifyResponse clarify(AgentClarifyRequest request);
@@ -56,6 +53,13 @@ public interface AgentService {
 
     /** 单日生成（逐日流式）。 */
     JsonNode generateDay(Map<String, Object> payload);
+
+    /**
+     * 整段流式生成（POST /api/agent/v1/generate-stream）：响应为 JSON Lines，
+     * 每行一个事件（start / day / day_patch / suggestions / done / error），
+     * 逐行回调 {@code onLine}；调用方据事件逐天落库。HTTP/解析失败抛 BizException。
+     */
+    void generateTripStream(Map<String, Object> payload, Consumer<JsonNode> onLine);
 
     /** AI 管家讲解生成。 */
     AgentButlerNoteResponse butlerNote(AgentButlerNoteRequest request);

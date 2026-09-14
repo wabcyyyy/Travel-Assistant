@@ -173,7 +173,9 @@ export const useItineraryStore = defineStore('itinerary', {
       }
     },
 
-    /** 开始乐观写操作：保存当前 detail 快照入队，返回操作 id。 */
+    /** 开始乐观写操作：保存当前 detail 快照入队，返回操作 id。
+     *  契约：快照保存 detail 的引用（不可变更新风格——替换对象/数组，而非就地改嵌套字段）；
+     *  rollbackOp 恢复该引用。详见 useItineraryActions 的统一写管线。 */
     beginOp(label: string): number {
       const id = ++opSeq
       this.pendingOps.push({ id, label, snapshot: this.detail, startedAt: Date.now() })

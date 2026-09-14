@@ -13,8 +13,13 @@ dependencies = [
     "langgraph==0.2.44",
     "langchain-core==0.3.15",
     "pymysql==1.2.0",
-    "chromadb==1.5.9",
+    "qdrant-client>=1.10,<2",
     "redis>=5.2,<6",
+    # RAG 语义默认依赖（默认 RAG_EMBEDDING_PROVIDER=semantic，模型需 fetch_rag_model.py 预置）
+    "sentence-transformers>=3.0,<6",
+    # torch 显式列为直接依赖：tool.uv.sources 只对直接依赖生效，
+    # 否则传递依赖会从 PyPI 解析出带 CUDA 的 Linux 构建（数 GB）
+    "torch",
 ]
 
 [dependency-groups]
@@ -22,10 +27,15 @@ dev = [
     "pytest==8.2.2",
 ]
 
-[project.optional-dependencies]
-rag = [
-    "sentence-transformers>=3.0,<6",
-]
+# torch 走 CPU 源：默认 PyPI 的 Linux 构建会带入 nvidia-* CUDA 依赖（数 GB），
+# 本项目只做 CPU 推理（CI / 镜像体积敏感）。
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

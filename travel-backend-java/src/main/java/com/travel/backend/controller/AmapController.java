@@ -2,8 +2,8 @@ package com.travel.backend.controller;
 
 import com.travel.backend.common.Result;
 import com.travel.backend.service.AmapService;
-import com.travel.backend.serviceImpl.AmapImageProxyService;
-import com.travel.backend.serviceImpl.AmapPhotoService;
+import com.travel.backend.service.impl.AmapImageProxyService;
+import com.travel.backend.service.impl.AmapPhotoService;
 import com.travel.backend.vo.AmapGeocodeVO;
 import com.travel.backend.vo.AmapPoiVO;
 import org.springframework.beans.factory.annotation.Value;

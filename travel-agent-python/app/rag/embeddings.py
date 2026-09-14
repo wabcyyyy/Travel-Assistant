@@ -7,7 +7,7 @@
 - 采用 "字符/词 n-gram + 哈希桶" 方案：中文按单字、英文数字按词切分，
   再取相邻二元组，用 zlib.crc32 映射到固定维度并对向量做 L2 归一化；
 - HashedNGramEmbedding 暴露与 sentence-transformers 兼容的 __call__/name 接口，
-  便于在不引入重模型时仍能跑通 chromadb。
+  便于在不引入重模型时仍能跑通向量检索。
 
 依赖：
 - numpy；无外部服务依赖（纯算法）。

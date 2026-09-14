@@ -6,14 +6,14 @@
       <span class="sub">先写清旅行意图，其余交给 Agent</span>
     </div>
 
-    <!-- 单列堆叠：意图（00 置顶） → 基本信息（01） → 偏好（02 弱化） → 额外要求与生成（03） -->
+    <!-- 约稿单：意图是唯一主角（全宽置顶），下方两栏行内字段，底部约稿汇总 + 开始生成 -->
     <div class="gen-stack">
-        <!-- 00 旅行意图：★ 主输入，置顶最高优先级信号 -->
+        <!-- 旅行意图：最高优先级生成信号 -->
         <el-card shadow="never" class="group-card intent-card">
       <template #header>
         <div class="group-head">
-          <span class="group-title"><i class="group-no">00</i>旅行意图</span>
-          <span class="group-badge is-star">★ 主输入</span>
+          <span class="group-title">旅行意图</span>
+          <span class="group-badge">最高优先级信号</span>
         </div>
       </template>
       <div class="intent-block">
@@ -23,7 +23,7 @@
             type="textarea"
             :autosize="{ minRows: 3, maxRows: 8 }"
             resize="none"
-            placeholder="一句话说清这趟旅行最想要什么，例如：京都 3 日全程住柏悦，《千恋万花》圣地巡礼，节奏松弛"
+            placeholder="一句话说清这趟旅行最想要什么，例如：成都 4 日，以美食和市井街区为主，节奏松弛"
           />
         </div>
         <!-- 右下角实时计数：超限红字提示但不阻断输入，提交时裁剪 -->
@@ -46,10 +46,11 @@
       </div>
         </el-card>
 
-        <!-- 第一栏：目的地与出行 -->
-        <el-card shadow="never" class="group-card">
+    <!-- 两栏：左行程要素 / 右口味与要求 -->
+    <div class="gen-columns">
+      <el-card shadow="never" class="group-card">
       <template #header>
-        <span class="group-title"><i class="group-no">01</i>目的地与出行</span>
+        <span class="group-title">行程要素</span>
       </template>
       <el-form
         ref="formRef"
@@ -117,15 +118,12 @@
       </el-form>
     </el-card>
 
-    <!-- 第二栏：偏好设置（◇ 辅助信号：标签弱化，意图优先） -->
-    <el-card shadow="never" class="group-card">
+      <!-- 右栏：口味与要求（偏好标签 + 住宿档次 + 特别要求输入） -->
+      <el-card shadow="never" class="group-card">
       <template #header>
-        <div class="group-head">
-          <span class="group-title"><i class="group-no">02</i>偏好设置</span>
-          <span class="group-badge">◇ 辅助信号</span>
-        </div>
+        <span class="group-title">口味与要求</span>
       </template>
-      <el-form label-width="100px" style="max-width: 720px">
+      <el-form label-width="100px" style="max-width: none">
         <el-form-item label="旅行偏好">
           <div class="tag-grid">
             <button
@@ -154,55 +152,50 @@
           <span class="hint">选择一个主要档次；不选则由 Agent 推荐</span>
         </el-form-item>
       </el-form>
+      <el-divider />
+      <p class="side-sub">特别要求</p>
+      <p class="chat-tip">有特别安排？直接输入（如「想吃地道的本地小吃」「想看一场川剧变脸」），生成行程时 AI 会纳入规划；多条要求合计不超过 4000 字。</p>
+      <div v-for="(m, i) in chat" :key="i" class="chat-line" :class="m.role">
+        {{ m.text }}
+      </div>
+      <div class="chat-input">
+        <el-input
+          v-model="say"
+          placeholder="例如：想体验一次慢船下午茶；不吃辣"
+          @keydown.enter="onSayEnter"
+        />
+        <el-button type="primary" plain @click="onSay">发送</el-button>
+      </div>
+      </el-card>
+    </div>
+
+    <!-- 约稿汇总 + 开始生成 -->
+    <el-card shadow="never" class="group-card submit-card">
+      <div class="trip-brief">
+        <template v-if="form.city">
+          <span class="brief-city">{{ form.city }}</span>
+          <span class="brief-meta">{{ form.days }} 天行程</span>
+          <span v-if="dateRange?.[0] && dateRange?.[1]" class="brief-meta">{{ dateRange[0].slice(5).replace('-', '/') }} - {{ dateRange[1].slice(5).replace('-', '/') }}</span>
+          <span class="brief-meta">{{ form.persons }} 人出行</span>
+          <span v-if="form.budget" class="brief-meta">预算 ¥{{ form.budget.toLocaleString() }}</span>
+          <span v-if="form.hotelTier" class="brief-meta">{{ form.hotelTier }}</span>
+        </template>
+        <span v-else class="brief-empty">选定目的地后，这里会实时汇总你的行程安排</span>
+      </div>
+      <div class="submit-row">
+        <el-alert
+          v-if="errorMsg"
+          :title="errorMsg"
+          type="error"
+          :closable="false"
+          show-icon
+          class="submit-error"
+        />
+        <el-button type="primary" size="large" class="submit" :loading="loading" @click="onSubmit">
+          开始生成
+        </el-button>
+      </div>
     </el-card>
-
-    <!-- 第三栏：额外要求（◇ 硬约束） + 生成 -->
-    <el-card shadow="never" class="chat-card">
-          <template #header>
-            <div class="group-head">
-              <span class="group-title"><i class="group-no">03</i>额外要求</span>
-              <span class="group-badge">◇ 硬约束</span>
-            </div>
-          </template>
-          <div class="trip-brief">
-            <template v-if="form.city">
-              <span class="brief-city">{{ form.city }}</span>
-              <span class="brief-meta">{{ form.days }} 天行程</span>
-              <span v-if="dateRange?.[0] && dateRange?.[1]" class="brief-meta">{{ dateRange[0].slice(5).replace('-', '/') }} - {{ dateRange[1].slice(5).replace('-', '/') }}</span>
-              <span class="brief-meta">{{ form.persons }} 人出行</span>
-              <span v-if="form.budget" class="brief-meta">预算 ¥{{ form.budget.toLocaleString() }}</span>
-              <span v-if="form.hotelTier" class="brief-meta">{{ form.hotelTier }}</span>
-            </template>
-            <span v-else class="brief-empty">选定目的地后，这里会实时汇总你的行程安排</span>
-          </div>
-          <p class="chat-tip">有特别安排？直接输入（如「想吃地道的本地小吃」「想看一场川剧变脸」），生成行程时 AI 会纳入规划；多条要求合计不超过 4000 字。</p>
-          <div v-for="(m, i) in chat" :key="i" class="chat-line" :class="m.role">
-            {{ m.text }}
-          </div>
-          <div class="chat-input">
-            <el-input
-              v-model="say"
-              placeholder="例如：想体验一次慢船下午茶；不吃辣"
-              @keydown.enter="onSayEnter"
-            />
-            <el-button type="primary" plain @click="onSay">发送</el-button>
-          </div>
-
-          <el-divider />
-          <div class="submit-row">
-            <el-alert
-              v-if="errorMsg"
-              :title="errorMsg"
-              type="error"
-              :closable="false"
-              show-icon
-              class="submit-error"
-            />
-            <el-button type="primary" size="large" class="submit" :loading="loading" @click="onSubmit">
-              开始规划
-            </el-button>
-          </div>
-        </el-card>
     </div>
 
     <!-- 城市引导侧边抽屉 -->
@@ -238,7 +231,7 @@ import {
   Sunny,
 } from '@element-plus/icons-vue'
 
-import { generateItinerary, cityGuide, getTopPreferences } from '../api'
+import { generateItinerary, cityGuide } from '../api'
 
 const router = useRouter()
 const route = useRoute()
@@ -267,7 +260,7 @@ const say = ref('')
 const intent = ref('')
 const INTENT_MAX = 800
 const INTENT_EXAMPLES = [
-  '千恋万花圣地巡礼',
+  '以自然风光为主，轻松不赶路',
   '只吃米其林与本地名店',
   '带父母慢节奏不爬山',
 ]
@@ -329,18 +322,13 @@ watch(dateRange, (range) => {
   }
 })
 
-onMounted(async () => {
+onMounted(() => {
   // 首页目的地墙点击跳转：/generate?city=杭州
   const cityFromQuery = typeof route.query.city === 'string' ? route.query.city.trim() : ''
   if (cityFromQuery && !form.city) {
     form.city = cityFromQuery
   }
-  try {
-    const res = await getTopPreferences({ skipErrorMessage: true })
-    if (res.data?.length && form.preferences.length === 0) {
-      form.preferences = res.data
-    }
-  } catch { /* 静默，首次无历史偏好时忽略 */ }
+  // 偏好标签不回填历史偏好：每次进入约稿单都从空白开始，由用户当次勾选
 })
 
 function togglePreference(label: string) {
@@ -707,16 +695,6 @@ async function onSubmit() {
   letter-spacing: 0.01em;
 }
 
-.group-no {
-  font-family: var(--lp-font-display);
-  font-style: italic;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--lp-accent-warm);
-  letter-spacing: 0.06em;
-  font-variant-numeric: tabular-nums;
-}
-
 .group-badge {
   flex: none;
   padding: 2px 10px;
@@ -728,24 +706,51 @@ async function onSubmit() {
   letter-spacing: 0.08em;
 }
 
-/* ★ 主输入角标：强调色实底浅底，视觉权重高于 ◇ 徽标 */
-.group-badge.is-star {
-  border: none;
-  background: var(--lp-accent-soft);
-  color: var(--lp-accent-hover);
-}
-
 .hint {
   color: var(--lp-muted);
   font-size: 13px;
   white-space: nowrap;
 }
 
-/* ---------- 单列堆叠：意图 → 基本信息 → 偏好 → 额外要求 ---------- */
+/* ---------- 约稿单堆叠：意图 → 两栏要素/口味 → 汇总付印 ---------- */
 .gen-stack {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* 两栏行内字段：左行程要素 / 右口味与要求；窄屏折叠单列 */
+.gen-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .gen-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 右栏「特别要求」小节标题 */
+.side-sub {
+  margin: 0 0 8px;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--lp-ink);
+}
+
+/* 汇总提交卡：铺满宽度，按钮靠右 */
+.submit-card .submit-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+}
+
+.submit-card .submit-error {
+  flex: 1;
 }
 
 /* ---------- 偏好标签（◇ 辅助信号：缩小一号 + 降饱和弱化） ---------- */

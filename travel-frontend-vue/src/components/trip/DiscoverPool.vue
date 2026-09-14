@@ -28,9 +28,16 @@
         <div class="discover-body">
           <h3 class="discover-name" :title="s.name">{{ s.name }}</h3>
           <p v-if="s.intro" class="discover-intro" :title="s.intro">{{ s.intro }}</p>
-          <p class="discover-addr" :title="s.address || ''">{{ s.address || '暂无地址' }}</p>
+          <a class="discover-addr" :href="mapLink(s)" target="_blank" rel="noopener"
+             :title="s.address || '在地图中查看位置'">
+            {{ s.address || '在地图中查看' }}<span class="discover-addr-arrow">↗</span>
+          </a>
           <p class="discover-meta">
-            <span v-if="s.estimatedCost != null && s.estimatedCost > 0" class="rate">
+            <!-- 购物不估价：花多少取决于用户自己买什么 -->
+            <span v-if="s.category === 'shopping' || s.category === 'souvenir'" class="free">
+              按店内消费为准
+            </span>
+            <span v-else-if="s.estimatedCost != null && s.estimatedCost > 0" class="rate">
               ￥{{ s.estimatedCost }}<i>起</i>
             </span>
             <span v-else class="free">免费 · 价格以现场为准</span>
@@ -97,10 +104,10 @@ const { detail } = storeToRefs(store)
 const detailForeign = computed(() => isForeignCity(detail.value?.city ?? ''))
 
 /* ---------- 发现更多：备选池（生成时未排入行程的候选点位） ---------- */
-/* 分类页签：无「全部」页签，默认选中第一个分类，避免不同类别的过滤混在一起 */
+/* 分类页签：无「全部」页签，默认选中第一个分类，避免不同类别的过滤混在一起；
+   体验·游玩(activity)不单设页签，经下方 bucket 回落逻辑并入「景点」展示 */
 const DISCOVER_TABS = [
   { key: 'attraction', label: '景点' },
-  { key: 'activity', label: '体验·游玩' },
   { key: 'food', label: '美食' },
   { key: 'hotel', label: '酒店' },
   { key: 'shopping', label: '购物' },
@@ -160,9 +167,22 @@ const discoverPois = computed(() => discoverByCategory.value[discoverTab.value] 
 
 function suggestionPhoto(s: TripSuggestion) {
   const city = detail.value?.city ?? ''
-  // 海外跳过高德（无覆盖且慢）；代理侧走 Unsplash → Wikipedia → Commons
+  // 海外跳过高德（无覆盖且慢）；代理侧按精度走 Wikipedia → Commons → 图库名称兜底
   const skip = detailForeign.value ? '&skipAmap=true' : ''
   return `/api/amap/poi-photo?name=${encodeURIComponent(s.name)}&city=${encodeURIComponent(city)}${skip}`
+}
+
+/* 地图跳转：与 DayListCard 的 amapLink 同口径——国内走高德搜索，
+   海外走 Google Maps（有坐标用坐标，无坐标用「名称+城市」关键词） */
+function mapLink(s: TripSuggestion): string {
+  const city = detail.value?.city ?? ''
+  if (detailForeign.value) {
+    if (s.latitude != null && s.longitude != null) {
+      return `https://www.google.com/maps/search/?api=1&query=${s.latitude},${s.longitude}`
+    }
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${s.name} ${city}`)}`
+  }
+  return `https://uri.amap.com/search?keyword=${encodeURIComponent(s.name)}`
 }
 
 function openDiscoverAdd(s: TripSuggestion) {
@@ -379,19 +399,32 @@ async function onDiscoverAdd() {
   line-height: 1.55;
   color: var(--lp-ink-soft);
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   min-height: 40px;
 }
 
+/* 地址行同时是地图跳转链接：国外走 Google Maps，国内走高德 */
 .discover-addr {
   margin: 6px 0 0;
+  display: block;
   font-size: 12px;
   color: var(--lp-muted);
+  text-decoration: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.discover-addr:hover {
+  color: var(--lp-accent);
+  text-decoration: underline;
+}
+
+.discover-addr-arrow {
+  margin-left: 4px;
+  font-size: 11px;
 }
 
 .discover-meta {

@@ -555,17 +555,23 @@ def build_suggestions(plans: list[dict], candidates: list[dict] | None,
         raw = raw or {}
         price = poi.get("ticket_price")
         cost = raw.get("estimated_cost")
+        category = _category_of(poi, raw.get("category"))
+        # 购物类不估价：花多少取决于用户自己买什么，固定「人均 ¥5000」
+        # 只会削弱可信度（前端对应展示「按店内消费为准」）。
+        estimated = float(cost) if isinstance(cost, (int, float)) else (
+            float(price) if price is not None else None)
+        if category == "shopping":
+            estimated = None
         return {
             "poi_id": str(poi.get("id") or "") or None,
             "name": name,
-            "category": _category_of(poi, raw.get("category")),
+            "category": category,
             "address": poi.get("address"),
             "latitude": poi.get("latitude"),
             "longitude": poi.get("longitude"),
             "intro": str(raw.get("intro") or "").strip() or None,
             "need_reservation": bool(raw.get("need_reservation")),
-            "estimated_cost": float(cost) if isinstance(cost, (int, float)) else (
-                float(price) if price is not None else None),
+            "estimated_cost": estimated,
         }
 
     buckets: dict[str, list[dict]] = {cat: [] for cat in SUGGESTION_CATEGORIES}

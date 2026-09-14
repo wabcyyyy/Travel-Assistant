@@ -7,12 +7,11 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
-    BudgetPanel: typeof import('./components/BudgetPanel.vue')['default']
+    BudgetStrip: typeof import('./components/trip/BudgetStrip.vue')['default']
     ButlerNoteCard: typeof import('./components/trip/ButlerNoteCard.vue')['default']
     ChatEditPanel: typeof import('./components/trip/ChatEditPanel.vue')['default']
     DayListCard: typeof import('./components/trip/DayListCard.vue')['default']
     DayNarrativePanel: typeof import('./components/trip/DayNarrativePanel.vue')['default']
-    DayOptionsFork: typeof import('./components/trip/DayOptionsFork.vue')['default']
     DiscoverPool: typeof import('./components/trip/DiscoverPool.vue')['default']
     DragSortHandle: typeof import('./components/trip/DragSortHandle.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
@@ -32,6 +31,9 @@ declare module 'vue' {
     ElDialog: typeof import('element-plus/es')['ElDialog']
     ElDivider: typeof import('element-plus/es')['ElDivider']
     ElDrawer: typeof import('element-plus/es')['ElDrawer']
+    ElDropdown: typeof import('element-plus/es')['ElDropdown']
+    ElDropdownItem: typeof import('element-plus/es')['ElDropdownItem']
+    ElDropdownMenu: typeof import('element-plus/es')['ElDropdownMenu']
     ElEmpty: typeof import('element-plus/es')['ElEmpty']
     ElForm: typeof import('element-plus/es')['ElForm']
     ElFormItem: typeof import('element-plus/es')['ElFormItem']
@@ -46,6 +48,7 @@ declare module 'vue' {
     ElMenuItemGroup: typeof import('element-plus/es')['ElMenuItemGroup']
     ElOption: typeof import('element-plus/es')['ElOption']
     ElPagination: typeof import('element-plus/es')['ElPagination']
+    ElPopover: typeof import('element-plus/es')['ElPopover']
     ElProgress: typeof import('element-plus/es')['ElProgress']
     ElRadioButton: typeof import('element-plus/es')['ElRadioButton']
     ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
@@ -61,13 +64,10 @@ declare module 'vue' {
     HeadStatusPanel: typeof import('./components/trip/HeadStatusPanel.vue')['default']
     HotelOptionsDialog: typeof import('./components/HotelOptionsDialog.vue')['default']
     ItemEditDialog: typeof import('./components/trip/ItemEditDialog.vue')['default']
-    NearbyRecommends: typeof import('./components/trip/NearbyRecommends.vue')['default']
     PoiSearchDialog: typeof import('./components/trip/PoiSearchDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     TripCoverHeader: typeof import('./components/TripCoverHeader.vue')['default']
-    TripMap: typeof import('./components/TripMap.vue')['default']
-    WhyThisLine: typeof import('./components/trip/WhyThisLine.vue')['default']
   }
   export interface ComponentCustomProperties {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

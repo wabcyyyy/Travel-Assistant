@@ -164,6 +164,16 @@ class Suggestion(WireModel):
     estimated_cost: float | None = None
     used: bool = False
 
+    @model_validator(mode="after")
+    @classmethod
+    def _strip_shopping_cost(cls, model: "Suggestion") -> "Suggestion":
+        # 购物类不估价：花多少取决于用户自己买什么，固定「人均 ¥5000」
+        # 只会削弱可信度（前端展示「按店内消费为准」）。契约层统一兜底，
+        # 覆盖候选池/联网补齐/模型建议等所有组装路径。
+        if model.category in ("shopping", "souvenir") and model.estimated_cost is not None:
+            model.estimated_cost = None
+        return model
+
 
 class PhotoSpot(WireModel):
     """出片点位（M3-① 叙事层）：名称 + 拍摄建议 + 最佳时段。

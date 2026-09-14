@@ -2,6 +2,17 @@
   <div class="trip-detail" v-loading="loading">
     <div class="reading-progress" aria-hidden="true"></div>
 
+    <!-- 加载失败/无权限/不存在：完整错误态页，页面自解释而非只剩页脚 -->
+    <el-card v-if="loadError && !detail" shadow="never" class="load-error">
+      <el-empty :image-size="120" :description="loadErrorDescription">
+        <div class="load-error-actions">
+          <el-button type="primary" @click="$router.push('/trips')">返回我的行程</el-button>
+          <el-button @click="$router.push('/generate')">去生成新行程</el-button>
+          <el-button text @click="loadDetail">重新加载</el-button>
+        </div>
+      </el-empty>
+    </el-card>
+
     <TripCoverHeader
       v-if="detail"
       :detail="detail"
@@ -30,48 +41,49 @@
       <ChatEditPanel :itinerary-id="detail.id" @apply-draft="loadDetail" />
     </el-card>
 
+    <!-- 预算概览条：替代原右栏看板，天级小计在日卡标题、条目价格在点位卡 -->
+    <BudgetStrip
+      v-if="detail"
+      :budget-list="detail.budgetList"
+      :total-amount="detail.totalAmount"
+      :budget-limit="detail.budget"
+      :persons="detail.persons"
+      :days="detail.dayList.length"
+    />
+
+    <!-- 手册白底大区：粘性迷你目录 + 逐日轨道全宽（原右栏已随地图/预算看板一并取消） -->
     <div v-if="detail" class="handbook-body">
-      <section class="day-list">
-        <DayListCard
+      <nav class="day-toc" aria-label="每日目录">
+        <button
           v-for="d in detail.dayList"
           :key="d.dayId"
-          :day="d"
-          :expanded="d.dayNo === openDayNo"
-          :highlight-id="highlightId"
-          :stream-state="streamState"
-          @toggle="onDayToggle"
-          @item-drop="onItemDrop"
-          @item-select="onItemSelect"
-        />
-      </section>
-
-      <div class="side-col">
-        <el-card shadow="never" class="map-card">
-          <div class="map-toolbar">
-            <span class="toolbar-title">当日路线</span>
-            <el-tag v-if="!mapReady" type="warning" size="small">未配置地图 key，地图不可用</el-tag>
-            <el-tag v-else-if="detailForeign && !mapHasCoords" type="info" size="small">海外目的地暂无坐标，地图已隐藏</el-tag>
-          </div>
-          <div v-if="detailForeign && !mapHasCoords" class="map-empty">
-            <p class="map-empty-title">海外地图未启用</p>
-            <p class="map-empty-desc">
-              行程点位仍可浏览与编辑。配置服务端
-              <code>GOOGLE_MAPS_API_KEY</code> 后可自动落海外坐标并恢复地图。
-            </p>
-          </div>
-          <TripMap v-else class="map" :items="mapItems" :city="detail?.city" :highlight-id="highlightId" :route-day="routeDay" @select="onMapSelect" />
-        </el-card>
-
-        <el-card shadow="never" class="budget-card">
-          <BudgetPanel
-            :budget-list="detail.budgetList"
-            :total-amount="detail.totalAmount"
-            :budget-limit="detail.budget"
-            :persons="detail.persons"
-            :day-list="detail.dayList"
+          type="button"
+          class="toc-pill"
+          :class="{ 'is-active': activeTocDay === d.dayNo, 'is-open': openDayNo === d.dayNo }"
+          @click="jumpToDay(d.dayNo)"
+        >
+          D{{ String(d.dayNo).padStart(2, '0') }}
+        </button>
+      </nav>
+      <section class="day-list">
+        <div
+          v-for="d in detail.dayList"
+          :id="`day-block-${d.dayNo}`"
+          :key="d.dayId"
+          :ref="(el) => setDayBlockRef(el, d.dayNo)"
+          class="day-block"
+        >
+          <DayListCard
+            :day="d"
+            :expanded="d.dayNo === openDayNo"
+            :highlight-id="highlightId"
+            :stream-state="streamState"
+            @toggle="onDayToggle"
+            @item-drop="onItemDrop"
+            @item-select="onItemSelect"
           />
-        </el-card>
-      </div>
+        </div>
+      </section>
     </div>
 
     <DiscoverPool v-if="detail" />
@@ -85,11 +97,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import TripMap, { type MapItem } from '../components/TripMap.vue'
 import TripCoverHeader from '../components/TripCoverHeader.vue'
-import BudgetPanel from '../components/BudgetPanel.vue'
+import BudgetStrip from '../components/trip/BudgetStrip.vue'
 import DayListCard from '../components/trip/DayListCard.vue'
 import ChatEditPanel from '../components/trip/ChatEditPanel.vue'
 import DiscoverPool from '../components/trip/DiscoverPool.vue'
@@ -102,46 +113,38 @@ import { useItineraryStore } from '../store/itinerary'
 import { useItineraryActions } from '../composables/useItineraryActions'
 import { useItineraryStream, type ItineraryStreamEvent } from '../composables/useItineraryStream'
 import type { DayPlan, TripItem } from '../types/itinerary'
-import { isForeignCity } from '../utils/geo'
 
 // 行程详情编排壳（M4-②a §5.4）：只做组合、路由参数、loadDetail/reconcile/SSE 生命周期
-// 与地图联动编排；页面区块分别由 components/trip/ 下的子组件承载。
+// 编排；页面区块分别由 components/trip/ 下的子组件承载。
 const route = useRoute()
 const store = useItineraryStore()
 const actions = useItineraryActions()
 const loading = ref(false)
+// 详情加载失败态（不存在/无权限/网络异常）：el-empty 错误页替代空白页
+const loadError = ref(false)
+const loadErrorDescription = ref('行程加载失败')
 // detail 为行程全量单一数据源（M4-①）；酒店选择持久化观察收敛在壳内（读写均经 store 单点）
 const { detail, streamState, hotelSelections } = storeToRefs(store)
 const openDayNo = ref<number | null>(null)
-const routeDay = ref(1)
 const highlightId = ref<number | null>(null)
-const amapReady = ref(!!import.meta.env.VITE_AMAP_JS_KEY)
-// 国外目的地：有坐标才渲染 Leaflet+OSM；无坐标时隐藏地图（避免空图误导）。
-const detailForeign = computed(() => isForeignCity(detail.value?.city ?? ''))
-const mapReady = computed(() => amapReady.value || detailForeign.value)
-const mapHasCoords = computed(() =>
-  (mapItems.value || []).some((it) => it.latitude != null && it.longitude != null),
-)
 const doneDays = computed(
   () => (detail.value?.dayList || []).filter((d) => (d.items || []).length > 0).length,
 )
-const activeDay = computed(
-  () => detail.value?.dayList.find((d) => d.dayNo === routeDay.value) ?? detail.value?.dayList[0],
-)
-const mapItems = computed<MapItem[]>(() => {
-  if (!detail.value) return []
-  return (activeDay.value ? [activeDay.value] : detail.value.dayList).flatMap((day) =>
-    day.items.map((it) => ({ ...it, dayNo: day.dayNo }))
-  )
-})
 
 async function loadDetail() {
   loading.value = true
+  loadError.value = false
   try {
     const res = await getItineraryDetail(route.params.id as string)
     // 行程详情落 store 单一数据源；对话/草稿/酒店选择由 ChatEditPanel 随 itineraryId 自行装载
     store.setDetail(res.data)
     openDayNo.value = detail.value?.dayList[0]?.dayNo ?? 1
+  } catch (err) {
+    // 拦截器已 toast 具体原因；页面本身给出可操作的错误态（不存在/无权限/网络异常）
+    const message = err instanceof Error ? err.message : ''
+    loadErrorDescription.value =
+      message || '行程不存在、无权访问或加载失败，请返回重试'
+    loadError.value = true
   } finally {
     loading.value = false
   }
@@ -257,12 +260,59 @@ async function onStreamRetry() {
   startGenerationProgress()
 }
 
-// ---------- 地图联动编排：日卡点选 ↔ 地图高亮 ----------
+// ---------- 迷你目录（粘性 scrollspy）：顶替被删地图的方位感职责 ----------
+
+const activeTocDay = ref<number | null>(null)
+const dayBlockEls = new Map<number, HTMLElement>()
+let tocObserver: IntersectionObserver | null = null
+
+function setDayBlockRef(el: unknown, dayNo: number) {
+  if (el instanceof HTMLElement) {
+    el.dataset.dayNo = String(dayNo)
+    dayBlockEls.set(dayNo, el)
+  } else {
+    dayBlockEls.delete(dayNo)
+  }
+}
+
+/** 滚动联动高亮：取视口上部最近的一个天块（不自动滚页，避免与用户滚动打架） */
+function setupTocObserver() {
+  tocObserver?.disconnect()
+  if (!detail.value?.dayList.length || typeof IntersectionObserver === 'undefined') return
+  tocObserver = new IntersectionObserver(
+    (entries) => {
+      const visible = entries
+        .filter((e) => e.isIntersecting)
+        .map((e) => ({ no: Number((e.target as HTMLElement).dataset.dayNo), top: e.boundingClientRect.top }))
+        .filter((e) => !Number.isNaN(e.no))
+        .sort((a, b) => a.top - b.top)
+      if (visible.length) activeTocDay.value = visible[0].no
+    },
+    { rootMargin: '-15% 0px -60% 0px', threshold: 0 },
+  )
+  dayBlockEls.forEach((el) => tocObserver!.observe(el))
+}
+
+watch(
+  () => (detail.value?.dayList || []).map((d) => d.dayId).join(','),
+  () => nextTick(setupTocObserver),
+  { immediate: true },
+)
+
+function scrollToEl(el: HTMLElement | null, block: ScrollLogicalPosition = 'start') {
+  if (!el) return
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block })
+}
+
+function jumpToDay(dayNo: number) {
+  openDayNo.value = dayNo
+  scrollToEl(dayBlockEls.get(dayNo) ?? null)
+}
 
 function onDayToggle(dayNo: number) {
-  // 手风琴：展开态由 openDayNo 单一受控，避免多天同时展开；同时驱动当日路线
+  // 手风琴：展开态由 openDayNo 单一受控，避免多天同时展开
   openDayNo.value = openDayNo.value === dayNo ? null : dayNo
-  routeDay.value = dayNo
 }
 
 function onItemSelect(item: TripItem) {
@@ -274,17 +324,6 @@ function onItemDrop(day: DayPlan) {
   // 拖拽/键盘排序为乐观本地变更（DayListCard 直接改 store 内 items）：
   // actions 快照兜底，失败自动回滚顺序
   void actions.reorderItems(detail.value!.id, day.dayId, itemIds)
-}
-
-function onMapSelect(id: number | null) {
-  highlightId.value = id
-  if (id != null) {
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    document.getElementById(`item-${id}`)?.scrollIntoView({
-      behavior: reduceMotion ? 'auto' : 'smooth',
-      block: 'center',
-    })
-  }
 }
 
 // ---------- 导出（逻辑在 ExportBar，按钮在 TripCoverHeader） ----------
@@ -328,6 +367,7 @@ watch(
 onUnmounted(() => {
   stopPolling()
   stream.close()
+  tocObserver?.disconnect()
 })
 </script>
 
@@ -350,6 +390,10 @@ onUnmounted(() => {
 @keyframes lp-reading-grow { to { transform: scaleX(1); } }
 
 .head { margin-bottom: 16px; }
+
+/* ---------- 加载失败错误态 ---------- */
+.load-error { margin-bottom: 16px; }
+.load-error-actions { display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; }
 
 /* ---------- §5.3.1 主题叙事条：trip_theme 衬线大字 + --lp-theme-accent 底线 ---------- */
 .theme-bar {
@@ -386,36 +430,72 @@ onUnmounted(() => {
   color: var(--lp-muted);
 }
 
-/* ---------- 手册白底大区：左逐日轨道 + 右当日地图/预算 ---------- */
+/* ---------- 手册白底大区：粘性迷你目录 + 逐日轨道全宽 ---------- */
 .handbook-body {
-  display: grid; grid-template-columns: minmax(0, 1fr) 440px; gap: 24px; align-items: start;
   background: #fff; border-radius: 16px; padding: 8px 32px 28px; margin-bottom: 16px;
 }
 
-.side-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-
 @media (max-width: 1024px) {
-  .handbook-body { grid-template-columns: 1fr; padding: 8px 16px 24px; }
+  .handbook-body { padding: 8px 16px 24px; }
 }
 
-/* ---------- 地图 / 预算 ---------- */
-.map-card { margin-bottom: 0; }
-.map-toolbar { display: flex; align-items: center; margin-bottom: 8px; }
-.toolbar-title { margin-right: 12px; font-weight: 700; }
-.map { height: 460px; }
+/* ---------- 迷你目录：粘性 scrollspy，D01-D0N 药丸 ---------- */
+.day-toc {
+  position: sticky;
+  top: -8px; /* 抵消 .handbook-body 顶部 padding，吸住滚动视口上缘 */
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 -32px;
+  padding: 10px 32px;
+  background: rgb(255 255 255 / 94%);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--lp-rule);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
 
-.map-empty {
-  display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
-  gap: 8px; min-height: 180px; padding: 20px 18px; border-radius: 12px;
-  background: var(--lp-sand); border: 1px dashed var(--lp-border);
+.day-toc::-webkit-scrollbar {
+  display: none;
 }
-.map-empty-title { margin: 0; font-weight: 700; color: var(--lp-ink); font-size: 14px; }
-.map-empty-desc { margin: 0; font-size: 12.5px; line-height: 1.7; color: var(--lp-muted); }
-.map-empty-desc code {
-  padding: 1px 5px; border-radius: 4px; background: rgb(0 0 0 / 6%);
-  font-family: var(--lp-font-data); font-size: 12px;
+
+.toc-pill {
+  flex: none;
+  min-width: 52px;
+  padding: 5px 12px;
+  border: 1px solid var(--lp-border);
+  border-radius: 999px;
+  background: #fff;
+  font-family: var(--lp-font-data);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--lp-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
-.budget-card { margin-bottom: 0; }
+
+.toc-pill:hover {
+  color: var(--lp-accent);
+  border-color: var(--lp-accent);
+}
+
+.toc-pill.is-active {
+  background: var(--lp-accent);
+  border-color: var(--lp-accent);
+  color: #fff;
+}
+
+/* 已展开但非当前视口的天：浅青绿底提示状态 */
+.toc-pill.is-open:not(.is-active) {
+  background: var(--lp-accent-soft);
+  border-color: var(--lp-accent-soft);
+  color: var(--lp-accent-hover);
+}
+
+.day-block {
+  scroll-margin-top: 72px; /* 目录跳转时留出粘性目录高度 */
+}
 
 /* ---------- 回到顶部 ---------- */
 .handbook-footer { text-align: center; padding: 8px 0 28px; }

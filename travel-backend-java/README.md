@@ -1,10 +1,10 @@
 # travel-backend-java
 
-Spring Boot 3.2.5 后端服务：认证、行程管理、预算引擎、高德地图封装、Redis 缓存、异步 PDF 导出。
+Spring Boot 4.1.1 后端服务：认证、行程管理、预算引擎、高德地图封装、Redis 缓存、异步 PDF 导出。
 
 ## 技术栈
 
-- Java 17 + Spring Boot 3.2.5 + Maven
+- Java 17 + Spring Boot 4.1.1 + Maven
 - MyBatis-Plus 3.5.5（逻辑删除、自动填充）
 - Spring Security + JJWT 0.12.5（无状态 JWT 认证）
 - Spring Data Redis（`amap:poi` 1h / `itinerary:detail` 10m 缓存）
@@ -15,7 +15,8 @@ Spring Boot 3.2.5 后端服务：认证、行程管理、预算引擎、高德�
 ```
 src/main/java/com/travel/
 ├── controller/     # Auth / Itinerary / Export / Amap / Test
-├── serviceImpl/    # 业务实现（BudgetEngineImpl 预算引擎核心）
+├── service/        # 服务接口（Auth / Itinerary / Agent / Amap / Export / Budget / Admin）
+├── service/impl/   # 业务实现（BudgetEngineImpl 预算引擎核心）
 ├── mapper/         # MyBatis-Plus Mapper
 ├── entity/ vo/ dto/ # 实体与出入参
 ├── config/         # Security / Redis / MyBatisPlus / RestTemplate

@@ -13,31 +13,37 @@
           <span class="day-meta">第{{ day.dayNo }}天<template v-if="day.travelDate"> · {{ day.travelDate }}</template></span>
           <span class="day-title">{{ dayTitle(day) }}</span>
           <span class="day-count">
-            {{ (day.items || []).length }} 个点位
-            <span v-if="isActiveDay" class="day-state state-active">生成中</span>
-            <span v-else-if="isPendingDay" class="day-state">待生成</span>
+            {{ (day.items || []).length }} 个点位<template v-if="dayTotalAmount > 0"> · 约 ￥{{ dayTotalAmount.toLocaleString('zh-CN') }}</template>
+            <span v-if="isActiveDay" class="day-state state-active">排版中</span>
+            <span v-else-if="isPendingDay" class="day-state">待排版</span>
           </span>
         </template>
         <!-- 降级/失败如实可见（原则 4）：degraded 按 scope 对应日卡，PARTIAL 保留 degradedDays -->
         <span v-if="notGenerated" class="day-flag flag-fail">未成功生成</span>
         <span v-else-if="dayDegraded" class="day-flag">已降级 · {{ dayDegraded.reason }}</span>
       </span>
-      <span class="day-plus" aria-hidden="true">＋</span>
+      <span class="day-plus" aria-hidden="true">▾</span>
     </summary>
     <div class="day-content">
-      <!-- 每日叙事区（§5.3.2）：theme/note/practicalNotes/photoSpots/backupPlan，空态各自静默 -->
-      <DayNarrativePanel :day="day" />
-      <div class="route-toolbar">
-        <el-button type="primary" size="small" :disabled="!mapReady" @click="openAddDialog">添加景点</el-button>
-      </div>
-      <draggable
-        :list="day.items"
-        item-key="id"
-        handle=".drag-handle"
-        :animation="150"
-        @end="emit('item-drop', day)"
-      >
-        <template #item="{ element, index }">
+      <!-- 跨页 spread：左叙事墙（导语/提示/机位/备选）右时间轴站点列；窄屏折叠为上下 -->
+      <div class="day-spread">
+        <aside class="spread-side">
+          <div class="spread-side-inner">
+            <DayNarrativePanel :day="day" />
+          </div>
+        </aside>
+        <div class="spread-track">
+          <div class="route-toolbar">
+            <el-button type="primary" size="small" :disabled="!mapReady" @click="openAddDialog">添加景点</el-button>
+          </div>
+          <draggable
+            :list="day.items"
+            item-key="id"
+            handle=".drag-handle"
+            :animation="150"
+            @end="emit('item-drop', day)"
+          >
+            <template #item="{ element, index }">
           <div
             :id="`item-${element.id}`"
             class="route-row"
@@ -75,12 +81,12 @@
                   {{ typeLabel(element.itemType) }}
                 </el-tag>
                 <span v-if="element.startTime" class="row-time">
-                  {{ element.startTime }}<template v-if="element.endTime"> - {{ element.endTime }}</template>
+                  {{ formatTime(element.startTime) }}<template v-if="element.endTime"> - {{ formatTime(element.endTime) }}</template>
                 </span>
                 <span v-if="element.durationMin" class="row-dwell">约 {{ element.durationMin }} 分钟</span>
               </div>
               <div
-                v-if="element.openTime || element.cost != null || element.tag || element.verificationStatus"
+                v-if="element.openTime || element.cost != null || element.tag"
                 class="row-meta"
               >
                 <span v-if="element.openTime">开放 {{ element.openTime }}</span>
@@ -88,25 +94,17 @@
                   ￥{{ element.cost }}{{ element.itemType === 'hotel' ? '/晚/间' : '/人' }}
                 </span>
                 <span v-if="element.tag">{{ element.tag }}</span>
-                <el-tag v-if="element.verificationStatus && element.verificationStatus !== 'verified'" size="small" type="warning">
-                  {{ element.valueKind === 'estimated' ? '参考估算' : '待确认' }}
-                </el-tag>
-                <el-tag v-else-if="element.verificationStatus === 'verified'" size="small" type="success">
-                  已核实
-                </el-tag>
               </div>
-              <p v-if="element.source || element.sourceUpdatedAt" class="poi-source">
-                来源：{{ sourceLabel(element.source) }}<span v-if="element.sourceUpdatedAt"> · 更新于 {{ formatSourceDate(element.sourceUpdatedAt) }}</span>
-              </p>
+              <!-- 景点介绍 + 推荐原因接排：why_this 作为正文续在介绍尾部，不加前缀标签 -->
               <p
-                v-if="(element.intro || element.description)"
+                v-if="(element.intro || element.description) || element.whyThis"
                 class="poi-desc"
                 :class="{ expanded: descExpanded[element.id!] }"
               >
-                {{ element.intro || element.description }}
+                <template v-if="element.intro || element.description">{{ element.intro || element.description }}</template><span v-if="element.whyThis" class="poi-why">{{ element.whyThis }}</span>
               </p>
               <el-button
-                v-if="(element.intro || element.description) && descLong(element)"
+                v-if="descLong(element)"
                 class="poi-desc-toggle"
                 link
                 type="primary"
@@ -115,36 +113,23 @@
               >
                 {{ descExpanded[element.id!] ? '收起' : '展开全部' }}
               </el-button>
-              <!-- why_this 次级行（§5.3.3）：item.whyThis 有值才渲染，attraction 与否一视同仁 -->
-              <WhyThisLine :why-this="element.whyThis" @click.stop @keydown.stop />
               <p v-if="element.remark" class="poi-remark">{{ element.remark }}</p>
-              <!-- 附近推荐（轻量 GraphRAG）：打开时拉取，结果缓存于子组件实例 -->
-              <NearbyRecommends :item="element" :open="!!nearbyOpen[element.id!]" />
             </div>
             <div class="row-side">
               <a class="row-map" :href="amapLink(element)" target="_blank" rel="noopener">{{ mapLinkLabel }} ↗</a>
-              <el-button
-                v-if="element.itemType === 'attraction' || element.itemType === 'food'"
-                link
-                type="primary"
-                size="small"
-                @click.stop="toggleNearby(element)"
-              >
-                附近
-              </el-button>
               <el-button link type="primary" size="small" @click.stop="openEditDialog(element)">
                 编辑
               </el-button>
-              <el-button link type="danger" size="small" @click.stop="onDeleteItem(element)">
+              <el-button class="row-delete" link type="danger" size="small" @click.stop="onDeleteItem(element)">
                 删除
               </el-button>
             </div>
           </div>
         </template>
-      </draggable>
-      <el-empty v-if="!(day.items || []).length" description="当天暂无安排" :image-size="80" />
-      <!-- 方案分叉区（§5.3.4）：day_options 0-2 组并列卡，只展示不切换 -->
-      <DayOptionsFork :options="day.dayOptions || []" />
+          </draggable>
+          <el-empty v-if="!(day.items || []).length" description="当天暂无安排" :image-size="80" />
+        </div>
+      </div>
     </div>
 
     <PoiSearchDialog v-model:visible="addDialogVisible" :day-id="day.dayId" />
@@ -163,17 +148,14 @@ import { useItemPhoto } from '../../composables/useItemPhoto'
 import type { DayPlan, TripItem } from '../../types/itinerary'
 import { isForeignCity } from '../../utils/geo'
 import DayNarrativePanel from './DayNarrativePanel.vue'
-import WhyThisLine from './WhyThisLine.vue'
-import DayOptionsFork from './DayOptionsFork.vue'
 import DragSortHandle from './DragSortHandle.vue'
-import NearbyRecommends from './NearbyRecommends.vue'
 import PoiSearchDialog from './PoiSearchDialog.vue'
 import ItemEditDialog from './ItemEditDialog.vue'
 
 // 单日折叠卡（M4-②a §5.4 / M4-②b §5.3 叙事化升级）：
-// - 叙事渲染（theme/note/practical_notes/photo_spots/backup_plan）在 DayNarrativePanel；
-// - why_this 次级行在 WhyThisLine；day_options 分叉区在 DayOptionsFork；
-// - 附近推荐 / 搜索添加 / 行内编辑对话框均为自包含子组件（props 可见性 + 自读写 store）；
+// - 跨页排版：叙事墙（DayNarrativePanel）在侧，时间轴站点列在主；
+// - why_this 并入 poi-desc 段尾（推荐原因接在介绍后，不再单独成行）；
+// - 搜索添加 / 行内编辑对话框均为自包含子组件（props 可见性 + 自读写 store）；
 // - 图片三级降级收敛为 useItemPhoto（§5.3.6）。
 // 组件只读 store，写变更一律经 useItineraryActions；拖拽/键盘排序为乐观本地变更，
 // 壳接收 item-drop 后走 actions.reorderItems 持久化（快照兜底，失败回滚顺序）。
@@ -243,7 +225,9 @@ function toggleDesc(item: TripItem) {
 }
 
 function descLong(item: TripItem) {
-  return (item.intro || item.description || '').length > 60
+  // 折叠阈值按「介绍 + 推荐原因」合并后的实际篇幅计算
+  const text = (item.intro || item.description || '') + (item.whyThis || '')
+  return text.length > 60
 }
 
 function dayTitle(d: DayPlan) {
@@ -254,6 +238,16 @@ function dayTitle(d: DayPlan) {
   const last = items.length > 1 ? items[items.length - 1]?.poiName || '' : ''
   return last && last !== first ? `${first} → ${last}` : first
 }
+
+/** 天级小计（原预算看板「每日费用」的落点）：餐饮/景点按人数，酒店按房间数 */
+const dayTotalAmount = computed(() => {
+  const persons = detail.value?.persons ?? 1
+  const roomCount = Math.max(Math.ceil(persons / 2), 1)
+  return (props.day.items || []).reduce((sum, item) => {
+    if (item.cost == null) return sum
+    return sum + item.cost * (item.itemType === 'hotel' ? roomCount : persons)
+  }, 0)
+})
 
 function amapLink(item: TripItem) {
   // 海外与后端一致走 Google Maps：有真实坐标优先按坐标打开，否则按名称检索
@@ -266,14 +260,6 @@ function amapLink(item: TripItem) {
   }
   const keyword = `${detail.value?.city ?? ''}${item.poiName}`
   return `https://uri.amap.com/search?keyword=${encodeURIComponent(keyword)}`
-}
-
-// ---------- 附近推荐：开合状态在本组件，取数与渲染在 NearbyRecommends ----------
-const nearbyOpen = ref<Record<number, boolean>>({})
-
-function toggleNearby(item: TripItem) {
-  const id = item.id!
-  nearbyOpen.value[id] = !nearbyOpen.value[id]
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -298,17 +284,9 @@ function tagType(type: string) {
   return (TYPE_TAG[type] || 'info') as 'primary' | 'warning' | 'success' | 'info'
 }
 
-function sourceLabel(source?: string | null) {
-  if (!source) return '待补充'
-  if (source === 'mysql.poi_knowledge') return '目的地知识库'
-  if (source === 'llm.open_day') return '开放研究（需复核）'
-  if (source === 'amap-grounding' || source === 'amap') return '高德地图'
-  return source
-}
-
-function formatSourceDate(value?: string | null) {
-  if (!value) return ''
-  return value.replace('T', ' ').replace(/([+-]\d{2}:?\d{2}|Z)$/, '').slice(0, 16)
+/** 时间展示统一 HH:mm（数据侧为 HH:mm:ss） */
+function formatTime(value?: string | null) {
+  return typeof value === 'string' ? value.slice(0, 5) : ''
 }
 
 async function onDeleteItem(item: TripItem) {
@@ -468,17 +446,45 @@ function openEditDialog(item: TripItem) {
   height: 30px;
   border: 1px solid #c9d2cc;
   border-radius: 50%;
-  font-size: 16px;
+  font-size: 14px;
   color: var(--lp-ink-soft);
   transition: transform 0.25s ease;
 }
 
+/* 收起/展开语义明确化：▾ 旋转 180°，替代旧「＋→×」的歧义旋转 */
 .day-panel[open] .day-plus {
-  transform: rotate(45deg);
+  transform: rotate(180deg);
 }
 
 .day-content {
   padding: 18px 0 8px;
+}
+
+/* ---------- 跨页 spread：左叙事墙 / 右时间轴，窄屏折叠为上下 ---------- */
+/* 侧栏压缩为窄提示栏（≤240px），主宽度让给点位卡；粘性落在内层 wrapper 上（否则无行程可粘） */
+.day-spread {
+  display: grid;
+  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+  gap: 8px 26px;
+}
+
+.spread-side {
+  min-width: 0;
+}
+
+.spread-side-inner {
+  position: sticky;
+  top: 64px;
+}
+
+@media (max-width: 900px) {
+  .day-spread {
+    grid-template-columns: 1fr;
+  }
+
+  .spread-side-inner {
+    position: static;
+  }
 }
 
 .route-toolbar {
@@ -490,6 +496,7 @@ function openEditDialog(item: TripItem) {
 /* ---------- 站点轨道行 ---------- */
 .route-row {
   display: grid;
+  scroll-margin-top: 72px; /* 目录跳转/高亮定位时给粘性迷你目录留出头部空间 */
   grid-template-columns: 104px 40px minmax(0, 1fr) auto;
   gap: 12px;
   padding: 14px 16px;
@@ -610,13 +617,6 @@ function openEditDialog(item: TripItem) {
   font-size: 12px;
 }
 
-.poi-source {
-  margin: 3px 0 0;
-  color: var(--lp-muted);
-  font-size: 11px;
-  opacity: 0.85;
-}
-
 .poi-desc {
   margin: 8px 0 0;
   font-size: 13px;
@@ -635,6 +635,12 @@ function openEditDialog(item: TripItem) {
   -webkit-line-clamp: unset;
   line-clamp: unset;
   overflow: visible;
+}
+
+/* 推荐原因接排在介绍尾部：注释感灰（--lp-why-ink），与正文同字号保持阅读连贯 */
+.poi-why {
+  margin-left: 0.35em;
+  color: var(--lp-why-ink);
 }
 
 .poi-desc-toggle {
@@ -659,6 +665,13 @@ function openEditDialog(item: TripItem) {
 
 .row-side .el-button + .el-button {
   margin-left: 0;
+}
+
+/* 破坏性操作与常规操作拉开距离，降低窄屏误触 */
+.row-side .row-delete {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--lp-rule);
 }
 
 .row-map {

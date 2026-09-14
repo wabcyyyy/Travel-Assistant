@@ -5,7 +5,7 @@
       <div class="band-copy">
         <p class="band-eyebrow">TRAVEL HANDBOOK</p>
         <h2>我的行程</h2>
-        <p class="band-sub">共 {{ list.length }} 个行程 · 点击卡片查看详情</p>
+        <p class="band-sub">共 {{ list.length }} 本行程，点击封面翻开</p>
       </div>
       <div class="actions">
         <el-button round type="primary" @click="$router.push('/generate')">+ 新建行程</el-button>
@@ -32,14 +32,16 @@
         class="trip-card"
         role="link"
         tabindex="0"
-        :aria-label="`查看行程：${row.title}`"
+        :aria-label="`翻开行程：${row.title}`"
         @click="goDetail(row)"
         @keyup.enter.prevent="goDetail(row)"
         @keyup.space.prevent="goDetail(row)"
       >
+        <!-- 过刊封面：城名当刊名压字，出版状态章在右上 -->
         <div class="trip-cover">
           <img :src="coverForCity(row.city || row.title || '')" alt="旅行封面" loading="lazy" />
           <div class="lp-cover-fade" aria-hidden="true"></div>
+          <span class="cover-masthead">{{ row.city || '旅行手册' }}</span>
           <el-tag
             class="cover-tag"
             :type="row.status === 2 ? 'success' : row.status === 1 ? 'warning' : 'danger'"
@@ -49,12 +51,11 @@
           </el-tag>
         </div>
         <div class="trip-body">
-          <div class="trip-title">{{ row.title }}</div>
-          <div class="trip-dest">
-            <span class="dest-city">{{ row.city || '—' }}</span>
-            <span class="dest-meta">{{ row.days }} 天 / {{ row.persons }} 人</span>
+          <div class="trip-issue">
+            <span class="issue-no">{{ row.startDate || '未设置' }}</span>
+            <span class="issue-meta">{{ row.days }} 天 / {{ row.persons }} 人</span>
           </div>
-          <div class="trip-dates">{{ row.startDate || '—' }} ~ {{ row.endDate || '—' }}</div>
+          <div class="trip-title">{{ row.title }}</div>
           <!-- 主题摘要行（§5.5）：trip_theme 衬线小字；字段不存在时回退 muted 文案而非空槽 -->
           <div class="trip-theme">
             <span v-if="row.tripTheme" class="theme-text">{{ row.tripTheme }}</span>
@@ -62,10 +63,22 @@
           </div>
           <div class="trip-foot">
             <span class="trip-price">￥{{ row.totalAmount }}</span>
-            <span class="trip-actions" @click.stop>
-              <el-button link type="primary" @click="goDetail(row)">查看</el-button>
-              <el-button link type="danger" @click="onDelete(row)">删除</el-button>
-            </span>
+            <!-- 删除收进更多菜单，降低误触 -->
+            <el-dropdown trigger="click" @command="onCommand($event, row)">
+              <button
+                type="button"
+                class="card-menu"
+                aria-label="更多操作"
+                @click.stop
+                @keyup.stop
+              >⋯</button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="open">翻开行程</el-dropdown-item>
+                  <el-dropdown-item command="delete" divided>删除行程</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
       </div>
@@ -96,6 +109,12 @@ const loadError = ref(false)
 
 function goDetail(row: ItinerarySummary) {
   void $router.push(`/trips/${row.id}`)
+}
+
+/** 卡片更多菜单：翻开 / 删除 */
+function onCommand(command: string, row: ItinerarySummary) {
+  if (command === 'open') goDetail(row)
+  else if (command === 'delete') void onDelete(row)
 }
 
 async function load() {
@@ -254,7 +273,7 @@ onMounted(load)
 
 .trip-cover {
   position: relative;
-  height: 150px;
+  height: 170px;
   background: var(--lp-sand);
   overflow: hidden;
 }
@@ -265,6 +284,20 @@ onMounted(load)
   object-fit: cover;
   display: block;
   transition: transform 0.4s ease;
+}
+
+/* 刊名压字：城名当刊名（衬线大字），压在封面渐变上 */
+.cover-masthead {
+  position: absolute;
+  left: 16px;
+  bottom: 12px;
+  z-index: 1;
+  font-family: var(--lp-font-display);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #fffdf8;
+  text-shadow: 0 1px 10px rgb(0 0 0 / 40%);
 }
 
 .cover-tag {
@@ -282,9 +315,21 @@ onMounted(load)
   padding: 14px 16px 16px;
 }
 
+/* 期号行：出发日期当期号（mono），右侧天数/人数 */
+.trip-issue {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: var(--lp-font-data);
+  font-size: 11.5px;
+  color: var(--lp-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .trip-title {
   font-family: var(--lp-font-display);
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--lp-ink);
   overflow: hidden;
@@ -292,41 +337,22 @@ onMounted(load)
   white-space: nowrap;
 }
 
-.trip-dest {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.dest-city {
-  position: relative;
-  padding-left: 14px;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--lp-ink-soft);
-}
-
-.dest-city::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--lp-accent);
-}
-
-.dest-meta {
-  font-size: 13px;
+/* 卡片更多菜单触发钮：轻 ghost，hover 浮现底色 */
+.card-menu {
+  padding: 2px 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  font-size: 15px;
+  line-height: 1.4;
   color: var(--lp-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.trip-dates {
-  font-size: 13px;
-  color: var(--lp-muted);
-  font-variant-numeric: tabular-nums;
+.card-menu:hover {
+  background: var(--lp-sand);
+  color: var(--lp-ink);
 }
 
 /* ---------- 主题摘要行（§5.5）：trip_theme 衬线小字，--lp-theme-accent 渐变衬字 ---------- */

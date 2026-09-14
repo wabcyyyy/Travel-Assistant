@@ -100,7 +100,7 @@ onMounted(async () => {
 /* 入口卡片：青绿浅底渐变，与数据卡区分 */
 .stat-card.accent {
   border: 1px solid var(--lp-accent-soft);
-  background: linear-gradient(135deg, #fff 60%, var(--lp-accent-soft) 160%);
+  background: linear-gradient(135deg, var(--lp-surface) 60%, var(--lp-accent-soft) 160%);
 }
 
 .stat-value--link {

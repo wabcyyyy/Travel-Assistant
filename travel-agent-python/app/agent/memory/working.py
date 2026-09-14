@@ -42,9 +42,11 @@ class WorkingMemory:
         return set(self.used_names)
 
     def filter_unused(self, items: list[dict] | None) -> list[dict]:
-        """过滤已用点；若过滤后为空则回退全集（与历史 _filter_used 行为一致）。"""
-        kept = [i for i in (items or []) if i.get("name") not in self.used_names]
-        return kept or list(items or [])
+        """过滤已用点；空集即「候选耗尽」，由调用方降级。
+
+        不得在空集时回退全集：那会把已用 POI 重新注入候选，破坏跨天去重。
+        """
+        return [i for i in (items or []) if i.get("name") not in self.used_names]
 
     def choose_hotel(self, name: str | None) -> None:
         name = str(name or "").strip()

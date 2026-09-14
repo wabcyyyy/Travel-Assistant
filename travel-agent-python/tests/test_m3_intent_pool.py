@@ -8,7 +8,7 @@
 - factory._run_search：task.intent_keywords 并入补池 extras（去重、顺序），
   并透传给联网补池 search_places_via_web；
 - web_search：联网补池 query 逐词追加「city + keyword」；
-- butler/poi Prompt 扩写契约（400~600 四段 / 80~140 + 意图连接句）。
+- butler/poi Prompt 扩写契约（400~600 四段 / 200~300 + 意图连接句）。
 """
 
 import json
@@ -246,7 +246,7 @@ def test_butler_note_prompt_four_paragraph_contract(monkeypatch):
 
 
 def test_poi_intros_prompt_length_and_intent_link(monkeypatch):
-    """点位介绍：80~140 字 + 意图连接句要求 + max_tokens 2600。"""
+    """点位介绍：200~300 字三段式 + 意图连接句要求 + max_tokens 按量上调。"""
     fake = CaptureClient(reply=json.dumps({"intros": {"西湖": "介绍"}},
                                           ensure_ascii=False))
 
@@ -257,8 +257,9 @@ def test_poi_intros_prompt_length_and_intent_link(monkeypatch):
     monkeypatch.setattr(butler, "run_tool_call_loop", _fc_fail)
     butler.run_poi_intros("杭州", ["西湖"], intent="《千恋万花》圣地巡礼")
     call = fake.calls[0]
+    # 200-300 字/地点：max_tokens 按地点数上调（1 点位 → 2600 地板）
     assert call["max_tokens"] == 2600
-    assert "80~140" in call["system"]
+    assert "200~300" in call["system"]
     assert "《千恋万花》圣地巡礼" in call["system"]  # 意图连接句要求注入
     assert "连接" in call["system"]
 
@@ -275,6 +276,6 @@ def test_poi_intros_prompt_without_intent_uses_reputation_link(monkeypatch):
     monkeypatch.setattr(butler, "run_tool_call_loop", _fc_fail)
     butler.run_poi_intros("杭州", ["西湖"])
     system = fake.calls[0]["system"]
-    assert "80~140" in system
+    assert "200~300" in system
     assert "口碑" in system and "地理" in system
     assert "旅行意图" not in system  # 无意图时不出现意图连接要求

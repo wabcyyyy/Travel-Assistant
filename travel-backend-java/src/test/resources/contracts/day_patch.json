@@ -1,0 +1,41 @@
+{
+  "type": "day_patch",
+  "plan": {
+    "dayNo": 2,
+    "note": null,
+    "items": [
+      {
+        "itemType": "hotel",
+        "poiName": "文华东方酒店巴塞罗那",
+        "poiId": null,
+        "address": null,
+        "latitude": null,
+        "longitude": null,
+        "startTime": "20:00",
+        "endTime": "23:00",
+        "durationMin": null,
+        "openTime": null,
+        "cost": 1800.0,
+        "tag": null,
+        "remark": null,
+        "whyThis": null,
+        "image": null,
+        "source": null,
+        "sourceUpdatedAt": null,
+        "verificationStatus": "unverified",
+        "valueKind": "generated",
+        "freshnessStatus": "unknown",
+        "reviewRequirement": "before_departure",
+        "factEvidence": {}
+      }
+    ],
+    "theme": null,
+    "miniRoute": {},
+    "backupPlan": [],
+    "photoSpots": [],
+    "practicalNotes": [],
+    "dayOptions": [],
+    "tripTheme": null,
+    "suggestions": []
+  }
+}

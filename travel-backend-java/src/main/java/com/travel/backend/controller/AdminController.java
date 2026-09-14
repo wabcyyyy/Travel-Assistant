@@ -3,7 +3,7 @@ package com.travel.backend.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.travel.backend.common.Result;
 import com.travel.backend.common.SecurityUtils;
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import com.travel.backend.service.AdminService;
 import com.travel.backend.vo.AdminItineraryVO;
 import com.travel.backend.vo.AdminStatsVO;

@@ -87,7 +87,7 @@
       <footer class="lp-footer">
         <p>
           本地演示项目 · 数据来自高德 / Wikivoyage(CC BY-SA) / Unsplash 等，仅供学习展示 ·
-          行程中的「待确认」项请出发前自行核实
+          价格与营业时间请以现场或官方渠道为准
         </p>
       </footer>
     </el-main>

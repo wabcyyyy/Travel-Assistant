@@ -13,12 +13,3 @@ from app.schemas.trip import DailyPlan, GenerateDayRequest
 def run_day_agent(req: GenerateDayRequest) -> DailyPlan:
     from app.agent.trip_graph import run_day
     return run_day(req)
-
-
-# 兼容旧名：测试/脚本若仍 import build_day_graph / day_agent_graph
-def build_day_graph():
-    from app.agent.trip_graph import unified_agent_graph
-    return unified_agent_graph
-
-
-day_agent_graph = None  # 惰性；请用 trip_graph.unified_agent_graph

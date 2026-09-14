@@ -1,4 +1,4 @@
-import { requestDelete, requestGet, requestPost, requestPut, type ApiRequestConfig } from './request'
+import { requestDelete, requestGet, requestPost, requestPut } from './request'
 import type {
   ChatDayPlan,
   ChatDraftPayload,
@@ -96,6 +96,30 @@ export function chatEditItinerary(
   )
 }
 
+/** SSE 帧解析结果：empty=无 data 行（心跳/注释帧）；dirty=JSON 解析失败；envelope=正常事件。 */
+export type SseFrameParse =
+  | { kind: 'empty' }
+  | { kind: 'dirty' }
+  | { kind: 'envelope'; envelope: { type: string; data?: Record<string, unknown> } }
+
+/**
+ * 解析单个 SSE 帧（`data:` 行合并后 JSON.parse）。
+ * 脏帧不抛异常：调用方跳过并计数——一帧协议异常不能中断整条编辑流。
+ */
+export function parseSseFrame(raw: string): SseFrameParse {
+  const data = raw
+    .split('\n')
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trim())
+    .join('\n')
+  if (!data) return { kind: 'empty' }
+  try {
+    return { kind: 'envelope', envelope: JSON.parse(data) }
+  } catch {
+    return { kind: 'dirty' }
+  }
+}
+
 /**
  * NL 编辑 SSE 流式变体（POST /itinerary/{id}/chat-edit/stream，M2-③）。
  * 手动解析 text/event-stream（主凭据 HttpOnly Cookie，credentials include 即可）；
@@ -120,17 +144,15 @@ export async function chatEditStreamItinerary(
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let dirtyFrames = 0
   const handleFrame = (raw: string) => {
-    const data = raw
-      .split('\n')
-      .filter((line) => line.startsWith('data:'))
-      .map((line) => line.slice(5).trim())
-      .join('\n')
-    if (!data) return
-    const envelope = JSON.parse(data) as {
-      type: string
-      data?: Record<string, unknown>
+    const parsed = parseSseFrame(raw)
+    if (parsed.kind === 'empty') return
+    if (parsed.kind === 'dirty') {
+      dirtyFrames += 1
+      return
     }
+    const envelope = parsed.envelope
     if (envelope.type === 'chat_token') {
       handlers.onToken?.(String(envelope.data?.delta ?? ''))
     } else if (envelope.type === 'chat_draft') {
@@ -140,16 +162,22 @@ export async function chatEditStreamItinerary(
     }
     // chat_done 无需处理：流自然结束
   }
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    let boundary = buffer.indexOf('\n\n')
-    while (boundary >= 0) {
-      const frame = buffer.slice(0, boundary)
-      buffer = buffer.slice(boundary + 2)
-      handleFrame(frame)
-      boundary = buffer.indexOf('\n\n')
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let boundary = buffer.indexOf('\n\n')
+      while (boundary >= 0) {
+        const frame = buffer.slice(0, boundary)
+        buffer = buffer.slice(boundary + 2)
+        handleFrame(frame)
+        boundary = buffer.indexOf('\n\n')
+      }
+    }
+  } finally {
+    if (dirtyFrames > 0) {
+      console.warn(`[chat-edit] 跳过 ${dirtyFrames} 个无法解析的 SSE 帧（已忽略，流未中断）`)
     }
   }
 }
@@ -189,10 +217,6 @@ export function getNearbyPois(data: {
   category?: string
 }) {
   return requestPost<{ items: NearbyPoi[] }>('/itinerary/poi-nearby', data)
-}
-
-export function getTopPreferences(config?: ApiRequestConfig) {
-  return requestGet<string[]>('/itinerary/preferences', config)
 }
 
 /** 采纳 chat 草稿（「应用到行程」入口），返回应用后的行程全量。 */

@@ -40,7 +40,7 @@ export function useItemPhoto() {
     // 实景图：行程自带 → 同源代理
     const own = imageProxy(item.image || item.imageUrl || '')
     if (own) return own
-    // 海外：Unsplash（skipAmap），避免高德无覆盖超时
+    // 海外：skipAmap 代理走 Wikipedia → Commons → 图库名称兜底，避免高德无覆盖超时
     if (isForeign) {
       return `/api/amap/poi-photo?name=${encodeURIComponent(item.poiName)}&city=${encodeURIComponent(detail.value?.city ?? '')}&skipAmap=true`
     }

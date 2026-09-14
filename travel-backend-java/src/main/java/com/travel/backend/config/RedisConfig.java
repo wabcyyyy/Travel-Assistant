@@ -1,14 +1,16 @@
 package com.travel.backend.config;
 
+import tools.jackson.databind.DefaultTyping;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 /**
@@ -27,11 +29,12 @@ public class RedisConfig {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
 
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);
-        mapper.activateDefaultTyping(LaissezFaireSubTypeValidator.instance,
-                ObjectMapper.DefaultTyping.NON_FINAL);
-        GenericJackson2JsonRedisSerializer valueSerializer = new GenericJackson2JsonRedisSerializer(mapper);
+        ObjectMapper mapper = JsonMapper.builder()
+                .changeDefaultVisibility(checker ->
+                        checker.withVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY))
+                .activateDefaultTyping(redisTypeValidator(), DefaultTyping.NON_FINAL)
+                .build();
+        GenericJacksonJsonRedisSerializer valueSerializer = new GenericJacksonJsonRedisSerializer(mapper);
         StringRedisSerializer keySerializer = new StringRedisSerializer();
 
         template.setKeySerializer(keySerializer);
@@ -40,5 +43,15 @@ public class RedisConfig {
         template.setHashValueSerializer(valueSerializer);
         template.afterPropertiesSet();
         return template;
+    }
+
+    /** 反序列化白名单：只允许应用域与 JDK 常用类型（替代 Jackson 2 的 laissez-faire 校验器）。 */
+    private static BasicPolymorphicTypeValidator redisTypeValidator() {
+        return BasicPolymorphicTypeValidator.builder()
+                .allowIfSubType("com.travel.backend.")
+                .allowIfSubType("java.util.")
+                .allowIfSubType("java.time.")
+                .allowIfSubType("java.math.")
+                .build();
     }
 }

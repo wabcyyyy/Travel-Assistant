@@ -1,11 +1,12 @@
 """可插拔 Embedding 与 POI 混合检索实现。
 
-这里不把业务代码绑定到 Chroma 的具体 embedding function：
+这里不把业务代码绑定到具体向量库的 embedding function：
 
 * ``EmbeddingProvider`` 是统一的向量化接口；
 * 哈希 n-gram 是默认离线实现；
 * ``sentence-transformers`` 只作为可选依赖，模型不可用时启动仍可工作；
-* 词法召回使用无额外依赖的 BM25 风格打分，与 Chroma 语义召回通过 RRF 融合；
+* 词法召回使用无额外依赖的 BM25 风格打分，与向量语义召回（Qdrant，
+  经 ``vector_collection`` 中性协议访问）通过 RRF 融合；
 * 业务重排只改变排序，不改变城市、类别和权威数据边界。
 """
 
@@ -66,18 +67,22 @@ class SentenceTransformerEmbeddingProvider(EmbeddingProvider):
     provider_name = "sentence-transformers"
     version = "1"
 
-    def __init__(self, model_name: str) -> None:
+    def __init__(self, model_name: str, cache_dir: str | None = None) -> None:
         # Optional import is intentional: CI/offline deployments do not need to
         # download or install a model merely to import the application.
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:
             raise RuntimeError(
-                "RAG semantic provider requires the optional 'sentence-transformers' dependency"
+                "RAG semantic provider requires the 'sentence-transformers' dependency"
             ) from exc
         self.model_name = model_name
-        # 只使用本地缓存，避免把“离线可运行”变成启动时隐式联网下载。
-        self._model = SentenceTransformer(model_name, model_kwargs={"local_files_only": True})
+        # 只使用本地缓存，避免把"离线可运行"变成启动时隐式联网下载；
+        # 模型由 scripts/fetch_rag_model.py 预置到 cache_dir（RAG_MODEL_CACHE_DIR）。
+        kwargs: dict = {"model_kwargs": {"local_files_only": True}}
+        if cache_dir:
+            kwargs["cache_folder"] = cache_dir
+        self._model = SentenceTransformer(model_name, **kwargs)
 
     def embed_documents(self, documents: list[str]) -> list[list[float]]:
         vectors = self._model.encode(documents, normalize_embeddings=True)
@@ -98,9 +103,13 @@ def create_embedding_provider(
         return HashedEmbeddingProvider()
     if configured in {"semantic", "sentence-transformers", "sentence_transformers", "st"}:
         try:
-            return SentenceTransformerEmbeddingProvider(model)
+            return SentenceTransformerEmbeddingProvider(
+                model, cache_dir=settings.rag_model_cache_dir or None)
         except Exception as exc:
-            logger.warning("语义 Embedding 不可用，降级到哈希 Embedding: %s", exc)
+            logger.warning(
+                "语义 Embedding 不可用，降级为哈希向量（检索仍可用但语义能力下降）: %s；"
+                "修复：uv sync 安装依赖后执行 `uv run python scripts/fetch_rag_model.py` "
+                "预置模型（国内可设 HF_ENDPOINT=https://hf-mirror.com）", exc)
             fallback = HashedEmbeddingProvider()
             fallback.fallback = True
             return fallback
@@ -137,10 +146,11 @@ class CrossEncoderReranker(RerankerProvider):
             from sentence_transformers import CrossEncoder
         except ImportError as exc:
             raise RuntimeError(
-                "RAG reranker requires the optional 'sentence-transformers' dependency"
+                "RAG reranker requires the 'sentence-transformers' dependency"
             ) from exc
         self.model_name = model_name
-        # 只使用本地缓存，与 embedding provider 保持一致的离线约定。
+        # 只使用本地缓存（默认 HF 缓存目录；或 RAG_RERANK_MODEL 直接指向本地路径）。
+        # 注意：不传 cache_folder——ST 6.x 会把它转成已弃用的 cache_dir 并告警。
         self._model = CrossEncoder(model_name, max_length=512, local_files_only=True)
 
     def rerank(self, query: str, documents: list[str]) -> list[float]:
@@ -229,7 +239,7 @@ def _field_value(poi: dict[str, Any], key: str) -> str:
 
 
 class HybridRetriever:
-    """Chroma 语义召回 + 本地 BM25 风格词法召回 + RRF/业务重排。"""
+    """向量语义召回 + 本地 BM25 风格词法召回 + RRF/业务重排。"""
 
     def __init__(
         self,
@@ -239,6 +249,7 @@ class HybridRetriever:
         rrf_k: int | None = None,
         reranker: RerankerProvider | None = None,
     ) -> None:
+        """``collection`` 为 ``vector_collection`` 定义的中性向量集合协议。"""
         self.collection = collection
         self.embedding_provider = embedding_provider
         self.rrf_k = max(int(rrf_k or settings.rag_rrf_k), 1)
@@ -356,33 +367,25 @@ class HybridRetriever:
     def _semantic_search(
         self, query: str, *, city: str | None, category: str | None, candidate_limit: int
     ) -> tuple[list[tuple[str, float]], bool]:
-        where: dict[str, Any] | None = None
-        conditions: list[dict[str, Any]] = []
+        where: dict[str, str] = {}
         if city:
-            conditions.append({"city": city})
+            where["city"] = city
         if category:
-            conditions.append({"category": category})
-        if len(conditions) == 1:
-            where = conditions[0]
-        elif conditions:
-            where = {"$and": conditions}
+            where["category"] = category
         try:
-            result = self.collection.query(
-                query_embeddings=[self.embedding_provider.embed_query(query)],
-                n_results=max(candidate_limit, 1),
-                where=where,
-                include=["metadatas", "distances"],
+            hits = self.collection.query(
+                vector=self.embedding_provider.embed_query(query),
+                limit=max(candidate_limit, 1),
+                where=where or None,
             )
-            metas = (result.get("metadatas") or [[]])[0]
-            distances = (result.get("distances") or [[]])[0]
             rows: list[tuple[str, float]] = []
-            for meta, distance in zip(metas, distances):
-                if not meta:
+            for payload, similarity in hits:
+                if not payload:
                     continue
-                doc_id = str(meta.get("id"))
-                if doc_id in self.documents and self._allowed(meta, city, category):
-                    # Chroma cosine distance is 1 - cosine similarity.
-                    rows.append((doc_id, max(0.0, min(1.0, 1.0 - float(distance)))))
+                doc_id = str(payload.get("id"))
+                if doc_id in self.documents and self._allowed(payload, city, category):
+                    # 相似度钳制到 0~1，供业务重排直接加权。
+                    rows.append((doc_id, max(0.0, min(1.0, float(similarity)))))
             return rows, False
         except Exception as exc:
             logger.warning("语义召回失败，保留词法召回: %s", exc)

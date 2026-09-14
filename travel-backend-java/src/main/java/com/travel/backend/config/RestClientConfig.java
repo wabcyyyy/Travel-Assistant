@@ -1,10 +1,10 @@
 package com.travel.backend.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -15,15 +15,15 @@ import org.springframework.web.client.RestClient;
 public class RestClientConfig {
 
     @Bean
-    public RestClient restClient(ObjectMapper objectMapper) {
+    public RestClient restClient(JsonMapper jsonMapper) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(3000);
         factory.setReadTimeout(180000);
         return RestClient.builder()
                 .requestFactory(factory)
                 .messageConverters(converters -> {
-                    converters.removeIf(c -> c instanceof MappingJackson2HttpMessageConverter);
-                    converters.add(new MappingJackson2HttpMessageConverter(objectMapper));
+                    converters.removeIf(c -> c instanceof JacksonJsonHttpMessageConverter);
+                    converters.add(new JacksonJsonHttpMessageConverter(jsonMapper));
                 })
                 .build();
     }
