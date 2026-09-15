@@ -458,6 +458,9 @@ def test_recovery_resumes_failed_trip_only_once(broken_trip: int, monkeypatch) -
         main.status, main.gen_state = 3, "FAILED"
         for day in session.execute(select(ItineraryDay)).scalars().all():
             day.generation_status, day.generation_error = "FAILED", "模型超时"
+        # 显式重写 stale 时间戳：onupdate=func.now() 在 SQLite 里是 UTC（CI 时区），
+        # 不重写的话这次 UPDATE 会把 fixture 的 30 分钟前刷成“刚刚”，recover 不再命中
+        main.updated_at = datetime.now() - timedelta(minutes=30)
     submitted: list[int] = []
     monkeypatch.setattr(itinerary_generation.generation_pool, "submit", lambda task, *args: submitted.append(args[1]))
     generation_recovery.recover()

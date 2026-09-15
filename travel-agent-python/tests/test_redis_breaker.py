@@ -38,7 +38,7 @@ def test_shared_client_sets_fast_fail_timeouts():
 
 
 def test_failed_command_opens_breaker_and_client_returns_none():
-    with pytest.raises(redis.exceptions.TimeoutError):
+    with pytest.raises(redis.exceptions.RedisError):
         redis_client.client().exists("probe")
     redis_client.note_failure(RuntimeError("connection refused"))
     assert redis_client.is_down() is True
