@@ -1,9 +1,10 @@
 # 本地/演示编排：基础设施一键起，应用可继续用 start-all 或 profile 拉起。
 # 用法：
 #   docker compose up -d mysql redis
-#   docker compose --profile apps up -d   # 可选：容器化三端（需先构建镜像）
+#   docker compose --profile apps up -d   # 可选：容器化后端(FastAPI) + 前端（需先构建镜像）
 #
 # 默认仅起 MySQL + Redis，避免与宿主机已占用端口冲突时难排查。
+# 后端已统一到 FastAPI（travel-agent-python 的 agent-python 服务，:8000 承载 /api 与 /api/agent）。
 
 name: travel-assistant
 
@@ -18,7 +19,7 @@ services:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - ta-mysql-data:/var/lib/mysql
-      # 表结构由 Java 后端启动时的 Flyway 迁移创建（见 travel-backend-java/src/main/resources/db/migration/），
+      # 表结构由后端（travel-agent-python）启动时自动迁移创建（见 app/db/migrations/sql/），
       # 不需要挂载初始化 SQL；如需兜底种子，后端建表后手工导入 sql/seed_data.sql
     command:
       - --character-set-server=utf8mb4
@@ -80,6 +81,10 @@ services:
       REDIS_HOST: redis
       # 容器网络内 Redis 监听 6379（宿主机才映射为 6380）
       REDIS_PORT: "6379"
+    volumes:
+      # 封面/上传图（UPLOADS_DIR）与 PDF 导出（EXPORT_DIR）都落 BASE_DIR/data，
+      # 容器内即 /app/data——不挂卷则容器重建即丢（S0-7）
+      - ./travel-agent-python/data:/app/data
     ports:
       - "8000:8000"
     depends_on:
@@ -95,34 +100,6 @@ services:
       start_period: 40s
     restart: unless-stopped
 
-  backend-java:
-    profiles: ["apps"]
-    build:
-      # 上下文必须是仓库根：镜像内需要 contracts/（跨语言流事件 schema，
-      # 由 maven-resources-plugin 从 ../contracts 拷入 classpath）
-      context: .
-      dockerfile: travel-backend-java/Dockerfile
-    container_name: ta-backend
-    env_file:
-      - ./travel-backend-java/.env
-    environment:
-      SERVER_ADDRESS: 0.0.0.0
-      MYSQL_HOST: mysql
-      REDIS_HOST: redis
-      # 容器网络内 Redis 监听 6379（宿主机才映射为 6380）
-      REDIS_PORT: "6379"
-      AGENT_SERVICE_URL: http://agent-python:8000
-    ports:
-      - "8080:8080"
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      agent-python:
-        condition: service_started
-    restart: unless-stopped
-
   frontend-vue:
     profiles: ["apps"]
     build:
@@ -132,7 +109,8 @@ services:
     ports:
       - "5173:80"
     depends_on:
-      - backend-java
+      # M7-b 切流量：nginx.conf 里 /api/ 的上游已是 FastAPI，依赖跟着改
+      - agent-python
     restart: unless-stopped
 
 volumes:
