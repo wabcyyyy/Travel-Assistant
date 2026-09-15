@@ -88,6 +88,48 @@ def search_pois_by_cities(cities: list[str], category: str | None = None, limit:
         return []
 
 
+def search_pois_by_keyword(
+    city: str, keywords: str = "", category: str | None = None, limit: int = 30
+) -> list[dict]:
+    """城市 + 关键词（名称/标签/描述）检索本地知识库；关键词为空则取该城评分前 N。
+
+    与 `search_pois` 的区别：这是「用户键入关键词」路径（工作台加点），
+    刻意只做 LIKE 匹配而不引向量检索——键入即精确子串，召回可解释。
+    """
+    sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge WHERE city = %s"
+    params: list = [city]
+    if category:
+        sql += " AND category = %s"
+        params.append(category)
+    keyword = (keywords or "").strip()
+    if keyword:
+        like = f"%{keyword}%"
+        sql += " AND (name LIKE %s OR tags LIKE %s OR description LIKE %s)"
+        params.extend([like, like, like])
+    sql += f" ORDER BY rating DESC LIMIT {int(limit)}"
+    try:
+        with db_pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params)
+                return list(cursor.fetchall())
+    except Exception as e:
+        logger.error("search_pois_by_keyword failed: %s", e)
+        return []
+
+
+def count_pois_by_city() -> dict[str, int]:
+    """各城市的知识库点位数量（供「当前覆盖哪些城市」的如实空态）。"""
+    sql = "SELECT city, COUNT(*) AS n FROM poi_knowledge GROUP BY city ORDER BY n DESC, city"
+    try:
+        with db_pool.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql)
+                return {str(row["city"]): int(row["n"]) for row in cursor.fetchall()}
+    except Exception as e:
+        logger.error("count_pois_by_city failed: %s", e)
+        return {}
+
+
 def search_poi_by_name(name: str, category: str | None = None) -> dict | None:
     """在知识库中按名称兜底查询，名称仍需匹配候选/用户明确指定的酒店。"""
     sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge WHERE name = %s"

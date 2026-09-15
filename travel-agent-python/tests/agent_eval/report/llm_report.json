@@ -1,4 +1,8 @@
 {
+  "report_status": "stale-superseded",
+  "generated_at": "2026-08-29",
+  "superseded_by": "themed_report.md",
+  "stale_note": "本文件是 2026-08-29 的一次非主题化 run，不得作为当前真实 LLM 口径引用：1) consistency_rate=1.0 与 themed_report 的两遍一致率 16.67% 相互矛盾，前者样本内偶合、无解释力；2) status_reason 中的「确定性 fallback」早于 fallback_generate 退出生产路径（现仅供 eval_baselines 消融使用）；3) 非主题化用例集不含京都等海外城市，掩盖了 coord_available_rate 0%。当前口径见同目录 themed_report.md。",
   "mode": "real-llm",
   "model": "qwen-plus",
   "temperature": 0.3,

@@ -42,7 +42,7 @@ def _research_patch():
         patch.object(tools, "search_foods", mock_llm.search_foods),
         patch.object(tools, "search_hotels", mock_llm.search_hotels),
         patch.object(tools, "get_consumption", mock_llm.get_consumption),
-        patch.object(tools, "search_amap_poi", mock_llm.search_amap_poi),
+        patch.object(tools, "search_local_poi", mock_llm.search_local_poi),
         patch.object(reasoning, "plan_research", mock_llm.plan_research),
         patch.object(reasoning, "evaluate_research", mock_llm.evaluate_research),
     )

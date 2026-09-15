@@ -70,7 +70,7 @@ def stream_env(monkeypatch):
     def _no_ground(item, city, cache):
         return None
 
-    monkeypatch.setattr("app.agent.trip_stream._amap_ground", _no_ground)
+    monkeypatch.setattr("app.agent.trip_stream._local_ground", _no_ground)
     monkeypatch.setattr("app.agent.trip_stream.fill_suggestion_gaps",
                         lambda rows, city, **kw: rows)
     return _install

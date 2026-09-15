@@ -40,6 +40,9 @@ _NAME_NORMALIZE_RE = re.compile(r"[\s（）()【】\[\]·]")
 # （verification_status=partially_verified / value_kind=observed）。
 # /v1/generate-day 的 context 由 HTTP 调用方传入，属于不可信输入；若不做
 # 值域校验，调用方可伪造 "mysql.poi_knowledge" 让幻觉事实获得权威背书。
+# 注意：值域含**历史来源**（amap/amap.poi/nominatim）——库里存量行仍带这些
+# source，删掉它们会让老行程的事实被降级为不可信；新写入只会有
+# mysql.poi_knowledge / wikivoyage（本地采集管线）。
 AUTHORITATIVE_SOURCE_PREFIXES = (
     "mysql.poi_knowledge", "amap.poi", "amap", "wikivoyage", "llm", "nominatim",
 )

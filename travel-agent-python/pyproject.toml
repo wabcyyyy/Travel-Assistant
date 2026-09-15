@@ -17,6 +17,22 @@ dependencies = [
     "redis>=5.2,<6",
     # RAG 语义默认依赖（默认 RAG_EMBEDDING_PROVIDER=semantic，模型需 fetch_rag_model.py 预置）
     "sentence-transformers>=3.0,<6",
+    # 后端迁移基座（PLAN v3.0）：SQLAlchemy 2 承载业务层数据访问；Alembic 以
+    # op.execute() 原样包裹既有 db/migration/V*.sql（迁移文件不重写，保住
+    # 「V1 一经发布不得修改」纪律，只换执行器）；bcrypt 校验 Java
+    # BCryptPasswordEncoder 写入的既有口令哈希（$2a$ 前缀两侧互认）。
+    "sqlalchemy>=2.0,<3",
+    "alembic>=1.13,<2",
+    "bcrypt>=4,<6",
+    # PDF 导出（M6）：reportlab 直接排版印刷版行程单。候选里只有它同时满足
+    # 「纯 Python（本机 Windows 与 CI 同一套 wheel）」和「表格边框合并 + 日块不跨页」：
+    # xhtml2pdf 实测自己声明忽略 border-collapse / border-radius / page-break-inside，
+    # 而这三条正是这份印刷稿的骨架；WeasyPrint 全都支持，却要 Pango/Cairo 原生库，
+    # 等于把「导出 PDF」这条 demo 链路做成只能在 Linux 跑。
+    "reportlab>=4.1,<5",
+    # 封面图压缩（SPEC v2.3 S0-14）：长边缩放 + JPEG 重编码。此前仅经 reportlab
+    # 传递进锁；显式列为直接依赖，避免 reportlab 升级/替换时被连带移除。
+    "pillow>=10,<13",
     # torch 显式列为直接依赖：tool.uv.sources 只对直接依赖生效，
     # 否则传递依赖会从 PyPI 解析出带 CUDA 的 Linux 构建（数 GB）
     "torch",

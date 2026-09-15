@@ -11,6 +11,7 @@ from typing import NamedTuple
 
 from app.agent.critic import critique_plans
 from app.agent.route_matrix import route_matrix_for_plans
+from app.agent.route_service import is_estimated
 from app.agent.reflect import validate_plans
 from app.agent.trace import record_event
 from app.common.config import settings
@@ -64,7 +65,7 @@ def run_final_validation(req: GenerateRequest, daily_plans: list[DailyPlan],
         if route_sources:
             schedule_report.setdefault("route_sources", list(dict.fromkeys(route_sources)))
             schedule_report["degraded"] = bool(schedule_report.get("degraded")) or any(
-                source != "amap" for source in route_sources
+                is_estimated(source) for source in route_sources
             )
     final_issues, final_log = validate_plans(
         final_raw_plans,

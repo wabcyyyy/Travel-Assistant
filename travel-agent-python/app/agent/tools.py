@@ -1,8 +1,9 @@
-"""面向 Agent 的检索与偏好适配工具集（高德 MCP + RAG + 知识库回退）。
+"""面向 Agent 的检索与偏好适配工具集（本地知识库 + RAG；零外部地理 API）。
 
 职责：
-- search_attractions / search_foods / search_hotels：统一检索入口；高德 MCP 开启时
-  合并实时 POI 与本地权威知识，失败或为空时回退到 poi_repository；
+- search_attractions / search_foods / search_hotels：统一检索入口，全部落在本地
+  `poi_knowledge`（RAG 向量召回 + 权威库 LIKE/枚举回退）；
+- search_local_poi：按名称解析单个点位（grounding / 附近锚点用）；
 - 把前端展示偏好标签展开为知识库关键词并据此排序；
 - 省级目的地展开到具体城市（DESTINATION_CITIES），酒店房型/消费查询转发。
 
@@ -10,24 +11,26 @@
 - PREFERENCE_KEYWORDS / DESTINATION_CITIES 做“展示标签 ↔ 知识库 tags/城市”的映射；
 - 酒店检索保留完整可枚举候选集（不纯靠向量，避免漏掉当前档次），是生成与编辑链路共用的数据面。
 
-依赖：amap_mcp（官方外部能力）、poi_repository（权威回退）、rag.store.poi_store（向量召回）。
+依赖：poi_repository（权威本地库）、rag.store.poi_store（向量召回）。**无高德/Google/Nominatim**。
 """
 
+import logging
 import re
 
 import httpx
 
 from app.agent import poi_repository
 from app.common.config import settings
-from app.integrations import amap_mcp, google_maps
 from app.rag.store import poi_store
 from app.agent.trace import traced
+
+logger = logging.getLogger(__name__)
 
 
 def _anchor_name_similar(query: str, candidate: str) -> bool:
     """附近推荐锚点解析的名称相似度门槛。
 
-    高德/向量对乱码或不存在名称会做模糊召回；若候选名与查询几乎无关，
+    向量/模糊 LIKE 对乱码或不存在名称也会召回；若候选名与查询几乎无关，
     不能当锚点，否则「不存在的景点」会被错误定位到市中心酒店。
     """
     def norm(s: str) -> str:
@@ -73,43 +76,6 @@ DESTINATION_CITIES = {
 }
 
 
-# 高德仅覆盖中国境内；海外目的地若继续用高德检索，会把「岚山/怀石/京都」
-# 等关键词误匹配成国内同名 POI（京都行程混入岚山收费站、武夷山野菜等）。
-OVERSEAS_CITIES = {
-    # 日本
-    "东京", "東京", "京都", "大阪", "冲绳", "沖縄", "北海道", "札幌", "奈良",
-    "神户", "神戶", "福冈", "福岡", "名古屋", "横滨", "横浜", "镰仓", "鎌倉",
-    "富士山", "箱根", "广岛", "広島", "仙台", "那霸",
-    # 韩国
-    "首尔", "首爾", "釜山", "济州", "濟州",
-    # 东南亚
-    "曼谷", "清迈", "清萊", "普吉", "新加坡", "吉隆坡", "河内", "胡志明",
-    "马尼拉", "雅加达", "巴厘岛", "峇里島",
-    # 欧美澳
-    "巴黎", "伦敦", "倫敦", "纽约", "洛杉磯", "洛杉矶", "旧金山", "舊金山",
-    "悉尼", "墨尔本", "墨爾本", "罗马", "羅馬", "米兰", "米蘭", "巴塞罗那",
-    "柏林", "阿姆斯特丹", "迪拜", "杜拜", "莫斯科", "多伦多", "溫哥华", "温哥华",
-}
-
-
-def is_overseas_destination(city: str) -> bool:
-    """是否海外目的地：高德不可用，禁止用其结果落坐标/灌候选。"""
-    c = str(city or "").strip()
-    if not c:
-        return False
-    if c in OVERSEAS_CITIES:
-        return True
-    # 「日本东京」「京都府」等带国家/后缀的写法
-    for name in OVERSEAS_CITIES:
-        if name and name in c:
-            return True
-    return False
-
-
-def destination_cities(city: str) -> list[str]:
-    return DESTINATION_CITIES.get(city, [city])
-
-
 def _expand(preferences: list[str]) -> list[str]:
     """把前端展示标签展开为知识库关键词；未映射的原样保留。"""
     out: list[str] = []
@@ -135,10 +101,11 @@ def _sort_by_preferences(pois: list[dict], preferences: list[str]) -> list[dict]
 
 
 def _merge_pois(remote: list[dict], local: list[dict]) -> list[dict]:
-    """合并 MCP 实时 POI 与本地权威知识。
+    """合并候选与本地权威知识，并做同名去重。
 
-    同名 POI 保留本地票价、开放时间等业务字段，同时用 MCP 的坐标/地址补新鲜度；
-    未命中本地知识的 POI 默认不进入最终候选，避免非权威事实混入生成链路。
+    去高德后 `remote` 恒为空列表（调用点保留形参是为了不改动公开签名与既有测试），
+    实际职责收敛为：本地去重 + 逐条打 `_authoritative` 标记——只有落在这张
+    权威表里的事实才允许进入生成链路的引用。
     """
     local_by_name = {str(item.get("name")): item for item in local if item.get("name")}
     merged: list[dict] = []
@@ -166,78 +133,34 @@ def _merge_pois(remote: list[dict], local: list[dict]) -> list[dict]:
     return merged
 
 
-@traced("tool", "amap.search_poi")
-def search_amap_poi(city: str, name: str, *, category: str | None = None) -> list[dict]:
-    """查询 POI，优先官方 MCP；未启用/失败时切 Google 兜底。
+@traced("tool", "poi.search_local")
+def search_local_poi(city: str, name: str, *, category: str | None = None) -> list[dict]:
+    """本地知识库点位检索（去高德后：**不存在**远程 provider chain）。
 
-    Provider chain（高德 → Google）：高德仅覆盖中国境内，国外目的地**禁止**
-    走高德——否则「京都/岚山/怀石」会被匹配成国内同名垃圾 POI。
-    海外直接走 Google Places；未配置 key 则返回空，由联网补池/模型知识承担。
+    顺序：名称精确 → 知识库 LIKE（名称/标签/描述）→ 向量召回。命中与否只依赖
+    本地 `poi_knowledge` + Chroma 索引；查不到即返回空，由上层如实降级
+    （证据缺口 / 待研究草案），不再引外部地理服务兜底。
     """
-    overseas = is_overseas_destination(city)
-    if not overseas:
-        if amap_mcp.enabled():
-            payload = amap_mcp.search_poi(name[:12], city=city)
-            hits = amap_mcp.normalize_pois(payload, category=category)
-            hits = _filter_hits_for_city(hits, city)
-            if hits:
-                return hits
-        hits = _search_amap_rest(name, city, category=category)
-        hits = _filter_hits_for_city(hits, city)
-        if hits:
-            return hits
-    # 国外目的地：跳过高德，直接 Google → 可选 Nominatim
-    hits = google_maps.search_pois(name, city, category=category)
+    query = str(name or "").strip()
+    if not query:
+        return []
+    exact = poi_repository.search_poi_by_name(query, category)
+    if exact:
+        return [{**exact, "_authoritative": True}]
+    hits = poi_repository.search_pois_by_keyword(city, query, category=category, limit=5)
     if hits:
-        return hits
-    if settings.nominatim_enabled:
-        return google_maps.search_pois_nominatim(name, city, category=category)
-    return []
-
-
-def _filter_hits_for_city(hits: list[dict], city: str) -> list[dict]:
-    """国内检索二次过滤：地址应包含目的地城市名，避免 citylimit 失败时串城。"""
-    if not hits:
-        return hits
-    c = str(city or "").strip()
-    if not c or len(c) < 2:
-        return hits
-    # 省级名展开后地址校验意义有限，只做轻过滤
-    kept = []
-    for h in hits:
-        addr = str(h.get("address") or "")
-        name = str(h.get("name") or "")
-        # 无地址信息时保留（由后续名称相似度门槛处理）
-        if not addr:
-            kept.append(h)
-            continue
-        if c in addr or c in name or any(p in addr for p in destination_cities(c)):
-            kept.append(h)
-        elif any(province_hint in addr for province_hint in (c,)):
-            kept.append(h)
-        # 明确是其它城市的地址则丢弃
-    return kept if kept else []
-
-
-def _search_amap_rest(name: str, city: str, *, category: str | None = None) -> list[dict]:
-    """旧高德 Web API 兼容降级，仅在 MCP 未配置/失败时使用。海外直接返回空。"""
-    if not settings.amap_web_key or is_overseas_destination(city):
-        return []
+        return [{**row, "_authoritative": True} for row in hits]
+    # 向量库不可用（未建索引/被其它进程占用）不得拖垮调用方：按"未命中"降级
     try:
-        resp = httpx.get(
-            "https://restapi.amap.com/v3/place/text",
-            params={
-                "key": settings.amap_web_key,
-                "keywords": name[:12],
-                "city": city,
-                "citylimit": "true",
-                "offset": 10,
-            },
-            timeout=10,
-        )
-        return amap_mcp.normalize_pois(resp.json(), category=category)
-    except Exception:
+        poi_store.ensure_loaded()
+        hits = poi_store.search(query, city=city, category=category, limit=5)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("vector store unavailable, local search degrades: %s", exc)
         return []
+    # 向量召回对无关词也会给 top-k：必须过名称门槛，否则「池外新地点」会被
+    # 无关 POI 顶替（既污染证据池，也让该走向联网补池的缺口被静默填平）。
+    return [row for row in hits
+            if _anchor_name_similar(query, str(row.get("name") or ""))]
 
 
 @traced("tool", "poi.search_attractions")
@@ -250,8 +173,7 @@ def search_attractions(city: str, preferences: list[str], limit: int = 30) -> li
     if not local:
         local = [{**poi, "_authoritative": True}
                  for poi in poi_repository.search_pois(city, category="attraction", limit=limit)]
-    remote = search_amap_poi(_build_query(city, preferences), city, category="attraction") if amap_mcp.enabled() else []
-    return _sort_by_preferences(_merge_pois(remote[:limit], local), preferences)[:limit]
+    return _sort_by_preferences(_merge_pois([], local), preferences)[:limit]
 
 
 @traced("tool", "poi.search_foods")
@@ -261,8 +183,7 @@ def search_foods(city: str, limit: int = 10) -> list[dict]:
     if not local:
         local = [{**poi, "_authoritative": True}
                  for poi in poi_repository.search_pois(city, category="food", limit=limit)]
-    remote = search_amap_poi(f"{city} 美食", city, category="food") if amap_mcp.enabled() else []
-    return _merge_pois(remote[:limit], local)[:limit]
+    return _merge_pois([], local)[:limit]
 
 
 @traced("tool", "poi.search_hotels")
@@ -274,10 +195,6 @@ def search_hotels(city: str, limit: int = 6) -> list[dict]:
                 for poi in poi_repository.list_hotel_pois_by_cities(DESTINATION_CITIES[city])]
     if rows:
         return rows
-    if amap_mcp.enabled():
-        remote = search_amap_poi(f"{city} 酒店", city, category="hotel")
-        if remote:
-            return remote[:limit]
     poi_store.ensure_loaded()
     return poi_store.search(f"{city} 住宿", city=city, category="hotel", limit=limit)[:limit]
 
@@ -293,10 +210,9 @@ def find_nearby_pois(city: str, name: str | None = None,
                      category: str | None = None) -> list[dict]:
     """查找权威知识库中的同城近邻 POI（轻量 GraphRAG，真实坐标网格）。
 
-    坐标优先使用显式传入值；仅给名称时依次尝试权威库详情、知识库检索、
-    高德 POI 检索解析真实坐标，并排除锚点自身（“西湖附近”不应包含西湖）。
-    带坐标但带名称时也做轻量锚点解析用于排除自身。全部失败（无真实坐标）
-    时返回空列表，不伪造“附近推荐”。
+    坐标优先使用显式传入值；仅给名称时依次尝试权威库详情、知识库检索解析真实
+    坐标，并排除锚点自身（“西湖附近”不应包含西湖）。名称在本地库解析不到时
+    返回空列表——**不伪造“附近推荐”**，也不再引外部地理服务代解析坐标。
     """
     exclude: str | None = None
     anchor: dict | None = None
@@ -306,19 +222,6 @@ def find_nearby_pois(city: str, name: str | None = None,
             poi_store.ensure_loaded()
             # 语义检索对乱名也会返回 top-k；必须过名称门槛，否则会错锚。
             for row in poi_store.search(str(name or ""), city=city, limit=5):
-                if _anchor_name_similar(str(name or ""), str(row.get("name") or "")):
-                    anchor = row
-                    break
-        if not anchor:
-            # 名称在权威库解析不到（如开放模式的自选点），用高德解析真实坐标；
-            # 高德结果即真实坐标，不是伪造，只是锚点定位而非数据来源。
-            # MCP 未启用/失败时 search_amap_poi 内部已回退 Web API，仍无则返回空。
-            try:
-                remote = search_amap_poi(city, str(name or ""))
-            except Exception:  # noqa: BLE001 - 高德失败按无坐标处理
-                remote = []
-            # 只接受名称足够接近的召回，避免模糊命中把乱名锚到任意 POI。
-            for row in remote or []:
                 if _anchor_name_similar(str(name or ""), str(row.get("name") or "")):
                     anchor = row
                     break
@@ -353,43 +256,6 @@ def search_hotel_room_types(poi_ids: list[int]) -> list[dict]:
 
 
 _poi_image_cache: dict[tuple[str, str], str | None] = {}
-
-
-def _is_map_thumbnail(photo: dict) -> bool:
-    """高德 POI 的 photos 常含一张“地图位置图”缩略图，按标题过滤掉。"""
-    title = photo.get("title") or ""
-    return "地图" in title or "位置" in title
-
-
-def _amap_photo_url(name: str, city: str) -> str | None:
-    """从高德 POI 检索取首张“非地图位置图”的图片 URL（高德多为位置图，仅作兜底）。"""
-    if amap_mcp.enabled():
-        for poi in search_amap_poi(city, name):
-            if poi.get("image"):
-                return poi["image"]
-        return None
-    if not settings.amap_web_key:
-        return None
-    try:
-        resp = httpx.get(
-            "https://restapi.amap.com/v3/place/text",
-            params={
-                "key": settings.amap_web_key,
-                "keywords": name[:12],
-                "city": city,
-                "citylimit": "true",
-                "offset": 1,
-            },
-            timeout=10,
-        )
-        pois = resp.json().get("pois") or []
-        if pois and isinstance(pois[0], dict):
-            for photo in pois[0].get("photos") or []:
-                if isinstance(photo, dict) and not _is_map_thumbnail(photo) and photo.get("url"):
-                    return photo["url"]
-    except Exception:
-        return None
-    return None
 
 
 def _unsplash_image(name: str, city: str) -> str | None:
@@ -447,7 +313,11 @@ def _wikipedia_image(name: str) -> str | None:
 
 
 def poi_image(name: str | None, city: str) -> str | None:
-    """取 POI 图片：优先维基百科真实照片，其次 Unsplash 实景图，最后回退高德（已过滤地图位置图）。"""
+    """取 POI 图片：优先维基百科真实照片，其次 Unsplash 实景图。
+
+    都取不到时返回 None（**不再回退高德实拍**）——前端拿到 404 后落本地分类
+    占位图，比一张错的地图截图更诚实。
+    """
     if not name:
         return None
     key = (city, name)
@@ -458,14 +328,12 @@ def poi_image(name: str | None, city: str) -> str | None:
         url = _wikipedia_image(name)
     if not url:
         url = _unsplash_image(name, city)
-    if not url:
-        url = _amap_photo_url(name, city)
     _poi_image_cache[key] = url
     return url
 
 
 def attach_poi_images(plan: list[dict], city: str) -> list[dict]:
-    """为行程项补充 POI 图片：仅对景点/餐饮且尚未有 image 的项调用高德检索。"""
+    """为行程项补充 POI 图片：仅对景点/餐饮且尚未有 image 的项走维基/图库检索。"""
     for day in plan:
         for item in day.get("items") or []:
             if item.get("item_type") in ("attraction", "food") and not item.get("image"):

@@ -77,9 +77,9 @@ def apply_item_facts(item: dict, poi: dict | None,
         retrieved_at=None, expires_at=None,
     ))
     if item.get("latitude") is not None and item.get("longitude") is not None:
-        source_records.setdefault("amap-grounding", SourceRecord(
-            source_id="amap-grounding", storage_source="amap-grounding",
-            provider="amap", retrieved_at=None, expires_at=None,
+        source_records.setdefault("local-grounding", SourceRecord(
+            source_id="local-grounding", storage_source="local-grounding",
+            provider="local", retrieved_at=None, expires_at=None,
         ))
 
 

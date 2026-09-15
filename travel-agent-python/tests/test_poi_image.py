@@ -36,45 +36,43 @@ def test_attach_poi_images_skips_hotel_and_keeps_existing(monkeypatch):
     assert ("北京", "某酒店") not in calls
 
 
-def test_poi_image_parses_amap_photos(monkeypatch):
-    payload = {"pois": [{"photos": [{"title": "t", "url": "http://photo/x.jpg"}]}]}
+def test_poi_image_returns_none_without_external_hit_and_caches(monkeypatch):
+    """去高德后：维基/图库都无图即 None（**不再回退高德**），且空结果也进缓存。"""
+    calls = []
 
     def fake_get(*_a, **_k):
-        return _FakeResp(payload)
+        calls.append(1)
+        return _FakeResp({})
 
     monkeypatch.setattr(tools.httpx, "get", fake_get)
-    monkeypatch.setattr(tools.settings, "amap_web_key", "KEY")
     monkeypatch.setattr(tools.settings, "unsplash_access_key", "")
+    monkeypatch.setattr(tools.settings, "poi_image_wiki", True)
     tools._poi_image_cache.clear()
 
-    assert tools.poi_image("故宫", "北京") == "http://photo/x.jpg"
-
-    # 缓存命中：不应再次请求网络
-    hits = []
-
-    def fake_get2(*_a, **_k):
-        hits.append(1)
-        return _FakeResp(payload)
-
-    monkeypatch.setattr(tools.httpx, "get", fake_get2)
-    assert tools.poi_image("故宫", "北京") == "http://photo/x.jpg"
-    assert hits == []
+    assert tools.poi_image("故宫", "北京") is None
+    assert calls, "应至少尝试过维基检索"
+    before = len(calls)
+    assert tools.poi_image("故宫", "北京") is None
+    assert len(calls) == before, "缓存未命中也必须缓存，避免每次开页重放外网链路"
 
 
-def test_poi_image_prefers_unsplash(monkeypatch):
-    amap_payload = {"pois": [{"photos": [{"title": "地图位置图", "url": "http://map/x.jpg"}]}]}
+def test_poi_image_prefers_wikipedia_then_unsplash(monkeypatch):
+    wiki_payload = {"query": {"pages": {"1": {"thumbnail": {"source": "https://upload.wikimedia.org/x.jpg"}}}}}
     unsplash_payload = {"results": [{"urls": {"regular": "https://images.unsplash.com/abc"}}]}
-    responses = [unsplash_payload, amap_payload]
 
-    def fake_get(*_a, **_k):
-        return _FakeResp(responses.pop(0))
-
-    monkeypatch.setattr(tools.httpx, "get", fake_get)
+    monkeypatch.setattr(tools.settings, "poi_image_wiki", True)
     monkeypatch.setattr(tools.settings, "unsplash_access_key", "KEY")
-    monkeypatch.setattr(tools.settings, "amap_web_key", "KEY")
-    monkeypatch.setattr(tools.settings, "poi_image_wiki", False)
     tools._poi_image_cache.clear()
 
+    def wiki_only(*_a, **_k):
+        return _FakeResp(wiki_payload)
+
+    monkeypatch.setattr(tools.httpx, "get", wiki_only)
+    assert tools.poi_image("西湖", "杭州") == "https://upload.wikimedia.org/x.jpg"
+
+    tools._poi_image_cache.clear()
+    monkeypatch.setattr(tools.settings, "poi_image_wiki", False)
+    monkeypatch.setattr(tools.httpx, "get", lambda *_a, **_k: _FakeResp(unsplash_payload))
     assert tools.poi_image("西湖", "杭州") == "https://images.unsplash.com/abc"
 
 

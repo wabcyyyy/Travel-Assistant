@@ -9,6 +9,7 @@
 import argparse
 import asyncio
 import json
+import os
 import random
 import statistics
 import time
@@ -16,7 +17,8 @@ from pathlib import Path
 
 import httpx
 
-BASE = "http://127.0.0.1:8080"
+# M7-b 切流量：压测目标已是 FastAPI（业务端点与 agent 同进程）；与 tests/api 共用 API_BASE_URL
+BASE = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 OUT_DIR = Path(__file__).parent / "report"
 
 LOGIN_PAYLOAD = {"username": "dev", "password": "dev123"}
@@ -60,8 +62,8 @@ async def worker(client: httpx.AsyncClient, endpoint: str, results: list, stop: 
                 r = await client.get("/api/itinerary", headers=headers)
             elif endpoint == "itinerary:detail":
                 r = await client.get(f"/api/itinerary/{itin_id}", headers=headers)
-            elif endpoint == "amap:poi":
-                r = await client.get("/api/amap/poi", params={"keywords": "故宫", "city": "北京"},
+            elif endpoint == "poi:local":
+                r = await client.get("/api/pois", params={"keywords": "故宫", "city": "北京"},
                                      headers=headers)
             elif endpoint == "export:status":
                 r = await client.get(f"/api/export/tasks/{task_id}", headers=headers)
@@ -118,7 +120,7 @@ async def main():
     ap.add_argument("--duration", type=int, default=15)
     ap.add_argument("--workers", type=int, default=20)
     ap.add_argument("--endpoint", default="itinerary:detail",
-                    choices=["all", "itinerary:list", "itinerary:detail", "amap:poi", "export:status"])
+                    choices=["all", "itinerary:list", "itinerary:detail", "poi:local", "export:status"])
     args = ap.parse_args()
 
     async with httpx.AsyncClient(base_url=BASE, timeout=30.0) as client:
@@ -128,7 +130,7 @@ async def main():
 
     if args.endpoint == "all":
         cases = []
-        for ep in ["itinerary:list", "amap:poi", "itinerary:detail", "export:status"]:
+        for ep in ["itinerary:list", "poi:local", "itinerary:detail", "export:status"]:
             cases.append(await run(ep, args.duration, args.workers, itin_id, headers, task_id))
         summary = {"cases": cases}
     elif args.endpoint == "itinerary:detail":
@@ -166,7 +168,7 @@ async def main():
 
     lines = ["# 核心接口性能压测报告", "",
              f"- 压测方式：asyncio + httpx 并发（{args.workers} workers × {args.duration}s）",
-             "- 服务端：Java 8080（travel_assistant 库）",
+             f"- 服务端：FastAPI {BASE}（travel_assistant 库）",
              "", "| 阶段 | 接口 | QPS | 平均 | p50 | p95 | p99 | 错误率 | 请求数 |",
              "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     for c in summary["cases"]:

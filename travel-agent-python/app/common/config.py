@@ -31,6 +31,11 @@ def _get_bool(name: str, default: bool = False) -> bool:
     return _get(name, str(default)).lower() in ("1", "true", "yes")
 
 
+def _default_font_path() -> str:
+    """印刷字体（simhei）已随「Java 退役」git mv 进本仓，全仓唯一一份。"""
+    return str(BASE_DIR / "app" / "resources" / "fonts" / "simhei.ttf")
+
+
 class Settings:
     agent_host: str = _get("AGENT_HOST", "127.0.0.1")
     agent_reload: bool = _get_bool("AGENT_RELOAD", False)
@@ -66,25 +71,11 @@ class Settings:
     # 餐饮单价相对城市人均餐价的钳制倍数（硬顶/软顶）
     meal_price_hard_cap_ratio: float = float(_get("MEAL_PRICE_HARD_CAP_RATIO", "8"))
     meal_price_soft_cap_ratio: float = float(_get("MEAL_PRICE_SOFT_CAP_RATIO", "4"))
-    amap_web_key: str = _get("AMAP_WEB_KEY", "")
-    # 高德官方 MCP Server（推荐 Agent 侧使用）。URL 可填完整的
-    # https://mcp.amap.com/mcp?key=...，也可单独配置 AMAP_MCP_KEY。
-    amap_mcp_enabled: bool = _get("AMAP_MCP_ENABLED", "false").lower() in ("1", "true", "yes")
-    amap_mcp_url: str = _get("AMAP_MCP_URL", "https://mcp.amap.com/mcp")
-    amap_mcp_key: str = _get("AMAP_MCP_KEY", "")
-    amap_mcp_timeout: float = float(_get("AMAP_MCP_TIMEOUT", "15"))
-    # 国外目的地兜底提供商（provider chain: 高德 → Google）。配置 key 后，
-    # 高德无结果的检索/路线自动切 Google Places/Routes；未配置则保持现状。
-    google_maps_api_key: str = _get("GOOGLE_MAPS_API_KEY", "")
-    google_maps_timeout: float = float(_get("GOOGLE_MAPS_TIMEOUT", "10"))
-    # OSM Nominatim 免 key 兜底：国内网络经常超时，默认关闭以免拖垮 Agent
-    # Deadline。需要海外坐标且无 Google key 时可显式打开（已有熔断）。
-    nominatim_enabled: bool = _get_bool("NOMINATIM_ENABLED", False)
-    # 路线服务默认关闭真实联网查询，保证本地/测试环境仍可离线运行；开启后
-    # 优先调用高德路线 API，失败自动回退坐标估算并标记 degraded。
+    # 路线矩阵校验：用**本地坐标估算**（haversine × 道路系数）产出路线矩阵，
+    # 供排程校验与打分使用。默认关闭以保持既有生成结果不变；开启不产生任何
+    # 外部调用（高德/Google 路线源已于 2026-09-15 随「去高德」移除）。
     route_service_enabled: bool = _get_bool("ROUTE_SERVICE_ENABLED", False)
     route_mode: str = _get("ROUTE_MODE", "walking")
-    route_timeout: float = float(_get("ROUTE_TIMEOUT", "8"))
     route_cache_ttl: float = float(_get("ROUTE_CACHE_TTL", "900"))
     route_peak_factor: float = float(_get("ROUTE_PEAK_FACTOR", "1.25"))
     route_max_calls: int = int(_get("ROUTE_MAX_CALLS", "64"))
@@ -102,8 +93,24 @@ class Settings:
     trace_storage_enabled: bool = _get_bool("TRACE_STORAGE_ENABLED", True)
     trace_storage_path: str = _get("TRACE_STORAGE_PATH", str(BASE_DIR / "data" / "agent_traces.jsonl"))
     usage_db_path: str = _get("USAGE_DB_PATH", str(BASE_DIR / "data" / "llm_usage.db"))
+    # PDF 导出（M6）。字体全仓只有一份 9.7MB 的 simhei.ttf：今天在 Java 模块的 resources 下，
+    # Java 退役后搬到 app/resources/fonts/——下面的解析顺序让**搬迁不需要改代码**。
+    # 部署可用 EXPORT_DIR / EXPORT_FONT_FILE 覆盖。
+    export_dir: str = _get("EXPORT_DIR", str(BASE_DIR / "data" / "export"))
+    export_font_file: str = _get("EXPORT_FONT_FILE", _default_font_path())
+    # 封面/上传图落盘根目录（SPEC v2.3 §6.1）：provider 快照与用户上传都写这里，
+    # DB 只存 /api/uploads/... 应用路径；静态访问路由见 app/api/business/uploads.py。
+    uploads_dir: str = _get("UPLOADS_DIR", str(BASE_DIR / "data" / "uploads"))
+    # 封面上传大小上限（SPEC v2.3 §6.3 / S0-3）：FastAPI 不限制 multipart 体积，
+    # 入口在 cover_service.read_upload_capped 里流式截断，超限 413。
+    cover_upload_max_bytes: int = int(_get("COVER_UPLOAD_MAX_BYTES", str(5 * 1024 * 1024)))
+    # 分享匿名访问限流（SPEC v2.3 §6.6 / E14）：按 IP 滑动窗口，每分钟上限
+    share_rate_limit_per_minute: int = int(_get("SHARE_RATE_LIMIT_PER_MINUTE", "60"))
     schedule_optimizer_enabled: bool = _get_bool("SCHEDULE_OPTIMIZER_ENABLED", True)
     unsplash_access_key: str = _get("UNSPLASH_ACCESS_KEY", "")
+    # 图片多源解析的最后一级兜底图库（Java 侧 app.pexels.access-key 的等价项）。
+    # Pexels 对中文查询几乎无命中，poi_photo 会先尝试把名称解析成英文再检索。
+    pexels_access_key: str = _get("PEXELS_API_KEY", "")
     poi_image_wiki: bool = _get("POI_IMAGE_WIKI", "true").lower() in ("1", "true", "yes")
     default_budget: float = float(_get("DEFAULT_BUDGET", "1000"))
     # RAG 检索配置。默认 semantic：本地 bge-small-zh-v1.5 真语义向量
@@ -158,6 +165,19 @@ class Settings:
         "REDIS_URL",
         "redis://{}:{}/0".format(_get("REDIS_HOST", "localhost"), _get("REDIS_PORT", "6380")),
     )
+
+    # 双跑期鉴权互认（PLAN v3.0 §1.1）：与 Java 服务共用同一 JWT_SECRET 与同一 Cookie，
+    # 用户切域不需重登、灰度可回滚。变量名沿用 Java 侧 application.yml 既有约定。
+    # 注意：DB 凭据两侧不同源——Java 读 MYSQL_*，本服务读 DB_*（见 compose environment）。
+    # token 的 exp 写在 claims 里，两侧过期时钟不同也不会互判失效；差异只体现在
+    # Cookie 的 Max-Age 上（无害），故本项可与 Java 的 expire-hours 独立设置。
+    jwt_secret: str = _get("JWT_SECRET", "")
+    jwt_expire_hours: int = int(_get("JWT_EXPIRE_HOURS", "24"))
+    auth_cookie_secure: bool = _get_bool("AUTH_COOKIE_SECURE", False)
+    jwt_revocation_prefer_redis: bool = _get_bool("APP_JWT_REVOKE_PREFER_REDIS", True)
+    # 仅当对端地址命中该列表时才信任 X-Forwarded-For：否则伪造该头即可绕过按 IP
+    # 的登录/注册限速（与 Java app.security.trusted-proxies 同口径）
+    trusted_proxies: str = _get("TRUSTED_PROXIES", "127.0.0.1,0:0:0:0:0:0:0:1,::1")
 
 
 settings = Settings()

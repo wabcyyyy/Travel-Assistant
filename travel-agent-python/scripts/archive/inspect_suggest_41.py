@@ -1,11 +1,17 @@
 """Inspect latest Bali suggestions and discover image URLs."""
 import json
+import os
 import pymysql
 from collections import Counter
 
 conn = pymysql.connect(
-    host="localhost", user="root", password="259243",
-    database="travel_assistant", charset="utf8mb4",
+    # Credentials come from the same env names as app/common/config.py.
+    host=os.getenv("DB_HOST", "localhost"),
+    port=int(os.getenv("DB_PORT", "3306")),
+    user=os.getenv("DB_USER", "root"),
+    password=os.environ["DB_PASSWORD"],
+    database=os.getenv("DB_NAME", "travel_assistant"),
+    charset="utf8mb4",
     cursorclass=pymysql.cursors.DictCursor,
 )
 with conn.cursor() as c:

@@ -379,13 +379,13 @@
       },
       {
         "expires_at": null,
-        "provider": "amap",
+        "provider": "local",
         "published_at": null,
         "publisher": null,
         "retrieved_at": null,
-        "source_id": "amap-grounding",
+        "source_id": "local-grounding",
         "source_url": null,
-        "storage_source": "amap-grounding"
+        "storage_source": "local-grounding"
       }
     ],
     "status": "success",
@@ -621,13 +621,13 @@
       },
       {
         "expires_at": null,
-        "provider": "amap",
+        "provider": "local",
         "published_at": null,
         "publisher": null,
         "retrieved_at": null,
-        "source_id": "amap-grounding",
+        "source_id": "local-grounding",
         "source_url": null,
-        "storage_source": "amap-grounding"
+        "storage_source": "local-grounding"
       }
     ],
     "status": "success",
@@ -890,13 +890,13 @@
       },
       {
         "expires_at": null,
-        "provider": "amap",
+        "provider": "local",
         "published_at": null,
         "publisher": null,
         "retrieved_at": null,
-        "source_id": "amap-grounding",
+        "source_id": "local-grounding",
         "source_url": null,
-        "storage_source": "amap-grounding"
+        "storage_source": "local-grounding"
       },
       {
         "expires_at": null,
@@ -1146,13 +1146,13 @@
       },
       {
         "expires_at": null,
-        "provider": "amap",
+        "provider": "local",
         "published_at": null,
         "publisher": null,
         "retrieved_at": null,
-        "source_id": "amap-grounding",
+        "source_id": "local-grounding",
         "source_url": null,
-        "storage_source": "amap-grounding"
+        "storage_source": "local-grounding"
       },
       {
         "expires_at": null,
@@ -1433,13 +1433,13 @@
       },
       {
         "expires_at": null,
-        "provider": "amap",
+        "provider": "local",
         "published_at": null,
         "publisher": null,
         "retrieved_at": null,
-        "source_id": "amap-grounding",
+        "source_id": "local-grounding",
         "source_url": null,
-        "storage_source": "amap-grounding"
+        "storage_source": "local-grounding"
       }
     ],
     "status": "degraded",
@@ -1835,13 +1835,13 @@
       },
       {
         "expires_at": null,
-        "provider": "amap",
+        "provider": "local",
         "published_at": null,
         "publisher": null,
         "retrieved_at": null,
-        "source_id": "amap-grounding",
+        "source_id": "local-grounding",
         "source_url": null,
-        "storage_source": "amap-grounding"
+        "storage_source": "local-grounding"
       }
     ],
     "status": "degraded",
@@ -2106,13 +2106,13 @@
       },
       {
         "expires_at": null,
-        "provider": "amap",
+        "provider": "local",
         "published_at": null,
         "publisher": null,
         "retrieved_at": null,
-        "source_id": "amap-grounding",
+        "source_id": "local-grounding",
         "source_url": null,
-        "storage_source": "amap-grounding"
+        "storage_source": "local-grounding"
       }
     ],
     "status": "degraded",
@@ -2299,13 +2299,13 @@
       },
       {
         "expires_at": null,
-        "provider": "amap",
+        "provider": "local",
         "published_at": null,
         "publisher": null,
         "retrieved_at": null,
-        "source_id": "amap-grounding",
+        "source_id": "local-grounding",
         "source_url": null,
-        "storage_source": "amap-grounding"
+        "storage_source": "local-grounding"
       }
     ],
     "status": "degraded",
@@ -2697,13 +2697,13 @@
       },
       {
         "expires_at": null,
-        "provider": "amap",
+        "provider": "local",
         "published_at": null,
         "publisher": null,
         "retrieved_at": null,
-        "source_id": "amap-grounding",
+        "source_id": "local-grounding",
         "source_url": null,
-        "storage_source": "amap-grounding"
+        "storage_source": "local-grounding"
       }
     ],
     "status": "degraded",

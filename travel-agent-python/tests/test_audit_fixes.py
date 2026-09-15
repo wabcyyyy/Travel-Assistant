@@ -12,7 +12,7 @@ import httpx
 import pytest
 
 from app.agent import tools, workflow
-from app.agent.day_stream import _amap_ground, _llm_open_day
+from app.agent.day_stream import _llm_open_day, _local_ground
 from app.agent.generators import ReferencePool
 from app.agent.reflect import parse_time, validate_plans
 from app.agent.research import reasoning
@@ -35,7 +35,7 @@ def test_multi_day_budget_counts_stay_nights_not_days(monkeypatch):
     monkeypatch.setattr(tools, "search_hotels", mock_llm.search_hotels)
     monkeypatch.setattr(reasoning, "plan_research", mock_llm.plan_research)
     monkeypatch.setattr(reasoning, "evaluate_research", mock_llm.evaluate_research)
-    monkeypatch.setattr(workflow, "_amap_ground", lambda *_a, **_k: None)
+    monkeypatch.setattr(workflow, "_local_ground", lambda *_a, **_k: None)
 
     def trip_with_hotel_every_day(req):
         plans = []
@@ -239,7 +239,7 @@ def test_generate_open_plans_filters_malformed_items(monkeypatch):
     monkeypatch.setattr(tools, "search_hotels", mock_llm.search_hotels)
     monkeypatch.setattr(reasoning, "plan_research", mock_llm.plan_research)
     monkeypatch.setattr(reasoning, "evaluate_research", mock_llm.evaluate_research)
-    monkeypatch.setattr(workflow, "_amap_ground", lambda *_a, **_k: None)
+    monkeypatch.setattr(workflow, "_local_ground", lambda *_a, **_k: None)
 
     def dirty_day(req, _used):
         return {"note": "脏数据日", "items": [
@@ -335,15 +335,15 @@ def test_llm_client_empty_choices_raises_semantic_error(monkeypatch):
         llm_client.LLMClient().chat_response([{"role": "user", "content": "hi"}])
 
 
-# ---------- #11：0.0 坐标视为缺失，必须走高德落坐标 ----------
+# ---------- #11：0.0 坐标视为缺失，必须走本地知识库落坐标 ----------
 
 
-def test_amap_ground_treats_zero_coords_as_missing(monkeypatch):
+def test_local_ground_treats_zero_coords_as_missing(monkeypatch):
     calls = []
-    monkeypatch.setattr(tools, "search_amap_poi",
+    monkeypatch.setattr(tools, "search_local_poi",
                         lambda city, name, **kw: calls.append(name) or [])
     item = {"poi_name": "某景点", "latitude": 0.0, "longitude": 0.0}
-    _amap_ground(item, "杭州", {})
+    _local_ground(item, "杭州", {})
     assert calls == ["某景点"]
 
 

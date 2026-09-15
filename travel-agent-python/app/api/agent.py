@@ -156,37 +156,14 @@ def agent_metrics(_auth: None = Depends(require_internal_token)) -> ApiResponse[
     return ApiResponse.ok(metrics.snapshot())
 
 
-_RANGE_SECONDS = {"1h": 3600, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400}
-
-
-def _usage_bucket(range_key: str) -> int:
-    """分桶粒度：1h 按分钟、24h 按小时、7d/30d 按天。"""
-    if range_key == "1h":
-        return 60
-    if range_key == "24h":
-        return 3600
-    return 86400
-
-
 @router.get("/v1/usage")
 def agent_usage(range: str = "24h", limit: int = 200, offset: int = 0,
                 _auth: None = Depends(require_internal_token)) -> ApiResponse[dict]:
-    """SQLite 落库的 LLM 用量历史（汇总/场景/模型/趋势/明细），重启不清零。"""
-    range_key = range if range in _RANGE_SECONDS else "24h"
-    end = int(time.time()) + 60
-    start = end - _RANGE_SECONDS[range_key]
-    bucket = _usage_bucket(range_key)
-    limit = max(1, min(int(limit), 500))
-    offset = max(0, int(offset))
-    return ApiResponse.ok({
-        "range": range_key,
-        "bucket": bucket,
-        "summary": usage_store.summary(start, end),
-        "by_scene": usage_store.by_scene(start, end),
-        "by_model": usage_store.by_model(start, end),
-        "timeline": usage_store.timeline(start, end, bucket),
-        "calls": usage_store.calls(start, end, limit, offset),
-    })
+    """SQLite 落库的 LLM 用量历史（汇总/场景/模型/趋势/明细），重启不清零。
+
+    时间窗与分桶规则在 `usage_store.report` 里，与 `/api/admin/llm-usage` 同源。
+    """
+    return ApiResponse.ok(usage_store.report(range, limit, offset))
 
 
 @router.get("/v1/metrics/prometheus", response_class=PlainTextResponse)

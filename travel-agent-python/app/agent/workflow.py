@@ -51,7 +51,7 @@ from app.agent.generators import (
     build_suggestions,
     fill_suggestion_gaps,
 )
-from app.agent.day_stream import _amap_ground, _llm_open_day, _llm_open_trip
+from app.agent.day_stream import _llm_open_day, _llm_open_trip, _local_ground
 from app.agent.observability import metrics
 from app.agent.reflect import build_feedback, validate_plans
 from app.agent.route_matrix import route_matrix_for_plans
@@ -350,7 +350,7 @@ def _generate_open_plans(req: GenerateRequest, feedback: str,
                              if isinstance(item, dict) and str(item.get("poi_name") or "").strip()]
             for item in plan["items"]:
                 if not ref_pool.ground(item):
-                    _amap_ground(item, req.city, ground_cache)
+                    _local_ground(item, req.city, ground_cache)
                 if item.get("poi_name"):
                     used.add(str(item["poi_name"]))
             plans.append({

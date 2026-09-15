@@ -139,7 +139,7 @@ def test_run_search_merges_task_intent_keywords_into_extras(monkeypatch):
         return []
 
     monkeypatch.setattr(tools, "search_attractions", fake_search)
-    monkeypatch.setattr(tools, "search_amap_poi", fake_amap)
+    monkeypatch.setattr(tools, "search_local_poi", fake_amap)
     monkeypatch.setattr(reasoning, "plan_research",
                         lambda task: {"extra_keywords": ["杭州 西湖"]})
     monkeypatch.setattr(reasoning, "evaluate_research",

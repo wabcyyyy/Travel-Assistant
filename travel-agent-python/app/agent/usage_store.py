@@ -33,6 +33,18 @@ CREATE INDEX IF NOT EXISTS idx_llm_calls_ts ON llm_calls (ts);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_scene ON llm_calls (scene);
 """
 
+# 仪表盘可选时间窗；未知 range 一律回落 24h
+_RANGE_SECONDS = {"1h": 3600, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400}
+
+
+def bucket_seconds(range_key: str) -> int:
+    """分桶粒度：1h 按分钟、24h 按小时、7d/30d 按天。"""
+    if range_key == "1h":
+        return 60
+    if range_key == "24h":
+        return 3600
+    return 86400
+
 
 class UsageStore:
     """单连接 + 互斥锁的轻量 SQLite 用量存储。"""
@@ -165,6 +177,26 @@ class UsageStore:
                 }
                 for row in rows
             ],
+        }
+
+    def report(self, range_key: str, limit: int = 200, offset: int = 0) -> dict:
+        """仪表盘一次性取数：`/api/agent/v1/usage` 与 `/api/admin/llm-usage` 共用。
+
+        range/limit/offset 的三条收敛规则原先只写在 agent 路由里；Admin 侧复用同一条
+        链路后必须同源，否则两个入口对同一个 `range` 会给出不同时间窗。
+        """
+        key = range_key if range_key in _RANGE_SECONDS else "24h"
+        end = int(time.time()) + 60
+        start = end - _RANGE_SECONDS[key]
+        bucket = bucket_seconds(key)
+        return {
+            "range": key,
+            "bucket": bucket,
+            "summary": self.summary(start, end),
+            "by_scene": self.by_scene(start, end),
+            "by_model": self.by_model(start, end),
+            "timeline": self.timeline(start, end, bucket),
+            "calls": self.calls(start, end, max(1, min(int(limit), 500)), max(0, int(offset))),
         }
 
     def cleanup(self, retain_seconds: int) -> int:

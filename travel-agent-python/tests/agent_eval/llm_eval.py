@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -118,15 +119,17 @@ def _run_once(case: dict, suffix: str) -> tuple[dict, str]:
     return run, _signature(response)
 
 
-def _themed_markdown(report: dict) -> str:
-    """主题化报告的 Markdown 渲染：每 case 一节（固定运行头部 + 指标表）。
+def _report_markdown(report: dict) -> str:
+    """评测报告的 Markdown 渲染：每 case 一节（固定运行头部 + 指标表）。
 
     头部固定 model/temperature/两套开放生成 Prompt 版本，指标表合并
     evaluate_response 的质量指标与 evaluate_narrative 的叙事指标；
     无 intent 的基线 case 的主题命中类指标为 None，渲染为 "-"。
+    A2 修订：**两种模式都写 .md**（此前 `if themed:` 使非主题化 run 没有 md 产物）。
     """
+    themed = report.get("mode") == "real-llm-themed"
     lines = [
-        "# 主题化评测报告（真实 LLM）", "",
+        "# 主题化评测报告（真实 LLM）" if themed else "# 真实 LLM 评测报告", "",
         f"- model：`{report['model']}` ｜ temperature：{report['temperature']} ｜ "
         f"open_day prompt：`{report['open_day_prompt_version']}` ｜ "
         f"open_trip prompt：`{report['open_trip_prompt_version']}`",
@@ -227,6 +230,8 @@ def main() -> int:
             ],
         })
     report = {
+        # 产物自带新鲜度：口径变更后旧报告可据此识别为过期
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "mode": "real-llm-themed" if themed else "real-llm",
         "model": settings.llm_model,
         # 与开放模式真实生成调用同源（day_stream.GENERATION_TEMPERATURE）
@@ -258,8 +263,7 @@ def main() -> int:
     report_stem = "themed_report" if themed else "llm_report"
     report_path = REPORT_DIR / f"{report_stem}.json"
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    if themed:
-        (REPORT_DIR / f"{report_stem}.md").write_text(_themed_markdown(report), encoding="utf-8")
+    (REPORT_DIR / f"{report_stem}.md").write_text(_report_markdown(report), encoding="utf-8")
     print(json.dumps({k: report[k] for k in ("mode", "model", "temperature", "prompt_version", "case_count", "consistency_rate")}, ensure_ascii=False, indent=2))
     print(f"报告已生成：{report_path}")
     return 0

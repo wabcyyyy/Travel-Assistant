@@ -18,6 +18,7 @@ from typing import Any
 
 from app.agent.geo import haversine_meters
 from app.agent.generation_core import estimate_plans_total, has_double_lunch, meal_slot_of
+from app.agent.route_service import is_estimated
 
 MAX_DAILY_MINUTES = 480
 MAX_DAILY_ATTRACTIONS = 6
@@ -142,8 +143,9 @@ def validate_plans(daily_plans: list[dict], route_matrix: dict | None = None,
                 route_source = "coordinate-estimate"
             available_gap = next_start - prev_end
             if required_transfer is not None and available_gap < required_transfer:
-                source_label = "真实路线" if route_source == "amap" else "坐标估算"
-                buffer_note = "" if route_source == "amap" else (
+                estimated = is_estimated(route_source)
+                source_label = "坐标估算" if estimated else "真实路线"
+                buffer_note = "" if not estimated else (
                     f"（含 {ROUTE_FIXED_BUFFER_MIN} 分钟固定缓冲和 {ROUTE_BUFFER_RATIO:.0%} 容错）"
                 )
                 issues.append(

@@ -25,6 +25,9 @@ os.environ.setdefault("RAG_REFRESH_SECONDS", "0")
 os.environ.setdefault("RAG_EMBEDDING_PROVIDER", "hashed")
 # 同理关闭精排模型：单测不应因本地 .env 开启 cross-encoder 而加载真实权重
 os.environ.setdefault("RAG_RERANK_PROVIDER", "none")
+# 会话签名密钥：少数用例用 TestClient(main.app) 会触发 lifespan，而启动守卫要求
+# ≥32 字符（切流量后本服务自己签发 TA_AUTH）。带 example 标记，属占位符不是真密钥。
+os.environ.setdefault("JWT_SECRET", "example-only-pytest-jwt-signing-material")
 
 
 @pytest.fixture(autouse=True)

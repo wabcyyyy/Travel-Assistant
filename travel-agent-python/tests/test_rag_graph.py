@@ -147,7 +147,7 @@ def test_find_nearby_pois_rejects_unrelated_amap_fuzzy_hits(tmp_path, monkeypatc
     store = _store(tmp_path)
     monkeypatch.setattr(tools, "poi_store", store)
     monkeypatch.setattr(poi_repository, "get_poi", lambda *a, **k: None)
-    monkeypatch.setattr(tools, "search_amap_poi", lambda *a, **k: [
+    monkeypatch.setattr(tools, "search_local_poi", lambda *a, **k: [
         {"id": 99, "name": "湖滨大酒店", "latitude": 30.25, "longitude": 120.16},
     ])
     with patch.object(store, "search", return_value=[]):

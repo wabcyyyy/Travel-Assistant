@@ -30,7 +30,7 @@ from app.agent.day_stream import (
     DAY_ATTRACTION_CONTEXT_LIMIT,
     DAY_FOOD_CONTEXT_LIMIT,
     GENERATION_TEMPERATURE,
-    _amap_ground,
+    _local_ground,
     _open_trip_prompt,
     _sanitize_narrative,
 )
@@ -241,7 +241,7 @@ def _prepare_day(raw_day: dict, *, day_no: int, req: GenerateDayRequest,
                          metadata={"day_no": day_no, "poi_name": name})
             continue
         if not ref_pool.ground(item):
-            _amap_ground(item, req.city, ground_cache)
+            _local_ground(item, req.city, ground_cache)
         if name and seen.is_duplicate(name, item_type,
                                       item.get("latitude"), item.get("longitude")):
             # 落地后坐标通道判重命中（名称变体指向同一地点）

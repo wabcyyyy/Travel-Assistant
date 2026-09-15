@@ -77,9 +77,9 @@ def attach_poi_images(plan: list[dict], city: str) -> list[dict]:
     return plan
 
 
-@traced("tool", "fixture.search_amap_poi")
-def search_amap_poi(city: str, name: str, *, category: str | None = None) -> list[dict]:
-    """按名称回放 fixture 坐标，供开放模式的 _amap_ground 离线落点。"""
+@traced("tool", "fixture.search_local_poi")
+def search_local_poi(city: str, name: str, *, category: str | None = None) -> list[dict]:
+    """按名称回放 fixture 坐标，供开放模式的 _local_ground 离线落点。"""
     for group in (_attractions(city), _foods(city), _hotels(city)):
         for poi in group:
             if poi["name"] == name:

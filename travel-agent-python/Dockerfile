@@ -22,6 +22,7 @@ RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 
     pydantic==2.8.2 httpx==0.27.0 "mcp>=1.10,<2" python-dotenv==1.0.1 \
     langgraph==0.2.44 langchain-core==0.3.15 pymysql==1.2.0 "qdrant-client>=1.10,<2" \
     "redis>=5.2,<6" "sentence-transformers>=3.0,<6" \
+    "sqlalchemy>=2.0,<3" "alembic>=1.13,<2" "bcrypt>=4,<6" "reportlab>=4.1,<5" \
     && python -c "from huggingface_hub import snapshot_download; snapshot_download('${RAG_MODEL}', cache_dir='/app/models')"
 
 COPY . .

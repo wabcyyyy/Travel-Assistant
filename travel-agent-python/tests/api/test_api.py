@@ -5,7 +5,7 @@ import time
 import httpx
 import pytest
 
-BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
+BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 
 
 @pytest.fixture(scope="session")
@@ -201,23 +201,23 @@ class TestExport:
         assert body["code"] == 404
 
 
-class TestAmap:
+class TestLocalPoiSearch:
+    """本地点位检索（去高德后）：数据来自 poi_knowledge，无需任何外部 key。"""
+
     def test_poi_search(self, client):
         u = _uid()
         register(client, u)
         token = login(client, u)
-        body = client.get("/api/amap/poi", params={"keywords": "故宫", "city": "北京"},
+        body = client.get("/api/pois", params={"city": "北京", "keywords": "故宫"},
                           headers=auth_headers(token)).json()
-        if body["code"] == 400 and "未配置" in body.get("message", ""):
-            pytest.skip("未配置 AMAP_WEB_KEY，跳过真实搜索断言")
         assert body["code"] == 200
-        assert len(body["data"]) > 0
-        assert body["data"][0]["name"]
-        assert body["data"][0]["longitude"]
+        assert isinstance(body["data"]["items"], list)
+        assert isinstance(body["data"]["coveredCities"], list)
 
-    def test_poi_search_missing_keyword(self, client):
+    def test_poi_search_unknown_category_rejected(self, client):
         u = _uid()
         register(client, u)
         token = login(client, u)
-        body = client.get("/api/amap/poi", params={"city": "北京"}, headers=auth_headers(token)).json()
+        body = client.get("/api/pois", params={"city": "北京", "category": "shopping"},
+                          headers=auth_headers(token)).json()
         assert body["code"] == 400

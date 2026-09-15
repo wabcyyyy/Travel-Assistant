@@ -192,7 +192,7 @@ def test_generate_day_once_grounds_reference_items(monkeypatch):
         amap_calls.append(item.get("poi_name"))
 
     monkeypatch.setattr(day_stream.settings, "llm_api_key", "test-key")
-    monkeypatch.setattr(day_stream, "_amap_ground", fake_ground)
+    monkeypatch.setattr(day_stream, "_local_ground", fake_ground)
     monkeypatch.setattr(day_stream, "get_llm_client", lambda: _FakeLLM({
         "note": "杭州一日", "items": [
             {"item_type": "attraction", "poi_name": "西湖", "refs": [1],
@@ -228,7 +228,7 @@ def test_generate_day_once_external_item_falls_back_to_amap(monkeypatch):
         amap_calls.append(item.get("poi_name"))
 
     monkeypatch.setattr(day_stream.settings, "llm_api_key", "test-key")
-    monkeypatch.setattr(day_stream, "_amap_ground", fake_ground)
+    monkeypatch.setattr(day_stream, "_local_ground", fake_ground)
     monkeypatch.setattr(day_stream, "get_llm_client", lambda: _FakeLLM({
         "note": "苏州一日", "items": [
             {"item_type": "attraction", "poi_name": "自选新景点",

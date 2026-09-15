@@ -503,11 +503,11 @@ def _has_coord(value) -> bool:
         return False
 
 
-def _amap_ground(item: dict, city: str, cache: dict) -> None:
-    """通过检索链落坐标与地址：provider chain（高德→Google→Nominatim）。
+def _local_ground(item: dict, city: str, cache: dict) -> None:
+    """用本地知识库落坐标与地址（去高德后：唯一的 grounding 源）。
 
-    海外分流由 tools.search_amap_poi 内部完成（跳过高德，直连 Google/Nominatim）；
-    坐标缺失时不提前 return，海外误匹配风险由 chain 内的海外判定收敛。
+    只查 `poi_knowledge`（名称精确 → LIKE → 向量召回），过名称相似度门槛后才
+    采纳坐标/票价/图片——查不到就保持原样，由上层按「证据不足」降级。
     """
     from app.agent.tools import _anchor_name_similar
 
@@ -524,7 +524,7 @@ def _amap_ground(item: dict, city: str, cache: dict) -> None:
                 item["image"] = hit["photo"]
         return
     try:
-        pois = tools.search_amap_poi(city, item.get("poi_name") or "")
+        pois = tools.search_local_poi(city, item.get("poi_name") or "")
         query_name = str(item.get("poi_name") or "")
         hit = None
         for poi in pois or []:
@@ -545,7 +545,7 @@ def _amap_ground(item: dict, city: str, cache: dict) -> None:
                 return
         cache[key] = None
     except Exception as e:  # noqa: BLE001
-        logger.warning("amap ground failed: %s", e)
+        logger.warning("local ground failed: %s", e)
         cache[key] = None
 
 
@@ -590,12 +590,12 @@ def _generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False)
         raise
 
     # 图片检索是外部网络 I/O，不能阻塞逐日生成（每个 POI 可能触发
-    # Wikipedia/Unsplash/高德多个串行请求）。图片由前端懒加载
-    # /api/amap/poi-photo 获取；候选数据中已有的 image 仍会自然透传。
+    # Wikipedia/Unsplash 多个串行请求）。图片由前端懒加载
+    # /api/poi-photo 获取；候选数据中已有的 image 仍会自然透传。
 
     # 引用式生成：与 _llm_open_day 使用同一个权威参考资料池（同样按
     # used_names 过滤，保证 refs 编号与 Prompt 渲染一致），命中时直接落地
-    # 权威字段并跳过高德落坐标（资料坐标已是真实采集值）。
+    # 权威字段并跳过本地落坐标（资料坐标已是真实采集值）。
     ref_pool = ReferencePool(ctx, exclude_names=set(req.used_names))
 
     lookup: dict[str, dict] = {}
@@ -619,7 +619,7 @@ def _generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False)
         if source == "open" and ref_pool.ground(item):
             pass  # 权威背书：字段与来源已由参考资料落地
         elif source == "open":
-            _amap_ground(item, req.city, ground_cache)
+            _local_ground(item, req.city, ground_cache)
         poi = lookup.get(item.get("poi_name"))
         if poi:
             if not _has_coord(item.get("latitude")) and _has_valid_coords(poi):

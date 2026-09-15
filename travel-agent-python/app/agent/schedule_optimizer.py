@@ -14,7 +14,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 
 from app.agent.reflect import MAX_DAILY_ATTRACTIONS, MAX_DAILY_MINUTES, parse_time
-from app.agent.route_service import RouteService, default_route_service
+from app.agent.route_service import RouteService, default_route_service, is_estimated
 
 
 _OPEN_RE = re.compile(r"(\d{1,2}):(\d{2})\s*[-~至]\s*(\d{1,2}):(\d{2})")
@@ -228,7 +228,7 @@ def optimize_daily_plan(
         removed_candidates=removed,
         travel_time_total_min=travel_total,
         route_sources=sources,
-        degraded=any(source != "amap" for source in sources) and bool(sources),
+        degraded=any(is_estimated(source) for source in sources) and bool(sources),
     )
 
 

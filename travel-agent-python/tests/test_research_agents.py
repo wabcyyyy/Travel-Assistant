@@ -132,7 +132,7 @@ def test_workflow_search_node_writes_research_report(monkeypatch):
     monkeypatch.setattr(tools, "search_foods", mock_llm.search_foods)
     monkeypatch.setattr(tools, "search_hotels", mock_llm.search_hotels)
     monkeypatch.setattr(tools, "get_consumption", mock_llm.get_consumption)
-    monkeypatch.setattr(workflow, "_amap_ground", lambda *_a, **_k: None)
+    monkeypatch.setattr(workflow, "_local_ground", lambda *_a, **_k: None)
     monkeypatch.setattr(workflow, "_llm_open_day", mock_llm.fixture_open_day)
 
     response = workflow.run_generate(GenerateRequest(city="杭州", days=1))
@@ -180,7 +180,7 @@ def test_research_evaluate_insufficient_triggers_refine_round(monkeypatch):
         return [{"name": f"{city}补充点", "latitude": 30.1, "longitude": 120.1}]
 
     monkeypatch.setattr(tools, "search_attractions", fake_search)
-    monkeypatch.setattr(tools, "search_amap_poi", fake_amap)
+    monkeypatch.setattr(tools, "search_local_poi", fake_amap)
     monkeypatch.setattr(reasoning, "plan_research", lambda task: {})
     monkeypatch.setattr(reasoning, "evaluate_research", lambda task, items, round_no:
                         {"sufficient": False, "extra_keywords": ["杭州 西湖"]})
@@ -209,7 +209,7 @@ def test_supervisor_refill_merges_evidence_and_regenerates(monkeypatch):
     monkeypatch.setattr(tools, "search_foods", mock_llm.search_foods)
     monkeypatch.setattr(tools, "search_hotels", mock_llm.search_hotels)
     monkeypatch.setattr(tools, "get_consumption", mock_llm.get_consumption)
-    monkeypatch.setattr(workflow, "_amap_ground", lambda *_a, **_k: None)
+    monkeypatch.setattr(workflow, "_local_ground", lambda *_a, **_k: None)
 
     state = {"calls": 0}
 
@@ -268,7 +268,7 @@ def test_refill_not_triggered_for_non_evidence_gap(monkeypatch):
     monkeypatch.setattr(tools, "search_foods", mock_llm.search_foods)
     monkeypatch.setattr(tools, "search_hotels", mock_llm.search_hotels)
     monkeypatch.setattr(tools, "get_consumption", mock_llm.get_consumption)
-    monkeypatch.setattr(workflow, "_amap_ground", lambda *_a, **_k: None)
+    monkeypatch.setattr(workflow, "_local_ground", lambda *_a, **_k: None)
 
     def open_day(req, _used):
         # 两个景点时间重叠 → 时间冲突（非证据缺口）

@@ -94,11 +94,11 @@ def _run_search(state: ResearchAgentState) -> dict:
         for keyword in extras:
             if limits:
                 limits.check("retrieval")
-            remote = tools.search_amap_poi(task.city, keyword, category=task.domain) or []
+            supplement = tools.search_local_poi(task.city, keyword, category=task.domain) or []
             if limits:
                 limits.record_retrieval(1)
-            items = _merge_supplement(items, remote)
-    # 本地/高德仍偏少时：联网搜索补真实地点名（池空/海外城市的证据缺口）
+            items = _merge_supplement(items, supplement)
+    # 本地知识库仍偏少时：联网搜索补真实地点名（池空/海外城市的证据缺口）
     if len(items) < 3:
         from app.agent.web_search import search_places_via_web, web_search_enabled
         if web_search_enabled():
