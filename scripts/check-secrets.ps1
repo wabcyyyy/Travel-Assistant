@@ -36,7 +36,8 @@ $placeholderMarkers = @('replace', 'your-', 'change-me', 'changeme', 'example', 
 # (${MYSQL_PASSWORD:}) stay clean; placeholders are still excluded below.
 $assignPattern = '(?i)(?:password|passwd|db_?pwd)\s*[=:]\s*[''"]([A-Za-z0-9+/_\-]{4,})[''"]'
 
-$skip = '\\(\.git|node_modules|\.venv[^\\]*|\.uv-cache|\.uv-python|\.pnpm-store|models|dist|target|\.idea|\.vscode|data|logs|\.test-report|site-packages|\.tmp-[^\\]*)\\'
+# Separator-agnostic (Windows \ vs Linux /): must skip the same dirs on both.
+$skip = '[/\\](\.git|node_modules|\.venv[^\\/]*|\.uv-cache|\.uv-python|\.pnpm-store|models|dist|target|\.idea|\.vscode|data|logs|\.test-report|site-packages|\.tmp-[^\\/]*)[/\\]'
 $found = New-Object System.Collections.Generic.List[string]
 
 function Add-Hit([string]$rel, [string]$line, [int]$lineNumber) {
