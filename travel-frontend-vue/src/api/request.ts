@@ -84,4 +84,8 @@ export function requestPut<T>(url: string, data?: unknown, config?: ApiRequestCo
   return request.put<unknown, ApiResult<T>>(url, data, config)
 }
 
+export function requestPatch<T>(url: string, data?: unknown, config?: ApiRequestConfig): Promise<ApiResult<T>> {
+  return request.patch<unknown, ApiResult<T>>(url, data, config)
+}
+
 export default request

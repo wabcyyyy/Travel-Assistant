@@ -1,4 +1,4 @@
-import { requestDelete, requestGet, requestPost, requestPut } from './request'
+import { requestDelete, requestGet, requestPatch, requestPost, requestPut } from './request'
 import type {
   ChatDayPlan,
   ChatDraftPayload,
@@ -44,8 +44,55 @@ export function getItineraryList() {
   return requestGet<ItinerarySummary[]>('/itinerary')
 }
 
+/** 列表筛选（view 五档 + q 关键词；SPEC §6.5 过滤轴之一——「写完了没 / 收不收藏」）。 */
+export function listItineraries(view?: string, q?: string) {
+  const params: Record<string, string> = {}
+  if (view && view !== 'all') params.view = view
+  if (q) params.q = q
+  return requestGet<ItinerarySummary[]>('/itinerary', { params })
+}
+
+/** 收藏开关（后端单列更新 + 精确 evict，S1）。 */
+export function setFavorite(id: number, favorite: boolean) {
+  return requestPost<ItineraryDetail>(`/itinerary/${id}/favorite`, { favorite })
+}
+
+/** 归档开关：归档不撤回已发出的分享，只移出默认视图/图鉴（S1 后端）。 */
+export function setArchived(id: number, archived: boolean) {
+  return requestPost<ItineraryDetail>(`/itinerary/${id}/archive`, { archived })
+}
+
 export function getItineraryDetail(id: number | string) {
   return requestGet<ItineraryDetail>(`/itinerary/${id}`)
+}
+
+/** 就近推荐行（W2 右栏「发现」；后端仅回 name/category/rating/address/distanceM，无坐标）。 */
+export interface NearbyPoi {
+  name: string
+  category: string
+  rating: number | null
+  address: string | null
+  distanceM: number | null
+}
+
+/** 同城知识库近邻（去高德后的本地 GraphRAG；后端失败时静默返回空列表）。 */
+export function getPoiNearby(data: {
+  city: string
+  latitude?: number
+  longitude?: number
+  limit?: number
+}) {
+  return requestPost<{ items: NearbyPoi[] }>('/itinerary/poi-nearby', data)
+}
+
+/** 按路线重排某天（v2.6 W3）：确定性优化器全量重排、不删除点位；返回权威详情。 */
+export function optimizeDay(id: number | string, dayId: number) {
+  return requestPost<ItineraryDetail>(`/itinerary/${id}/optimize`, { dayId })
+}
+
+/** 编辑日副标题（复用 metadata_json.theme；空串 = 清空回退自动标题）。 */
+export function updateDay(id: number | string, dayId: number, theme: string) {
+  return requestPatch<ItineraryDetail>(`/itinerary/${id}/days/${dayId}`, { theme })
 }
 
 export function deleteItinerary(id: number) {
@@ -56,7 +103,7 @@ export function addItem(id: number | string, data: Partial<TripItem> & { dayId: 
   return requestPost<ItineraryDetail>(`/itinerary/${id}/items`, data)
 }
 
-export function updateItem(itemId: number, data: Partial<TripItem>) {
+export function updateItem(itemId: number, data: Partial<TripItem> & { dayId?: number }) {
   return requestPut<ItineraryDetail>(`/itinerary/items/${itemId}`, data)
 }
 

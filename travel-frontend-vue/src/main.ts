@@ -3,11 +3,18 @@ import { createPinia } from 'pinia'
 import { ElLoading } from 'element-plus'
 // v-loading 指令不经 unplugin resolver（指令不归 Components 插件管），按需手动注册；
 // 函数式组件（ElMessage/ElMessageBox）样式由 AutoImport resolver 注入，勿在此全量引样式。
+// EP 暗色变量（html.dark 生效）：刻意**先于** theme.css 引入——同名选择器下我们的
+// --el-* 映射在后、按 CSS 顺序胜出，暗色里主色仍归 --lp-accent 家族。
+import 'element-plus/theme-chalk/dark/css-vars.css'
 import 'element-plus/es/components/loading/style/css'
 import './styles/theme.css'
 
 import App from './App.vue'
 import router from './router'
+import { applyAppearance } from './styles/appearance'
+
+// 外观契约的唯一运行时入口（SPEC §7.1.4）：首帧引导脚本已在 index.html 先跑一次
+applyAppearance(document.documentElement)
 
 const app = createApp(App)
 

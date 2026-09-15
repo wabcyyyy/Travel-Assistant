@@ -41,6 +41,14 @@ export interface SourceRecord {
   expiresAt?: string | null
 }
 
+/** 封面署名（S1）：随图落库，详情/分享页展示用 */
+export interface CoverCredit {
+  author?: string | null
+  authorUrl?: string | null
+  license?: string | null
+  source?: string | null
+}
+
 export interface TripItem {
   id?: number
   itemType: string
@@ -152,6 +160,13 @@ export interface ItineraryDetail {
   planNote?: string | null
   /** 叙事字段（M3 生成契约补齐后生效）：整趟主题标题 */
   tripTheme?: string | null
+  /** 封面快照 / 收藏 / 归档 / 分享（S1/S2 后端已回传；详情是本人视角，含 shareToken） */
+  coverUrl?: string | null
+  coverSource?: string | null
+  coverCredit?: CoverCredit | null
+  favorite?: boolean
+  archived?: boolean
+  shareToken?: string | null
   /** 用户旅行意图原文（§5.3.1 意图回显行；后端暂未回传，有值才渲染） */
   intent?: string | null
   status: number
@@ -184,6 +199,13 @@ export interface ItinerarySummary {
    * 也没有 dayList（首日 theme 不可得）；前端按「字段存在才渲染」防御式实现，
    * 后端补充 tripTheme 后列表卡片自动升级，无需改前端。 */
   tripTheme?: string | null
+  /** S1/S2 后端已回传：封面三列 + 收藏/归档/分享态（列表只回 hasShare 布尔） */
+  coverUrl?: string | null
+  coverSource?: string | null
+  coverCredit?: CoverCredit | null
+  favorite?: boolean
+  archived?: boolean
+  hasShare?: boolean
 }
 
 export interface UserInfo {

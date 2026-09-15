@@ -1,5 +1,5 @@
 <template>
-  <section class="budget-strip" aria-label="预算概览">
+  <section class="budget-strip" :class="{ 'is-docked': docked }" aria-label="预算概览">
     <div class="strip-total">
       <span class="strip-label">预估总价</span>
       <span class="strip-amount" :class="{ over: overBudget }">￥{{ fmt(totalAmount) }}</span>
@@ -47,13 +47,18 @@ import type { BudgetRow } from '../../types/itinerary'
 
 // 预算概览条（替代原右栏 BudgetPanel 看板）：总价 + 分类 + 状态一行收纳，
 // 天级小计移到日卡标题（DayListCard），条目级价格留在点位卡上，全页零重复。
-const props = defineProps<{
-  budgetList: BudgetRow[]
-  totalAmount: number
-  budgetLimit?: number | null
-  persons: number
-  days: number
-}>()
+// docked（v2.6 §19.3）：停靠左栏底部时的折叠态——总价一行 + 明细弹层，分类行收起。
+const props = withDefaults(
+  defineProps<{
+    budgetList: BudgetRow[]
+    totalAmount: number
+    budgetLimit?: number | null
+    persons: number
+    days: number
+    docked?: boolean
+  }>(),
+  { docked: false },
+)
 
 const overBudget = computed(() => {
   if (!props.budgetLimit) return false
@@ -78,10 +83,26 @@ function fmt(value: number | null | undefined) {
   align-items: center;
   gap: 10px 28px;
   padding: 14px 22px;
-  background: #fff;
-  border: 1px solid var(--lp-border);
-  border-radius: 16px;
+  background: var(--lp-surface-card);
+  border: 1px solid var(--lp-edge-1);
+  border-radius: var(--lp-radius-card);
   margin-bottom: 16px;
+}
+
+/* 停靠态（左栏底部）：总价一行 + 明细弹层；分类构成只在明细里看 */
+.budget-strip.is-docked {
+  gap: 8px 16px;
+  padding: 12px 14px;
+  border-radius: var(--lp-radius-sm);
+  margin-bottom: 0;
+}
+
+.budget-strip.is-docked .strip-cats {
+  display: none;
+}
+
+.budget-strip.is-docked .strip-amount {
+  font-size: 20px;
 }
 
 /* 总价区：衬线大数字承接手册封面语言 */
@@ -97,8 +118,8 @@ function fmt(value: number | null | undefined) {
 }
 
 .strip-amount {
-  font-family: var(--lp-font-display);
-  font-weight: 600;
+  font-family: var(--lp-font-ui);
+  font-weight: 700;
   font-size: 24px;
   line-height: 1.1;
   color: var(--lp-ink);

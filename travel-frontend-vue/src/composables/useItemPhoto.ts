@@ -1,20 +1,19 @@
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useItineraryStore } from '../store/itinerary'
 import type { TripItem } from '../types/itinerary'
-import { isForeignCity } from '../utils/geo'
 
 /**
- * 行程项图片三级降级（M4-②b 自 DayListCard 收敛为 composable，全量重构方案 §5.3.6）：
- * 0=实景图（行程自带/后端检索）→ 1=地图位置图（保底）→ 2=占位块。
- * 没有坐标且没有另一张图片时，/poi-photo 的 404 无法再降级到地图，直接落占位块，
- * 避免空 src 触发重复请求。
+ * 行程项图片三级降级（去高德后重定义）：
+ * 0=行程自带/服务端落盘图（同源代理）→ 1=POI 实景图（维基/图库代理）
+ * → 2=本地占位块。
+ *
+ * 高德静态位置图这一级已移除（2026-09-15 去高德）：位置图既消耗配额又
+ * 与实景图观感错位；没有图时如实落到占位块，比一张错位的地图截图更诚实。
  */
 export function useItemPhoto() {
   const store = useItineraryStore()
   const { detail } = storeToRefs(store)
-  const amapReady = !!import.meta.env.VITE_AMAP_JS_KEY
-  const foreign = computed(() => isForeignCity(detail.value?.city ?? ''))
   const imgFailed = ref<Record<number, number>>({})
 
   function imgLevel(item: TripItem) {
@@ -25,38 +24,32 @@ export function useItemPhoto() {
     if (!url) return ''
     if (url.startsWith('/') || url.startsWith('data:') || url.startsWith('blob:')) return url
     if (!/^https?:\/\//i.test(url)) return ''
-    return `/api/amap/image?url=${encodeURIComponent(url)}`
+    return `/api/image-proxy?url=${encodeURIComponent(url)}`
+  }
+
+  function poiPhotoUrl(item: TripItem) {
+    const name = encodeURIComponent(item.poiName)
+    const city = encodeURIComponent(detail.value?.city ?? '')
+    return `/api/poi-photo?name=${name}&city=${city}`
   }
 
   function imgSrc(item: TripItem) {
-    const isForeign = foreign.value
-    if (imgLevel(item) >= 1) {
-      // 保底：高德静态地图位置图（国内有 key 时）
-      if (item.longitude && item.latitude && amapReady && !isForeign) {
-        return `/api/amap/staticmap?location=${item.longitude},${item.latitude}`
-      }
-      return imageProxy(item.image || item.imageUrl || '')
+    const level = imgLevel(item)
+    if (level >= 2) return ''
+    if (level === 0) {
+      const own = imageProxy(item.image || item.imageUrl || '')
+      if (own) return own
     }
-    // 实景图：行程自带 → 同源代理
-    const own = imageProxy(item.image || item.imageUrl || '')
-    if (own) return own
-    // 海外：skipAmap 代理走 Wikipedia → Commons → 图库名称兜底，避免高德无覆盖超时
-    if (isForeign) {
-      return `/api/amap/poi-photo?name=${encodeURIComponent(item.poiName)}&city=${encodeURIComponent(detail.value?.city ?? '')}&skipAmap=true`
-    }
-    if (amapReady) {
-      return `/api/amap/poi-photo?name=${encodeURIComponent(item.poiName)}&city=${encodeURIComponent(detail.value?.city ?? '')}`
-    }
-    if (item.longitude && item.latitude) {
-      return `/api/amap/staticmap?location=${item.longitude},${item.latitude}`
-    }
-    return ''
+    return poiPhotoUrl(item)
   }
 
   function onImgError(item: TripItem) {
     const id = item.id!
-    const hasFallback = Boolean(item.longitude && item.latitude)
-    imgFailed.value[id] = hasFallback ? (imgFailed.value[id] ?? 0) + 1 : 2
+    const current = imgFailed.value[id] ?? 0
+    // 0→1 只在「有自带图可退」时成立：没有自带图时 0/1 两档是同一个 POI 实景图 URL，
+    // 重试既不换 src 也不会再触发 error —— 直接落占位块（v2.7 R3 修：坏图图标挂着不退）
+    const hasOwn = Boolean(imageProxy(item.image || item.imageUrl || ''))
+    imgFailed.value[id] = current === 0 && hasOwn ? 1 : 2
   }
 
   return { imgLevel, imgSrc, onImgError }

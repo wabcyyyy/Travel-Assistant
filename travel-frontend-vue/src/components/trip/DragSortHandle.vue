@@ -1,6 +1,6 @@
 <template>
   <span class="drag-sort-wrap" @focusout="closeMenuOnBlur">
-    <el-icon
+    <span
       :id="`drag-handle-${item.id}`"
       class="drag-handle"
       role="button"
@@ -14,7 +14,7 @@
       @keydown.up.prevent="move(-1)"
       @keydown.down.prevent="move(1)"
       @keydown.esc.prevent="closeMenu"
-    ><Rank /></el-icon>
+    ><GripVertical :size="13" :stroke-width="1.8" /></span>
     <span
       v-if="menuFor"
       :id="`drag-menu-${item.id}`"
@@ -40,7 +40,7 @@
 
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
-import { Rank } from '@element-plus/icons-vue'
+import { GripVertical } from 'lucide-vue-next'
 import type { DayPlan, TripItem } from '../../types/itinerary'
 
 // 拖拽手柄 + 键盘排序替代（§5.5 a11y #1/#2，M4-②b 自 DayListCard 迁出以瘦身）：
@@ -106,11 +106,14 @@ async function move(offset: -1 | 1) {
   display: inline-flex;
 }
 
+/* TREK 行解剖（v2.7 §20 R3）：抓手 13px、常态 opacity .3，行 hover 时亮起（见 DayListCard） */
 .drag-handle {
+  display: inline-flex;
+  align-items: center;
   cursor: grab;
-  color: var(--el-text-color-placeholder);
+  color: var(--lp-text-faint);
   padding: 4px;
-  border-radius: 6px;
+  border-radius: var(--lp-radius-xs);
 }
 
 .drag-handle:focus-visible {

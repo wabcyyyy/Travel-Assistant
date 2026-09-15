@@ -1,0 +1,33 @@
+{
+  "_note": "EP 允许清单（SPEC v2.6 §19.7-2）：只准变短不准变长——把 EP 从某个文件清干净就从这里删掉；不许加新文件/加计数。admin/Generate/Login 等存量面在清单内冻结。",
+  "_count": 27,
+  "files": {
+    "src/App.vue": 2,
+    "src/api/request.ts": 3,
+    "src/components/HotelOptionsDialog.vue": 22,
+    "src/components/layout/AppShell.vue": 5,
+    "src/components/layout/AppearancePopover.vue": 7,
+    "src/components/trip/BudgetStrip.vue": 4,
+    "src/components/trip/ChatEditPanel.vue": 17,
+    "src/components/trip/CoverDialog.vue": 21,
+    "src/components/trip/ExportBar.vue": 4,
+    "src/components/trip/HeadStatusPanel.vue": 2,
+    "src/components/trip/ItemEditDialog.vue": 24,
+    "src/components/trip/ShareDialog.vue": 23,
+    "src/components/trip/VersionHistoryDrawer.vue": 8,
+    "src/composables/useItineraryActions.ts": 1,
+    "src/main.ts": 2,
+    "src/views/AtlasView.vue": 8,
+    "src/views/GenerateView.vue": 78,
+    "src/views/HomeView.vue": 17,
+    "src/views/LoginView.vue": 18,
+    "src/views/TripDetailView.vue": 19,
+    "src/views/TripsView.vue": 14,
+    "src/views/admin/AdminAgentView.vue": 54,
+    "src/views/admin/AdminDashboard.vue": 22,
+    "src/views/admin/AdminItinerariesView.vue": 38,
+    "src/views/admin/AdminLayout.vue": 32,
+    "src/views/admin/AdminTokensView.vue": 74,
+    "src/views/admin/AdminUsersView.vue": 37
+  }
+}

@@ -3,7 +3,9 @@ import {
   applyHotelOption,
   applyPlans,
   deleteItem,
+  optimizeDay as optimizeDayApi,
   reorderItems,
+  updateDay as updateDayApi,
   updateItem,
 } from '../api/itinerary'
 import type { ApiResult } from '../api/request'
@@ -95,6 +97,18 @@ export function useItineraryActions() {
     /** 拖拽排序提交。 */
     reorderItems(id: number | string, dayId: number, itemIds: number[]) {
       return run('调整顺序', () => reorderItems(id, dayId, itemIds))
+    },
+    /** 跨天移动（S4）：复用既有 updateItem 带 dayId，不新增端点；后端前后各打快照。 */
+    moveToDay(itemId: number, dayId: number) {
+      return run('移动行程项', () => updateItem(itemId, { dayId }))
+    },
+    /** 优化某天路线（W3）：后端全量重排 + 前后快照，经统一写管线回填权威详情。 */
+    optimizeDay(id: number | string, dayId: number) {
+      return run('优化路线', () => optimizeDayApi(id, dayId))
+    },
+    /** 编辑日副标题（W3）：复用 theme 列，空串清空回退自动标题。 */
+    updateDay(id: number | string, dayId: number, theme: string) {
+      return run('编辑日标题', () => updateDayApi(id, dayId, theme))
     },
     /** 应用 chat 草稿（「应用到行程」）。 */
     applyPlans(

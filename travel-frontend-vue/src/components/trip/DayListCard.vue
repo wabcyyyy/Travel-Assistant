@@ -1,7 +1,17 @@
 <template>
-  <details class="day-panel" :class="{ 'is-glowing': isActiveDay }" :open="expanded">
+  <details
+    class="day-panel"
+    :class="{ 'is-glowing': isActiveDay, 'is-drop-over': dropOver }"
+    :open="!collapsed"
+    :style="dayTintStyle"
+    @dragover.prevent="dropOver = true"
+    @dragleave="onDragLeave"
+    @drop.prevent="onDrop"
+  >
     <summary @click="onSummaryClick">
-      <span class="day-idx">{{ String(day.dayNo).padStart(2, '0') }}</span>
+      <span class="day-badge" :aria-label="`第 ${day.dayNo} 天`">
+        {{ String(day.dayNo).padStart(2, '0') }}
+      </span>
       <span class="day-main">
         <!-- 流式研究阶段：日卡骨架态（shimmer 由 .lp-skel-line 公共件按系统动效偏好启停） -->
         <template v-if="isSkeleton">
@@ -10,130 +20,303 @@
           <span class="lp-skel-line sk-count"></span>
         </template>
         <template v-else>
-          <span class="day-meta">第{{ day.dayNo }}天<template v-if="day.travelDate"> · {{ day.travelDate }}</template></span>
-          <span class="day-title">{{ dayTitle(day) }}</span>
+          <span class="day-meta">{{ dayMetaText(day) }}</span>
+          <span class="qe-wrap day-title-wrap" @click.stop>
+            <AppPopover
+              :open="subtitleOpen"
+              label="编辑日标题"
+              align="start"
+              @update:open="(open) => syncSubtitle(open)"
+            >
+              <template #trigger>
+                <button
+                  type="button"
+                  class="day-title day-title-btn"
+                  :title="day.theme ? '点击编辑副标题' : '点击添加副标题'"
+                >
+                  {{ dayTitle(day) }}
+                </button>
+              </template>
+              <div class="qe-body">
+                <label class="qe-label">
+                  副标题（留空回退自动标题）
+                  <AppInput v-model="subtitleDraft" placeholder="例如：老街与市集" aria-label="日标题" />
+                </label>
+                <button type="button" class="qe-save" @click="saveSubtitle">保存</button>
+              </div>
+            </AppPopover>
+          </span>
           <span class="day-count">
             {{ (day.items || []).length }} 个点位<template v-if="dayTotalAmount > 0"> · 约 ￥{{ dayTotalAmount.toLocaleString('zh-CN') }}</template>
             <span v-if="isActiveDay" class="day-state state-active">排版中</span>
             <span v-else-if="isPendingDay" class="day-state">待排版</span>
+          </span>
+          <!-- 日头工作台（W3）：建议方案（day_options 只读）/ 优化路线（确定性重排，可回滚） -->
+          <span v-if="dayOptions.length || activeCount >= 2" class="day-tools" @click.stop>
+            <span v-if="dayOptions.length" class="qe-wrap">
+              <AppPopover
+                :open="optionsOpen"
+                label="建议方案"
+                align="start"
+                @update:open="(open) => (optionsOpen = open)"
+              >
+                <template #trigger>
+                  <button type="button" class="diy-tool">
+                    <Lightbulb :size="14" /> 建议方案
+                  </button>
+                </template>
+                <div class="opt-list">
+                  <div v-for="(opt, i) in dayOptions" :key="i" class="opt-card">
+                    <p class="opt-head">
+                      <span class="opt-label">{{ opt.label }}</span>
+                      <span class="opt-summary">{{ opt.summary }}</span>
+                    </p>
+                    <p v-if="opt.tradeoff" class="opt-sub">取舍：{{ opt.tradeoff }}</p>
+                    <p v-if="optionNames(opt).length" class="opt-sub">
+                      点位：{{ optionNames(opt).join('、') }}
+                    </p>
+                  </div>
+                </div>
+              </AppPopover>
+            </span>
+            <button
+              v-if="activeCount >= 2"
+              type="button"
+              class="diy-tool"
+              :disabled="optimizing"
+              :title="`按交通耗时重排当天 ${activeCount} 个点位（可在版本历史回滚）`"
+              @click="onOptimize"
+            >
+              <Route :size="14" /> {{ optimizing ? '优化中…' : '优化路线' }}
+            </button>
           </span>
         </template>
         <!-- 降级/失败如实可见（原则 4）：degraded 按 scope 对应日卡，PARTIAL 保留 degradedDays -->
         <span v-if="notGenerated" class="day-flag flag-fail">未成功生成</span>
         <span v-else-if="dayDegraded" class="day-flag">已降级 · {{ dayDegraded.reason }}</span>
       </span>
-      <span class="day-plus" aria-hidden="true">▾</span>
+      <span class="day-chev" aria-hidden="true"><ChevronDown :size="18" /></span>
     </summary>
+
     <div class="day-content">
-      <!-- 跨页 spread：左叙事墙（导语/提示/机位/备选）右时间轴站点列；窄屏折叠为上下 -->
-      <div class="day-spread">
-        <aside class="spread-side">
-          <div class="spread-side-inner">
-            <DayNarrativePanel :day="day" />
-          </div>
-        </aside>
-        <div class="spread-track">
-          <div class="route-toolbar">
-            <el-button type="primary" size="small" :disabled="!mapReady" @click="openAddDialog">添加景点</el-button>
-          </div>
-          <draggable
-            :list="day.items"
-            item-key="id"
-            handle=".drag-handle"
-            :animation="150"
-            @end="emit('item-drop', day)"
-          >
-            <template #item="{ element, index }">
-          <div
-            :id="`item-${element.id}`"
-            class="route-row"
-            :class="{ highlighted: element.id === highlightId }"
-            role="button"
-            tabindex="0"
-            :aria-label="`行程点位：${element.poiName}`"
-            @click="onItemClick(element)"
-            @keydown.enter.prevent="onItemClick(element)"
-          >
-            <div class="row-img">
-              <img
-                v-if="imgLevel(element) < 2 && imgSrc(element) && (element.itemType === 'attraction' || element.itemType === 'food' || element.image || element.imageUrl || (element.longitude && element.latitude))"
-                :src="imgSrc(element)"
-                :alt="element.poiName"
-                loading="lazy"
-                @error="onImgError(element)"
+      <!-- 导语与方案分叉（DayNarrativePanel）；实用/拍照/备选已拆为内联提示卡 -->
+      <DayNarrativePanel :day="day" />
+
+      <!-- 内联提示卡（v2.6 §19.3，TREK 式彩色小卡）：就地提示，不铺正文 -->
+      <div v-if="hasTips" class="tip-stack">
+        <InlineTipCard v-if="practicalNotes.length" kind="info" title="实用提示">
+          <ul class="tip-list">
+            <li v-for="(n, i) in practicalNotes" :key="i">{{ n }}</li>
+          </ul>
+        </InlineTipCard>
+        <InlineTipCard v-if="photoSpots.length" kind="photo" title="拍照机位">
+          <ul class="tip-list">
+            <li v-for="(s, i) in photoSpots" :key="i">
+              <span class="tip-strong">{{ spotName(s) }}</span>
+              <span v-if="s.tip" class="tip-sub">{{ s.tip }}</span>
+              <span v-if="s.bestTime" class="tip-time">{{ s.bestTime }}</span>
+            </li>
+          </ul>
+        </InlineTipCard>
+        <InlineTipCard v-if="backupRules.length" kind="warn" title="备选方案">
+          <ul class="tip-list">
+            <li v-for="(r, i) in backupRules" :key="i">
+              <template v-if="(r.action || '').trim()">
+                <span class="tip-strong">若{{ ruleIf(r) }}</span>
+                <span class="tip-sub">{{ r.action }}</span>
+              </template>
+              <template v-else>{{ r.name || r.title }}</template>
+            </li>
+          </ul>
+        </InlineTipCard>
+      </div>
+
+      <div v-if="!(day.items || []).length" class="day-empty">当天暂无安排</div>
+      <draggable
+        :list="day.items"
+        item-key="id"
+        handle=".drag-handle"
+        :animation="150"
+        :group="{ name: 'trip-items' }"
+        :data-day-id="day.dayId"
+        @end="onDragEnd"
+      >
+        <template #item="{ element, index }">
+          <div :id="`item-${element.id}`" :data-item-id="element.id" class="row-wrap">
+            <!-- 站间分隔条（v2.7 §20 R3，TREK 的「6h5min · 27.5km」等价物）：
+                 本地直线估算 + 明确标注，缺坐标不画 -->
+            <div v-if="legAt(index)" class="leg-row" :title="LEG_HINT">
+              <span class="leg-line" aria-hidden="true"></span>
+              <component
+                :is="legAt(index)?.mode === 'walk' ? Footprints : Car"
+                :size="10"
+                :stroke-width="2"
+                aria-hidden="true"
               />
-              <div v-else class="row-img-fallback">{{ typeLabel(element.itemType) }}</div>
+              <span class="leg-text">{{ legLabel(index) }}</span>
+              <span class="leg-line" aria-hidden="true"></span>
             </div>
-            <span class="row-no">
+            <div
+              class="route-row"
+              :class="{ highlighted: element.id === highlightId }"
+              role="button"
+              tabindex="0"
+              :aria-label="`行程点位：${element.poiName}`"
+              @click="onItemClick(element)"
+              @keydown.enter.prevent="onItemClick(element)"
+            >
+              <input
+                type="checkbox"
+                class="row-check"
+                :checked="selectedIds.includes(element.id!)"
+                :aria-label="`选择「${element.poiName}」`"
+                @click.stop
+                @change="emit('toggle-select', element)"
+              />
               <DragSortHandle
+                class="row-grip"
                 :day="day"
                 :item="element"
                 :index="index"
                 :total="(day.items || []).length"
                 @moved="emit('item-drop', $event)"
               />
-              <i class="row-idx">{{ String(index + 1).padStart(2, '0') }}</i>
-            </span>
-            <div class="row-main">
-              <div class="row-top">
-                <span class="row-name">{{ element.poiName }}</span>
-                <el-tag :type="tagType(element.itemType)" size="small">
-                  {{ typeLabel(element.itemType) }}
-                </el-tag>
-                <span v-if="element.startTime" class="row-time">
-                  {{ formatTime(element.startTime) }}<template v-if="element.endTime"> - {{ formatTime(element.endTime) }}</template>
+              <!-- 28px 圆头像（TREK 行解剖）：缩略图失败落分类字块；左上角压天内序号 -->
+              <span class="row-avatar">
+                <img
+                  v-if="imgLevel(element) < 2 && imgSrc(element)"
+                  :src="imgSrc(element)"
+                  :alt="element.poiName"
+                  loading="lazy"
+                  @error="onImgError(element)"
+                />
+                <span v-else class="row-avatar-fallback" aria-hidden="true">
+                  {{ typeLabel(element.itemType).slice(0, 1) }}
                 </span>
-                <span v-if="element.durationMin" class="row-dwell">约 {{ element.durationMin }} 分钟</span>
+                <i class="stop-badge" aria-hidden="true">{{ index + 1 }}</i>
+              </span>
+              <div class="row-main">
+                <div class="row-top">
+                  <!-- 分类小图标 10px + 名称 12.5px/500 + 时间 10px 文本（点开即改，不再常显 chip） -->
+                  <component
+                    :is="typeIcon(element.itemType)"
+                    class="row-type-icon"
+                    :size="10"
+                    :stroke-width="2"
+                    aria-hidden="true"
+                  />
+                  <span class="row-name">{{ element.poiName }}</span>
+                  <span class="qe-wrap" @click.stop>
+                    <AppPopover
+                      :open="quickEdit?.id === element.id && quickEdit?.field === 'time'"
+                      :label="`编辑「${element.poiName}」的时间`"
+                      align="start"
+                      @update:open="(open) => syncQuick(element, 'time', open)"
+                    >
+                      <template #trigger>
+                        <button v-if="element.startTime" type="button" class="row-time" title="编辑时间">
+                          <Clock :size="9" :stroke-width="2" />
+                          {{ formatTime(element.startTime) }}<template v-if="element.endTime"> – {{ formatTime(element.endTime) }}</template>
+                        </button>
+                        <button v-else type="button" class="row-time is-empty" title="添加时间">加时间</button>
+                      </template>
+                      <div class="qe-body">
+                        <label class="qe-label">
+                          开始时间
+                          <AppInput v-model="timeDraft" type="time" aria-label="开始时间" />
+                        </label>
+                        <label class="qe-label">
+                          时长（分钟）
+                          <AppNumberInput v-model="durDraft" :min="0" aria-label="时长" />
+                        </label>
+                        <button type="button" class="qe-save" @click="saveTime(element)">保存</button>
+                      </div>
+                    </AppPopover>
+                  </span>
+                </div>
+                <!-- 描述行：10px 单行省略（全文见贴底详情卡）；无描述落地址 -->
+                <p v-if="element.intro || element.description || element.address" class="row-desc">
+                  {{ element.intro || element.description || element.address }}
+                </p>
+                <!-- 备注行：10px + StickyNote 9px 单行 -->
+                <p v-if="element.remark" class="row-remark">
+                  <StickyNote :size="9" :stroke-width="2" aria-hidden="true" />
+                  <span>{{ element.remark }}</span>
+                </p>
               </div>
-              <div
-                v-if="element.openTime || element.cost != null || element.tag"
-                class="row-meta"
-              >
-                <span v-if="element.openTime">开放 {{ element.openTime }}</span>
-                <span v-if="element.cost != null">
-                  ￥{{ element.cost }}{{ element.itemType === 'hotel' ? '/晚/间' : '/人' }}
-                </span>
-                <span v-if="element.tag">{{ element.tag }}</span>
+              <span class="qe-wrap row-cost-wrap" @click.stop>
+                <AppPopover
+                  :open="quickEdit?.id === element.id && quickEdit?.field === 'cost'"
+                  :label="`编辑「${element.poiName}」的费用`"
+                  align="end"
+                  @update:open="(open) => syncQuick(element, 'cost', open)"
+                >
+                  <template #trigger>
+                    <button v-if="element.cost != null" type="button" class="row-cost" title="编辑费用">
+                      ￥{{ element.cost }}
+                    </button>
+                    <button v-else type="button" class="row-cost is-empty" title="添加费用">￥—</button>
+                  </template>
+                  <div class="qe-body">
+                    <label class="qe-label">
+                      费用（￥{{ element.itemType === 'hotel' ? '每晚每间' : '每人' }}）
+                      <AppNumberInput v-model="costDraft" :min="0" :precision="2" aria-label="费用" />
+                    </label>
+                    <button type="button" class="qe-save" @click="saveCost(element)">保存</button>
+                  </div>
+                </AppPopover>
+              </span>
+              <!-- 行操作：hover/聚焦才现身（TREK 的「悬停出操作」语义），图标 16px -->
+              <div class="row-actions">
+                <a
+                  class="row-icon"
+                  :href="mapLinkOf(element)"
+                  target="_blank"
+                  rel="noopener"
+                  :title="mapLinkLabel"
+                  :aria-label="mapLinkLabel"
+                  @click.stop
+                >
+                  <ExternalLink :size="16" />
+                </a>
+                <button
+                  type="button"
+                  class="row-icon"
+                  title="移至其他天"
+                  aria-label="移至其他天"
+                  @click.stop="emit('move-request', element)"
+                >
+                  <ArrowRightLeft :size="16" />
+                </button>
+                <button
+                  type="button"
+                  class="row-icon"
+                  title="编辑详情"
+                  aria-label="编辑详情"
+                  @click.stop="emit('edit-request', element)"
+                >
+                  <Pencil :size="16" />
+                </button>
+                <button
+                  type="button"
+                  class="row-icon is-danger"
+                  title="删除"
+                  aria-label="删除"
+                  @click.stop="onDeleteItem(element)"
+                >
+                  <Trash2 :size="16" />
+                </button>
               </div>
-              <!-- 景点介绍 + 推荐原因接排：why_this 作为正文续在介绍尾部，不加前缀标签 -->
-              <p
-                v-if="(element.intro || element.description) || element.whyThis"
-                class="poi-desc"
-                :class="{ expanded: descExpanded[element.id!] }"
-              >
-                <template v-if="element.intro || element.description">{{ element.intro || element.description }}</template><span v-if="element.whyThis" class="poi-why">{{ element.whyThis }}</span>
-              </p>
-              <el-button
-                v-if="descLong(element)"
-                class="poi-desc-toggle"
-                link
-                type="primary"
-                size="small"
-                @click.stop="toggleDesc(element)"
-              >
-                {{ descExpanded[element.id!] ? '收起' : '展开全部' }}
-              </el-button>
-              <p v-if="element.remark" class="poi-remark">{{ element.remark }}</p>
-            </div>
-            <div class="row-side">
-              <a class="row-map" :href="amapLink(element)" target="_blank" rel="noopener">{{ mapLinkLabel }} ↗</a>
-              <el-button link type="primary" size="small" @click.stop="openEditDialog(element)">
-                编辑
-              </el-button>
-              <el-button class="row-delete" link type="danger" size="small" @click.stop="onDeleteItem(element)">
-                删除
-              </el-button>
             </div>
           </div>
         </template>
-          </draggable>
-          <el-empty v-if="!(day.items || []).length" description="当天暂无安排" :image-size="80" />
-        </div>
-      </div>
-    </div>
+      </draggable>
 
-    <PoiSearchDialog v-model:visible="addDialogVisible" :day-id="day.dayId" />
-    <ItemEditDialog v-model:visible="editDialogVisible" :item="editTarget" />
+      <!-- 日尾：添加地点（整行虚线钮；打开右栏「发现」并预设本天为目标天，W2） -->
+      <button type="button" class="quick-add" @click="emit('add-request', day.dayId)">
+        <Plus :size="16" /> 添加地点
+      </button>
+    </div>
   </details>
 </template>
 
@@ -141,21 +324,45 @@
 import { computed, ref } from 'vue'
 import draggable from 'vuedraggable'
 import { storeToRefs } from 'pinia'
+import {
+  ArrowRightLeft,
+  BedDouble,
+  Camera,
+  Car,
+  ChevronDown,
+  Clock,
+  ExternalLink,
+  Footprints,
+  Lightbulb,
+  MapPin,
+  Pencil,
+  Plus,
+  Route,
+  StickyNote,
+  TrainFront,
+  Trash2,
+  UtensilsCrossed,
+} from 'lucide-vue-next'
 
 import { useItineraryStore, type StreamState } from '../../store/itinerary'
 import { useItineraryActions } from '../../composables/useItineraryActions'
 import { useItemPhoto } from '../../composables/useItemPhoto'
-import type { DayPlan, TripItem } from '../../types/itinerary'
-import { isForeignCity } from '../../utils/geo'
+import type { BackupPlanEntry, DayOption, DayPlan, PhotoSpotEntry, TripItem } from '../../types/itinerary'
+import { isForeignCity, externalMapLink } from '../../utils/geo'
+import { estimateLeg, legText, type TravelLeg } from '../../utils/travelEstimate'
 import DayNarrativePanel from './DayNarrativePanel.vue'
 import DragSortHandle from './DragSortHandle.vue'
-import PoiSearchDialog from './PoiSearchDialog.vue'
-import ItemEditDialog from './ItemEditDialog.vue'
+import InlineTipCard from './InlineTipCard.vue'
+import AppInput from '../ui/AppInput.vue'
+import AppNumberInput from '../ui/AppNumberInput.vue'
+import AppPopover from '../ui/AppPopover.vue'
+import { confirmDialog } from '../ui/confirm'
+import { toast } from '../ui/toast'
 
-// 单日折叠卡（M4-②a §5.4 / M4-②b §5.3 叙事化升级）：
-// - 跨页排版：叙事墙（DayNarrativePanel）在侧，时间轴站点列在主；
-// - why_this 并入 poi-desc 段尾（推荐原因接在介绍后，不再单独成行）；
-// - 搜索添加 / 行内编辑对话框均为自包含子组件（props 可见性 + 自读写 store）；
+// 单日卡（M4-②a §5.4 / M4-②b §5.3；v2.6 §19.3 天平铺重排）：
+// - 展开态由壳的 collapsedDays 反向控制（默认全展开，可单天折叠）；
+// - 日头 = day-tint 编号徽 + 日期/星期 + 标题 + 计数；内联提示卡（实用/拍照/备选）；
+// - why_this 并入 poi-desc 段尾；搜索添加 / 行内编辑对话框均为自包含子组件；
 // - 图片三级降级收敛为 useItemPhoto（§5.3.6）。
 // 组件只读 store，写变更一律经 useItineraryActions；拖拽/键盘排序为乐观本地变更，
 // 壳接收 item-drop 后走 actions.reorderItems 持久化（快照兜底，失败回滚顺序）。
@@ -163,28 +370,101 @@ const props = defineProps<{
   day: DayPlan
   /** SSE 生成状态机（§5.3.5）：驱动骨架态 / 当日微光 / 待生成与降级角标 */
   streamState: StreamState
-  /** 手风琴展开态（受控于壳的 openDayNo，单天展开） */
-  expanded: boolean
+  /** 折叠态（受控于壳的 collapsedDays，天平铺默认全展开） */
+  collapsed: boolean
   /** 地图联动高亮的行程项 id */
   highlightId: number | null
+  /** 选择态（W2 批量）：被勾选的行程项 id 集合 */
+  selectedIds: number[]
 }>()
 
 const emit = defineEmits<{
   'item-drop': [day: DayPlan]
   'item-select': [item: TripItem]
   toggle: [dayNo: number]
+  /** 请求跨天移动（打开目标日选择，键盘可达路径） */
+  'move-request': [item: TripItem]
+  /** 请求打开「更多字段」编辑对话框（壳层统一持有 ItemEditDialog） */
+  'edit-request': [item: TripItem]
+  /** 勾选/取消勾选行程项（批量条由壳渲染） */
+  'toggle-select': [item: TripItem]
+  /** 日尾「添加地点」：壳打开右栏发现面板并预设本天为目标天 */
+  'add-request': [dayId: number]
+  /** 右栏「发现」卡片拖落到本天（载荷由 dataTransfer JSON 携带，壳做结构校验与落库） */
+  'discover-drop': [payload: { dayId: number; entry: unknown }]
+  /** 拖拽落在别的日卡上：交壳持久化（复用 updateItem 带 dayId，不新增端点） */
+  'item-moved': [payload: { itemId: number; targetDayId: number }]
 }>()
 
 const store = useItineraryStore()
 const actions = useItineraryActions()
 const { detail } = storeToRefs(store)
 
-const amapReady = ref(!!import.meta.env.VITE_AMAP_JS_KEY)
 const detailForeign = computed(() => isForeignCity(detail.value?.city ?? ''))
-const mapReady = computed(() => amapReady.value || detailForeign.value)
 const mapLinkLabel = computed(() => (detailForeign.value ? '谷歌地图' : '高德地图'))
 
+/* day-tint 消费（v2.6 §19.4）：D1–D8 循环取色，日头/编号徽按档位上色 */
+const dayTintStyle = computed(() => ({
+  '--day-color': `var(--lp-day-${((props.day.dayNo - 1) % 8) + 1})`,
+}))
+
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+
+/** 日头副行：M月D日 · 周X（travelDate 缺省/非法时回落「第 N 天」） */
+function dayMetaText(day: DayPlan) {
+  if (day.travelDate) {
+    const date = new Date(day.travelDate)
+    if (!Number.isNaN(date.getTime())) {
+      return `${date.getMonth() + 1}月${date.getDate()}日 · ${WEEKDAYS[date.getDay()]}`
+    }
+  }
+  return `第 ${day.dayNo} 天`
+}
+
+/* ---------- 内联提示卡数据（从 DayNarrativePanel 拆出，v2.6 §19.3） ---------- */
+const practicalNotes = computed(() =>
+  (props.day.practicalNotes || []).map((n) => n.trim()).filter(Boolean),
+)
+
+const photoSpots = computed(() =>
+  (props.day.photoSpots || []).filter((s) => (s.name || s.title || '').trim()),
+)
+
+const backupRules = computed(() =>
+  (props.day.backupPlan || []).filter(
+    (r) => (r.if || r.name || r.title || '').trim() || (r.action || '').trim(),
+  ),
+)
+
+const hasTips = computed(
+  () => practicalNotes.value.length > 0 || photoSpots.value.length > 0 || backupRules.value.length > 0,
+)
+
+function spotName(s: PhotoSpotEntry) {
+  return (s.name || s.title || '').trim()
+}
+
+function ruleIf(r: BackupPlanEntry) {
+  return (r.if || '').trim()
+}
+
 const { imgLevel, imgSrc, onImgError } = useItemPhoto()
+
+/* ---------- 站间交通片（v2.7 §20 R3）：本地直线估算，界面带「≈」与估算说明 ---------- */
+const LEG_HINT = '本地直线估算（含路网折算，非实时路况）'
+const legs = computed<(TravelLeg | null)[]>(() => {
+  const items = props.day.items || []
+  return items.map((item, i) => (i === 0 ? null : estimateLeg(items[i - 1], item)))
+})
+
+function legAt(index: number): TravelLeg | null {
+  return legs.value[index] ?? null
+}
+
+function legLabel(index: number): string {
+  const leg = legs.value[index]
+  return leg ? legText(leg) : ''
+}
 
 // ---------- 流式生成状态（§5.3.5）：store.streamState 驱动 ----------
 const phase = computed(() => props.streamState.phase)
@@ -206,28 +486,26 @@ const dayDegraded = computed(() => {
   )
 })
 
+/** 拖拽结束：跨天（落点在别的日卡）走 item-moved；日内仍走 item-drop 排序。 */
+function onDragEnd(evt: { to?: HTMLElement; from?: HTMLElement; item?: HTMLElement }) {
+  const targetDayId = Number(evt.to?.dataset?.dayId)
+  const sourceDayId = Number(evt.from?.dataset?.dayId)
+  const itemId = Number(evt.item?.dataset?.itemId)
+  if (targetDayId && sourceDayId && targetDayId !== sourceDayId && Number.isFinite(itemId)) {
+    emit('item-moved', { itemId, targetDayId })
+    return
+  }
+  emit('item-drop', props.day)
+}
+
 function onSummaryClick(event: MouseEvent) {
-  // 手风琴：拦截 summary 原生 toggle，展开态由壳的 openDayNo 单一受控，避免多天同时展开
+  // 折叠态由壳的 collapsedDays 单一受控：拦截 summary 原生 toggle，只发意图
   event.preventDefault()
   emit('toggle', props.day.dayNo)
 }
 
 function onItemClick(item: TripItem) {
   emit('item-select', item)
-}
-
-// ---------- 景点介绍长文本展开/收起 ----------
-const descExpanded = ref<Record<number, boolean>>({})
-
-function toggleDesc(item: TripItem) {
-  const id = item.id!
-  descExpanded.value[id] = !descExpanded.value[id]
-}
-
-function descLong(item: TripItem) {
-  // 折叠阈值按「介绍 + 推荐原因」合并后的实际篇幅计算
-  const text = (item.intro || item.description || '') + (item.whyThis || '')
-  return text.length > 60
 }
 
 function dayTitle(d: DayPlan) {
@@ -249,17 +527,12 @@ const dayTotalAmount = computed(() => {
   }, 0)
 })
 
-function amapLink(item: TripItem) {
-  // 海外与后端一致走 Google Maps：有真实坐标优先按坐标打开，否则按名称检索
-  if (detailForeign.value) {
-    if (item.latitude != null && item.longitude != null) {
-      return `https://www.google.com/maps/search/?api=1&query=${item.latitude},${item.longitude}`
-    }
-    const keyword = `${detail.value?.city ?? ''}${item.poiName}`
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(keyword)}`
-  }
-  const keyword = `${detail.value?.city ?? ''}${item.poiName}`
-  return `https://uri.amap.com/search?keyword=${encodeURIComponent(keyword)}`
+/** 地图外链：统一口径在 utils/geo（国内高德搜索 / 海外 Google Maps，有坐标优先） */
+function mapLinkOf(item: TripItem) {
+  return externalMapLink(
+    { name: item.poiName, latitude: item.latitude, longitude: item.longitude },
+    detail.value?.city,
+  )
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -269,19 +542,20 @@ const TYPE_LABEL: Record<string, string> = {
   transport: '交通',
 }
 
-const TYPE_TAG: Record<string, string> = {
-  attraction: 'primary',
-  food: 'warning',
-  hotel: 'success',
-  transport: 'info',
+// 行内分类小图标（TREK 行解剖：名称前 10px 分类图标，替代原先的彩色 tag 块）
+const TYPE_ICON: Record<string, unknown> = {
+  attraction: Camera,
+  food: UtensilsCrossed,
+  hotel: BedDouble,
+  transport: TrainFront,
 }
 
 function typeLabel(type: string) {
   return TYPE_LABEL[type] || type
 }
 
-function tagType(type: string) {
-  return (TYPE_TAG[type] || 'info') as 'primary' | 'warning' | 'success' | 'info'
+function typeIcon(type: string): unknown {
+  return TYPE_ICON[type] || MapPin
 }
 
 /** 时间展示统一 HH:mm（数据侧为 HH:mm:ss） */
@@ -290,51 +564,183 @@ function formatTime(value?: string | null) {
 }
 
 async function onDeleteItem(item: TripItem) {
-  await ElMessageBox.confirm(`确认删除「${item.poiName}」？`, '删除确认', { type: 'warning' })
+  const ok = await confirmDialog(`确认删除「${item.poiName}」？`, { title: '删除确认', confirmText: '删除' })
+  if (!ok) return
   await actions.deleteItem(item.id!)
-  ElMessage.success('已删除')
+  toast.success('已删除')
 }
 
-// ---------- 行内增删改对话框：可见性在本组件，表单逻辑在子组件 ----------
-const addDialogVisible = ref(false)
+// ---------- 日头工作台（W3）：副标题编辑 / 建议方案（只读）/ 优化路线 ----------
+const dayOptions = computed(() =>
+  (props.day.dayOptions || []).filter(
+    (opt) => (opt.label || opt.summary || opt.tradeoff || '').toString().trim(),
+  ),
+)
 
-function openAddDialog() {
-  addDialogVisible.value = true
+function optionNames(opt: DayOption): string[] {
+  return (opt.items || []).map((item) => item.poiName).filter(Boolean)
 }
 
-const editDialogVisible = ref(false)
-const editTarget = ref<TripItem | null>(null)
+/** 可优化活动项计数（与后端 optimize 的 400 门槛同口径：attraction / food） */
+const activeCount = computed(
+  () => (props.day.items || []).filter((it) => it.itemType === 'attraction' || it.itemType === 'food').length,
+)
 
-function openEditDialog(item: TripItem) {
-  editTarget.value = item
-  editDialogVisible.value = true
+const subtitleOpen = ref(false)
+const subtitleDraft = ref('')
+
+function syncSubtitle(open: boolean) {
+  if (open) subtitleDraft.value = props.day.theme || ''
+  subtitleOpen.value = open
+}
+
+async function saveSubtitle() {
+  await actions.updateDay(detail.value!.id, props.day.dayId, subtitleDraft.value.trim())
+  subtitleOpen.value = false
+  toast.success('日标题已更新')
+}
+
+const optionsOpen = ref(false)
+const optimizing = ref(false)
+
+async function onOptimize() {
+  if (optimizing.value) return
+  optimizing.value = true
+  try {
+    await actions.optimizeDay(detail.value!.id, props.day.dayId)
+    toast.success('已按交通耗时重排当天（版本历史可回滚）')
+  } finally {
+    optimizing.value = false
+  }
+}
+
+// ---------- 对话框：编辑对话框与添加入口均已收编壳层/右栏（W2 退役 PoiWorkbench） ----------
+
+// ---------- 拖拽入天（W2）：接收右栏「发现」卡片（dataTransfer JSON 载荷），落库交壳 ----------
+const dropOver = ref(false)
+
+function onDragLeave(event: DragEvent) {
+  const current = event.currentTarget as HTMLElement | null
+  const next = event.relatedTarget as Node | null
+  if (!current || !next || !current.contains(next)) dropOver.value = false
+}
+
+function onDrop(event: DragEvent) {
+  dropOver.value = false
+  const raw = event.dataTransfer?.getData('application/x-discover-entry')
+  if (!raw) return
+  try {
+    emit('discover-drop', { dayId: props.day.dayId, entry: JSON.parse(raw) })
+  } catch {
+    /* 非法载荷忽略（不打断拖拽后的其他交互） */
+  }
+}
+
+// ---------- 行内快捷编辑（时间 / 费用）：AppPopover + updateItem 单点写（v2.6 §19.3） ----------
+const quickEdit = ref<{ id: number; field: 'time' | 'cost' } | null>(null)
+const timeDraft = ref('')
+const durDraft = ref<number | null>(null)
+const costDraft = ref<number | null>(null)
+
+/** 同一时刻只允许一个行内 popover：打开时登记目标（并回填草稿），关闭时清除 */
+function syncQuick(item: TripItem, field: 'time' | 'cost', open: boolean) {
+  if (!open) {
+    const current = quickEdit.value
+    if (current && current.id === item.id && current.field === field) quickEdit.value = null
+    return
+  }
+  quickEdit.value = { id: item.id!, field }
+  if (field === 'time') {
+    timeDraft.value = item.startTime ? item.startTime.slice(0, 5) : ''
+    durDraft.value = item.durationMin ?? null
+  } else {
+    costDraft.value = item.cost ?? null
+  }
+}
+
+/** 完整字段载荷：与 ItemEditDialog 同口径（后端 PUT 为全量语义，避免部分更新丢坐标） */
+function baseUpdatePayload(item: TripItem) {
+  return {
+    itemType: item.itemType,
+    poiName: item.poiName,
+    poiId: item.poiId,
+    address: item.address,
+    latitude: item.latitude,
+    longitude: item.longitude,
+    startTime: item.startTime || undefined,
+    endTime: item.endTime,
+    durationMin: item.durationMin ?? undefined,
+    cost: item.cost ?? undefined,
+    tag: item.tag || undefined,
+    remark: item.remark || undefined,
+  }
+}
+
+async function saveTime(item: TripItem) {
+  // 原生 time 输入为 HH:mm；后端契约为 HH:mm:ss
+  const normalized = timeDraft.value
+    ? timeDraft.value.length === 5
+      ? `${timeDraft.value}:00`
+      : timeDraft.value
+    : undefined
+  await actions.updateItem(item.id!, {
+    ...baseUpdatePayload(item),
+    startTime: normalized,
+    durationMin: durDraft.value ?? undefined,
+  })
+  quickEdit.value = null
+  toast.success('时间已更新')
+}
+
+async function saveCost(item: TripItem) {
+  await actions.updateItem(item.id!, {
+    ...baseUpdatePayload(item),
+    cost: costDraft.value ?? undefined,
+  })
+  quickEdit.value = null
+  toast.success('费用已更新')
 }
 </script>
 
 <style scoped>
-/* ---------- 逐日折叠面板 ---------- */
+/* ---------- 逐日面板（天平铺）：日头带 day-tint，可单天折叠 ---------- */
 .day-panel summary {
   display: grid;
-  grid-template-columns: 78px 1fr 34px;
-  gap: 24px;
+  grid-template-columns: auto minmax(0, 1fr) 34px;
+  gap: 14px;
   align-items: center;
-  padding: 26px 0 22px;
-  border-bottom: 1px solid #d8dfda;
+  margin: 0 -12px;
+  padding: 16px 12px;
+  border-radius: var(--lp-radius-sm);
+  background: color-mix(in oklch, var(--day-color) var(--lp-day-tint-header), transparent);
+  border-bottom: 1px solid var(--lp-edge-faint);
   cursor: pointer;
   list-style: none;
+  transition: background 0.15s ease;
+}
+
+.day-panel summary:hover {
+  background: color-mix(in oklch, var(--day-color) var(--lp-day-tint-header-hover), transparent);
 }
 
 .day-panel summary::-webkit-details-marker {
   display: none;
 }
 
-.day-idx {
-  font-family: var(--lp-font-display);
-  font-style: italic;
-  font-weight: 400;
-  font-size: 36px;
-  line-height: 1.1;
-  color: var(--lp-accent-warm);
+/* 编号徽（day-tint badge 档）：替代旧衬线斜体序号 */
+.day-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 8px;
+  border-radius: var(--lp-radius-sm);
+  background: color-mix(in oklch, var(--day-color) var(--lp-day-tint-badge), transparent);
+  color: color-mix(in oklch, var(--day-color) 70%, var(--lp-text-1));
+  font-family: var(--lp-font-mono);
+  font-size: 14px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
@@ -346,13 +752,102 @@ function openEditDialog(item: TripItem) {
 
 .day-title {
   display: block;
-  margin: 6px 0 4px;
-  font-family: var(--lp-font-display);
-  font-weight: 500;
-  font-size: 23px;
-  line-height: 1.25;
+  margin: 4px 0 3px;
+  font-family: var(--lp-font-ui);
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1.3;
   color: var(--lp-ink);
   letter-spacing: -0.01em;
+}
+
+/* 标题即可编辑入口（点击开副标题 popover）：视觉不变，hover 虚线提示可编辑 */
+.day-title-btn {
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: text;
+}
+
+.day-title-btn:hover {
+  text-decoration: underline dashed;
+  text-decoration-color: var(--lp-edge-2);
+  text-underline-offset: 4px;
+}
+
+/* 日头工具行（建议方案 / 优化路线）：小号幽灵胶囊 */
+.day-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.diy-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border: 1px solid var(--lp-edge-1);
+  border-radius: var(--lp-radius-pill);
+  background: var(--lp-surface-card);
+  color: var(--lp-text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.diy-tool:hover:not(:disabled) {
+  color: var(--lp-accent);
+  border-color: var(--lp-accent);
+}
+
+.diy-tool:disabled {
+  color: var(--lp-text-faint);
+  cursor: default;
+}
+
+/* 建议方案弹层内容（自 DayNarrativePanel 迁入，v2.6 W3） */
+.opt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 300px;
+}
+
+.opt-card {
+  padding: 8px 10px;
+  border: 1px solid var(--lp-edge-1);
+  border-left: 3px solid var(--lp-branch-b);
+  border-radius: 0 8px 8px 0;
+  background: var(--lp-surface-2);
+}
+
+.opt-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+}
+
+.opt-label {
+  font-weight: 700;
+  color: var(--lp-accent-hover);
+  font-size: 13px;
+}
+
+.opt-summary {
+  font-size: 12.5px;
+  color: var(--lp-text-2);
+}
+
+.opt-sub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--lp-text-muted);
 }
 
 .day-count {
@@ -438,250 +933,438 @@ function openEditDialog(item: TripItem) {
   color: var(--lp-danger);
 }
 
-.day-plus {
+.day-chev {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 30px;
   height: 30px;
-  border: 1px solid #c9d2cc;
+  border: 1px solid var(--lp-edge-2);
   border-radius: 50%;
   font-size: 14px;
   color: var(--lp-ink-soft);
   transition: transform 0.25s ease;
 }
 
-/* 收起/展开语义明确化：▾ 旋转 180°，替代旧「＋→×」的歧义旋转 */
-.day-panel[open] .day-plus {
+/* 收起/展开语义明确化：箭头旋转 180°，替代旧「＋→×」的歧义旋转 */
+.day-panel[open] .day-chev {
   transform: rotate(180deg);
 }
 
 .day-content {
-  padding: 18px 0 8px;
+  padding: 14px 0 10px;
 }
 
-/* ---------- 跨页 spread：左叙事墙 / 右时间轴，窄屏折叠为上下 ---------- */
-/* 侧栏压缩为窄提示栏（≤240px），主宽度让给点位卡；粘性落在内层 wrapper 上（否则无行程可粘） */
-.day-spread {
-  display: grid;
-  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
-  gap: 8px 26px;
-}
-
-.spread-side {
-  min-width: 0;
-}
-
-.spread-side-inner {
-  position: sticky;
-  top: 64px;
-}
-
-@media (max-width: 900px) {
-  .day-spread {
-    grid-template-columns: 1fr;
-  }
-
-  .spread-side-inner {
-    position: static;
-  }
-}
-
-.route-toolbar {
+/* ---------- 内联提示卡（TREK 式彩色小卡）：内容排版由本层组织，基调色在 InlineTipCard ---------- */
+.tip-stack {
   display: flex;
-  justify-content: flex-end;
-  margin: 0 0 10px;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 14px;
 }
 
-/* ---------- 站点轨道行 ---------- */
+.tip-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--lp-text-2);
+}
+
+.tip-strong {
+  margin-right: 6px;
+  font-weight: 600;
+  color: var(--lp-text-1);
+}
+
+.tip-time {
+  margin-left: 6px;
+  font-family: var(--lp-font-mono);
+  font-size: 11px;
+  color: var(--lp-text-muted);
+}
+
+.day-empty {
+  padding: 18px 0;
+  text-align: center;
+  color: var(--lp-text-muted);
+  font-size: 13px;
+}
+
+/* ---------- 站间交通片（v2.7 §20 R3）：虚线 + 图标 + 「步行 ≈ 12 分钟 · 0.9 公里」 ---------- */
+.row-wrap {
+  border-radius: var(--lp-radius-xs);
+}
+
+.leg-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 12px;
+  color: var(--lp-text-faint);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.leg-line {
+  flex: 1;
+  border-top: 1px dashed var(--lp-edge-2);
+}
+
+.leg-text {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* ---------- 站点行（v2.7 §20 R3 照抄 TREK DayPlanSidebar 行解剖） ----------
+   一条横长条：勾选 + 抓手 + 28px 圆头像 + 名称/时间/描述/备注三行文本 + 费用；
+   hover 出 16px 图标操作列（地图外链 / 移至 / 编辑 / 删除） */
 .route-row {
-  display: grid;
-  scroll-margin-top: 72px; /* 目录跳转/高亮定位时给粘性迷你目录留出头部空间 */
-  grid-template-columns: 104px 40px minmax(0, 1fr) auto;
-  gap: 12px;
-  padding: 14px 16px;
-  margin-bottom: 10px;
-  background: #fff;
-  border: 1px solid var(--lp-border);
-  border-radius: 12px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  scroll-margin-top: 84px;
+  padding: 7px 8px 7px 10px;
+  border-left: 3px solid transparent;
+  border-radius: var(--lp-radius-xs);
   cursor: pointer;
-  transition:
-    border-color 0.15s,
-    box-shadow 0.15s;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .route-row:hover {
-  border-color: var(--lp-accent);
+  background: var(--lp-surface-hover);
 }
 
 .route-row:focus-visible {
   outline: 2px solid var(--lp-accent);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
-.row-img {
-  width: 104px;
-  height: 72px;
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--lp-sand);
+.route-row.highlighted {
+  background: var(--lp-surface-selected);
+  border-left-color: var(--lp-accent);
 }
 
-.row-img img {
+/* 拖拽入天落点提示：整卡虚线描边（dragover 期间） */
+.day-panel.is-drop-over > summary {
+  outline: 2px dashed var(--lp-accent);
+  outline-offset: -2px;
+}
+
+.row-check {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--lp-accent);
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.route-row:hover .row-check,
+.row-check:checked {
+  opacity: 1;
+}
+
+/* 抓手：常态 0.3 亮度，行 hover/聚焦才亮起（TREK 同款） */
+.row-grip {
+  flex: none;
+  opacity: 0.3;
+  transition: opacity 0.15s;
+}
+
+.route-row:hover .row-grip,
+.route-row:focus-within .row-grip {
+  opacity: 1;
+}
+
+/* 28px 圆头像；缩略图失败落分类字块；左上角压天内序号（与地图图钉同号） */
+.row-avatar {
+  position: relative;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  overflow: visible;
+  background: var(--lp-surface-2);
+}
+
+.row-avatar img {
   width: 100%;
   height: 100%;
+  border-radius: 50%;
   object-fit: cover;
   display: block;
 }
 
-.row-img-fallback {
-  width: 100%;
-  height: 100%;
+.row-avatar-fallback {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--lp-accent);
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--day-color) var(--lp-day-tint-badge), transparent);
+  color: color-mix(in oklch, var(--day-color) 75%, var(--lp-text-1));
+  font-size: 11px;
   font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 0.08em;
 }
 
-@media (max-width: 640px) {
-  .route-row {
-    grid-template-columns: 72px 40px minmax(0, 1fr) auto;
-  }
-
-  .row-img {
-    width: 72px;
-    height: 54px;
-  }
-}
-
-.route-row.highlighted {
-  border-color: var(--lp-accent);
-  box-shadow: 0 0 0 2px var(--lp-accent-soft);
-}
-
-.row-no {
-  display: flex;
-  flex-direction: column;
+/* 编号徽（day-tint badge 档，与日头徽/地图图钉同源） */
+.stop-badge {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding-top: 2px;
-}
-
-.row-idx {
-  font-family: var(--lp-font-display);
-  font-style: italic;
-  font-size: 17px;
-  color: var(--lp-accent-warm);
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: var(--lp-radius-pill);
+  background: var(--lp-surface-card);
+  color: color-mix(in oklch, var(--day-color) 75%, var(--lp-text-1));
+  box-shadow: 0 0 0 1.5px color-mix(in oklch, var(--day-color) var(--lp-day-tint-badge), transparent);
+  font-family: var(--lp-font-mono);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .row-main {
+  flex: 1;
   min-width: 0;
 }
 
 .row-top {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  min-width: 0;
 }
 
-/* POI 名称用正文轨（衬线展示层只承担叙事标题，§5.1 排版规则） */
+.row-type-icon {
+  flex: none;
+  color: var(--lp-text-muted);
+}
+
 .row-name {
   font-family: var(--lp-font-body);
-  font-weight: 600;
-  font-size: 15px;
-  color: var(--lp-ink);
+  font-weight: 500;
+  font-size: 12.5px;
+  line-height: 1.2;
+  color: var(--lp-text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+/* 时间 10px 纯文本（v2.7 §20 R3：不再常显 chip），点开即改 */
 .row-time {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--lp-ink-soft);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--lp-text-faint);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
+  cursor: pointer;
 }
 
-.row-dwell {
-  font-size: 11px;
-  color: var(--lp-muted);
+.row-time:hover {
+  color: var(--lp-text-1);
 }
 
-.row-meta {
+.row-time.is-empty {
+  color: var(--lp-text-faint);
+  opacity: 0.75;
+}
+
+/* 描述行：10px 单行省略（全文在贴底详情卡） */
+.row-desc {
+  margin: 2px 0 0;
+  max-height: 1.2em;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--lp-text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 备注行：10px + StickyNote 9px（TREK 同款单行） */
+.row-remark {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  margin-top: 6px;
-  color: var(--lp-muted);
-  font-size: 12px;
-}
-
-.poi-desc {
-  margin: 8px 0 0;
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--lp-ink-soft);
-  word-break: break-word;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 0 0;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--lp-text-faint);
   overflow: hidden;
 }
 
-.poi-desc.expanded {
-  display: block;
-  -webkit-line-clamp: unset;
-  line-clamp: unset;
-  overflow: visible;
+.row-remark span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* 推荐原因接排在介绍尾部：注释感灰（--lp-why-ink），与正文同字号保持阅读连贯 */
-.poi-why {
-  margin-left: 0.35em;
-  color: var(--lp-why-ink);
+.row-cost-wrap {
+  flex: none;
+  margin-left: auto;
 }
 
-.poi-desc-toggle {
-  height: auto;
+.row-cost {
   padding: 0;
-  margin-top: 4px;
+  border: none;
+  background: none;
+  color: var(--lp-text-muted);
+  font-family: var(--lp-font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
 }
 
-.poi-remark {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--lp-muted);
+.row-cost:hover {
+  color: var(--lp-text-1);
 }
 
-.row-side {
+.row-cost.is-empty {
+  opacity: 0.6;
+}
+
+/* 行操作：默认隐去，hover/聚焦浮出行尾；底衬淡出避免压字 */
+.row-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px 0 18px;
+  border-radius: 0 var(--lp-radius-xs) var(--lp-radius-xs) 0;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--lp-surface-hover) 24%,
+    var(--lp-surface-hover)
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.route-row:hover .row-actions,
+.route-row:focus-within .row-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.route-row.highlighted:hover .row-actions {
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--lp-surface-selected) 24%,
+    var(--lp-surface-selected)
+  );
+}
+
+.row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--lp-radius-xs);
+  background: transparent;
+  color: var(--lp-text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.row-icon:hover {
+  background: var(--lp-surface-card);
+  color: var(--lp-text-1);
+}
+
+.row-icon.is-danger:hover {
+  color: var(--lp-danger);
+}
+
+/* ---------- 日尾添加地点（整行虚线钮；打开右栏「发现」并预设目标天） ---------- */
+.quick-add {
+  display: flex;
+  align-items: center;
   justify-content: center;
   gap: 6px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 0;
+  border: 1px dashed var(--lp-edge-2);
+  border-radius: var(--lp-radius-sm);
+  background: transparent;
+  color: var(--lp-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 
-.row-side .el-button + .el-button {
-  margin-left: 0;
-}
-
-/* 破坏性操作与常规操作拉开距离，降低窄屏误触 */
-.row-side .row-delete {
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px dashed var(--lp-rule);
-}
-
-.row-map {
-  font-size: 11px;
+.quick-add:hover {
   color: var(--lp-accent);
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
+  border-color: var(--lp-accent);
 }
 
-.row-map:hover {
-  border-bottom-color: var(--lp-accent);
+/* ---------- 行内快捷编辑（时间 / 费用） ---------- */
+.qe-wrap {
+  display: inline-flex;
+}
+
+.qe-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qe-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--lp-text-muted);
+}
+
+.qe-save {
+  align-self: flex-end;
+  padding: 4px 14px;
+  border: none;
+  border-radius: var(--lp-radius-xs);
+  background: var(--lp-accent);
+  color: var(--lp-accent-on-fill);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.qe-save:hover {
+  background: var(--lp-accent-hover);
 }
 </style>

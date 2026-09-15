@@ -1,7 +1,5 @@
 <template>
   <div class="trip-detail" v-loading="loading">
-    <div class="reading-progress" aria-hidden="true"></div>
-
     <!-- 加载失败/无权限/不存在：完整错误态页，页面自解释而非只剩页脚 -->
     <el-card v-if="loadError && !detail" shadow="never" class="load-error">
       <el-empty :image-size="120" :description="loadErrorDescription">
@@ -13,84 +11,225 @@
       </el-empty>
     </el-card>
 
-    <TripCoverHeader
+    <!-- 「管家说」细条（v2.6 §19.3；v2.7 §20 R1 压缩为 h40，桌面端固定在导航之下） -->
+    <ButlerStrip
       v-if="detail"
+      class="butler-slot"
       :detail="detail"
-      :exporting-pdf="exportBarRef?.exportingPdf"
-      :exporting-img="exportBarRef?.exportingImg"
-      @export-pdf="onExportPdf"
-      @export-image="onExportImage"
-      @similar="$router.push('/generate')"
-      @back="$router.back()"
+      :done-days="doneDays"
+      :stream-state="streamState"
+      @retry="onStreamRetry"
+      @chat="chatVisible = true"
+      @versions="versionVisible = true"
     />
 
-    <!-- §5.3.1 主题叙事条：trip_theme 衬线大字 + theme-accent 底线；意图回显行有值才渲染；
-         无 trip_theme（历史行程/降级生成）整条隐藏，不出现空壳 -->
-    <section v-if="detail?.tripTheme" class="theme-bar">
-      <h2 class="theme-title">{{ detail.tripTheme }}</h2>
-      <p v-if="detail.intent" class="theme-intent">{{ detail.intent }}</p>
-    </section>
-
-    <el-card v-if="detail" shadow="never" class="head">
-      <HeadStatusPanel :detail="detail" :done-days="doneDays" :stream-state="streamState" @retry="onStreamRetry" />
-      <ButlerNoteCard
-        v-if="detail.planNote && detail.status !== 3"
-        :note="detail.planNote"
-        :streaming="streamState.phase === 'butler'"
-      />
-      <ChatEditPanel :itinerary-id="detail.id" @apply-draft="loadDetail" />
-    </el-card>
-
-    <!-- 预算概览条：替代原右栏看板，天级小计在日卡标题、条目价格在点位卡 -->
-    <BudgetStrip
+    <!-- 三栏工作台（v2.6 §19.3；v2.7 §20 R1 视口固定 + 面板独立滚动）：
+         左行程 / 中地图 / 右发现；面板宽 340/300 可拖可收（R2，TREK 语义）。
+         ≥768 走视口固定布局（.workbench 内铺开），<768 保持移动壳单列分段 -->
+    <div
       v-if="detail"
-      :budget-list="detail.budgetList"
-      :total-amount="detail.totalAmount"
-      :budget-limit="detail.budget"
-      :persons="detail.persons"
-      :days="detail.dayList.length"
-    />
+      ref="workbenchEl"
+      class="workbench3"
+      :style="corridorVars"
+    >
+      <Segmented
+        v-if="!isDesktop"
+        v-model="mobilePane"
+        class="pane-switch"
+        :items="PANE_ITEMS"
+        aria-label="工作台视图"
+      />
 
-    <!-- 手册白底大区：粘性迷你目录 + 逐日轨道全宽（原右栏已随地图/预算看板一并取消） -->
-    <div v-if="detail" class="handbook-body">
-      <nav class="day-toc" aria-label="每日目录">
+      <!-- 左栏：行程（标题/操作条 + 日目录 + 日卡滚动区 + 预算停靠） -->
+      <div v-show="isDesktop || mobilePane === 'trip'" class="panel-slot slot-left">
         <button
-          v-for="d in detail.dayList"
-          :key="d.dayId"
           type="button"
-          class="toc-pill"
-          :class="{ 'is-active': activeTocDay === d.dayNo, 'is-open': openDayNo === d.dayNo }"
-          @click="jumpToDay(d.dayNo)"
+          class="panel-ear ear-left"
+          :class="{ 'is-collapsed': leftHidden }"
+          :aria-label="leftHidden ? '展开行程栏' : '收起行程栏'"
+          :title="leftHidden ? '展开行程栏' : '收起行程栏'"
+          @click="toggleLeft"
         >
-          D{{ String(d.dayNo).padStart(2, '0') }}
+          <PanelLeftOpen v-if="leftHidden" :size="16" />
+          <PanelLeftClose v-else :size="16" />
         </button>
-      </nav>
-      <section class="day-list">
-        <div
-          v-for="d in detail.dayList"
-          :id="`day-block-${d.dayNo}`"
-          :key="d.dayId"
-          :ref="(el) => setDayBlockRef(el, d.dayNo)"
-          class="day-block"
-        >
-          <DayListCard
-            :day="d"
-            :expanded="d.dayNo === openDayNo"
-            :highlight-id="highlightId"
-            :stream-state="streamState"
-            @toggle="onDayToggle"
-            @item-drop="onItemDrop"
-            @item-select="onItemSelect"
+        <section class="panel" :style="{ '--lp-panel-w': leftHidden ? '0px' : `${leftWidth}px` }">
+          <header class="panel-head">
+            <button type="button" class="head-back" aria-label="返回" title="返回" @click="router.back()">
+              <ChevronLeft :size="16" />
+            </button>
+            <div class="head-text" :title="detail.intent || undefined">
+              <span class="head-title">{{ detail.title }}</span>
+              <span class="head-meta">
+                {{ detail.tripTheme || detail.city }} · {{ detail.days }} 天 {{ detail.stayNights }} 晚 ·
+                {{ detail.persons }} 人<template v-if="detail.startDate"> · {{ detail.startDate }} ~ {{ detail.endDate }}</template>
+              </span>
+            </div>
+            <AppMenu :items="headMenuItems" trigger-label="行程操作" @select="onHeadMenu" />
+          </header>
+
+          <nav class="day-toc" aria-label="每日目录">
+            <button
+              v-for="d in detail.dayList"
+              :key="d.dayId"
+              type="button"
+              class="toc-pill"
+              :style="{ '--chip-color': `var(--lp-day-${((d.dayNo - 1) % 8) + 1})` }"
+              :class="{ 'is-active': activeTocDay === d.dayNo }"
+              @click="jumpToDay(d.dayNo)"
+            >
+              D{{ String(d.dayNo).padStart(2, '0') }}
+            </button>
+          </nav>
+
+          <div class="panel-scroll">
+            <div class="day-list">
+              <div
+                v-for="d in detail.dayList"
+                :id="`day-block-${d.dayNo}`"
+                :key="d.dayId"
+                :ref="(el) => setDayBlockRef(el, d.dayNo)"
+                class="day-block"
+              >
+                <DayListCard
+                  :day="d"
+                  :collapsed="collapsedDays.includes(d.dayNo)"
+                  :highlight-id="highlightId"
+                  :stream-state="streamState"
+                  :selected-ids="selectedIds"
+                  @toggle="onDayToggle"
+                  @item-drop="onItemDrop"
+                  @item-select="onItemSelect"
+                  @move-request="onMoveRequest"
+                  @edit-request="onEditRequest"
+                  @toggle-select="onToggleSelect"
+                  @add-request="onAddRequest"
+                  @discover-drop="onDiscoverDrop"
+                  @item-moved="onCrossDayMove"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- 预算条停靠左栏底部（v2.6 §19.3）：docked = 总价一行 + 明细弹层 -->
+          <BudgetStrip
+            class="budget-dock"
+            docked
+            :budget-list="detail.budgetList"
+            :total-amount="detail.totalAmount"
+            :budget-limit="detail.budget"
+            :persons="detail.persons"
+            :days="detail.dayList.length"
           />
-        </div>
-      </section>
+
+          <div
+            v-if="!leftHidden && !narrow"
+            class="panel-resize"
+            role="presentation"
+            aria-hidden="true"
+            @mousedown="startResizeLeft"
+          ></div>
+        </section>
+      </div>
+
+      <!-- 地图（工作台铺底，面板浮于其上；窄屏仍是单列里的一段） -->
+      <div v-show="isDesktop || mobilePane === 'map'" class="map-stage">
+        <TripMapPanel
+          :days="detail.dayList"
+          :active-item-id="highlightId"
+          @select="onSelectFromMap"
+          @clear="highlightId = null"
+        />
+        <!-- 贴底浮层详情卡（v2.6 §19.3）：选中站点/图钉即出；X/Esc/点地图空白关闭 -->
+        <PlaceDetailSheet
+          v-if="activeItem"
+          :item="activeItem"
+          @close="highlightId = null"
+          @edit="onEditRequest"
+          @move="onMoveRequest"
+          @delete="onItemDelete"
+        />
+      </div>
+
+      <!-- 右栏：发现（搜索加点 + 全部/未排/已排 + 分类） -->
+      <div v-show="isDesktop || mobilePane === 'discover'" class="panel-slot slot-right">
+        <button
+          type="button"
+          class="panel-ear ear-right"
+          :class="{ 'is-collapsed': rightHidden }"
+          :aria-label="rightHidden ? '展开发现栏' : '收起发现栏'"
+          :title="rightHidden ? '展开发现栏' : '收起发现栏'"
+          @click="toggleRight"
+        >
+          <PanelRightOpen v-if="rightHidden" :size="16" />
+          <PanelRightClose v-else :size="16" />
+        </button>
+        <section class="panel panel-right" :style="{ '--lp-panel-w': rightHidden ? '0px' : `${rightWidth}px` }">
+          <div class="panel-fill">
+            <DiscoverPanel
+              :preset-day-id="presetDiscoverDayId"
+              @select="onPanelItemSelect"
+              @clear-preset="presetDiscoverDayId = null"
+            />
+          </div>
+          <div
+            v-if="!rightHidden && !narrow"
+            class="panel-resize is-left"
+            role="presentation"
+            aria-hidden="true"
+            @mousedown="startResizeRight"
+          ></div>
+        </section>
+      </div>
     </div>
 
-    <DiscoverPool v-if="detail" />
+    <!-- 跨天移动的目标日选择（S4）：行菜单/键盘路径与拖拽走同一条 API；v2.6 起对话框自研 -->
+    <AppDialog
+      v-model="moveDialogVisible"
+      title="移动到其他天"
+      width="min(380px, calc(100vw - 32px))"
+    >
+      <p v-if="moveTarget" class="move-hint">
+        「{{ moveTarget.poiName }}」当前在第 {{ currentDayNo }} 天
+      </p>
+      <div class="move-day-grid">
+        <el-button
+          v-for="d in otherDays"
+          :key="d.dayId"
+          :disabled="moving"
+          @click="confirmMove(d.dayId)"
+        >
+          第 {{ d.dayNo }} 天<template v-if="d.travelDate"> · {{ d.travelDate }}</template>
+        </el-button>
+      </div>
+      <p v-if="moveTarget && !otherDays.length" class="move-hint">没有其他可移动的天</p>
+    </AppDialog>
 
-    <footer class="handbook-footer">
-      <button type="button" class="back-top" @click="onBackTop">回到顶部</button>
-    </footer>
+    <!-- S1/S2 弹窗与 A5 抽屉（挂载点收在壳里，逻辑各自内聚） -->
+    <CoverDialog
+      v-if="detail"
+      v-model:visible="coverVisible"
+      :itinerary-id="detail.id"
+      :default-query="detail.city"
+      @updated="onCoverUpdated"
+    />
+    <!-- 更多字段编辑（v2.6 W2）：对话框收在壳层，行内「编辑」与详情卡「编辑」共用 -->
+    <ItemEditDialog v-if="detail" v-model:visible="editVisible" :item="editTarget" />
+    <ShareDialog v-if="detail" v-model:visible="shareVisible" :itinerary-id="detail.id" />
+    <VersionHistoryDrawer
+      v-if="detail"
+      v-model:visible="versionVisible"
+      :itinerary-id="detail.id"
+      @restored="onVersionRestored"
+    />
+
+    <!-- 选择态批量条（v2.6 §19.3）：勾选 ≥1 项时底部浮出 -->
+    <SelectionBar :selected-ids="selectedIds" @clear="selectedIds = []" />
+
+    <!-- AI 对话抽屉：ChatEditPanel 自页头卡片收编而来（v2.6 §19.3） -->
+    <AppSheet v-if="detail" v-model="chatVisible" direction="rtl" size="460px" title="AI 管家 · 智能修改">
+      <ChatEditPanel :itinerary-id="detail.id" @apply-draft="loadDetail" />
+    </AppSheet>
 
     <ExportBar ref="exportBarRef" :stream-connected="streamConnected" :stream-on="stream.on" />
   </div>
@@ -98,25 +237,49 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import TripCoverHeader from '../components/TripCoverHeader.vue'
+import { useRoute, useRouter } from 'vue-router'
+import {
+  ChevronLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+} from 'lucide-vue-next'
+
 import BudgetStrip from '../components/trip/BudgetStrip.vue'
+import ButlerStrip from '../components/trip/ButlerStrip.vue'
 import DayListCard from '../components/trip/DayListCard.vue'
 import ChatEditPanel from '../components/trip/ChatEditPanel.vue'
-import DiscoverPool from '../components/trip/DiscoverPool.vue'
+import DiscoverPanel from '../components/trip/DiscoverPanel.vue'
 import ExportBar from '../components/trip/ExportBar.vue'
-import ButlerNoteCard from '../components/trip/ButlerNoteCard.vue'
-import HeadStatusPanel from '../components/trip/HeadStatusPanel.vue'
+import CoverDialog from '../components/trip/CoverDialog.vue'
+import ItemEditDialog from '../components/trip/ItemEditDialog.vue'
+import PlaceDetailSheet from '../components/trip/PlaceDetailSheet.vue'
+import SelectionBar from '../components/trip/SelectionBar.vue'
+import ShareDialog from '../components/trip/ShareDialog.vue'
+import TripMapPanel from '../components/trip/TripMapPanel.vue'
+import VersionHistoryDrawer from '../components/trip/VersionHistoryDrawer.vue'
+import AppDialog from '../components/ui/AppDialog.vue'
+import AppMenu from '../components/ui/AppMenu.vue'
+import AppSheet from '../components/ui/AppSheet.vue'
+import Segmented from '../components/ui/Segmented.vue'
+import { confirmDialog } from '../components/ui/confirm'
+import { toast } from '../components/ui/toast'
+import { useMediaQuery } from '../composables/useMediaQuery'
+import { useDiscoverAdd } from '../composables/useDiscoverAdd'
+import { useResizablePanels } from '../composables/useResizablePanels'
 import { storeToRefs } from 'pinia'
 import { getItineraryDetail } from '../api/itinerary'
 import { useItineraryStore } from '../store/itinerary'
 import { useItineraryActions } from '../composables/useItineraryActions'
 import { useItineraryStream, type ItineraryStreamEvent } from '../composables/useItineraryStream'
-import type { DayPlan, TripItem } from '../types/itinerary'
+import type { DayPlan, ItineraryDetail, TripItem, TripSuggestion } from '../types/itinerary'
+import type { LocalPoi } from '../api/pois'
 
-// 行程详情编排壳（M4-②a §5.4）：只做组合、路由参数、loadDetail/reconcile/SSE 生命周期
-// 编排；页面区块分别由 components/trip/ 下的子组件承载。
+// 行程详情编排壳（M4-②a §5.4；v2.6 §19.3 三栏重排）：
+// 只做组合、路由参数、loadDetail/reconcile/SSE 生命周期；页面区块分别由 components/trip/ 承载。
 const route = useRoute()
+const router = useRouter()
 const store = useItineraryStore()
 const actions = useItineraryActions()
 const loading = ref(false)
@@ -125,11 +288,62 @@ const loadError = ref(false)
 const loadErrorDescription = ref('行程加载失败')
 // detail 为行程全量单一数据源（M4-①）；酒店选择持久化观察收敛在壳内（读写均经 store 单点）
 const { detail, streamState, hotelSelections } = storeToRefs(store)
-const openDayNo = ref<number | null>(null)
+// 天平铺（v2.6 §19.3）：日卡默认全展开，collapsedDays 只记录被单天折叠的 D
+const collapsedDays = ref<number[]>([])
 const highlightId = ref<number | null>(null)
+const coverVisible = ref(false)
+const shareVisible = ref(false)
+const versionVisible = ref(false)
 const doneDays = computed(
   () => (detail.value?.dayList || []).filter((d) => (d.items || []).length > 0).length,
 )
+
+// ---------- 工作台形态（v2.7 §20 R1）：≥768 视口固定三面（面板可拖可收）；<768 移动壳单列分段 ----------
+const isDesktop = useMediaQuery('(min-width: 768px)')
+const PANE_ITEMS = [
+  { value: 'trip', label: '行程' },
+  { value: 'map', label: '地图' },
+  { value: 'discover', label: '发现' },
+]
+const mobilePane = ref('trip')
+const chatVisible = ref(false)
+
+// 两栏宽度/折叠/拖拽（R2，TREK useResizablePanels 语义）；narrow = 双栏同屏放不下（单栏档）
+const workbenchEl = ref<HTMLElement | null>(null)
+const {
+  leftWidth,
+  rightWidth,
+  leftHidden,
+  rightHidden,
+  toggleLeft,
+  toggleRight,
+  narrow,
+  startResizeLeft,
+  startResizeRight,
+} = useResizablePanels(workbenchEl)
+
+// 走廊在命令行里=地图可见区；地图控件/详情卡/署名都按它定位（面板收起即回 0）
+const corridorVars = computed(() => ({
+  '--lp-corridor-left': `${leftHidden.value ? 0 : leftWidth.value + 10}px`,
+  '--lp-corridor-right': `${rightHidden.value ? 0 : rightWidth.value + 10}px`,
+}))
+
+// 行程操作（自封面 Hero 收编，v2.7 §20 R1）：面板头条「⋯」菜单
+const headMenuItems = [
+  { key: 'cover', label: '换封面' },
+  { key: 'share', label: '分享' },
+  { key: 'pdf', label: '导出 PDF' },
+  { key: 'image', label: '导出图片' },
+  { key: 'similar', label: '新建相似行程' },
+]
+
+function onHeadMenu(key: string): void {
+  if (key === 'cover') coverVisible.value = true
+  else if (key === 'share') shareVisible.value = true
+  else if (key === 'pdf') onExportPdf()
+  else if (key === 'image') onExportImage()
+  else if (key === 'similar') router.push('/generate')
+}
 
 async function loadDetail() {
   loading.value = true
@@ -138,7 +352,7 @@ async function loadDetail() {
     const res = await getItineraryDetail(route.params.id as string)
     // 行程详情落 store 单一数据源；对话/草稿/酒店选择由 ChatEditPanel 随 itineraryId 自行装载
     store.setDetail(res.data)
-    openDayNo.value = detail.value?.dayList[0]?.dayNo ?? 1
+    collapsedDays.value = []
   } catch (err) {
     // 拦截器已 toast 具体原因；页面本身给出可操作的错误态（不存在/无权限/网络异常）
     const message = err instanceof Error ? err.message : ''
@@ -260,7 +474,7 @@ async function onStreamRetry() {
   startGenerationProgress()
 }
 
-// ---------- 迷你目录（粘性 scrollspy）：顶替被删地图的方位感职责 ----------
+// ---------- 日内目录（左栏内粘性 scrollspy）：与日卡滚动联动的方位导航 ----------
 
 const activeTocDay = ref<number | null>(null)
 const dayBlockEls = new Map<number, HTMLElement>()
@@ -306,17 +520,171 @@ function scrollToEl(el: HTMLElement | null, block: ScrollLogicalPosition = 'star
 }
 
 function jumpToDay(dayNo: number) {
-  openDayNo.value = dayNo
+  // 跳转时顺带展开该天（折叠态单一受控于 collapsedDays）
+  collapsedDays.value = collapsedDays.value.filter((n) => n !== dayNo)
   scrollToEl(dayBlockEls.get(dayNo) ?? null)
 }
 
 function onDayToggle(dayNo: number) {
-  // 手风琴：展开态由 openDayNo 单一受控，避免多天同时展开
-  openDayNo.value = openDayNo.value === dayNo ? null : dayNo
+  // 天平铺：默认全展开、可单天折叠（与旧手风琴的区别只在默认值与互斥性）
+  collapsedDays.value = collapsedDays.value.includes(dayNo)
+    ? collapsedDays.value.filter((n) => n !== dayNo)
+    : [...collapsedDays.value, dayNo]
 }
 
 function onItemSelect(item: TripItem) {
   highlightId.value = item.id ?? null
+}
+
+/** 地图 → 列表：高亮并滚动到对应行程行（scrollToEl 内部按 reduce 偏好退化瞬时滚动） */
+function onSelectFromMap(item: TripItem) {
+  highlightId.value = item.id ?? null
+  const el = item.id != null ? document.getElementById(`item-${item.id}`) : null
+  scrollToEl(el, 'center')
+}
+
+/** 发现面板已排卡 → 左栏：先展开可能被折叠的天，再高亮并滚动到对应行 */
+function onPanelItemSelect(item: TripItem) {
+  highlightId.value = item.id ?? null
+  const day = detail.value?.dayList.find((d) => (d.items || []).some((it) => it.id === item.id))
+  if (day) collapsedDays.value = collapsedDays.value.filter((n) => n !== day.dayNo)
+  void nextTick(() => {
+    const el = item.id != null ? document.getElementById(`item-${item.id}`) : null
+    scrollToEl(el, 'center')
+  })
+}
+
+// ---------- 贴底浮层详情卡（v2.6 W2）：选中项解析 + 操作行接线 ----------
+
+/** 当前高亮项（详情卡的单一数据源；从权威 detail 反查，排序变动也跟随） */
+const activeItem = computed<TripItem | null>(() => {
+  const id = highlightId.value
+  if (id == null) return null
+  for (const day of detail.value?.dayList ?? []) {
+    const hit = (day.items || []).find((it) => it.id === id)
+    if (hit) return hit
+  }
+  return null
+})
+
+// 更多字段编辑（ItemEditDialog 自 DayListCard 收编到壳层）
+const editVisible = ref(false)
+const editTarget = ref<TripItem | null>(null)
+
+function onEditRequest(item: TripItem) {
+  editTarget.value = item
+  editVisible.value = true
+}
+
+async function onItemDelete(item: TripItem) {
+  if (item.id == null) return
+  const ok = await confirmDialog(`确认删除「${item.poiName}」？`, { title: '删除确认', confirmText: '删除' })
+  if (!ok) return
+  await actions.deleteItem(item.id)
+  toast.success('已删除')
+  if (highlightId.value === item.id) highlightId.value = null
+}
+
+// ---------- 选择态批量（W2）：勾选集合（批量条自包含操作与清空） ----------
+const selectedIds = ref<number[]>([])
+
+function onToggleSelect(item: TripItem) {
+  if (item.id == null) return
+  selectedIds.value = selectedIds.value.includes(item.id)
+    ? selectedIds.value.filter((id) => id !== item.id)
+    : [...selectedIds.value, item.id]
+}
+
+// ---------- 右栏「发现」联动（W2）：日尾添加预设目标天 / 卡片拖拽入天 ----------
+const presetDiscoverDayId = ref<number | null>(null)
+const { addSuggestionToDay, addPoiToDay } = useDiscoverAdd()
+
+/** 日尾「添加地点」：打开/唤出发现面板并预设本天（窄屏切段、桌面展开右栏——收起时自动唤出） */
+function onAddRequest(dayId: number) {
+  presetDiscoverDayId.value = dayId
+  if (!isDesktop.value) mobilePane.value = 'discover'
+  else if (rightHidden.value) toggleRight()
+}
+
+function dayNoOf(dayId: number): number {
+  return detail.value?.dayList.find((d) => d.dayId === dayId)?.dayNo ?? 0
+}
+
+/** 拖拽入天落库：计划中 → 移动；备选/近邻 → 排入；搜索结果 → 排入（坐标回填在组合式内） */
+async function onDiscoverDrop(payload: { dayId: number; entry: unknown }) {
+  const data = payload.entry as {
+    kind?: string
+    itemId?: number
+    name?: string
+    suggestion?: TripSuggestion
+    poi?: LocalPoi
+  } | null
+  if (!data || typeof data !== 'object') return
+  try {
+    if (data.kind === 'planned' && data.itemId != null) {
+      await actions.moveToDay(data.itemId, payload.dayId)
+      toast.success(`已移动：${data.name ?? '点位'} → 第 ${dayNoOf(payload.dayId)} 天`)
+    } else if (data.kind === 'suggestion' && data.suggestion) {
+      await addSuggestionToDay(data.suggestion, payload.dayId)
+    } else if (data.kind === 'search' && data.poi) {
+      await addPoiToDay(data.poi, payload.dayId)
+    }
+  } catch {
+    /* 拦截器已提示；快照回滚由 actions 完成 */
+  }
+}
+
+// ---------- 跨天移动（S4）：行菜单/键盘路径 + 拖拽跨天，共用 actions.moveToDay ----------
+
+const moveTarget = ref<TripItem | null>(null)
+const moveDialogVisible = ref(false)
+const moving = ref(false)
+
+const targetDay = computed(() => {
+  const target = moveTarget.value
+  if (!target || !detail.value) return null
+  return (
+    detail.value.dayList.find((d) => (d.items || []).some((item) => item.id === target.id)) ?? null
+  )
+})
+const currentDayNo = computed(() => targetDay.value?.dayNo ?? '?')
+const otherDays = computed(
+  () => (detail.value?.dayList ?? []).filter((d) => d.dayId !== targetDay.value?.dayId),
+)
+
+function onMoveRequest(item: TripItem) {
+  moveTarget.value = item
+  moveDialogVisible.value = true
+}
+
+async function confirmMove(dayId: number) {
+  const target = moveTarget.value
+  if (target?.id == null || moving.value) return
+  moving.value = true
+  try {
+    await actions.moveToDay(target.id, dayId)
+    ElMessage.success('已移动')
+    moveDialogVisible.value = false
+  } catch {
+    /* 拦截器已提示；快照回滚由 actions.run 完成 */
+  } finally {
+    moving.value = false
+  }
+}
+
+/** 拖拽跨天：vuedraggable 已就地改了两侧数组，成功以权威详情覆盖、失败快照回滚。 */
+function onCrossDayMove(payload: { itemId: number; targetDayId: number }) {
+  void actions.moveToDay(payload.itemId, payload.targetDayId).catch(() => undefined)
+}
+
+/** 封面更新（S1）：接口返回权威详情，直接覆盖 store（列表页会自行重新拉取）。 */
+function onCoverUpdated(next: ItineraryDetail) {
+  store.setDetail(next)
+}
+
+/** 版本恢复（A5）：restore 返回最新详情；提示已在抽屉内给出。 */
+function onVersionRestored(next: ItineraryDetail) {
+  store.setDetail(next)
 }
 
 function onItemDrop(day: DayPlan) {
@@ -326,7 +694,7 @@ function onItemDrop(day: DayPlan) {
   void actions.reorderItems(detail.value!.id, day.dayId, itemIds)
 }
 
-// ---------- 导出（逻辑在 ExportBar，按钮在 TripCoverHeader） ----------
+// ---------- 导出（逻辑在 ExportBar，入口在左栏头条操作菜单） ----------
 
 function onExportPdf() {
   void exportBarRef.value?.exportPdf()
@@ -334,12 +702,6 @@ function onExportPdf() {
 
 function onExportImage() {
   void exportBarRef.value?.exportImage()
-}
-
-function onBackTop() {
-  const main = document.querySelector('.el-main')
-  if (main) main.scrollTo({ top: 0, behavior: 'smooth' })
-  else window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 // 酒店选择变更（含 ChatEditPanel 内的写入）统一经此单点落 localStorage
@@ -372,14 +734,16 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.trip-detail { margin: 0 auto; }
+.trip-detail {
+  margin: 0 auto;
+}
 
 /* ---------- 阅读进度条（el-main 命名滚动时间轴驱动） ---------- */
-.reading-progress { position: fixed; top: 0; left: 0; width: 100%; height: 3px; z-index: 2000; pointer-events: none; }
+.reading-progress { position: fixed; top: 0; left: 0; width: 100%; height: 3px; z-index: var(--lp-z-panel); pointer-events: none; }
 
 @supports (animation-timeline: scroll()) {
   .reading-progress {
-    background: linear-gradient(90deg, var(--lp-accent), var(--lp-accent-warm));
+    background: var(--lp-theme-accent);
     transform-origin: 0 50%;
     transform: scaleX(0);
     animation: lp-reading-grow linear both;
@@ -389,69 +753,199 @@ onUnmounted(() => {
 
 @keyframes lp-reading-grow { to { transform: scaleX(1); } }
 
-.head { margin-bottom: 16px; }
-
 /* ---------- 加载失败错误态 ---------- */
 .load-error { margin-bottom: 16px; }
 .load-error-actions { display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; }
 
-/* ---------- §5.3.1 主题叙事条：trip_theme 衬线大字 + --lp-theme-accent 底线 ---------- */
-.theme-bar {
+/* ---------- 工作台（v2.7 §20 R1）：<768 移动壳单列；≥768 视口固定，面板浮层 ---------- */
+.workbench3 {
+  display: block;
+}
+
+.map-stage {
   position: relative;
-  margin: 0 0 16px;
-  padding: 16px 2px 14px;
 }
 
-.theme-bar::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  background-image: var(--lp-theme-accent);
-  border-radius: 2px;
+.panel-slot {
+  position: relative;
 }
 
-.theme-title {
-  margin: 0;
-  font-family: var(--lp-font-display);
-  font-weight: 500;
-  font-size: clamp(20px, 2.6vw, 28px);
-  line-height: 1.3;
-  letter-spacing: -0.01em;
-  color: var(--lp-ink);
+.panel {
+  min-width: 0;
 }
 
-/* 意图回显行：「系统听懂了什么」首屏即见；后端暂不回传，空态自动隐藏 */
-.theme-intent {
-  margin: 8px 0 0;
+.panel-right {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 发现面板自带内边距与滚动：面板只负责给一块确定的画布 */
+.panel-fill {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 面板头条：返回 + 标题/元信息 + 操作菜单（封面 Hero 退役后的收编位，v2.7 §20 R1）——
+   桌面浮层面板与移动壳卡片共用同一条头部 */
+.panel-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--lp-space-2);
+  padding: var(--lp-space-2) var(--lp-space-3);
+  border-bottom: 1px solid var(--lp-edge-faint);
+}
+
+.head-back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--lp-radius-xs);
+  background: transparent;
+  color: var(--lp-text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.head-back:hover {
+  background: var(--lp-surface-hover);
+  color: var(--lp-text-1);
+}
+
+.head-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.head-title {
   font-size: 13px;
-  color: var(--lp-muted);
+  font-weight: 600;
+  color: var(--lp-text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* ---------- 手册白底大区：粘性迷你目录 + 逐日轨道全宽 ---------- */
-.handbook-body {
-  background: #fff; border-radius: 16px; padding: 8px 32px 28px; margin-bottom: 16px;
+.head-meta {
+  font-size: 10.5px;
+  color: var(--lp-text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-@media (max-width: 1024px) {
-  .handbook-body { padding: 8px 16px 24px; }
+/* ---------- 桌面（≥768）视口固定布局：整页不滚，两栏各自滚（TREK 语义） ---------- */
+@media (min-width: 768px) {
+  /* 管家条细条：导航（h48 @top8）之下、工作台之上 */
+  .butler-slot {
+    position: fixed;
+    top: 62px;
+    left: 84px;
+    right: 0;
+    z-index: var(--lp-z-bar);
+  }
+
+  .workbench3 {
+    position: fixed;
+    top: 108px;
+    left: 84px;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+    overscroll-behavior: contain;
+  }
+
+  /* 地图铺底：面板浮在它上面，走廊（corridor）由壳变量给出 */
+  .map-stage {
+    position: absolute;
+    inset: 0;
+  }
+
+  .panel-slot {
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    z-index: var(--lp-z-sticky);
+  }
+
+  .slot-left {
+    left: 10px;
+  }
+
+  .slot-right {
+    right: 10px;
+  }
+
+  /* 面板本体（TREK 实测材质）：玻璃底 + blur(24) saturate(180) + r16 + 专用影；
+     width 过渡即折叠动画（内容 overflow:hidden 不回流） */
+  .panel {
+    width: var(--lp-panel-w, 340px);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--lp-panel-bg);
+    backdrop-filter: var(--lp-panel-blur);
+    -webkit-backdrop-filter: var(--lp-panel-blur);
+    border-radius: var(--lp-radius-md);
+    box-shadow: var(--lp-panel-shadow);
+    transition: width 0.25s ease;
+  }
+
+  /* 日目录：面板子头（不吸顶——滚动区在它下面，自己不动）。
+     选择器带 .panel 前缀：压过移动壳基类的负外边距（同特异性时后写的基类会赢） */
+  .panel .day-toc {
+    position: static;
+    margin: 0;
+    padding: var(--lp-space-2) var(--lp-space-3);
+    border-bottom: 1px solid var(--lp-edge-faint);
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  /* 面板滚动区：整页不滚，滚的是这里 */
+  .panel-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--lp-space-2) var(--lp-space-3) var(--lp-space-3);
+  }
+
+  .panel .budget-dock {
+    flex: none;
+    margin: 0;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+  }
 }
 
-/* ---------- 迷你目录：粘性 scrollspy，D01-D0N 药丸 ---------- */
+.pane-switch {
+  justify-self: center;
+  margin-bottom: var(--lp-space-2);
+}
+
+/* ---------- 日内目录：D01-D0N 药丸（移动壳里在流内，桌面在面板子头） ---------- */
 .day-toc {
-  position: sticky;
-  top: -8px; /* 抵消 .handbook-body 顶部 padding，吸住滚动视口上缘 */
-  z-index: 30;
+  z-index: var(--lp-z-sticky);
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 -32px;
-  padding: 10px 32px;
-  background: rgb(255 255 255 / 94%);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--lp-rule);
+  margin: 0 -16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--lp-edge-faint);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -464,9 +958,9 @@ onUnmounted(() => {
   flex: none;
   min-width: 52px;
   padding: 5px 12px;
-  border: 1px solid var(--lp-border);
-  border-radius: 999px;
-  background: #fff;
+  border: 1px solid var(--lp-edge-1);
+  border-radius: var(--lp-radius-pill);
+  background: var(--lp-surface-card);
   font-family: var(--lp-font-data);
   font-size: 12px;
   font-weight: 600;
@@ -476,33 +970,148 @@ onUnmounted(() => {
 }
 
 .toc-pill:hover {
-  color: var(--lp-accent);
-  border-color: var(--lp-accent);
+  color: color-mix(in oklch, var(--chip-color) 72%, var(--lp-text-1));
+  border-color: color-mix(in oklch, var(--chip-color) 55%, transparent);
 }
 
+/* 选中态走 day-tint（v2.6 §19.4 全消费点）：与日头徽/编号徽/地图钉同源 */
 .toc-pill.is-active {
-  background: var(--lp-accent);
-  border-color: var(--lp-accent);
-  color: #fff;
+  background: color-mix(in oklch, var(--chip-color) var(--lp-day-tint-badge), transparent);
+  border-color: color-mix(in oklch, var(--chip-color) 55%, transparent);
+  color: color-mix(in oklch, var(--chip-color) 72%, var(--lp-text-1));
 }
 
-/* 已展开但非当前视口的天：浅青绿底提示状态 */
-.toc-pill.is-open:not(.is-active) {
-  background: var(--lp-accent-soft);
-  border-color: var(--lp-accent-soft);
-  color: var(--lp-accent-hover);
+.day-list {
+  min-width: 0;
 }
 
 .day-block {
-  scroll-margin-top: 72px; /* 目录跳转时留出粘性目录高度 */
+  scroll-margin-top: 84px;
 }
 
-/* ---------- 回到顶部 ---------- */
-.handbook-footer { text-align: center; padding: 8px 0 28px; }
-.back-top {
-  background: none; border: none; cursor: pointer; font-family: var(--lp-font-display);
-  font-style: italic; font-size: 14px; color: var(--lp-ink-soft); text-decoration: underline;
-  text-underline-offset: 4px;
+.budget-dock {
+  margin-top: var(--lp-space-4);
 }
-.back-top:hover { color: var(--lp-accent-warm); }
+
+/* ---------- 挂耳折叠按钮（v2.7 §20 R2，照抄 TREK TripPlannerPage 实测值） ----------
+   展开态 = 36×36 挂在面板内缘外 28px、压在面板玻璃之下（z-index:-1 只露贴边一角）；
+   收起态 = 面板宽 0 时变身黑色小方块（TREK 原文 #000 + 白图标） */
+.panel-ear {
+  position: absolute;
+  top: 14px;
+  z-index: var(--lp-z-ear-under);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: var(--lp-panel-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: var(--lp-text-faint);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.panel-ear:hover {
+  color: var(--lp-text-1);
+}
+
+.ear-left {
+  right: -28px;
+  border-radius: 0 10px 10px 0;
+}
+
+.ear-right {
+  left: -28px;
+  border-radius: 10px 0 0 10px;
+}
+
+.panel-ear.is-collapsed {
+  top: 14px;
+  z-index: var(--lp-z-ear-over);
+  border-radius: 10px;
+  background: var(--lp-panel-ear-bg);
+  color: var(--lp-panel-ear-ink);
+  box-shadow: var(--lp-shadow-md);
+}
+
+.ear-left.is-collapsed {
+  right: auto;
+  left: 0;
+}
+
+.ear-right.is-collapsed {
+  left: auto;
+  right: 0;
+}
+
+.panel-ear.is-collapsed:hover {
+  color: var(--lp-panel-ear-ink);
+}
+
+/* 拖拽调宽热区：面板内缘 4px（TREK 原文），hover 给一层淡影 */
+.panel-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.panel-resize.is-left {
+  right: auto;
+  left: 0;
+}
+
+.panel-resize:hover {
+  background: color-mix(in srgb, var(--lp-text-1) 8%, transparent);
+}
+
+/* ---------- 跨天移动对话框（S4） ---------- */
+.move-hint {
+  margin: 0 0 var(--lp-space-3);
+  font-size: 13px;
+  color: var(--lp-text-muted);
+}
+
+.move-day-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lp-space-2);
+}
+
+/* ---------- <768 移动壳（本轮不重构成 TREK 底栏体系）：单列分段 + 流式滚动 ---------- */
+@media (max-width: 767px) {
+  .pane-switch {
+    display: flex;
+    justify-content: center;
+    margin: 0 0 var(--lp-space-3);
+  }
+
+  /* 挂耳/拖拽热区只在桌面浮层面板里有意义 */
+  .panel-ear,
+  .panel-resize {
+    display: none;
+  }
+
+  .panel:not(.panel-right) {
+    padding: 4px 16px 12px;
+    background: var(--lp-surface-card);
+    border: 1px solid var(--lp-edge-1);
+    border-radius: var(--lp-radius-card);
+  }
+
+  .day-toc {
+    position: static;
+  }
+
+  .map-stage {
+    border-radius: var(--lp-radius-card);
+    overflow: hidden;
+  }
+}
 </style>

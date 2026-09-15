@@ -1,4 +1,5 @@
-// 目的地国内/国外判定：国外城市走 Leaflet+OSM 免 key 地图，国内走高德 JSAPI。
+// 目的地国内/国外判定：用于地图外链选择（国内 uri.amap.com / 海外 Google Maps）、
+// 点位图降级（staticmap 仅国内可用）与加点检索（海外城市暂禁用高德）。
 // 判定基于内置中国城市/省份集合；未命中且不含中国省份名的城市视为国外。
 // 城市/省份表维护入口见 constants/geo.ts（本文件仅保留判定函数导出，调用方 import 路径不变）。
 
@@ -16,4 +17,21 @@ export function isForeignCity(city: string | null | undefined): boolean {
     if (name.includes(province)) return false
   }
   return true
+}
+
+/**
+ * 点位地图外链（v2.6 W2 统一口径，日卡/详情卡/发现面板共用）：
+ * 国内 = 高德搜索（城市+名称关键词）；海外 = Google Maps（有真实坐标优先按坐标打开）。
+ */
+export function externalMapLink(
+  target: { name: string; latitude?: number | null; longitude?: number | null },
+  city: string | null | undefined,
+): string {
+  if (isForeignCity(city)) {
+    if (target.latitude != null && target.longitude != null) {
+      return `https://www.google.com/maps/search/?api=1&query=${target.latitude},${target.longitude}`
+    }
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${city ?? ''}${target.name}`)}`
+  }
+  return `https://uri.amap.com/search?keyword=${encodeURIComponent(`${city ?? ''}${target.name}`)}`
 }

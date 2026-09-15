@@ -1,5 +1,5 @@
 <template>
-  <!-- 导出逻辑承载组件（M4-②a §5.4）：无自绘 UI。导出按钮位于 TripCoverHeader（保持视觉零变化），
+  <!-- 导出逻辑承载组件（M4-②a §5.4）：无自绘 UI。导出按钮在详情页左栏头条操作菜单（v2.7 §20 R1 收编自退役的封面 Hero），
        编排壳经模板引用调用 exportPdf / exportImage 并向其传递 exporting 状态。 -->
 </template>
 

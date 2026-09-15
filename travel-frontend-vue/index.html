@@ -3,13 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- 手册衬线：生产环境建议自托管子集以降低体积 -->
-    <link
-      href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
+    <!-- 字体：零第三方请求——中文走系统栈，拉丁子集自托管 woff2（见 theme.css） -->
+    <!-- 首帧引导脚本 = src/styles/appearance.ts 的无依赖镜像：同一 KEY、同一属性集合
+         （有测试读本文件文本比对 APPEARANCE_KEY / APPEARANCE_ATTRS，防两处漂移） -->
+    <script>
+      ;(() => {
+        try {
+          const h = document.documentElement
+          const c = JSON.parse(localStorage.getItem('ta-appearance-v1') || '{}')
+          h.setAttribute('data-scheme', c.scheme === 'teal' || c.scheme === 'contrast' ? c.scheme : 'default')
+          h.setAttribute('data-density', c.density === 'compact' ? 'compact' : 'comfortable')
+          h.setAttribute('data-reduce-motion', c.reduceMotion ? 'true' : 'false')
+          if (c.dark) h.classList.add('dark')
+        } catch (e) { /* 引导失败不阻塞首帧 */ }
+      })()
+    </script>
     <title>旅行助手 Travel Assistant</title>
   </head>
   <body>

@@ -1,6 +1,6 @@
 // 封面单一来源（M4-④ §工程卫生 #7）：
-// 城市封面 key 与目的地卡片数据在此集中维护，TripsView / HomeView 等视图统一引用，
-// 勿在视图内重复定义 CITY_COVERS / DESTINATIONS。新增城市封面时仅改本文件。
+// 城市封面 key 在此集中维护，TripsView 等视图统一引用，勿在视图内重复定义。
+// 新增城市封面时仅改本文件。（F2：首页改 dashboard 后删除 DESTINATIONS 封面墙）
 import coverBeijing from '../assets/img/cover-beijing.webp'
 import coverChengdu from '../assets/img/cover-chengdu.webp'
 import coverChongqing from '../assets/img/cover-chongqing.webp'
@@ -21,16 +21,6 @@ export const CITY_COVERS: Record<string, string> = {
 
 /** 未命中城市时的兜底封面（手册风通用图） */
 export const COVER_FALLBACK = coverFallback
-
-/** 首页「热门目的地」封面墙（点击直达生成页），渲染顺序即展示顺序 */
-export const DESTINATIONS = [
-  { name: '杭州', img: coverHangzhou },
-  { name: '成都', img: coverChengdu },
-  { name: '西安', img: coverXian },
-  { name: '重庆', img: coverChongqing },
-  { name: '北京', img: coverBeijing },
-  { name: '上海', img: coverShanghai },
-]
 
 /**
  * 城市名 → 封面；支持「杭州市」「成都之旅」等带后缀文案的模糊匹配。

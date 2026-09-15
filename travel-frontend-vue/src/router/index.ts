@@ -27,6 +27,21 @@ const router = createRouter({
       path: '/trips/:id',
       name: 'trip-detail',
       component: () => import('../views/TripDetailView.vue'),
+      // 详情页三栏工作台需要全宽容器（v2.6 §19.3）：AppShell 的 content-inner 按 meta.wide 放开 max-width
+      // immersive（v2.7 §20 R1）：整页不滚的视口固定布局——content 去内边距、页脚让位
+      meta: { wide: true, immersive: true },
+    },
+    {
+      path: '/atlas',
+      name: 'atlas',
+      component: () => import('../views/AtlasView.vue'),
+    },
+    {
+      path: '/s/:token',
+      name: 'share',
+      component: () => import('../views/ShareView.vue'),
+      // 公开只读页（SPEC §1.3）：守卫跳过登录判定、AppShell 不渲染（ShareView 自带轻顶栏）
+      meta: { public: true },
     },
     {
       path: '/admin',
@@ -64,6 +79,8 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
+  // 公开页（分享 /s/:token）跳过登录判定：分享链接必须匿名可开（SPEC §1.3）
+  if (to.meta.public === true) return true
   // 凭据在 HttpOnly Cookie；本地仅保存展示用 username/role
   const authed = Boolean(localStorage.getItem('username'))
   if (!authed && to.name !== 'login') {

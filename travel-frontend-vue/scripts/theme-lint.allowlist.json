@@ -1,0 +1,13 @@
+{
+  "_note": "theme-lint 豁免列表（SPEC v2.3 §7.1.6）：只准变短不准变长——修好一个文件就从这里删掉并把 _count 改小；不许往里加新文件/加计数（新增违规请直接修代码）。F1 后 theme.css 与 App.vue 已清零移出；v2.6 W1 再清 BudgetStrip/DayListCard/DayNarrativePanel/DiscoverPool；剩余项随页面重做逐个删除。",
+  "_count": 7,
+  "files": {
+    "src/components/trip/ButlerNoteCard.vue": 3,
+    "src/components/trip/ChatEditPanel.vue": 2,
+    "src/components/trip/DragSortHandle.vue": 2,
+    "src/components/trip/HeadStatusPanel.vue": 1,
+    "src/views/GenerateView.vue": 6,
+    "src/views/LoginView.vue": 5,
+    "src/views/admin/AdminLayout.vue": 1
+  }
+}
