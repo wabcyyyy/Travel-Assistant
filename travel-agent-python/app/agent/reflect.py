@@ -14,10 +14,9 @@
 
 import math
 import re
-from typing import Any
 
-from app.agent.geo import haversine_meters
 from app.agent.generation_core import estimate_plans_total, has_double_lunch, meal_slot_of
+from app.agent.geo import haversine_meters
 from app.agent.route_service import is_estimated
 
 MAX_DAILY_MINUTES = 480
@@ -75,8 +74,7 @@ def _item_end(item: dict) -> int:
 
 def estimate_transfer_minutes(first: dict, second: dict) -> int | None:
     """按 POI 坐标估算保守换乘时间；缺坐标时返回 None，不猜路线。"""
-    coords = (first.get("latitude"), first.get("longitude"),
-              second.get("latitude"), second.get("longitude"))
+    coords = (first.get("latitude"), first.get("longitude"), second.get("latitude"), second.get("longitude"))
     if any(value is None for value in coords):
         return None
     try:
@@ -94,10 +92,14 @@ def estimate_transfer_minutes(first: dict, second: dict) -> int | None:
 def _route_from_matrix(first: dict, second: dict, route_matrix: dict | None) -> dict | None:
     if not route_matrix:
         return None
-    first_keys = (str(first.get("poi_id") or first.get("poi_name") or first.get("name") or ""),
-                  str(first.get("poi_name") or first.get("name") or ""))
-    second_keys = (str(second.get("poi_id") or second.get("poi_name") or second.get("name") or ""),
-                   str(second.get("poi_name") or second.get("name") or ""))
+    first_keys = (
+        str(first.get("poi_id") or first.get("poi_name") or first.get("name") or ""),
+        str(first.get("poi_name") or first.get("name") or ""),
+    )
+    second_keys = (
+        str(second.get("poi_id") or second.get("poi_name") or second.get("name") or ""),
+        str(second.get("poi_name") or second.get("name") or ""),
+    )
     for first_key in first_keys:
         for second_key in second_keys:
             route = route_matrix.get((first_key, second_key))
@@ -106,10 +108,15 @@ def _route_from_matrix(first: dict, second: dict, route_matrix: dict | None) -> 
     return None
 
 
-def validate_plans(daily_plans: list[dict], route_matrix: dict | None = None,
-                   *, budget: float | None = None, persons: int = 1,
-                   consumption: dict | None = None,
-                   budget_overage_ratio: float = 0.08) -> tuple[list[str], list[str]]:
+def validate_plans(
+    daily_plans: list[dict],
+    route_matrix: dict | None = None,
+    *,
+    budget: float | None = None,
+    persons: int = 1,
+    consumption: dict | None = None,
+    budget_overage_ratio: float = 0.08,
+) -> tuple[list[str], list[str]]:
     issues: list[str] = []
     log: list[str] = []
     for plan in daily_plans:
@@ -145,8 +152,10 @@ def validate_plans(daily_plans: list[dict], route_matrix: dict | None = None,
             if required_transfer is not None and available_gap < required_transfer:
                 estimated = is_estimated(route_source)
                 source_label = "坐标估算" if estimated else "真实路线"
-                buffer_note = "" if not estimated else (
-                    f"（含 {ROUTE_FIXED_BUFFER_MIN} 分钟固定缓冲和 {ROUTE_BUFFER_RATIO:.0%} 容错）"
+                buffer_note = (
+                    ""
+                    if not estimated
+                    else (f"（含 {ROUTE_FIXED_BUFFER_MIN} 分钟固定缓冲和 {ROUTE_BUFFER_RATIO:.0%} 容错）")
                 )
                 issues.append(
                     f"第 {day_no} 天路线时间不足：{prev.get('poi_name')} → {nxt.get('poi_name')} "
@@ -190,8 +199,7 @@ def validate_plans(daily_plans: list[dict], route_matrix: dict | None = None,
         # 两顿午餐：午间窗口安排了 ≥2 家餐厅，应改为一午一晚
         if has_double_lunch(foods):
             lunch_names = [
-                str(it.get("poi_name") or "") for it in foods
-                if meal_slot_of(it.get("start_time")) == "lunch"
+                str(it.get("poi_name") or "") for it in foods if meal_slot_of(it.get("start_time")) == "lunch"
             ]
             issues.append(
                 f"第 {day_no} 天出现两顿午餐（{('、'.join(lunch_names) or '多条餐饮')}），"
@@ -212,8 +220,9 @@ def validate_plans(daily_plans: list[dict], route_matrix: dict | None = None,
     # 预算硬约束：估算合计超过用户预算一定比例时，要求换平价点/降酒店档
     if budget is not None and float(budget) > 0 and daily_plans:
         try:
-            est = estimate_plans_total(daily_plans, persons=persons or 1,
-                                       days=len(daily_plans), consumption=consumption)
+            est = estimate_plans_total(
+                daily_plans, persons=persons or 1, days=len(daily_plans), consumption=consumption
+            )
             total = float(est.get("合计") or 0)
             limit = float(budget)
             over = total - limit
@@ -223,7 +232,7 @@ def validate_plans(daily_plans: list[dict], route_matrix: dict | None = None,
                     "请压缩花费：优先更换高价酒店/餐饮为预算内选项，减少付费体验，"
                     "选择免费或低价景点，确保总花费不超过预算"
                 )
-        except Exception:  # noqa: BLE001 —— 预算校验失败不应阻塞其它问题
+        except Exception:
             pass
 
     if issues:

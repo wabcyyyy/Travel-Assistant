@@ -37,6 +37,9 @@
 ## 命令
 
 ```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1  # 一键门禁（= CI preflight + 离线测试）
+# 单项（check.ps1 的组成，同序）：ruff check . / ruff format --check . /
+#   python scripts/typecheck.py（pyright 基线 ratchet，--update 只减不增）/ secret scan / 离线 pytest
 uv run pytest tests/ -q --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval  # 离线测试
 uv run python scripts/export_contracts.py        # 改 schemas 后导出契约（产物入仓）
 uv run python tests/agent_eval/eval_agent.py     # 离线评测（行为改动后对比）

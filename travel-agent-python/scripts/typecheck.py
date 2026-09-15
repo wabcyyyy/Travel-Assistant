@@ -23,7 +23,10 @@ BASELINE = ROOT / "pyright-baseline.txt"
 def current_errors() -> list[str]:
     proc = subprocess.run(
         ["uv", "run", "pyright", "--outputjson"],
-        cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
     )
     if not proc.stdout.strip():
         print(proc.stderr, file=sys.stderr)
@@ -36,7 +39,7 @@ def current_errors() -> list[str]:
         file = str(diag.get("file", "")).replace("\\", "/")
         root = str(ROOT).replace("\\", "/")
         if file.lower().startswith(root.lower() + "/"):
-            file = file[len(root) + 1:]
+            file = file[len(root) + 1 :]
         rule = diag.get("rule") or "no-rule"
         # 消息含多行子诊断：压平换行，保证一个报错 = 基线里一行
         message = " | ".join(str(diag.get("message", "")).splitlines())
@@ -55,8 +58,11 @@ def main() -> int:
         print(f"baseline updated: {len(current)} errors frozen")
         return 0
 
-    baseline = [line for line in BASELINE.read_text(encoding="utf-8").splitlines() if line.strip()] \
-        if BASELINE.exists() else []
+    baseline = (
+        [line for line in BASELINE.read_text(encoding="utf-8").splitlines() if line.strip()]
+        if BASELINE.exists()
+        else []
+    )
     new = [key for key in current if key not in set(baseline)]
     print(f"pyright: {len(current)} errors (baseline {len(baseline)})")
     if new:

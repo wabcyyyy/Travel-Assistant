@@ -5,8 +5,16 @@ on:
     branches: [master, main]
   pull_request:
 
+# 同分支新 push 自动取消旧 run（G-0.4）：省 CI 分钟数，也避免旧结论覆盖新推送
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  python-agent:
+  preflight:
+    # 便宜门禁先行（G-0.4）：与本地 travel-agent-python/scripts/check.ps1 同序同果。
+    # lint / typecheck / secret-scan 任何一项红，测试与构建 job 直接不开跑。
+    # import-linter 在 G-1.2 落地后并入本 job。
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -21,6 +29,32 @@ jobs:
         # 依赖一律由 uv.lock 驱动，禁止手写 pin 列表：此前 CI 装 chromadb、
         # 运行时用 qdrant-client 的漂移即由此而来
         run: uv sync --frozen
+      - name: Ruff check
+        run: uv run ruff check .
+      - name: Ruff format --check
+        run: uv run ruff format --check .
+      - name: Typecheck (pyright baseline ratchet)
+        # 存量报错冻结在 pyright-baseline.txt，新增即红；本地入口 scripts/typecheck.ps1
+        run: uv run python scripts/typecheck.py
+      - name: Secret scan
+        working-directory: .
+        shell: pwsh
+        run: ./scripts/check-secrets.ps1
+
+  python-agent:
+    needs: preflight
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: travel-agent-python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+          enable-cache: true
+      - name: Sync deps (lockfile-driven)
+        run: uv sync --frozen
       - name: Offline unit tests
         env:
           # 单测不依赖真实密钥；固定 hashed 向量（零模型加载，离线确定性）
@@ -33,14 +67,15 @@ jobs:
         run: |
           uv run python scripts/export_contracts.py
           git diff --exit-code -- ../contracts/
-      - name: Java->FastAPI endpoint coverage
-        # 迁移完成度的机器证据：残留端点必须逐条登记在 EXPECTED_REMAINING 里
+      - name: Endpoint coverage gate
+        # Java 退役后报告「已归档且无残留登记」：残留端点必须逐条登记在 EXPECTED_REMAINING
         run: uv run python scripts/check_endpoint_coverage.py
       - name: Compose config
         working-directory: .
         run: docker compose config -q
 
   frontend:
+    needs: preflight
     # 前端门禁：类型检查 + 生产构建 + 纯逻辑单测（store reducer / SSE 帧解析）
     runs-on: ubuntu-latest
     defaults:
@@ -69,6 +104,7 @@ jobs:
         run: npm run ep:lint
 
   schema-migration:
+    needs: preflight
     # 迁移门禁：按版本序把全部迁移 SQL（当前 V1、V2）应用到空库，验证「新环境可复现正确 schema」
     runs-on: ubuntu-latest
     services:
@@ -112,12 +148,3 @@ jobs:
       - name: Cross-check schema contract (Python 只读列 vs 全部迁移)
         # 防 schema 漂移：迁移文件（V1+V*）必须覆盖查询用到的全部列（纯静态，无需 DB）
         run: python3 travel-agent-python/scripts/check_schema_contract.py
-
-  secret-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Scan trackable sources for secrets
-        shell: pwsh
-        run: |
-          ./scripts/check-secrets.ps1
