@@ -8,7 +8,7 @@ param([switch]$Keep)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 if (-not (Test-Path (Join-Path $root 'travel-agent-python'))) {
-    # 脚本放在仓库根或 travel-agent-python 下均可
+    # Works whether this script sits at the repo root or under travel-agent-python.
     $root = $PSScriptRoot
 }
 
@@ -19,7 +19,7 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
 $env:UV_CACHE_DIR = Join-Path $root '.uv-cache'
 
-# 根目录 .env → 进程环境（子服务继承；模块本地 .env 由 python-dotenv 再覆盖）
+# Root .env -> process env (child services inherit it; module-local .env is re-applied by python-dotenv)
 $rootEnv = Join-Path $root '.env'
 if (Test-Path $rootEnv) {
     Get-Content $rootEnv | ForEach-Object {
@@ -77,7 +77,7 @@ if ($ok) {
     Write-Host "[ok] agent listening on http://127.0.0.1:8000 (pid=$pidInfo)"
     Write-Host "     tail log: Get-Content `"$logFile`" -Tail 50 -Wait"
 } else {
-    Write-Error "agent did not open :8000 within 30s — check $logFile"
+    Write-Error "agent did not open :8000 within 30s -- check $logFile"
     if (Test-Path $logFile) { Get-Content $logFile -Tail 40 }
     exit 1
 }

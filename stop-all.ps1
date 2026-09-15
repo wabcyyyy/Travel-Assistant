@@ -1,8 +1,9 @@
-# Stops backend-java(8080), agent-python(8000), frontend-vue(5173) process trees.
+# Stops backend-python(8000), frontend-vue(5173) process trees.
 # Add -IncludeRedis to also stop redis on 6380.
+# NOTE: port 8080 (the archived Spring backend) is intentionally absent - nothing in this stack uses it.
 param([switch]$IncludeRedis)
 
-$ports = @(8080, 8000, 5173)
+$ports = @(8000, 5173)
 if ($IncludeRedis) { $ports += 6380 }
 
 $found = $false

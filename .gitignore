@@ -16,10 +16,11 @@ target/
 .venv/
 .venv-*/
 travel-frontend-vue/dist/
-travel-backend-java/target/
 travel-agent-python/data/
 travel-agent-python/.venv*/
-travel-agent-python/.pytestemp*/
+travel-agent-python/.tmp_pytest/
+travel-agent-python/.tmp_*
+travel-agent-python/.pytest_tmp/
 travel-agent-python/.repro/
 travel-agent-python/models/
 sql/__pycache__/
@@ -40,6 +41,10 @@ openapi.json
 .worktrees/
 dump.rdb
 .agents/
+skills-lock.json
 
 # 内部工作文档（不入库，本地保留）
 docs/
+
+# 本地侦察/探针临时物（TREK 稀疏克隆、无头截图与 stub 等，不入库）
+.tmp-*

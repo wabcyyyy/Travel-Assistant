@@ -1,5 +1,6 @@
 # Travel Assistant one-click launcher
-# Starts redis(6380), backend-java(8080), agent-python(8000), frontend-vue(5173).
+# Starts redis(6380), backend-python(8000, serves /api + /api/agent), frontend-vue(5173).
+# The Spring module (travel-backend-java/) was deleted after the migration; see ARCHIVED.md to recover it from git history.
 # Services already running are skipped. Background services run without extra console windows.
 # NOTE: keep this file ASCII-only. Windows PowerShell 5.1 reads BOM-less files as ANSI and
 # non-ASCII comments break parsing (start-all.cmd calls powershell.exe, i.e. 5.1).
@@ -21,12 +22,12 @@ if (Test-Path $rootEnv) {
     Write-Host "[env   ] loaded $rootEnv"
 }
 
-# Safety check: Java fails fast when JWT_SECRET / AGENT_INTERNAL_TOKEN are missing.
+# Safety check: the FastAPI backend fails fast when JWT_SECRET is missing/short (it signs sessions).
 if (-not $env:JWT_SECRET -or $env:JWT_SECRET.Length -lt 32) {
-    Write-Warning "JWT_SECRET is missing or too short (need >= 32 chars). Put it in repo-root .env; see travel-backend-java/.env.example"
+    Write-Warning "JWT_SECRET is missing or too short (need >= 32 chars). Put it in repo-root .env; see travel-agent-python/.env.example"
 }
 if (-not $env:AGENT_INTERNAL_TOKEN) {
-    Write-Warning "AGENT_INTERNAL_TOKEN is not set: internal generate calls between Java/Python will be unauthenticated (acceptable only for local demos)"
+    Write-Warning "AGENT_INTERNAL_TOKEN is not set: HTTP calls to /api/agent/* will be unauthenticated (acceptable only for local demos on loopback)"
 }
 
 function Test-Port([int]$p) {
@@ -44,27 +45,24 @@ Write-Host "=== Travel Assistant launcher ==="
 
 # --- redis (cache, optional but recommended) ---
 if (-not (Test-Port 6380)) {
-    $redisExe = Join-Path $env:LOCALAPPDATA "Temp\opencode\redis\redis-server.exe"
-    if (Test-Path $redisExe) {
+    # Resolve redis-server.exe without any hardcoded path: REDIS_SERVER_EXE
+    # (repo-root .env works, it is loaded above) wins, then PATH.
+    $redisExe = $env:REDIS_SERVER_EXE
+    if (-not $redisExe) {
+        $redisCmd = Get-Command redis-server -ErrorAction SilentlyContinue
+        if ($redisCmd) { $redisExe = $redisCmd.Source }
+    }
+    if ($redisExe -and (Test-Path $redisExe)) {
         Start-Process -FilePath $redisExe -ArgumentList "--bind 127.0.0.1 --protected-mode yes --port 6380" -WindowStyle Minimized
         Write-Host "[start] redis      :6380"
     } else {
-        Write-Warning "redis-server.exe not found at $redisExe - cache-dependent APIs will fail"
+        Write-Warning "redis-server.exe not found (checked REDIS_SERVER_EXE and PATH). Set REDIS_SERVER_EXE in repo-root .env or put redis-server on PATH; cache-dependent APIs will fail without redis on :6380"
     }
 } else {
     Write-Host "[skip ] redis      :6380 already running"
 }
 
-# --- backend java :8080 ---
-if (-not (Test-Port 8080)) {
-    Start-ServiceWindow "backend-java" "$root\travel-backend-java" `
-        "mvn spring-boot:run `"-Dspring-boot.run.jvmArguments=-Dfile.encoding=UTF-8`""
-    Write-Host "[start] backend-java :8080"
-} else {
-    Write-Host "[skip ] backend-java :8080 already running"
-}
-
-# --- agent python :8000 ---
+# --- backend (FastAPI on :8000) ---
 if (-not (Test-Port 8000)) {
     # --no-sync: when the local venv drifts from uv.lock (e.g. torch/embedding deps bumped
     # without uv sync yet), bare "uv run" does an implicit sync that can stall on the pytorch
@@ -90,7 +88,8 @@ if (-not (Test-Port 5173)) {
 Write-Host ""
 Write-Host "Waiting for services to become healthy..."
 $targets = @(
-    @{ Name = "backend-java :8080"; Url = "http://127.0.0.1:8080/api/test/hello" },
+    # FastAPI serves both surfaces on :8000
+    @{ Name = "backend-python :8000"; Url = "http://127.0.0.1:8000/api/test/hello" },
     @{ Name = "agent-python :8000"; Url = "http://127.0.0.1:8000/api/agent/hello" },
     @{ Name = "frontend-vue :5173"; Url = "http://localhost:5173/" }
 )

@@ -58,19 +58,11 @@ jobs:
             travel-agent-python/eval-artifacts
             travel-agent-python/tests/agent_eval/report
 
-  java-frontend-gates:
-    name: Java + frontend gates
+  frontend-gates:
+    name: Frontend gates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: maven
-      - name: Java tests
-        working-directory: travel-backend-java
-        run: mvn -B test
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -124,12 +116,6 @@ jobs:
         with:
           python-version: '3.12'
           enable-cache: true
-      - uses: actions/setup-java@v4
-        if: steps.guard.outputs.skip != 'true'
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: maven
       - name: Install python deps
         if: steps.guard.outputs.skip != 'true'
         working-directory: travel-agent-python
@@ -145,24 +131,10 @@ jobs:
           REDIS_URL: redis://127.0.0.1:6379/0
           RAG_EMBEDDING_PROVIDER: hashed
           AGENT_INTERNAL_TOKEN: ci-internal-token
+          # 本进程自己签发会话票：必须显式给 JWT_SECRET（≥32 字符），不能依赖空默认值
+          JWT_SECRET: ci-example-jwt-secret-at-least-32-chars
         run: |
           nohup uv run python main.py > /tmp/agent.log 2>&1 &
-      - name: Start backend
-        if: steps.guard.outputs.skip != 'true'
-        working-directory: travel-backend-java
-        env:
-          MYSQL_HOST: 127.0.0.1
-          MYSQL_PORT: '3306'
-          MYSQL_USER: root
-          MYSQL_PASSWORD: ci-only-password
-          MYSQL_DB: travel_assistant
-          REDIS_HOST: 127.0.0.1
-          REDIS_PORT: '6379'
-          JWT_SECRET: ci-example-jwt-secret-at-least-32-chars
-          AGENT_SERVICE_URL: http://127.0.0.1:8000
-          AGENT_INTERNAL_TOKEN: ci-internal-token
-        run: |
-          nohup mvn -B -q spring-boot:run > /tmp/backend.log 2>&1 &
       - name: Wait for services
         if: steps.guard.outputs.skip != 'true'
         run: |
@@ -170,10 +142,11 @@ jobs:
             curl -sf http://127.0.0.1:8000/api/agent/health >/dev/null && break || sleep 2
           done
           curl -sf http://127.0.0.1:8000/api/agent/health
-          for _ in $(seq 1 90); do
-            curl -sf http://127.0.0.1:8080/api/test/hello >/dev/null && break || sleep 2
+          # 后端已统一到 FastAPI：这一步同时验证「空库启动即迁移」（Java 退役后没有 Flyway 了）
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8000/api/test/hello >/dev/null && break || sleep 2
           done
-          curl -sf http://127.0.0.1:8080/api/test/hello
+          curl -sf http://127.0.0.1:8000/api/test/hello
       - name: Load test (all endpoints)
         if: steps.guard.outputs.skip != 'true'
         working-directory: travel-agent-python
@@ -189,4 +162,3 @@ jobs:
         if: failure()
         run: |
           echo "=== agent.log (tail) ==="; tail -200 /tmp/agent.log || true
-          echo "=== backend.log (tail) ==="; tail -200 /tmp/backend.log || true

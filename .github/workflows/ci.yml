@@ -33,25 +33,12 @@ jobs:
         run: |
           uv run python scripts/export_contracts.py
           git diff --exit-code -- ../contracts/
+      - name: Java->FastAPI endpoint coverage
+        # 迁移完成度的机器证据：残留端点必须逐条登记在 EXPECTED_REMAINING 里
+        run: uv run python scripts/check_endpoint_coverage.py
       - name: Compose config
         working-directory: .
         run: docker compose config -q
-
-  java-backend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: travel-backend-java
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: maven
-      - name: Unit tests
-        # 全量跑（全部 mock、不依赖外部服务）；避免 -Dtest 白名单漏掉新增测试类
-        run: mvn -B test
 
   frontend:
     # 前端门禁：类型检查 + 生产构建 + 纯逻辑单测（store reducer / SSE 帧解析）
@@ -72,9 +59,17 @@ jobs:
         run: npm run build
       - name: Unit tests
         run: npm run test:unit
+      - name: Theme lint
+        # 外观契约门禁（SPEC v2.3 §7.1.6）：裸色值 / z-index 字面量 / !important；
+        # 旧文件走 scripts/theme-lint.allowlist.json，只准变短不准变长
+        run: npm run theme:lint
+      - name: EP allowlist
+        # 去 EP 门禁（SPEC v2.6 §19.7-2）：产品面禁止新增 Element Plus 使用；
+        # 存量走 scripts/ep-allowlist.json，总数只减不增
+        run: npm run ep:lint
 
   schema-migration:
-    # 迁移门禁：把 Flyway V1 基线应用到空库，验证「新环境可复现正确 schema」
+    # 迁移门禁：按版本序把全部迁移 SQL（当前 V1、V2）应用到空库，验证「新环境可复现正确 schema」
     runs-on: ubuntu-latest
     services:
       mysql:
@@ -91,21 +86,31 @@ jobs:
           --health-retries=20
     steps:
       - uses: actions/checkout@v4
-      - name: Apply V1 baseline to empty schema
+      - name: Apply all migrations in version order (V1 → V2 → …)
         env:
           MYSQL_PWD: ci-only-password
         run: |
-          mysql -h127.0.0.1 -uroot travel_assistant \
-            < travel-backend-java/src/main/resources/db/migration/V1__baseline_schema.sql
+          # 版本序而非字典序：V10 必须排在 V2 之后（`sort -V` 按版本号）
+          for f in $(ls -1 travel-agent-python/app/db/migrations/sql/V*.sql | sort -V); do
+            echo "applying $f"
+            mysql -h127.0.0.1 -uroot travel_assistant < "$f"
+          done
           tables=$(mysql -h127.0.0.1 -uroot -N -B travel_assistant \
             -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='travel_assistant'")
           echo "created tables: $tables"
-          test "$tables" -ge 12
+          test "$tables" -ge 13
           # 采集管线依赖的关键列必须存在（fail-fast 契约）
           mysql -h127.0.0.1 -uroot -N -B travel_assistant \
             -e "SHOW COLUMNS FROM poi_knowledge LIKE 'avg_cost'" | grep -q avg_cost
-      - name: Cross-check schema contract (Python 只读列 / Java 实体列 vs V1)
-        # 防双端 schema 漂移：V1 基线必须覆盖两端查询/映射用到的全部列（纯静态，无需 DB）
+          # V2 列/表断言：清单只增不减，防「迁移漏跑」
+          mysql -h127.0.0.1 -uroot -N -B travel_assistant \
+            -e "SHOW COLUMNS FROM itinerary_main LIKE 'cover_url'" | grep -q cover_url
+          mysql -h127.0.0.1 -uroot -N -B travel_assistant \
+            -e "SHOW COLUMNS FROM itinerary_main LIKE 'share_token'" | grep -q share_token
+          mysql -h127.0.0.1 -uroot -N -B travel_assistant \
+            -e "SHOW TABLES LIKE 'city_geo'" | grep -q city_geo
+      - name: Cross-check schema contract (Python 只读列 vs 全部迁移)
+        # 防 schema 漂移：迁移文件（V1+V*）必须覆盖查询用到的全部列（纯静态，无需 DB）
         run: python3 travel-agent-python/scripts/check_schema_contract.py
 
   secret-scan:

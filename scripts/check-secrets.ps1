@@ -30,12 +30,20 @@ $patterns = @(
 $entropyPattern = '(?i)(?:PASSWORD|SECRET|TOKEN|API_KEY|ACCESS_KEY|APP_KEY)[A-Z_]*\s*[=:]\s*[''"]?([A-Za-z0-9+/_\-]{32,})'
 $placeholderMarkers = @('replace', 'your-', 'change-me', 'changeme', 'example', 'placeholder', 'xxxx')
 
-$skip = '\\(\.git|node_modules|\.venv[^\\]*|\.uv-cache|\.uv-python|\.pnpm-store|models|dist|target|\.idea|\.vscode|data|logs|\.test-report|site-packages)\\'
+# Low-entropy credential assignments. The 32+ char gate above cannot see a short
+# password, and one sat in a tracked debug script undetected. Quoted values only,
+# so env indirection (password=os.environ["DB_PASSWORD"]) and yml placeholders
+# (${MYSQL_PASSWORD:}) stay clean; placeholders are still excluded below.
+$assignPattern = '(?i)(?:password|passwd|db_?pwd)\s*[=:]\s*[''"]([A-Za-z0-9+/_\-]{4,})[''"]'
+
+$skip = '\\(\.git|node_modules|\.venv[^\\]*|\.uv-cache|\.uv-python|\.pnpm-store|models|dist|target|\.idea|\.vscode|data|logs|\.test-report|site-packages|\.tmp-[^\\]*)\\'
 $found = New-Object System.Collections.Generic.List[string]
 
 function Add-Hit([string]$rel, [string]$line, [int]$lineNumber) {
     Write-Host "HIT $rel"
     if ($line.Length -gt 140) { $line = $line.Substring(0, 140) }
+    # Never echo the matched literal back into CI logs.
+    $line = $line -replace '([=:]\s*)["\x27][^"\x27]{3,}["\x27]', '$1"<redacted>"'
     Write-Host ("  L{0}: {1}" -f $lineNumber, $line)
     if (-not $found.Contains($rel)) { $found.Add($rel) | Out-Null }
 }
@@ -73,6 +81,16 @@ foreach ($file in $files) {
 
     $entropyHits = Select-String -Path $file.FullName -Pattern $entropyPattern -ErrorAction SilentlyContinue
     foreach ($h in ($entropyHits | Select-Object -First 5)) {
+        $value = [string]$h.Matches[0].Groups[1].Value
+        $isPlaceholder = $false
+        foreach ($marker in $placeholderMarkers) {
+            if ($value.ToLower().Contains($marker)) { $isPlaceholder = $true; break }
+        }
+        if (-not $isPlaceholder) { Add-Hit $rel $h.Line $h.LineNumber }
+    }
+
+    $assignHits = Select-String -Path $file.FullName -Pattern $assignPattern -ErrorAction SilentlyContinue
+    foreach ($h in ($assignHits | Select-Object -First 5)) {
         $value = [string]$h.Matches[0].Groups[1].Value
         $isPlaceholder = $false
         foreach ($marker in $placeholderMarkers) {

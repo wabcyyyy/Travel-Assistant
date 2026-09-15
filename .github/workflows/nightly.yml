@@ -2,7 +2,7 @@ name: nightly
 
 # 分层冒烟（评审报告 §4.2）：PR 层在 ci.yml；夜间跑
 #   1) 语义检索评测：验证默认 semantic 路径（模型走 HF 镜像 + 缓存）；
-#   2) 集成冒烟：起 MySQL/Redis + Agent + Java（Java 首启即执行 Flyway 迁移），
+#   2) 集成冒烟：起 MySQL/Redis + FastAPI 后端（首启即自动迁移 schema），
 #      再跑 tests/api 端到端（真实 LLM 生成，需 LLM_API_KEY secret，缺失时跳过）。
 # 手动触发：Actions → nightly → Run workflow。
 
@@ -90,12 +90,6 @@ jobs:
         with:
           python-version: '3.12'
           enable-cache: true
-      - uses: actions/setup-java@v4
-        if: steps.guard.outputs.skip != 'true'
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: maven
       - name: Install python deps
         if: steps.guard.outputs.skip != 'true'
         working-directory: travel-agent-python
@@ -111,24 +105,10 @@ jobs:
           REDIS_URL: redis://127.0.0.1:6379/0
           RAG_EMBEDDING_PROVIDER: hashed
           AGENT_INTERNAL_TOKEN: ci-internal-token
+          # 本进程自己签发会话票：必须显式给 JWT_SECRET（≥32 字符），不能依赖空默认值
+          JWT_SECRET: ci-example-jwt-secret-at-least-32-chars
         run: |
           nohup uv run python main.py > /tmp/agent.log 2>&1 &
-      - name: Start backend (首启执行 Flyway 迁移)
-        if: steps.guard.outputs.skip != 'true'
-        working-directory: travel-backend-java
-        env:
-          MYSQL_HOST: 127.0.0.1
-          MYSQL_PORT: '3306'
-          MYSQL_USER: root
-          MYSQL_PASSWORD: ci-only-password
-          MYSQL_DB: travel_assistant
-          REDIS_HOST: 127.0.0.1
-          REDIS_PORT: '6379'
-          JWT_SECRET: ci-example-jwt-secret-at-least-32-chars
-          AGENT_SERVICE_URL: http://127.0.0.1:8000
-          AGENT_INTERNAL_TOKEN: ci-internal-token
-        run: |
-          nohup mvn -B -q spring-boot:run > /tmp/backend.log 2>&1 &
       - name: Wait for services
         if: steps.guard.outputs.skip != 'true'
         run: |
@@ -136,18 +116,19 @@ jobs:
             curl -sf http://127.0.0.1:8000/api/agent/health >/dev/null && break || sleep 2
           done
           curl -sf http://127.0.0.1:8000/api/agent/health
-          for _ in $(seq 1 90); do
-            curl -sf http://127.0.0.1:8080/api/test/hello >/dev/null && break || sleep 2
+          # 后端已统一到 FastAPI：这一步同时验证「空库启动即迁移」（Java 退役后没有 Flyway 了）
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8000/api/test/hello >/dev/null && break || sleep 2
           done
-          curl -sf http://127.0.0.1:8080/api/test/hello
+          curl -sf http://127.0.0.1:8000/api/test/hello
       - name: pytest tests/api
         if: steps.guard.outputs.skip != 'true'
         working-directory: travel-agent-python
         env:
-          API_BASE_URL: http://127.0.0.1:8080
+          API_BASE_URL: http://127.0.0.1:8000
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
         run: uv run pytest tests/api -q
-      - name: Real-LLM eval（小样本 + 成本上限 3 例）
+      - name: Real-LLM eval（小样本 3 例 + 防倒退门禁）
         if: steps.guard.outputs.skip != 'true'
         working-directory: travel-agent-python
         env:
@@ -157,7 +138,11 @@ jobs:
           DB_NAME: travel_assistant
           REDIS_URL: redis://127.0.0.1:6379/0
           RAG_EMBEDDING_PROVIDER: hashed
-        run: uv run python tests/agent_eval/llm_eval.py --limit 3 | tee llm_eval_small.json
+        run: |
+          uv run python tests/agent_eval/llm_eval.py --limit 3 | tee llm_eval_small.json
+          # 防倒退门禁（SPEC v2.3 §8 A2）：failed run / Prompt 版本漂移 / 一致率低于基线 → 红；
+          # degraded 如实呈现，不判失败
+          uv run python tests/agent_eval/eval_gate.py
       - uses: actions/upload-artifact@v4
         if: steps.guard.outputs.skip != 'true'
         with:
@@ -169,4 +154,3 @@ jobs:
         if: failure()
         run: |
           echo "=== agent.log (tail) ==="; tail -200 /tmp/agent.log || true
-          echo "=== backend.log (tail) ==="; tail -200 /tmp/backend.log || true
