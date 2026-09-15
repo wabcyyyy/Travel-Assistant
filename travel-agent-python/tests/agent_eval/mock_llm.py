@@ -15,30 +15,52 @@ from app.agent.trace import traced
 
 def _attractions(city: str) -> list[dict]:
     return [
-        {"id": i, "name": f"{city}景点{i}", "category": "attraction",
-         "address": f"{city}示例区{i}", "latitude": 30.0 + i / 100,
-         "longitude": 120.0 + i / 100, "ticket_price": 20 + i * 5,
-         "duration_min": 90, "open_time": "08:00-18:00",
-         "tags": "人文 自然 网红", "rating": 4.8}
+        {
+            "id": i,
+            "name": f"{city}景点{i}",
+            "category": "attraction",
+            "address": f"{city}示例区{i}",
+            "latitude": 30.0 + i / 100,
+            "longitude": 120.0 + i / 100,
+            "ticket_price": 20 + i * 5,
+            "duration_min": 90,
+            "open_time": "08:00-18:00",
+            "tags": "人文 自然 网红",
+            "rating": 4.8,
+        }
         for i in range(1, 13)
     ]
 
 
 def _foods(city: str) -> list[dict]:
     return [
-        {"id": 100 + i, "name": f"{city}本地餐厅{i}", "category": "food",
-         "address": f"{city}美食街{i}", "latitude": 30.02 + i / 100,
-         "longitude": 120.02 + i / 100, "ticket_price": 60 + i * 10,
-         "duration_min": 60, "open_time": "10:00-22:00", "tags": "美食"}
+        {
+            "id": 100 + i,
+            "name": f"{city}本地餐厅{i}",
+            "category": "food",
+            "address": f"{city}美食街{i}",
+            "latitude": 30.02 + i / 100,
+            "longitude": 120.02 + i / 100,
+            "ticket_price": 60 + i * 10,
+            "duration_min": 60,
+            "open_time": "10:00-22:00",
+            "tags": "美食",
+        }
         for i in range(1, 5)
     ]
 
 
 def _hotels(city: str) -> list[dict]:
     return [
-        {"id": 200 + i, "name": f"{city}舒适酒店{i}", "category": "hotel",
-         "address": f"{city}市中心{i}", "ticket_price": 300 + i * 50,
-         "description": "舒适型酒店", "tags": "住宿"}
+        {
+            "id": 200 + i,
+            "name": f"{city}舒适酒店{i}",
+            "category": "hotel",
+            "address": f"{city}市中心{i}",
+            "ticket_price": 300 + i * 50,
+            "description": "舒适型酒店",
+            "tags": "住宿",
+        }
         for i in range(1, 3)
     ]
 
@@ -48,8 +70,7 @@ def catalog(city: str) -> dict:
         "attractions": _attractions(city),
         "foods": _foods(city),
         "hotels": _hotels(city),
-        "consumption": {"city": city, "meal_price": 60, "transport_price": 35,
-                        "hotel_price": 300},
+        "consumption": {"city": city, "meal_price": 60, "transport_price": 35, "hotel_price": 300},
     }
 
 
@@ -105,10 +126,15 @@ def _take_unused(pool: list[dict], used: set[str], offset: int) -> dict | None:
 
 
 def _item(poi: dict, start: str, end: str) -> dict:
-    return {"item_type": poi["category"], "poi_name": poi["name"],
-            "start_time": start, "end_time": end,
-            "duration_min": poi.get("duration_min") or 90,
-            "cost": float(poi.get("ticket_price") or 0), "tag": poi.get("tags")}
+    return {
+        "item_type": poi["category"],
+        "poi_name": poi["name"],
+        "start_time": start,
+        "end_time": end,
+        "duration_min": poi.get("duration_min") or 90,
+        "cost": float(poi.get("ticket_price") or 0),
+        "tag": poi.get("tags"),
+    }
 
 
 def fixture_open_day(req, used: set[str]) -> dict:
@@ -145,4 +171,3 @@ def fixture_open_trip(req) -> tuple[list[dict], list[dict]]:
         plan["day_no"] = day_no
         plans.append(plan)
     return plans, []
-

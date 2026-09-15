@@ -10,8 +10,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping, Optional
 
 from fastapi import HTTPException, Request, status
 
@@ -35,9 +35,7 @@ class AuthUser:
         return self.role == ROLE_ADMIN
 
 
-def extract_token(
-    authorization: Optional[str], cookies: Mapping[str, str]
-) -> tuple[Optional[str], Optional[str]]:
+def extract_token(authorization: str | None, cookies: Mapping[str, str]) -> tuple[str | None, str | None]:
     """返回 (token, source)。Bearer 优先于 Cookie，与 Java readToken 顺序一致。"""
     if authorization and authorization.startswith("Bearer "):
         bearer = authorization[7:].strip()
@@ -49,7 +47,7 @@ def extract_token(
     return None, None
 
 
-def authenticate(token: Optional[str]) -> Optional[AuthUser]:
+def authenticate(token: str | None) -> AuthUser | None:
     if not token:
         return None
     if token_revocation.is_revoked(token):

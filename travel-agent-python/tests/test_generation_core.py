@@ -61,12 +61,14 @@ def test_draft_plans_empty_and_labeled():
 
 
 def test_filter_dirty_items():
-    out = filter_dirty_items([
-        {"poi_name": "西湖"},
-        {"poi_name": ""},
-        "nope",
-        {"name": "x"},
-    ])
+    out = filter_dirty_items(
+        [
+            {"poi_name": "西湖"},
+            {"poi_name": ""},
+            "nope",
+            {"name": "x"},
+        ]
+    )
     assert out == [{"poi_name": "西湖"}]
 
 
@@ -81,11 +83,13 @@ def test_normalize_item_type_and_sanitize():
     assert normalize_item_type("souvenir") == "attraction"
     assert normalize_item_type("FOOD") == "food"
     assert normalize_item_type("nonsense") == "attraction"
-    rows = sanitize_itinerary_items([
-        {"poi_name": "浅草寺", "item_type": "souvenir"},
-        {"poi_name": "拉面", "item_type": "restaurant"},
-        {"item_type": "attraction"},
-    ])
+    rows = sanitize_itinerary_items(
+        [
+            {"poi_name": "浅草寺", "item_type": "souvenir"},
+            {"poi_name": "拉面", "item_type": "restaurant"},
+            {"item_type": "attraction"},
+        ]
+    )
     assert [r["item_type"] for r in rows] == ["attraction", "food"]
     assert rows[0]["poi_name"] == "浅草寺"
 

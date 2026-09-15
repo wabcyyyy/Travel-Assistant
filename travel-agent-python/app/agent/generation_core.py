@@ -127,9 +127,7 @@ def count_hotel_nights_in_budget(plan_day_no: int, days: int | None, item_type: 
         return False
     d = int(days or 1)
     n = int(plan_day_no or 0)
-    if d > 1 and n >= d:
-        return False
-    return True
+    return not (d > 1 and n >= d)
 
 
 def spread_hotels(plans: list[dict], nights: int | None = None, days: int | None = None) -> int:
@@ -191,9 +189,9 @@ def has_double_lunch(foods: list[dict]) -> bool:
     return len(lunches) >= 2
 
 
-def estimate_plans_total(plans: list[dict], persons: int, days: int | None,
-                         consumption: dict | None = None,
-                         rooms: int | None = None) -> dict:
+def estimate_plans_total(
+    plans: list[dict], persons: int, days: int | None, consumption: dict | None = None, rooms: int | None = None
+) -> dict:
     """按与 Java BudgetEngine 对齐的口径估算行程总价（用于超支硬约束）。
 
     门票/餐饮：单价 × 人数；酒店：单价 × 房间数（默认 2 人间）；交通：城市日均。
@@ -237,8 +235,7 @@ def draft_day_plans(city: str, days: int, reason: str) -> list[dict]:
         n = 1
     n = max(n, 1)
     return [
-        {"day_no": day_no, "note": f"{city}第{day_no}天{DRAFT_NOTE_SUFFIX}", "items": []}
-        for day_no in range(1, n + 1)
+        {"day_no": day_no, "note": f"{city}第{day_no}天{DRAFT_NOTE_SUFFIX}", "items": []} for day_no in range(1, n + 1)
     ]
 
 
@@ -338,8 +335,7 @@ class PoiSeenRegistry:
             self._coords.append((str(item_type or ""), lat, lng))
 
 
-def drop_cross_day_duplicates(plans: list[dict],
-                              *, max_proximity_m: float = 80.0) -> list[dict]:
+def drop_cross_day_duplicates(plans: list[dict], *, max_proximity_m: float = 80.0) -> list[dict]:
     """对整组日计划做跨天重复清洗（原地修改），返回被丢弃项的遥测列表。
 
     用于整段一次生成的后处理：同名/同地不同名的重复只保留首次出现。
@@ -351,8 +347,7 @@ def drop_cross_day_duplicates(plans: list[dict],
         for item in plan.get("items") or []:
             name = str(item.get("poi_name") or "").strip()
             item_type = str(item.get("item_type") or "")
-            if name and registry.is_duplicate(name, item_type,
-                                              item.get("latitude"), item.get("longitude")):
+            if name and registry.is_duplicate(name, item_type, item.get("latitude"), item.get("longitude")):
                 dropped.append({"day_no": plan.get("day_no"), "poi_name": name})
                 continue
             if name:

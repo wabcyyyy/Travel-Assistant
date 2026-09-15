@@ -1,6 +1,6 @@
 """db_pool 单测：池复用、归还、耗尽与 close_all。"""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

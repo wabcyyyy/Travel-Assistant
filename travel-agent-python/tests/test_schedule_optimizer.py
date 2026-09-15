@@ -3,9 +3,15 @@ from app.agent.schedule_optimizer import optimize_daily_plan
 
 def _item(name, start="09:00", end="10:00", duration=60, open_time=None, kind="attraction"):
     return {
-        "item_type": kind, "poi_id": name, "poi_name": name,
-        "latitude": 30.0, "longitude": 120.0, "start_time": start,
-        "end_time": end, "duration_min": duration, "open_time": open_time,
+        "item_type": kind,
+        "poi_id": name,
+        "poi_name": name,
+        "latitude": 30.0,
+        "longitude": 120.0,
+        "start_time": start,
+        "end_time": end,
+        "duration_min": duration,
+        "open_time": open_time,
     }
 
 

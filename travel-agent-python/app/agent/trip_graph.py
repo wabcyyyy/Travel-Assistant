@@ -106,6 +106,7 @@ def _is_day(state: UnifiedAgentState) -> bool:
 # dispatch
 # ---------------------------------------------------------------------------
 
+
 def dispatch(state: UnifiedAgentState) -> dict:
     """入口：仅规范化 mode，便于条件边分流。"""
     mode = state.get("mode") or MODE_TRIP
@@ -120,6 +121,7 @@ def route_entry(state: UnifiedAgentState) -> str:
 # day 分支
 # ---------------------------------------------------------------------------
 
+
 @traced("node", "day.generate")
 def day_generate(state: UnifiedAgentState) -> dict:
     # 经 day_workflow 模块属性调用，保证 tests monkeypatch 生效
@@ -130,9 +132,7 @@ def day_generate(state: UnifiedAgentState) -> dict:
     if feedback and feedback != request.feedback:
         request = request.model_copy(update={"feedback": feedback})
     try:
-        plan, source = dw._generate_day_once(
-            request, force_fallback=state.get("force_fallback", False)
-        )
+        plan, source = dw._generate_day_once(request, force_fallback=state.get("force_fallback", False))
         return {
             "day_request": request,
             "plan": plan,
@@ -140,7 +140,7 @@ def day_generate(state: UnifiedAgentState) -> dict:
             "attempts": state.get("attempts", 0) + 1,
             "error": None,
         }
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return {
             "day_request": request,
             "plan": None,
@@ -171,9 +171,14 @@ def day_reflect(state: UnifiedAgentState) -> dict:
         persons=persons,
         budget_overage_ratio=_settings.budget_overage_ratio,
     )
-    record_event("decision", "day.reflect_result", metadata={
-        "issue_count": len(issues), "needs_fix": bool(issues),
-    })
+    record_event(
+        "decision",
+        "day.reflect_result",
+        metadata={
+            "issue_count": len(issues),
+            "needs_fix": bool(issues),
+        },
+    )
     return {
         "validation_issues": issues,
         "validation_log": log,
@@ -209,8 +214,10 @@ def day_prepare_fallback(state: UnifiedAgentState) -> dict:
 # trip 分支：节点实现委托 workflow 模块（延迟导入避免环）
 # ---------------------------------------------------------------------------
 
+
 def _wf():
     from app.agent import workflow as wf
+
     return wf
 
 
@@ -252,6 +259,7 @@ def trip_needs_fix(state: UnifiedAgentState) -> str:
 # 统一图
 # ---------------------------------------------------------------------------
 
+
 def build_unified_graph() -> StateGraph:
     graph = StateGraph(UnifiedAgentState)
 
@@ -272,18 +280,26 @@ def build_unified_graph() -> StateGraph:
     graph.add_node("format", trip_format)
 
     graph.set_entry_point("dispatch")
-    graph.add_conditional_edges("dispatch", route_entry, {
-        "day_generate": "day_generate",
-        "parse": "parse",
-    })
+    graph.add_conditional_edges(
+        "dispatch",
+        route_entry,
+        {
+            "day_generate": "day_generate",
+            "parse": "parse",
+        },
+    )
 
     # day edges
     graph.add_edge("day_generate", "day.reflect")
-    graph.add_conditional_edges("day.reflect", day_route_after_reflect, {
-        "finish": END,
-        "retry": "day.retry",
-        "fallback": "day.fallback",
-    })
+    graph.add_conditional_edges(
+        "day.reflect",
+        day_route_after_reflect,
+        {
+            "finish": END,
+            "retry": "day.retry",
+            "fallback": "day.fallback",
+        },
+    )
     graph.add_edge("day.retry", "day_generate")
     graph.add_edge("day.fallback", "day_generate")
 
@@ -291,11 +307,15 @@ def build_unified_graph() -> StateGraph:
     graph.add_edge("parse", "research")
     graph.add_edge("research", "generate")
     graph.add_edge("generate", "reflect")
-    graph.add_conditional_edges("reflect", trip_needs_fix, {
-        "fix": "generate",
-        "refill": "refill_research",
-        "pass": "format",
-    })
+    graph.add_conditional_edges(
+        "reflect",
+        trip_needs_fix,
+        {
+            "fix": "generate",
+            "refill": "refill_research",
+            "pass": "format",
+        },
+    )
     graph.add_edge("refill_research", "generate")
     graph.add_edge("format", END)
 

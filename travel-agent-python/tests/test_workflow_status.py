@@ -43,20 +43,51 @@ def test_valid_llm_generation_is_delivered_with_review_notice(monkeypatch):
 
     def valid_open_day(req, _used):
         # 通过当前 reflect：活动时长 ≥240、含餐饮、相邻间隔足够
-        return {"note": f"{req.city}行程", "items": [
-            {"item_type": "attraction", "poi_name": "杭州景点1",
-             "start_time": "09:00", "end_time": "12:00", "duration_min": 180,
-             "latitude": 30.0, "longitude": 120.0, "cost": 25},
-            {"item_type": "food", "poi_name": "杭州本地餐厅1",
-             "start_time": "12:40", "end_time": "13:40", "duration_min": 60,
-             "latitude": 30.01, "longitude": 120.01, "cost": 70},
-            {"item_type": "attraction", "poi_name": "杭州景点2",
-             "start_time": "14:10", "end_time": "16:10", "duration_min": 120,
-             "latitude": 30.02, "longitude": 120.02, "cost": 30},
-            {"item_type": "hotel", "poi_name": "杭州舒适酒店1", "cost": 350,
-             "start_time": "18:00", "end_time": "18:30", "duration_min": 30,
-             "latitude": 30.05, "longitude": 120.05},
-        ]}
+        return {
+            "note": f"{req.city}行程",
+            "items": [
+                {
+                    "item_type": "attraction",
+                    "poi_name": "杭州景点1",
+                    "start_time": "09:00",
+                    "end_time": "12:00",
+                    "duration_min": 180,
+                    "latitude": 30.0,
+                    "longitude": 120.0,
+                    "cost": 25,
+                },
+                {
+                    "item_type": "food",
+                    "poi_name": "杭州本地餐厅1",
+                    "start_time": "12:40",
+                    "end_time": "13:40",
+                    "duration_min": 60,
+                    "latitude": 30.01,
+                    "longitude": 120.01,
+                    "cost": 70,
+                },
+                {
+                    "item_type": "attraction",
+                    "poi_name": "杭州景点2",
+                    "start_time": "14:10",
+                    "end_time": "16:10",
+                    "duration_min": 120,
+                    "latitude": 30.02,
+                    "longitude": 120.02,
+                    "cost": 30,
+                },
+                {
+                    "item_type": "hotel",
+                    "poi_name": "杭州舒适酒店1",
+                    "cost": 350,
+                    "start_time": "18:00",
+                    "end_time": "18:30",
+                    "duration_min": 30,
+                    "latitude": 30.05,
+                    "longitude": 120.05,
+                },
+            ],
+        }
 
     patches = _patch_catalog()
     for item in patches:
@@ -79,11 +110,21 @@ def test_final_validation_marks_unfixed_constraints_as_degraded(monkeypatch):
     monkeypatch.setattr(workflow.settings, "live_price_search", False)
 
     def invalid_open_day(req, _used):
-        return {"note": f"{req.city}行程", "items": [
-            {"item_type": "attraction", "poi_name": "杭州景点1",
-             "start_time": "17:00", "end_time": "19:00", "duration_min": 120,
-             "latitude": 30.0, "longitude": 120.0, "cost": 25},
-        ]}
+        return {
+            "note": f"{req.city}行程",
+            "items": [
+                {
+                    "item_type": "attraction",
+                    "poi_name": "杭州景点1",
+                    "start_time": "17:00",
+                    "end_time": "19:00",
+                    "duration_min": 120,
+                    "latitude": 30.0,
+                    "longitude": 120.0,
+                    "cost": 25,
+                },
+            ],
+        }
 
     patches = _patch_catalog()
     for item in patches:
@@ -113,17 +154,41 @@ def test_unknown_destination_with_llm_is_researched(monkeypatch):
     monkeypatch.setattr(workflow, "_local_ground", lambda *_args, **_kwargs: None)
 
     def open_day(req, _used):
-        return {"note": f"{req.city}体验日", "items": [
-            {"item_type": "attraction", "poi_name": f"{req.city}地标",
-             "start_time": "09:00", "end_time": "12:00", "duration_min": 180,
-             "latitude": 30.0, "longitude": 120.0, "cost": 50},
-            {"item_type": "food", "poi_name": f"{req.city}餐厅",
-             "start_time": "12:40", "end_time": "13:40", "duration_min": 60,
-             "latitude": 30.01, "longitude": 120.01, "cost": 60},
-            {"item_type": "attraction", "poi_name": f"{req.city}公园",
-             "start_time": "14:10", "end_time": "16:10", "duration_min": 120,
-             "latitude": 30.02, "longitude": 120.02, "cost": 0},
-        ]}
+        return {
+            "note": f"{req.city}体验日",
+            "items": [
+                {
+                    "item_type": "attraction",
+                    "poi_name": f"{req.city}地标",
+                    "start_time": "09:00",
+                    "end_time": "12:00",
+                    "duration_min": 180,
+                    "latitude": 30.0,
+                    "longitude": 120.0,
+                    "cost": 50,
+                },
+                {
+                    "item_type": "food",
+                    "poi_name": f"{req.city}餐厅",
+                    "start_time": "12:40",
+                    "end_time": "13:40",
+                    "duration_min": 60,
+                    "latitude": 30.01,
+                    "longitude": 120.01,
+                    "cost": 60,
+                },
+                {
+                    "item_type": "attraction",
+                    "poi_name": f"{req.city}公园",
+                    "start_time": "14:10",
+                    "end_time": "16:10",
+                    "duration_min": 120,
+                    "latitude": 30.02,
+                    "longitude": 120.02,
+                    "cost": 0,
+                },
+            ],
+        }
 
     with patch.object(workflow, "_llm_open_day", open_day):
         response = workflow.run_generate(GenerateRequest(city="不存在的目的地", days=1))
@@ -150,8 +215,7 @@ def test_unknown_destination_without_llm_is_blocked_draft(monkeypatch):
     assert response.destination_status == "draft_only"
     assert response.status == "failed"
     assert response.quality_report.quality_status == "BLOCKED"
-    assert any(issue.code == "NO_ITINERARY_ITEMS"
-               for issue in response.quality_report.blocking_issues)
+    assert any(issue.code == "NO_ITINERARY_ITEMS" for issue in response.quality_report.blocking_issues)
 
 
 def test_open_result_kept_when_validation_exhausted_without_candidates(monkeypatch):
@@ -172,11 +236,19 @@ def test_open_result_kept_when_validation_exhausted_without_candidates(monkeypat
 
     def open_day(req, _used):
         # 只排酒店不排景点：制造"未安排任何景点"校验问题，且修复轮同样不过。
-        return {"note": f"{req.city}行程", "items": [
-            {"item_type": "hotel", "poi_name": "丽江悦榕庄",
-             "start_time": "21:00", "end_time": "08:00", "duration_min": 660,
-             "cost": 2500},
-        ]}
+        return {
+            "note": f"{req.city}行程",
+            "items": [
+                {
+                    "item_type": "hotel",
+                    "poi_name": "丽江悦榕庄",
+                    "start_time": "21:00",
+                    "end_time": "08:00",
+                    "duration_min": 660,
+                    "cost": 2500,
+                },
+            ],
+        }
 
     with patch.object(workflow, "_llm_open_day", open_day):
         response = workflow.run_generate(GenerateRequest(city="丽江", days=1))
@@ -187,8 +259,7 @@ def test_open_result_kept_when_validation_exhausted_without_candidates(monkeypat
     assert "丽江市区舒适酒店" not in names
     assert "保留" in (response.status_reason or "")
     assert response.quality_report.quality_status == "BLOCKED"
-    assert any(issue.code == "NO_ATTRACTION_ITEMS"
-               for issue in response.quality_report.blocking_issues)
+    assert any(issue.code == "NO_ATTRACTION_ITEMS" for issue in response.quality_report.blocking_issues)
 
 
 def test_open_result_with_attractions_kept_when_route_validation_exhausted(monkeypatch):
@@ -206,17 +277,39 @@ def test_open_result_with_attractions_kept_when_route_validation_exhausted(monke
     def open_day(req, _used):
         # 相邻两天各 1 景点+酒店；时间安排合法，制造路线类校验问题的 simplest 方式：
         # 用开放时间越界以外的问题——直接用两个景点间隔过短。
-        return {"note": f"{req.city}行程", "items": [
-            {"item_type": "attraction", "poi_name": "玉龙雪山",
-             "start_time": "09:00", "end_time": "14:00", "duration_min": 300,
-             "latitude": 27.1164, "longitude": 100.18, "cost": 100},
-            {"item_type": "food", "poi_name": "云雪丽餐厅",
-             "start_time": "14:30", "end_time": "15:30", "duration_min": 60,
-             "latitude": 26.87, "longitude": 100.23, "cost": 80},
-            {"item_type": "hotel", "poi_name": "丽江安麓",
-             "start_time": "21:00", "end_time": "08:00", "duration_min": 660,
-             "cost": 2500},
-        ]}
+        return {
+            "note": f"{req.city}行程",
+            "items": [
+                {
+                    "item_type": "attraction",
+                    "poi_name": "玉龙雪山",
+                    "start_time": "09:00",
+                    "end_time": "14:00",
+                    "duration_min": 300,
+                    "latitude": 27.1164,
+                    "longitude": 100.18,
+                    "cost": 100,
+                },
+                {
+                    "item_type": "food",
+                    "poi_name": "云雪丽餐厅",
+                    "start_time": "14:30",
+                    "end_time": "15:30",
+                    "duration_min": 60,
+                    "latitude": 26.87,
+                    "longitude": 100.23,
+                    "cost": 80,
+                },
+                {
+                    "item_type": "hotel",
+                    "poi_name": "丽江安麓",
+                    "start_time": "21:00",
+                    "end_time": "08:00",
+                    "duration_min": 660,
+                    "cost": 2500,
+                },
+            ],
+        }
 
     with patch.object(workflow, "_llm_open_day", open_day):
         response = workflow.run_generate(GenerateRequest(city="丽江", days=1))

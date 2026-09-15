@@ -54,10 +54,11 @@ _UPLOAD_EXTENSIONS = {"image/jpeg": ".jpg", "image/png": ".png"}
 _SEARCH_CACHE_MAX = 2048
 _SEARCH_CACHE_TTL = 600.0
 _SEARCH_CACHE_EMPTY_TTL = 120.0
-_search_cache: "OrderedDict[str, tuple[float, dict[str, Any]]]" = OrderedDict()
+_search_cache: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
 
 
 # ---------- 搜索代理 ----------
+
 
 def search_covers(query: str, page: int, per_page: int, provider: str) -> dict[str, Any]:
     if provider != "unsplash":
@@ -134,6 +135,7 @@ def _cache_put(key: str, payload: dict[str, Any], ttl: float) -> None:
 
 # ---------- 选定：unsplash snapshot ----------
 
+
 def set_cover_unsplash(user_id: int, itinerary_id: int, unsplash_id: str) -> dict[str, Any]:
     ref = (unsplash_id or "").strip()
     if not ref:
@@ -174,9 +176,7 @@ def resolve_unsplash_photo(ref: str) -> dict[str, Any]:
     if not key:
         raise ApiError(400, "封面图库未配置（UNSPLASH_ACCESS_KEY）")
     try:
-        response = image_client().get(
-            UNSPLASH_PHOTO_URL.format(ref=ref), params={"client_id": key}
-        )
+        response = image_client().get(UNSPLASH_PHOTO_URL.format(ref=ref), params={"client_id": key})
         response.raise_for_status()
         body = response.json()
     except Exception as exc:
@@ -202,7 +202,7 @@ def _trigger_download(url: str | None) -> None:
         return
     try:
         image_client().get(str(url), params={"client_id": settings.unsplash_access_key})
-    except Exception as exc:  # noqa: BLE001 - 触发是尽力而为
+    except Exception as exc:
         logger.info("unsplash download trigger failed (ignored): %s", exc)
 
 
@@ -222,6 +222,7 @@ def _download_cover(url: str) -> bytes:
 
 
 # ---------- 压缩与落盘 ----------
+
 
 def _decode_image(data: bytes) -> Image.Image:
     try:
@@ -260,20 +261,17 @@ def _write_cover(user_id: int, filename: str, data: bytes) -> str:
 
 def _write_cover_columns(user_id: int, itinerary_id: int, **values: Any) -> None:
     with session_scope() as session:
-        session.execute(
-            update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(**values)
-        )
+        session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(**values))
     itinerary_query.evict_detail(user_id, itinerary_id)
 
 
 # ---------- 其余两个来源 ----------
 
+
 def set_cover_default(user_id: int, itinerary_id: int) -> dict[str, Any]:
     """恢复默认：四个 cover 列全部置 NULL（DB 不存 default 字面量）；**不删**已落盘文件。"""
     itinerary_query.find_owned_main(user_id, itinerary_id)
-    _write_cover_columns(
-        user_id, itinerary_id, cover_url=None, cover_source=None, cover_ref=None, cover_credit=None
-    )
+    _write_cover_columns(user_id, itinerary_id, cover_url=None, cover_source=None, cover_ref=None, cover_credit=None)
     return itinerary_query.detail(user_id, itinerary_id)
 
 

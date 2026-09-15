@@ -6,17 +6,20 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import NamedTuple
 
 from app.agent.critic import critique_plans
+from app.agent.reflect import validate_plans
 from app.agent.route_matrix import route_matrix_for_plans
 from app.agent.route_service import is_estimated
-from app.agent.reflect import validate_plans
 from app.agent.trace import record_event
 from app.common.config import settings
 from app.schemas.trip import (
-    DailyPlan, GenerateRequest, QualityIssue, QualityReport,
+    DailyPlan,
+    GenerateRequest,
+    QualityIssue,
+    QualityReport,
 )
 
 _EMPTY_CRITIC = {"score": 0.0, "issues": [], "strengths": [], "dimensions": {}}
@@ -38,8 +41,9 @@ class QualityOutcome(NamedTuple):
     destination_status: str
 
 
-def run_final_validation(req: GenerateRequest, daily_plans: list[DailyPlan],
-                         schedule_report: dict, consumption: dict | None) -> FinalCheck:
+def run_final_validation(
+    req: GenerateRequest, daily_plans: list[DailyPlan], schedule_report: dict, consumption: dict | None
+) -> FinalCheck:
     """对成品行程再跑一次约束校验与软评审；就地补写 schedule_report 的路线来源。"""
     final_raw_plans = [
         {
@@ -60,8 +64,7 @@ def run_final_validation(req: GenerateRequest, daily_plans: list[DailyPlan],
     final_route_matrix = None
     if settings.route_service_enabled:
         final_route_matrix = route_matrix_for_plans(final_raw_plans)
-        route_sources = [str(route.get("source") or "unknown")
-                         for route in final_route_matrix.values()]
+        route_sources = [str(route.get("source") or "unknown") for route in final_route_matrix.values()]
         if route_sources:
             schedule_report.setdefault("route_sources", list(dict.fromkeys(route_sources)))
             schedule_report["degraded"] = bool(schedule_report.get("degraded")) or any(
@@ -81,14 +84,24 @@ def run_final_validation(req: GenerateRequest, daily_plans: list[DailyPlan],
         critic_report = critique_plans(final_raw_plans, req.preferences).as_dict()
     except Exception:
         critic_report = dict(_EMPTY_CRITIC)
-    record_event("decision", "critic_result", metadata={
-        "score": critic_report["score"], "issue_count": len(critic_report.get("issues", [])),
-    })
+    record_event(
+        "decision",
+        "critic_result",
+        metadata={
+            "score": critic_report["score"],
+            "issue_count": len(critic_report.get("issues", [])),
+        },
+    )
     return FinalCheck(final_raw_plans, list(final_issues), list(final_log), critic_report)
 
 
-def judge_output(state: dict, daily_plans: list[DailyPlan], schedule_report: dict,
-                 check: FinalCheck, quality_fallback_reason: str | None) -> QualityOutcome:
+def judge_output(
+    state: dict,
+    daily_plans: list[DailyPlan],
+    schedule_report: dict,
+    check: FinalCheck,
+    quality_fallback_reason: str | None,
+) -> QualityOutcome:
     """汇总降级原因、质量报告与最终状态。"""
     validation_log = list(state.get("validation_log") or [])
     validation_log.extend(check.validation_log)
@@ -113,40 +126,40 @@ def judge_output(state: dict, daily_plans: list[DailyPlan], schedule_report: dic
         for item_index, item in enumerate(day.items):
             item_count += 1
             if item.verification_status != "verified":
-                quality_warnings.append(QualityIssue(
-                    code="FACT_REQUIRES_REVIEW",
-                    # path 必须是"日索引 + 当日内索引"，此前用跨天累计序号
-                    # 会让前端定位指错条目。
-                    path=f"trip.daily_plans[{day_index}].items[{item_index}]",
-                    message=f"{item.poi_name} 的部分事实需要出发前复核",
-                ))
+                quality_warnings.append(
+                    QualityIssue(
+                        code="FACT_REQUIRES_REVIEW",
+                        # path 必须是"日索引 + 当日内索引"，此前用跨天累计序号
+                        # 会让前端定位指错条目。
+                        path=f"trip.daily_plans[{day_index}].items[{item_index}]",
+                        message=f"{item.poi_name} 的部分事实需要出发前复核",
+                    )
+                )
             if item.value_kind == "estimated":
                 estimated_count += 1
             # fact_evidence 延迟构建，此处基于 source 字段判断是否有溯源
             if item.source:
                 evidenced_count += 1
-    blocking = [QualityIssue(code="ROUTE_OR_SCHEDULE_CONFLICT", message=issue)
-                for issue in check.issues]
+    blocking = [QualityIssue(code="ROUTE_OR_SCHEDULE_CONFLICT", message=issue) for issue in check.issues]
     if item_count == 0:
         blocking.append(QualityIssue(code="NO_ITINERARY_ITEMS", message="没有可交付的行程地点"))
     elif not any(item.item_type == "attraction" for day in daily_plans for item in day.items):
         # 占位酒店式行程（有 items 但 0 景点）不可作为可交付行程放行。
-        blocking.append(QualityIssue(
-            code="NO_ATTRACTION_ITEMS", message="行程中没有安排任何景点"))
+        blocking.append(QualityIssue(code="NO_ATTRACTION_ITEMS", message="行程中没有安排任何景点"))
     empty_days = [day.day_no for day in daily_plans if not day.items]
     if empty_days:
-        blocking.append(QualityIssue(
-            code="MISSING_DAY_ITEMS",
-            message="以下日期没有可交付的行程地点："
-                    + ", ".join(str(day_no) for day_no in empty_days),
-        ))
-    quality_status = "BLOCKED" if blocking else (
-        "READY_WITH_WARNINGS" if quality_warnings else "READY")
+        blocking.append(
+            QualityIssue(
+                code="MISSING_DAY_ITEMS",
+                message="以下日期没有可交付的行程地点：" + ", ".join(str(day_no) for day_no in empty_days),
+            )
+        )
+    quality_status = "BLOCKED" if blocking else ("READY_WITH_WARNINGS" if quality_warnings else "READY")
     if schedule_report.get("destination_status") == "draft_only" and not blocking:
         quality_status = "READY_WITH_WARNINGS"
     quality_report = QualityReport(
         quality_status=quality_status,
-        validated_at=datetime.now(timezone.utc).isoformat(),
+        validated_at=datetime.now(UTC).isoformat(),
         blocking_issues=blocking,
         warnings=quality_warnings,
         metrics={
@@ -162,10 +175,14 @@ def judge_output(state: dict, daily_plans: list[DailyPlan], schedule_report: dic
     destination_status = schedule_report.get("destination_status")
     if destination_status not in _KNOWN_DESTINATION_STATUSES:
         destination_status = "knowledge_backed" if state.get("candidates") else "draft_only"
-    record_event("decision", "run_status", metadata={
-        "status": status,
-        "final_issue_count": len(check.issues),
-    })
+    record_event(
+        "decision",
+        "run_status",
+        metadata={
+            "status": status,
+            "final_issue_count": len(check.issues),
+        },
+    )
     return QualityOutcome(
         validation_log=validation_log,
         quality_report=quality_report,

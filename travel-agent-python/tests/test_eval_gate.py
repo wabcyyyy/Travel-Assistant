@@ -36,9 +36,7 @@ def test_degraded_is_never_treated_as_failure() -> None:
 
 
 def test_failed_run_is_hard_failure() -> None:
-    problems = eval_gate.check(
-        _report(status_counts={"success": 10, "degraded": 1, "failed": 1})
-    )
+    problems = eval_gate.check(_report(status_counts={"success": 10, "degraded": 1, "failed": 1}))
     assert any("failed" in problem for problem in problems)
 
 

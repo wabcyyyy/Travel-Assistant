@@ -46,6 +46,8 @@ from app.services import (
     itinerary_enricher,
     itinerary_query,
     itinerary_version,
+)
+from app.services import (
     preferences as preferences_service,
 )
 
@@ -123,8 +125,8 @@ def submit_planning(user_id: int, itinerary_id: int, command: GenerateCommand) -
 
 # ---------- 编排主体（工作线程内） ----------
 
-def plan_days(user_id: int, itinerary_id: int, command: GenerateCommand,
-              context: dict[str, Any] | None = None) -> None:
+
+def plan_days(user_id: int, itinerary_id: int, command: GenerateCommand, context: dict[str, Any] | None = None) -> None:
     try:
         if not _shell_exists(itinerary_id):
             logger.error("itinerary shell %s not visible before planning; abort", itinerary_id)
@@ -145,7 +147,7 @@ def plan_days(user_id: int, itinerary_id: int, command: GenerateCommand,
         if fresh_trip:
             try:
                 suggestions_persisted = _plan_whole_trip(user_id, itinerary_id, command, context, fingerprint)
-            except Exception as stream_exc:  # noqa: BLE001 - 整段失败退回逐日循环
+            except Exception as stream_exc:
                 logger.warning("whole-trip stream failed for itinerary %s: %s", itinerary_id, stream_exc)
 
         for day_no in range(1, command.days + 1):
@@ -167,12 +169,13 @@ def plan_days(user_id: int, itinerary_id: int, command: GenerateCommand,
                 day_persistence.mark_running(day.id, action_id, fingerprint)
                 generation_events.day_start(itinerary_id, day_no)
                 try:
-                    plan = _generate_day_with_trace(itinerary_id, command, context, day_no,
-                                                    used_names, chosen_hotel, action_id, fingerprint)
+                    plan = _generate_day_with_trace(
+                        itinerary_id, command, context, day_no, used_names, chosen_hotel, action_id, fingerprint
+                    )
                     if day_no == 1:
                         first_day_suggestions = plan.suggestions
                         day_persistence.set_trip_theme(itinerary_id, plan.trip_theme)
-                except Exception as day_exc:  # noqa: BLE001
+                except Exception as day_exc:
                     day_persistence.mark_failed(day.id, action_id, fingerprint, str(day_exc) or None)
                     generation_events.degraded(itinerary_id, f"day_{day_no}", str(day_exc), "待重试")
                     raise
@@ -189,16 +192,23 @@ def plan_days(user_id: int, itinerary_id: int, command: GenerateCommand,
         if not suggestions_persisted:
             itinerary_enricher.persist_suggestions(itinerary_id, first_day_suggestions)
         _finish(user_id, itinerary_id, command)
-    except Exception as exc:  # noqa: BLE001 - 异步任务的失败以事件与行程状态呈现
+    except Exception as exc:
         logger.error("async planning failed for itinerary %s", itinerary_id, exc_info=True)
         generation_events.error(itinerary_id, "AGENT_ERROR", str(exc), True)
         day_persistence.fail_trip(itinerary_id, str(exc) or None)
         itinerary_query.evict_detail(user_id, itinerary_id)
 
 
-def _generate_day_with_trace(itinerary_id: int, command: GenerateCommand, context: dict[str, Any],
-                             day_no: int, used_names: list[str], chosen_hotel: str | None,
-                             action_id: str, fingerprint: str) -> DailyPlan:
+def _generate_day_with_trace(
+    itinerary_id: int,
+    command: GenerateCommand,
+    context: dict[str, Any],
+    day_no: int,
+    used_names: list[str],
+    chosen_hotel: str | None,
+    action_id: str,
+    fingerprint: str,
+) -> DailyPlan:
     request = GenerateDayRequest(
         city=command.city,
         persons=command.persons,
@@ -230,8 +240,9 @@ def _generate_day_with_trace(itinerary_id: int, command: GenerateCommand, contex
 _stream_events = TypeAdapter(StreamEvent)
 
 
-def _plan_whole_trip(user_id: int, itinerary_id: int, command: GenerateCommand,
-                     context: dict[str, Any], fingerprint: str) -> bool:
+def _plan_whole_trip(
+    user_id: int, itinerary_id: int, command: GenerateCommand, context: dict[str, Any], fingerprint: str
+) -> bool:
     request = GenerateDayRequest(
         city=command.city,
         persons=command.persons,
@@ -260,16 +271,19 @@ def _plan_whole_trip(user_id: int, itinerary_id: int, command: GenerateCommand,
                 event_type = str(event.get("type") or "")
                 if event_type not in KNOWN_STREAM_TYPES:
                     # 未知类型 = 前向兼容的附加事件：忽略且不计数（增量演进不算协议破坏）
-                    logger.debug("stream event with unknown type ignored for %s: %s",
-                                 itinerary_id, event_type)
+                    logger.debug("stream event with unknown type ignored for %s: %s", itinerary_id, event_type)
                     continue
                 try:
                     _stream_events.validate_python(event)
                 except ValidationError as exc:
                     contract_errors += 1
-                    logger.warning("stream event rejected by contract for %s (#%s): type=%s %s",
-                                   itinerary_id, contract_errors, event_type,
-                                   "; ".join(str(item.get("msg")) for item in exc.errors()[:5]))
+                    logger.warning(
+                        "stream event rejected by contract for %s (#%s): type=%s %s",
+                        itinerary_id,
+                        contract_errors,
+                        event_type,
+                        "; ".join(str(item.get("msg")) for item in exc.errors()[:5]),
+                    )
                     if contract_errors > MAX_STREAM_CONTRACT_ERRORS:
                         raise ApiError(502, "行程流事件契约校验失败") from exc
                     continue
@@ -282,46 +296,63 @@ def _plan_whole_trip(user_id: int, itinerary_id: int, command: GenerateCommand,
                         logger.warning("stream day_no out of range for %s: %s", itinerary_id, day_no)
                         continue
                     try:
-                        _persist_stream_day(user_id, itinerary_id, command, day_no, plan_node,
-                                            fingerprint, overwrite=event_type == "day_patch")
-                    except Exception as day_exc:  # noqa: BLE001 - 单天失败不中断流，留给逐日循环修
-                        logger.warning("stream day %s persist failed for %s: %s",
-                                       day_no, itinerary_id, day_exc)
+                        _persist_stream_day(
+                            user_id,
+                            itinerary_id,
+                            command,
+                            day_no,
+                            plan_node,
+                            fingerprint,
+                            overwrite=event_type == "day_patch",
+                        )
+                    except Exception as day_exc:
+                        logger.warning("stream day %s persist failed for %s: %s", day_no, itinerary_id, day_exc)
                 elif event_type == "suggestions":
                     rows = event.get("items") or []
                     if not rows:
                         continue
                     try:
-                        itinerary_enricher.persist_suggestions(itinerary_id,
-                                                               [dict(row) for row in rows])
+                        itinerary_enricher.persist_suggestions(itinerary_id, [dict(row) for row in rows])
                         suggestions_done = True
-                    except Exception as suggest_exc:  # noqa: BLE001
-                        logger.warning("stream suggestions persist failed for %s: %s",
-                                       itinerary_id, suggest_exc)
+                    except Exception as suggest_exc:
+                        logger.warning("stream suggestions persist failed for %s: %s", itinerary_id, suggest_exc)
                 elif event_type == "done":
                     done_seen = True
                     day_persistence.set_trip_theme(itinerary_id, event.get("tripTheme"))
-                    logger.info("whole-trip stream done for %s: emitted %s of %s days, complete=%s",
-                                itinerary_id, event.get("daysEmitted"), command.days,
-                                event.get("complete"))
+                    logger.info(
+                        "whole-trip stream done for %s: emitted %s of %s days, complete=%s",
+                        itinerary_id,
+                        event.get("daysEmitted"),
+                        command.days,
+                        event.get("complete"),
+                    )
                 elif event_type == "error":
-                    logger.warning("whole-trip stream error for %s: %s",
-                                   itinerary_id, event.get("message"))
-        except Exception as stream_exc:  # noqa: BLE001
+                    logger.warning("whole-trip stream error for %s: %s", itinerary_id, event.get("message"))
+        except Exception as stream_exc:
             if done_seen:
                 # done 之后连接收尾的残余异常（如 Premature EOF）不影响结果：缺天交给逐日循环
-                logger.info("stream closed after done for itinerary %s (%s), ignoring",
-                            itinerary_id, stream_exc)
+                logger.info("stream closed after done for itinerary %s (%s), ignoring", itinerary_id, stream_exc)
             else:
                 raise
     if contract_errors:
-        logger.warning("whole-trip stream for %s finished with %s contract violation(s); "
-                       "affected days fall back to per-day generation", itinerary_id, contract_errors)
+        logger.warning(
+            "whole-trip stream for %s finished with %s contract violation(s); "
+            "affected days fall back to per-day generation",
+            itinerary_id,
+            contract_errors,
+        )
     return suggestions_done
 
 
-def _persist_stream_day(user_id: int, itinerary_id: int, command: GenerateCommand, day_no: int,
-                        plan_node: dict[str, Any], fingerprint: str, overwrite: bool) -> None:
+def _persist_stream_day(
+    user_id: int,
+    itinerary_id: int,
+    command: GenerateCommand,
+    day_no: int,
+    plan_node: dict[str, Any],
+    fingerprint: str,
+    overwrite: bool,
+) -> None:
     action_id = f"day-{itinerary_id}-{day_no}"
     if not generation_gate.try_day_lock(itinerary_id, day_no):
         logger.warning("stream day lock busy, skip itinerary %s day %s", itinerary_id, day_no)
@@ -335,10 +366,10 @@ def _persist_stream_day(user_id: int, itinerary_id: int, command: GenerateComman
             day_persistence.mark_running(day.id, action_id, fingerprint)
             generation_events.day_start(itinerary_id, day_no)
             plan = DailyPlan.model_validate(plan_node)
-            day_persistence.persist(itinerary_id, command, day_no, plan, action_id,
-                                    fingerprint, allow_overwrite=overwrite)
-            generation_events.day_done(itinerary_id, day_no, plan.theme,
-                                       len(plan.items or []), plan.note)
+            day_persistence.persist(
+                itinerary_id, command, day_no, plan, action_id, fingerprint, allow_overwrite=overwrite
+            )
+            generation_events.day_done(itinerary_id, day_no, plan.theme, len(plan.items or []), plan.note)
             itinerary_query.evict_detail(user_id, itinerary_id)
             _submit_budget_recalculate(itinerary_id)
     finally:
@@ -346,6 +377,7 @@ def _persist_stream_day(user_id: int, itinerary_id: int, command: GenerateComman
 
 
 # ---------- 终态 ----------
+
 
 def _finish(user_id: int, itinerary_id: int, command: GenerateCommand) -> None:
     with session_scope() as session:
@@ -360,10 +392,15 @@ def _finish(user_id: int, itinerary_id: int, command: GenerateCommand) -> None:
         snapshot = itinerary_version.create_snapshot(user_id, itinerary_id, "generate", "行程生成完成")
         if isinstance(snapshot.get("id"), int):
             version_id = snapshot["id"]
-    except Exception as snapshot_error:  # noqa: BLE001 - 快照失败不该把已生成的行程打成失败
+    except Exception as snapshot_error:
         logger.warning("version snapshot failed for %s: %s", itinerary_id, snapshot_error)
-    generation_events.complete(itinerary_id, "COMPLETED" if all_succeeded else "PARTIAL",
-                               main.days, day_persistence.unfinished_day_nos(itinerary_id), version_id)
+    generation_events.complete(
+        itinerary_id,
+        "COMPLETED" if all_succeeded else "PARTIAL",
+        main.days,
+        day_persistence.unfinished_day_nos(itinerary_id),
+        version_id,
+    )
     _submit_budget_recalculate(itinerary_id)
     try:
         enricher_pool.submit(itinerary_enricher.enrich_itinerary, user_id, itinerary_id, command)
@@ -389,8 +426,7 @@ def _shell_exists(itinerary_id: int) -> bool:
 
 # Java 的 `\p{IsHan}` 覆盖全部汉字区块，这里用 BMP 常用汉字区近似；
 # 差异只出现在生僻扩展区汉字（本项目的城市名不会用到），不为它引第三方 regex 库。
-_CITY_RE = re.compile(
-    r"^[一-鿿A-Za-z0-9][一-鿿A-Za-z0-9\s·'’\-()（）]{0,30}$")
+_CITY_RE = re.compile(r"^[一-鿿A-Za-z0-9][一-鿿A-Za-z0-9\s·'’\-()（）]{0,30}$")
 MAX_CITY_LENGTH = 32
 QUEUE_FULL_NOTE = "生成失败：系统繁忙，生成队列已满"
 
@@ -420,25 +456,31 @@ def generate(user_id: int, body: GenerateTripRequest) -> dict[str, Any]:
         session.flush()
         itinerary_id = main.id
         for day_no in range(1, command.days + 1):
-            session.add(ItineraryDay(
-                itinerary_id=itinerary_id, day_no=day_no, city=command.city,
-                travel_date=None if command.start_date is None
-                else command.start_date + timedelta(days=day_no - 1),
-                generation_status="PENDING",
-            ))
+            session.add(
+                ItineraryDay(
+                    itinerary_id=itinerary_id,
+                    day_no=day_no,
+                    city=command.city,
+                    travel_date=None if command.start_date is None else command.start_date + timedelta(days=day_no - 1),
+                    generation_status="PENDING",
+                )
+            )
     preferences_service.record_preferences(user_id, command.preferences)
     itinerary_version.create_snapshot(user_id, itinerary_id, "create", "创建行程草稿")
 
     try:
         submit_planning(user_id, itinerary_id, command)
-    except TaskRejected:
+    except TaskRejected as exc:
         # 生成池满：快速失败返回 429，绝不退回请求线程同步生成。
         # 壳数据置为失败终态（该状态不满足自动续跑条件），用户可见并可重新创建。
         with session_scope() as session:
-            session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(
-                status=3, gen_state="FAILED", plan_note=QUEUE_FULL_NOTE))
+            session.execute(
+                update(ItineraryMain)
+                .where(ItineraryMain.id == itinerary_id)
+                .values(status=3, gen_state="FAILED", plan_note=QUEUE_FULL_NOTE)
+            )
         itinerary_query.evict_detail(user_id, itinerary_id)
-        raise ApiError(429, "行程生成任务已满，系统繁忙，请稍后再试")
+        raise ApiError(429, "行程生成任务已满，系统繁忙，请稍后再试") from exc
     return itinerary_query.detail(user_id, itinerary_id)
 
 
@@ -481,8 +523,16 @@ def _validate(body: GenerateTripRequest) -> GenerateCommand:
         raise ApiError(400, "住宿晚数必须在 0 到行程天数之间")
 
     return GenerateCommand(
-        city=city, days=body.days, persons=persons, stay_nights=stay_nights,
-        start_date=body.startDate, end_date=body.endDate, budget=body.budget,
-        preferences=body.preferences or [], hotel_tier=body.hotelTier,
-        region_hint=body.regionHint, requirements=body.requirements, intent=body.intent,
+        city=city,
+        days=body.days,
+        persons=persons,
+        stay_nights=stay_nights,
+        start_date=body.startDate,
+        end_date=body.endDate,
+        budget=body.budget,
+        preferences=body.preferences or [],
+        hotel_tier=body.hotelTier,
+        region_hint=body.regionHint,
+        requirements=body.requirements,
+        intent=body.intent,
     )

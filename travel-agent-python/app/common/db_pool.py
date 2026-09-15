@@ -11,11 +11,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import queue
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator
 
 import pymysql
 from pymysql.connections import Connection
@@ -66,10 +67,8 @@ def _discard(conn: Connection | None) -> None:
     global _created
     if conn is None:
         return
-    try:
+    with contextlib.suppress(Exception):
         conn.close()
-    except Exception:
-        pass
     with _lock:
         _created = max(0, _created - 1)
 
@@ -94,9 +93,7 @@ def acquire() -> Connection:
             try:
                 conn = pool.get(timeout=_MAX_WAIT_SECONDS)
             except queue.Empty as exc:
-                raise TimeoutError(
-                    f"MySQL connection pool exhausted (max={_max_size()})"
-                ) from exc
+                raise TimeoutError(f"MySQL connection pool exhausted (max={_max_size()})") from exc
         try:
             # 仅探测存活；断连则销毁并在下一轮新建（避免 deprecated reconnect）
             conn.ping()
@@ -155,10 +152,8 @@ def close_all() -> None:
             conn = pool.get_nowait()
         except queue.Empty:
             break
-        try:
+        with contextlib.suppress(Exception):
             conn.close()
-        except Exception:
-            pass
 
 
 def pool_stats() -> dict:

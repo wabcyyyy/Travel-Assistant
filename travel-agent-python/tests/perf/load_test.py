@@ -6,11 +6,12 @@
 指标：QPS、p50/p95/p99 延迟、错误率；行程详情接口对比 Redis 缓存前后。
 输出：tests/perf/report/load_report.json + load_report.md
 """
+
 import argparse
 import asyncio
+import contextlib
 import json
 import os
-import random
 import statistics
 import time
 from pathlib import Path
@@ -29,8 +30,9 @@ async def prepare(client: httpx.AsyncClient) -> dict:
     body = r.json()
     token = body.get("data", {}).get("token")
     if not token:
-        reg = await client.post("/api/auth/register",
-                                json={"username": "dev", "password": "dev123", "nickname": "压测"})
+        reg = await client.post(
+            "/api/auth/register", json={"username": "dev", "password": "dev123", "nickname": "压测"}
+        )
         assert reg.json().get("code") == 200, reg.text
         r = await client.post("/api/auth/login", json=LOGIN_PAYLOAD)
         token = r.json()["data"]["token"]
@@ -38,9 +40,11 @@ async def prepare(client: httpx.AsyncClient) -> dict:
     lst = await client.get("/api/itinerary", headers=headers)
     items = lst.json().get("data") or []
     if not items:
-        gen = await client.post("/api/itinerary/generate",
-                                json={"city": "北京", "days": 2, "persons": 2, "budget": 3000,
-                                      "preferences": ["人文"]}, headers=headers)
+        gen = await client.post(
+            "/api/itinerary/generate",
+            json={"city": "北京", "days": 2, "persons": 2, "budget": 3000, "preferences": ["人文"]},
+            headers=headers,
+        )
         assert gen.json().get("code") == 200, gen.text
         lst = await client.get("/api/itinerary", headers=headers)
         items = lst.json().get("data") or []
@@ -53,8 +57,15 @@ async def prepare(client: httpx.AsyncClient) -> dict:
     return headers, itin_id, task_id
 
 
-async def worker(client: httpx.AsyncClient, endpoint: str, results: list, stop: asyncio.Event,
-                 headers: dict, itin_id: int | None, task_id: int | None = None):
+async def worker(
+    client: httpx.AsyncClient,
+    endpoint: str,
+    results: list,
+    stop: asyncio.Event,
+    headers: dict,
+    itin_id: int | None,
+    task_id: int | None = None,
+):
     while not stop.is_set():
         t0 = time.perf_counter()
         try:
@@ -63,8 +74,7 @@ async def worker(client: httpx.AsyncClient, endpoint: str, results: list, stop: 
             elif endpoint == "itinerary:detail":
                 r = await client.get(f"/api/itinerary/{itin_id}", headers=headers)
             elif endpoint == "poi:local":
-                r = await client.get("/api/pois", params={"keywords": "故宫", "city": "北京"},
-                                     headers=headers)
+                r = await client.get("/api/pois", params={"keywords": "故宫", "city": "北京"}, headers=headers)
             elif endpoint == "export:status":
                 r = await client.get(f"/api/export/tasks/{task_id}", headers=headers)
             else:
@@ -76,23 +86,28 @@ async def worker(client: httpx.AsyncClient, endpoint: str, results: list, stop: 
         results.append((elapsed, ok))
 
 
-async def run(endpoint: str, duration: int, workers: int, itin_id: int | None, headers: dict,
-              task_id: int | None = None) -> dict:
+async def run(
+    endpoint: str, duration: int, workers: int, itin_id: int | None, headers: dict, task_id: int | None = None
+) -> dict:
     results: list = []
     stop = asyncio.Event()
     async with httpx.AsyncClient(base_url=BASE, timeout=30.0) as client:
-        tasks = [asyncio.create_task(worker(client, endpoint, results, stop, headers, itin_id, task_id))
-                 for _ in range(workers)]
+        tasks = [
+            asyncio.create_task(worker(client, endpoint, results, stop, headers, itin_id, task_id))
+            for _ in range(workers)
+        ]
         await asyncio.sleep(duration)
         stop.set()
         await asyncio.gather(*tasks)
     latencies = [r[0] for r in results]
     ok = sum(1 for r in results if r[1])
     latencies.sort()
+
     def pct(p):
         if not latencies:
             return 0.0
         return round(latencies[min(int(len(latencies) * p), len(latencies) - 1)], 2)
+
     qps = round(len(results) / duration, 1)
     return {
         "endpoint": endpoint,
@@ -119,8 +134,11 @@ async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--duration", type=int, default=15)
     ap.add_argument("--workers", type=int, default=20)
-    ap.add_argument("--endpoint", default="itinerary:detail",
-                    choices=["all", "itinerary:list", "itinerary:detail", "poi:local", "export:status"])
+    ap.add_argument(
+        "--endpoint",
+        default="itinerary:detail",
+        choices=["all", "itinerary:list", "itinerary:detail", "poi:local", "export:status"],
+    )
     args = ap.parse_args()
 
     async with httpx.AsyncClient(base_url=BASE, timeout=30.0) as client:
@@ -140,15 +158,14 @@ async def main():
             assert r.json().get("code") == 200
             # 清掉 Redis 缓存键制造冷启动
             import socket
+
             k = f"itinerary:detail::{itin_id}".encode()
             s = socket.create_connection(("127.0.0.1", 6380), timeout=5)
             try:
                 s.sendall(b"*2\r\n$3\r\nDEL\r\n$" + str(len(k)).encode() + b"\r\n" + k + b"\r\n")
                 s.settimeout(0.5)
-                try:
+                with contextlib.suppress(TimeoutError):
                     s.recv(1024)
-                except socket.timeout:
-                    pass
             finally:
                 s.close()
         cold = await run(args.endpoint, args.duration, args.workers, itin_id, headers, task_id)
@@ -163,18 +180,23 @@ async def main():
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     check_report(summary)
-    (OUT_DIR / "load_report.json").write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    (OUT_DIR / "load_report.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    lines = ["# 核心接口性能压测报告", "",
-             f"- 压测方式：asyncio + httpx 并发（{args.workers} workers × {args.duration}s）",
-             f"- 服务端：FastAPI {BASE}（travel_assistant 库）",
-             "", "| 阶段 | 接口 | QPS | 平均 | p50 | p95 | p99 | 错误率 | 请求数 |",
-             "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+    lines = [
+        "# 核心接口性能压测报告",
+        "",
+        f"- 压测方式：asyncio + httpx 并发（{args.workers} workers × {args.duration}s）",
+        f"- 服务端：FastAPI {BASE}（travel_assistant 库）",
+        "",
+        "| 阶段 | 接口 | QPS | 平均 | p50 | p95 | p99 | 错误率 | 请求数 |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
     for c in summary["cases"]:
         phase = c.get("cachePhase", "单轮")
-        lines.append(f"| {phase} | {c['endpoint']} | {c['qps']} | {c['avgMs']}ms | "
-                     f"{c['p50Ms']}ms | {c['p95Ms']}ms | {c['p99Ms']}ms | {c['errorRate']:.2%} | {c['requests']} |")
+        lines.append(
+            f"| {phase} | {c['endpoint']} | {c['qps']} | {c['avgMs']}ms | "
+            f"{c['p50Ms']}ms | {c['p95Ms']}ms | {c['p99Ms']}ms | {c['errorRate']:.2%} | {c['requests']} |"
+        )
     (OUT_DIR / "load_report.md").write_text("\n".join(lines), encoding="utf-8")
     print(f"报告已生成：{OUT_DIR}")
 

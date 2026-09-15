@@ -22,5 +22,16 @@ from app.api.business.share import router as share_router
 from app.api.business.uploads import router as uploads_router
 
 business_routers: tuple[APIRouter, ...] = (
-    auth_router, user_router, itinerary_router, covers_router, pois_router, media_router,
-    export_router, admin_router, probe_router, uploads_router, share_router, atlas_router)
+    auth_router,
+    user_router,
+    itinerary_router,
+    covers_router,
+    pois_router,
+    media_router,
+    export_router,
+    admin_router,
+    probe_router,
+    uploads_router,
+    share_router,
+    atlas_router,
+)

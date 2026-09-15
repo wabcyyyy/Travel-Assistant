@@ -21,7 +21,6 @@ SERVICE_ROOT = Path(__file__).resolve().parents[3]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
-from app.common.config import settings  # noqa: E402
 from app.db.schema_source import SQL_MIGRATION_DIR  # noqa: E402
 
 config = context.config

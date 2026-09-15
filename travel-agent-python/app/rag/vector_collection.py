@@ -55,8 +55,7 @@ _CLIENT_LOCK = threading.Lock()
 _CLIENTS: dict[str, QdrantClient] = {}
 
 
-def _get_client(*, path: str | None = None, url: str | None = None,
-                timeout: float | None = None) -> QdrantClient:
+def _get_client(*, path: str | None = None, url: str | None = None, timeout: float | None = None) -> QdrantClient:
     if url:
         key = f"url:{url}"
     elif path:
@@ -67,8 +66,7 @@ def _get_client(*, path: str | None = None, url: str | None = None,
     with _CLIENT_LOCK:
         client = _CLIENTS.get(key)
         if client is None:
-            client = (QdrantClient(url=url, timeout=timeout) if url
-                      else QdrantClient(path=str(path)))
+            client = QdrantClient(url=url, timeout=timeout) if url else QdrantClient(path=str(path))
             _CLIENTS[key] = client
         return client
 
@@ -77,10 +75,14 @@ def _build_filter(where: dict[str, Any] | None) -> Filter | None:
     """扁平等值过滤 → Qdrant Filter（本项目仅 city/category 两类键）。"""
     if not where:
         return None
-    return Filter(must=[
-        FieldCondition(key=str(key), match=MatchValue(value=value))
-        for key, value in where.items() if value is not None
-    ] or None)
+    return Filter(
+        must=[
+            FieldCondition(key=str(key), match=MatchValue(value=value))
+            for key, value in where.items()
+            if value is not None
+        ]
+        or None
+    )
 
 
 class QdrantVectorCollection:
@@ -131,8 +133,9 @@ class QdrantVectorCollection:
         current = self.current_vector_size()
         if current is None or current == int(vector_size):
             return False
-        logger.warning("Qdrant 集合 %s 维度与当前 embedding 不一致（%s vs %s），重置集合",
-                       self._name, current, vector_size)
+        logger.warning(
+            "Qdrant 集合 %s 维度与当前 embedding 不一致（%s vs %s），重置集合", self._name, current, vector_size
+        )
         self._vector_size = int(vector_size)
         self.reset()
         return True
@@ -151,7 +154,10 @@ class QdrantVectorCollection:
         self._ensure_collection()
 
     def query(
-        self, *, vector: list[float], limit: int,
+        self,
+        *,
+        vector: list[float],
+        limit: int,
         where: dict[str, Any] | None = None,
     ) -> list[tuple[dict[str, Any], float]]:
         """ANN 检索：返回 (payload, cosine 相似度) 列表，按相似度降序。"""
@@ -165,11 +171,14 @@ class QdrantVectorCollection:
         return [(point.payload or {}, float(point.score)) for point in result.points]
 
     def upsert(
-        self, ids: list[str], payloads: list[dict[str, Any]], vectors: list[list[float]],
+        self,
+        ids: list[str],
+        payloads: list[dict[str, Any]],
+        vectors: list[list[float]],
     ) -> None:
         points = [
             PointStruct(id=_point_id(pid), vector=vector, payload=payload)
-            for pid, payload, vector in zip(ids, payloads, vectors)
+            for pid, payload, vector in zip(ids, payloads, vectors, strict=False)
         ]
         self._client.upsert(self._name, points=points)
 
@@ -187,7 +196,10 @@ class QdrantVectorCollection:
         offset = None
         while True:
             points, offset = self._client.scroll(
-                self._name, with_payload=True, limit=256, offset=offset,
+                self._name,
+                with_payload=True,
+                limit=256,
+                offset=offset,
             )
             payloads.extend(point.payload or {} for point in points)
             if offset is None:

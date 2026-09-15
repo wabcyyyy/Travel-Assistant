@@ -35,7 +35,13 @@ from app.db.models import (
 )
 from app.db.session import session_scope
 from app.schemas.trip import EditOpRequest
-from app.services import budget_engine, itinerary_chat, itinerary_city, itinerary_query, itinerary_version
+from app.services import (
+    budget_engine,
+    itinerary_chat,
+    itinerary_city,
+    itinerary_query,
+    itinerary_version,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,18 +78,46 @@ class ItemUpsertRequest(BaseModel):
 
 # PUT 里带 dayId 即跨天移动（Java 侧此前刻意忽略该字段，v2.2 §6.8 才放开）
 _MUTABLE_FIELDS = (
-    "poiId", "address", "latitude", "longitude", "startTime", "endTime", "durationMin",
-    "cost", "tag", "remark", "openTime", "imageUrl", "source", "sourceUpdatedAt",
-    "verificationStatus", "valueKind", "freshnessStatus", "reviewRequirement", "factEvidenceJson",
+    "poiId",
+    "address",
+    "latitude",
+    "longitude",
+    "startTime",
+    "endTime",
+    "durationMin",
+    "cost",
+    "tag",
+    "remark",
+    "openTime",
+    "imageUrl",
+    "source",
+    "sourceUpdatedAt",
+    "verificationStatus",
+    "valueKind",
+    "freshnessStatus",
+    "reviewRequirement",
+    "factEvidenceJson",
 )
 
 _COLUMN_BY_FIELD = {
-    "poiId": "poi_id", "address": "address", "latitude": "latitude", "longitude": "longitude",
-    "startTime": "start_time", "endTime": "end_time", "durationMin": "duration_min", "cost": "cost",
-    "tag": "tag", "remark": "remark", "openTime": "open_time", "imageUrl": "image_url",
-    "source": "source", "sourceUpdatedAt": "source_updated_at",
-    "verificationStatus": "verification_status", "valueKind": "value_kind",
-    "freshnessStatus": "freshness_status", "reviewRequirement": "review_requirement",
+    "poiId": "poi_id",
+    "address": "address",
+    "latitude": "latitude",
+    "longitude": "longitude",
+    "startTime": "start_time",
+    "endTime": "end_time",
+    "durationMin": "duration_min",
+    "cost": "cost",
+    "tag": "tag",
+    "remark": "remark",
+    "openTime": "open_time",
+    "imageUrl": "image_url",
+    "source": "source",
+    "sourceUpdatedAt": "source_updated_at",
+    "verificationStatus": "verification_status",
+    "valueKind": "value_kind",
+    "freshnessStatus": "freshness_status",
+    "reviewRequirement": "review_requirement",
     "factEvidenceJson": "fact_evidence_json",
 }
 
@@ -102,8 +136,9 @@ def add_item(user_id: int, itinerary_id: int, request: ItemUpsertRequest | None)
 
     itinerary_version.create_snapshot(user_id, itinerary_id, "add_item", "新增行程项前快照")
     with session_scope() as session:
-        entity = ItineraryItem(day_id=request.dayId, itinerary_id=itinerary_id,
-                              item_type=request.itemType, poi_name=request.poiName)
+        entity = ItineraryItem(
+            day_id=request.dayId, itinerary_id=itinerary_id, item_type=request.itemType, poi_name=request.poiName
+        )
         _copy_optional(entity, request)
         entity.sort_no = itinerary_query.next_sort(session, request.dayId)
         session.add(entity)
@@ -125,8 +160,7 @@ def update_item(user_id: int, item_id: int, request: ItemUpsertRequest | None) -
         target_day = None
         if request.dayId is not None and request.dayId != item.day_id:
             target_day = session.execute(
-                select(ItineraryDay).where(ItineraryDay.id == request.dayId,
-                                           ItineraryDay.itinerary_id == itinerary_id)
+                select(ItineraryDay).where(ItineraryDay.id == request.dayId, ItineraryDay.itinerary_id == itinerary_id)
             ).scalar_one_or_none()
             if target_day is None:
                 raise ApiError(400, "目标日不属于该行程")
@@ -189,9 +223,13 @@ def reorder_items(user_id: int, itinerary_id: int, day_id: int | None, item_ids:
         _require_main(session, user_id, itinerary_id)
         if day_id is None or item_ids is None:
             raise ApiError(400, "日期和行程项顺序不能为空")
-        existing = session.execute(
-            select(ItineraryItem).where(ItineraryItem.day_id == day_id, ItineraryItem.itinerary_id == itinerary_id)
-        ).scalars().all()
+        existing = (
+            session.execute(
+                select(ItineraryItem).where(ItineraryItem.day_id == day_id, ItineraryItem.itinerary_id == itinerary_id)
+            )
+            .scalars()
+            .all()
+        )
         by_id = {item.id: item for item in existing}
         if len(item_ids) != len(existing) or set(by_id) != set(item_ids):
             raise ApiError(400, "行程项顺序必须包含该日期的全部行程项")
@@ -222,10 +260,15 @@ def optimize_day(user_id: int, itinerary_id: int, day_id: int) -> dict[str, Any]
         if day is None:
             raise ApiError(404, "日期不存在")
         day_no = day.day_no
-        rows = session.execute(
-            select(ItineraryItem).where(ItineraryItem.day_id == day_id, ItineraryItem.itinerary_id == itinerary_id)
-            .order_by(ItineraryItem.sort_no)
-        ).scalars().all()
+        rows = (
+            session.execute(
+                select(ItineraryItem)
+                .where(ItineraryItem.day_id == day_id, ItineraryItem.itinerary_id == itinerary_id)
+                .order_by(ItineraryItem.sort_no)
+            )
+            .scalars()
+            .all()
+        )
         if len([row for row in rows if row.item_type in ("attraction", "food")]) < 2:
             raise ApiError(400, "当天不足 2 个可优化点位")
 
@@ -330,20 +373,34 @@ def nl_edit(user_id: int, itinerary_id: int, instruction: str) -> dict[str, Any]
     itinerary_version.create_snapshot(user_id, itinerary_id, "nl_edit", "自然语言编辑前快照")
 
     with session_scope() as session:
-        day_rows = session.execute(
-            select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id).order_by(ItineraryDay.day_no)
-        ).scalars().all()
-        plans = [{"day_no": day.day_no, "items": [
-            {"item_type": item.item_type or "", "poi_name": item.poi_name or "",
-             "start_time": iso_time(item.start_time) or ""}
-            for item in _items_of_day(session, day.id)
-        ]} for day in day_rows]
+        day_rows = (
+            session.execute(
+                select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id).order_by(ItineraryDay.day_no)
+            )
+            .scalars()
+            .all()
+        )
+        plans = [
+            {
+                "day_no": day.day_no,
+                "items": [
+                    {
+                        "item_type": item.item_type or "",
+                        "poi_name": item.poi_name or "",
+                        "start_time": iso_time(item.start_time) or "",
+                    }
+                    for item in _items_of_day(session, day.id)
+                ],
+            }
+            for day in day_rows
+        ]
         day_ids_by_no = {day.day_no: day.id for day in day_rows}
 
     ops = itinerary_city.guard_agent_call(
         "指令解析服务暂不可用",
-        lambda: run_edit_ops(EditOpRequest(city=city or "", days=trip_days, plans=plans,
-                                           instruction=instruction or "")),
+        lambda: run_edit_ops(
+            EditOpRequest(city=city or "", days=trip_days, plans=plans, instruction=instruction or "")
+        ),
     )
 
     applied: list[str] = []
@@ -361,8 +418,7 @@ def nl_edit(user_id: int, itinerary_id: int, instruction: str) -> dict[str, Any]
     return {"applied": applied, "detail": _fresh_detail(user_id, itinerary_id)}
 
 
-def _apply_edit_op(session, op, itinerary_id: int,
-                   city: str | None, day_ids_by_no: dict[int, int]) -> str | None:
+def _apply_edit_op(session, op, itinerary_id: int, city: str | None, day_ids_by_no: dict[int, int]) -> str | None:
     """执行一条 op；返回给用户的中文回执，`None` 表示按 Java 口径跳过该条。"""
     action = op.action or ""
     day_no = op.day_no
@@ -382,9 +438,13 @@ def _apply_edit_op(session, op, itinerary_id: int,
         return None
 
     if action == "delete":
-        scope = (_items_of_day(session, target_day_id) if target_day_id is not None else
-                 session.execute(select(ItineraryItem).where(
-                     ItineraryItem.itinerary_id == itinerary_id)).scalars().all())
+        scope = (
+            _items_of_day(session, target_day_id)
+            if target_day_id is not None
+            else session.execute(select(ItineraryItem).where(ItineraryItem.itinerary_id == itinerary_id))
+            .scalars()
+            .all()
+        )
         item = _find_item_by_name(scope, poi_name)
         if item is None:
             return None
@@ -415,8 +475,12 @@ def _apply_edit_op(session, op, itinerary_id: int,
         poi = session.execute(
             select(PoiKnowledge).where(PoiKnowledge.city == city, PoiKnowledge.name == poi_name).limit(1)
         ).scalar_one_or_none()
-        entity = ItineraryItem(day_id=target_day_id, itinerary_id=itinerary_id,
-                              item_type=poi.category if poi else "attraction", poi_name=poi_name)
+        entity = ItineraryItem(
+            day_id=target_day_id,
+            itinerary_id=itinerary_id,
+            item_type=poi.category if poi else "attraction",
+            poi_name=poi_name,
+        )
         if poi is not None:
             entity.poi_id = str(poi.id)
             entity.address = poi.address
@@ -441,31 +505,30 @@ def _apply_edit_op(session, op, itinerary_id: int,
     return None
 
 
-def _upgrade_hotel(session, itinerary_id: int, city: str | None,
-                   day_no: int | None, tier: str | None) -> str | None:
+def _upgrade_hotel(session, itinerary_id: int, city: str | None, day_no: int | None, tier: str | None) -> str | None:
     """换酒店：按档次关键词在同城权威库里挑一家，挑不到就退而求其次换一家同类的。"""
     if day_no is not None:
         day_id = session.execute(
-            select(ItineraryDay.id).where(ItineraryDay.itinerary_id == itinerary_id,
-                                          ItineraryDay.day_no == day_no)
+            select(ItineraryDay.id).where(ItineraryDay.itinerary_id == itinerary_id, ItineraryDay.day_no == day_no)
         ).scalar_one_or_none()
         scope = _items_of_day(session, day_id) if day_id is not None else []
     else:
-        scope = session.execute(
-            select(ItineraryItem).where(ItineraryItem.itinerary_id == itinerary_id)
-        ).scalars().all()
+        scope = session.execute(select(ItineraryItem).where(ItineraryItem.itinerary_id == itinerary_id)).scalars().all()
     current = next((item for item in scope if item.item_type == "hotel"), None)
     if current is None:
         return None
-    hotels = session.execute(
-        select(PoiKnowledge).where(PoiKnowledge.city == city, PoiKnowledge.category == "hotel")
-    ).scalars().all()
+    hotels = (
+        session.execute(select(PoiKnowledge).where(PoiKnowledge.city == city, PoiKnowledge.category == "hotel"))
+        .scalars()
+        .all()
+    )
     if not hotels:
         return None
     keywords = _hotel_keywords(tier)
     others = [hotel for hotel in hotels if str(hotel.id) != current.poi_id]
-    ranked = next((hotel for hotel in others
-                   if _contains_any((hotel.description or "") + (hotel.tags or ""), keywords)), None)
+    ranked = next(
+        (hotel for hotel in others if _contains_any((hotel.description or "") + (hotel.tags or ""), keywords)), None
+    )
     selected = ranked or (others[0] if others else hotels[0])
     current.poi_id = str(selected.id)
     current.poi_name = selected.name
@@ -501,9 +564,7 @@ def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
 def _items_of_day(session, day_id: int | None) -> list[ItineraryItem]:
     if day_id is None:
         return []
-    return list(session.execute(
-        select(ItineraryItem).where(ItineraryItem.day_id == day_id)
-    ).scalars().all())
+    return list(session.execute(select(ItineraryItem).where(ItineraryItem.day_id == day_id)).scalars().all())
 
 
 def _find_item_by_name(items, name: str | None):
@@ -533,9 +594,11 @@ def delete_cascade(user_id: int, itinerary_id: int) -> None:
             rows = session.execute(select(model).where(model.itinerary_id == itinerary_id)).scalars().all()
             for row in rows:
                 row.deleted = 1
-        chats = session.execute(
-            select(ItineraryChatMessage).where(ItineraryChatMessage.itinerary_id == itinerary_id)
-        ).scalars().all()
+        chats = (
+            session.execute(select(ItineraryChatMessage).where(ItineraryChatMessage.itinerary_id == itinerary_id))
+            .scalars()
+            .all()
+        )
         for chat in chats:
             session.delete(chat)  # itinerary_chat_message 无 deleted 列：Java 同样是物理删
         main = session.get(ItineraryMain, itinerary_id)
@@ -572,7 +635,7 @@ def _apply_suggestion_used(session, itinerary_id: int, poi_id: str | None, poi_n
             main.plan_note = line if not note.strip() else f"{note}\n{line}"
             changed = True
         elif not used and marker in note:
-            cleaned = "\n".join(l for l in note.splitlines() if marker not in l)
+            cleaned = "\n".join(line for line in note.splitlines() if marker not in line)
             main.plan_note = cleaned or None
             changed = True
     if not changed:
@@ -607,10 +670,7 @@ def set_favorite(user_id: int, itinerary_id: int, favorite: bool) -> dict[str, A
     """收藏开关：单列写（§4 纪律 1——整行 update 会冲掉异步生成链路的并发回写）。"""
     itinerary_query.find_owned_main(user_id, itinerary_id)
     with session_scope() as session:
-        session.execute(
-            update(ItineraryMain).where(ItineraryMain.id == itinerary_id)
-            .values(favorite=bool(favorite))
-        )
+        session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(favorite=bool(favorite)))
     return _fresh_detail(user_id, itinerary_id)
 
 
@@ -618,10 +678,7 @@ def set_archived(user_id: int, itinerary_id: int, archived: bool) -> dict[str, A
     """归档开关：与「删除」语义区分——归档不隐藏分享，只移出默认视图/图鉴。"""
     itinerary_query.find_owned_main(user_id, itinerary_id)
     with session_scope() as session:
-        session.execute(
-            update(ItineraryMain).where(ItineraryMain.id == itinerary_id)
-            .values(archived=bool(archived))
-        )
+        session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(archived=bool(archived)))
     return _fresh_detail(user_id, itinerary_id)
 
 

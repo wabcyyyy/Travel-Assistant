@@ -12,11 +12,21 @@ def _store(tmp_path):
 
 def _poi(price=0):
     return {
-        "id": 1, "city": "杭州", "name": "西湖", "category": "attraction",
-        "address": "西湖区", "latitude": 30.24, "longitude": 120.15,
-        "ticket_price": price, "duration_min": 120, "open_time": "08:00-18:00",
-        "tags": "自然", "rating": 4.9, "description": "适合休闲游览",
-        "source": "mysql.poi_knowledge", "source_updated_at": "2026-08-28 10:00:00",
+        "id": 1,
+        "city": "杭州",
+        "name": "西湖",
+        "category": "attraction",
+        "address": "西湖区",
+        "latitude": 30.24,
+        "longitude": 120.15,
+        "ticket_price": price,
+        "duration_min": 120,
+        "open_time": "08:00-18:00",
+        "tags": "自然",
+        "rating": 4.9,
+        "description": "适合休闲游览",
+        "source": "mysql.poi_knowledge",
+        "source_updated_at": "2026-08-28 10:00:00",
     }
 
 

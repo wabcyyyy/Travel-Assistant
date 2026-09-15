@@ -12,9 +12,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Iterator
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
@@ -26,9 +26,7 @@ from app.db.models import Base, SoftDelete
 # 只有混入 SoftDelete 的表参与全局过滤（sys_user / itinerary_main / itinerary_day /
 # itinerary_item / budget_detail / export_task）；其余表本就没有 deleted 列。
 _SOFT_DELETE_CLASSES: tuple[type, ...] = tuple(
-    mapper.class_
-    for mapper in Base.registry.mappers
-    if issubclass(mapper.class_, SoftDelete)
+    mapper.class_ for mapper in Base.registry.mappers if issubclass(mapper.class_, SoftDelete)
 )
 
 

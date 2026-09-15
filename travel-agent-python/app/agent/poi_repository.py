@@ -32,10 +32,9 @@ def list_all_pois_with_status() -> tuple[list[dict], bool]:
     """返回 POI 与查询是否成功，区分“空表”和“数据库暂不可用”。"""
     sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge ORDER BY id"
     try:
-        with db_pool.connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(sql)
-                return list(cursor.fetchall()), True
+        with db_pool.connection() as conn, conn.cursor() as cursor:
+            cursor.execute(sql)
+            return list(cursor.fetchall()), True
     except Exception as e:
         logger.error("list_all_pois failed: %s", e)
         return [], False
@@ -54,10 +53,9 @@ def search_pois(city: str, category: str | None = None, limit: int = 50) -> list
         params.append(category)
     sql += f" ORDER BY rating DESC LIMIT {int(limit)}"
     try:
-        with db_pool.connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(sql, params)
-                return list(cursor.fetchall())
+        with db_pool.connection() as conn, conn.cursor() as cursor:
+            cursor.execute(sql, params)
+            return list(cursor.fetchall())
     except Exception as e:
         logger.error("search_pois failed: %s", e)
         return []
@@ -69,28 +67,22 @@ def search_pois_by_cities(cities: list[str], category: str | None = None, limit:
     if not normalized:
         return []
     placeholders = ",".join(["%s"] * len(normalized))
-    sql = (
-        f"SELECT {_POI_COLUMNS} FROM poi_knowledge "
-        f"WHERE city IN ({placeholders})"
-    )
+    sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge WHERE city IN ({placeholders})"
     params: list = list(normalized)
     if category:
         sql += " AND category = %s"
         params.append(category)
     sql += f" ORDER BY rating DESC LIMIT {int(limit)}"
     try:
-        with db_pool.connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(sql, params)
-                return list(cursor.fetchall())
+        with db_pool.connection() as conn, conn.cursor() as cursor:
+            cursor.execute(sql, params)
+            return list(cursor.fetchall())
     except Exception as e:
         logger.error("search_pois_by_cities failed: %s", e)
         return []
 
 
-def search_pois_by_keyword(
-    city: str, keywords: str = "", category: str | None = None, limit: int = 30
-) -> list[dict]:
+def search_pois_by_keyword(city: str, keywords: str = "", category: str | None = None, limit: int = 30) -> list[dict]:
     """城市 + 关键词（名称/标签/描述）检索本地知识库；关键词为空则取该城评分前 N。
 
     与 `search_pois` 的区别：这是「用户键入关键词」路径（工作台加点），
@@ -108,10 +100,9 @@ def search_pois_by_keyword(
         params.extend([like, like, like])
     sql += f" ORDER BY rating DESC LIMIT {int(limit)}"
     try:
-        with db_pool.connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(sql, params)
-                return list(cursor.fetchall())
+        with db_pool.connection() as conn, conn.cursor() as cursor:
+            cursor.execute(sql, params)
+            return list(cursor.fetchall())
     except Exception as e:
         logger.error("search_pois_by_keyword failed: %s", e)
         return []
@@ -121,10 +112,9 @@ def count_pois_by_city() -> dict[str, int]:
     """各城市的知识库点位数量（供「当前覆盖哪些城市」的如实空态）。"""
     sql = "SELECT city, COUNT(*) AS n FROM poi_knowledge GROUP BY city ORDER BY n DESC, city"
     try:
-        with db_pool.connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(sql)
-                return {str(row["city"]): int(row["n"]) for row in cursor.fetchall()}
+        with db_pool.connection() as conn, conn.cursor() as cursor:
+            cursor.execute(sql)
+            return {str(row["city"]): int(row["n"]) for row in cursor.fetchall()}
     except Exception as e:
         logger.error("count_pois_by_city failed: %s", e)
         return {}
@@ -139,11 +129,10 @@ def search_poi_by_name(name: str, category: str | None = None) -> dict | None:
         params.append(category)
     sql += " ORDER BY rating DESC LIMIT 1"
     try:
-        with db_pool.connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(sql, params)
-                row = cursor.fetchone()
-                return row if row else None
+        with db_pool.connection() as conn, conn.cursor() as cursor:
+            cursor.execute(sql, params)
+            row = cursor.fetchone()
+            return row if row else None
     except Exception as e:
         logger.error("search_poi_by_name failed: %s", e)
         return None
@@ -158,10 +147,9 @@ def list_hotel_pois(city: str) -> list[dict]:
     """完整枚举城市酒店，供档次/价格/房型比较使用，不使用 Top-K 截断。"""
     sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge WHERE city = %s AND category = 'hotel' ORDER BY rating DESC, id"
     try:
-        with db_pool.connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(sql, (city,))
-                return list(cursor.fetchall())
+        with db_pool.connection() as conn, conn.cursor() as cursor:
+            cursor.execute(sql, (city,))
+            return list(cursor.fetchall())
     except Exception as e:
         logger.error("list_hotel_pois failed: %s", e)
         return []
@@ -173,12 +161,14 @@ def list_hotel_pois_by_cities(cities: list[str]) -> list[dict]:
     if not normalized:
         return []
     placeholders = ",".join(["%s"] * len(normalized))
-    sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge WHERE city IN ({placeholders}) AND category = 'hotel' ORDER BY rating DESC, id"
+    sql = (
+        f"SELECT {_POI_COLUMNS} FROM poi_knowledge WHERE city IN ({placeholders}) "
+        "AND category = 'hotel' ORDER BY rating DESC, id"
+    )
     try:
-        with db_pool.connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(sql, normalized)
-                return list(cursor.fetchall())
+        with db_pool.connection() as conn, conn.cursor() as cursor:
+            cursor.execute(sql, normalized)
+            return list(cursor.fetchall())
     except Exception as e:
         logger.error("list_hotel_pois_by_cities failed: %s", e)
         return []
@@ -187,11 +177,10 @@ def list_hotel_pois_by_cities(cities: list[str]) -> list[dict]:
 def get_poi(city: str, name: str) -> dict | None:
     sql = f"SELECT {_POI_COLUMNS} FROM poi_knowledge WHERE city = %s AND name = %s LIMIT 1"
     try:
-        with db_pool.connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(sql, (city, name))
-                row = cursor.fetchone()
-                return row if row else None
+        with db_pool.connection() as conn, conn.cursor() as cursor:
+            cursor.execute(sql, (city, name))
+            row = cursor.fetchone()
+            return row if row else None
     except Exception as e:
         logger.error("get_poi failed: %s", e)
         return None
@@ -200,11 +189,10 @@ def get_poi(city: str, name: str) -> dict | None:
 def get_city_consumption(city: str) -> dict | None:
     sql = "SELECT city, level, meal_price, transport_price, hotel_price FROM city_consumption WHERE city = %s LIMIT 1"
     try:
-        with db_pool.connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(sql, (city,))
-                row = cursor.fetchone()
-                return row if row else None
+        with db_pool.connection() as conn, conn.cursor() as cursor:
+            cursor.execute(sql, (city,))
+            row = cursor.fetchone()
+            return row if row else None
     except Exception as e:
         logger.error("get_city_consumption failed: %s", e)
         return None
@@ -220,10 +208,9 @@ def search_hotel_room_types(poi_ids: list[int]) -> list[dict]:
         f"WHERE poi_id IN ({placeholders}) ORDER BY poi_id, is_default DESC, base_price"
     )
     try:
-        with db_pool.connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(sql, poi_ids)
-                return list(cursor.fetchall())
+        with db_pool.connection() as conn, conn.cursor() as cursor:
+            cursor.execute(sql, poi_ids)
+            return list(cursor.fetchall())
     except Exception as e:
         logger.error("search_hotel_room_types failed: %s", e)
         return []

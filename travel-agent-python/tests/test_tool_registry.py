@@ -13,12 +13,23 @@ from app.common.config import settings
 
 def _spec(name="demo", handler=lambda **params: params, max_calls=2):
     return ToolSpec(
-        name=name, version="1.0", description="demo", parameters={
-            "type": "object", "properties": {"city": {"type": "string"}},
-            "required": ["city"], "additionalProperties": False,
-        }, read_only=True, risk_level="low", timeout_seconds=1,
-        max_calls=max_calls, retry_policy={"max_retries": 0},
-        requires_confirmation=False, idempotent=True, handler=handler,
+        name=name,
+        version="1.0",
+        description="demo",
+        parameters={
+            "type": "object",
+            "properties": {"city": {"type": "string"}},
+            "required": ["city"],
+            "additionalProperties": False,
+        },
+        read_only=True,
+        risk_level="low",
+        timeout_seconds=1,
+        max_calls=max_calls,
+        retry_policy={"max_retries": 0},
+        requires_confirmation=False,
+        idempotent=True,
+        handler=handler,
     )
 
 

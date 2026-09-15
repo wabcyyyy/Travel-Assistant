@@ -12,8 +12,7 @@ from app.agent.reflect import parse_time
 from app.schemas.trip import SourceRecord
 
 
-def build_lookup(candidates: list[dict] | None, foods: list[dict] | None,
-                 hotels: list[dict] | None) -> dict[str, dict]:
+def build_lookup(candidates: list[dict] | None, foods: list[dict] | None, hotels: list[dict] | None) -> dict[str, dict]:
     """名字 → 本次候选快照的权威事实行。
 
     酒店同样属于权威事实源：若遗漏，格式化阶段会把已知城市的酒店误判为开放模式
@@ -27,8 +26,7 @@ def build_lookup(candidates: list[dict] | None, foods: list[dict] | None,
     return lookup
 
 
-def apply_item_facts(item: dict, poi: dict | None,
-                     source_records: dict[str, SourceRecord]) -> None:
+def apply_item_facts(item: dict, poi: dict | None, source_records: dict[str, SourceRecord]) -> None:
     """按候选快照回填权威字段，并就地质标溯源与质量状态。"""
     if poi:
         # 0/0 是缺失坐标的哨兵值（store._row_payload 会把 NULL 写成 0.0），
@@ -57,12 +55,16 @@ def apply_item_facts(item: dict, poi: dict | None,
             item["freshness_status"] = "unknown"
             item["review_requirement"] = "before_departure"
         # fact_evidence 延迟构建：前端请求详情时再补充，不阻塞生成流程
-        source_records.setdefault(source_name, SourceRecord(
-            source_id=source_name, storage_source=source_name,
-            provider=source_name,
-            retrieved_at=str(poi.get("source_fetched_at") or source_updated_at or "") or None,
-            expires_at=None,
-        ))
+        source_records.setdefault(
+            source_name,
+            SourceRecord(
+                source_id=source_name,
+                storage_source=source_name,
+                provider=source_name,
+                retrieved_at=str(poi.get("source_fetched_at") or source_updated_at or "") or None,
+                expires_at=None,
+            ),
+        )
         return
 
     # 开放模式中的 LLM 地点必须明确标为生成/待复核事实。
@@ -72,15 +74,26 @@ def apply_item_facts(item: dict, poi: dict | None,
     item["freshness_status"] = "unknown"
     item["review_requirement"] = "before_departure"
     # fact_evidence 延迟构建：前端请求详情时再补充
-    source_records.setdefault("llm.open_day", SourceRecord(
-        source_id="llm.open_day", provider="llm.open_day",
-        retrieved_at=None, expires_at=None,
-    ))
+    source_records.setdefault(
+        "llm.open_day",
+        SourceRecord(
+            source_id="llm.open_day",
+            provider="llm.open_day",
+            retrieved_at=None,
+            expires_at=None,
+        ),
+    )
     if item.get("latitude") is not None and item.get("longitude") is not None:
-        source_records.setdefault("local-grounding", SourceRecord(
-            source_id="local-grounding", storage_source="local-grounding",
-            provider="local", retrieved_at=None, expires_at=None,
-        ))
+        source_records.setdefault(
+            "local-grounding",
+            SourceRecord(
+                source_id="local-grounding",
+                storage_source="local-grounding",
+                provider="local",
+                retrieved_at=None,
+                expires_at=None,
+            ),
+        )
 
 
 def sync_duration_from_time_window(item: dict) -> None:

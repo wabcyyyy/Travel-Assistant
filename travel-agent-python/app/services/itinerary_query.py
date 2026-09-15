@@ -136,27 +136,23 @@ def list_summaries(user_id: int, view: str | None = None, q: str | None = None) 
         else:
             stmt = stmt.where(ItineraryMain.archived.is_(False))
             if normalized_view == "active":
-                stmt = stmt.where(
-                    or_(ItineraryMain.gen_state.is_(None), ItineraryMain.gen_state != "COMPLETED")
-                )
+                stmt = stmt.where(or_(ItineraryMain.gen_state.is_(None), ItineraryMain.gen_state != "COMPLETED"))
             elif normalized_view == "done":
                 stmt = stmt.where(ItineraryMain.gen_state == "COMPLETED")
             elif normalized_view == "favorite":
                 stmt = stmt.where(ItineraryMain.favorite.is_(True))
         if keyword:
             pattern = f"%{keyword}%"
-            stmt = stmt.where(
-                or_(ItineraryMain.title.like(pattern), ItineraryMain.city.like(pattern))
-            )
+            stmt = stmt.where(or_(ItineraryMain.title.like(pattern), ItineraryMain.city.like(pattern)))
         mains = session.execute(stmt.order_by(ItineraryMain.id.desc())).scalars().all()
         if not mains:
             return []
         totals: dict[int, Decimal] = defaultdict(lambda: Decimal("0"))
-        budgets = session.execute(
-            select(BudgetDetail).where(
-                BudgetDetail.itinerary_id.in_([main.id for main in mains])
-            )
-        ).scalars().all()
+        budgets = (
+            session.execute(select(BudgetDetail).where(BudgetDetail.itinerary_id.in_([main.id for main in mains])))
+            .scalars()
+            .all()
+        )
         for detail in budgets:
             totals[detail.itinerary_id] += detail.amount or Decimal("0")
         return [
@@ -203,20 +199,24 @@ def evict_detail(user_id: int, itinerary_id: int) -> None:
 def _build_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
     main = find_owned_main(user_id, itinerary_id)
     with session_scope() as session:
-        days = session.execute(
-            select(ItineraryDay)
-            .where(ItineraryDay.itinerary_id == itinerary_id)
-            .order_by(ItineraryDay.day_no)
-        ).scalars().all()
+        days = (
+            session.execute(
+                select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id).order_by(ItineraryDay.day_no)
+            )
+            .scalars()
+            .all()
+        )
         # 一次查全部点位再按天分组：按天循环查询会产生 N+1
-        items = session.execute(
-            select(ItineraryItem)
-            .where(ItineraryItem.itinerary_id == itinerary_id)
-            .order_by(ItineraryItem.day_id, ItineraryItem.sort_no)
-        ).scalars().all()
-        budgets = session.execute(
-            select(BudgetDetail).where(BudgetDetail.itinerary_id == itinerary_id)
-        ).scalars().all()
+        items = (
+            session.execute(
+                select(ItineraryItem)
+                .where(ItineraryItem.itinerary_id == itinerary_id)
+                .order_by(ItineraryItem.day_id, ItineraryItem.sort_no)
+            )
+            .scalars()
+            .all()
+        )
+        budgets = session.execute(select(BudgetDetail).where(BudgetDetail.itinerary_id == itinerary_id)).scalars().all()
 
         names = sorted({item.poi_name for item in items if item.poi_name and item.poi_name.strip()})
         descriptions: dict[str, str | None] = {}
@@ -265,8 +265,7 @@ def _build_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
     pending_facts = sum(
         1
         for item in items
-        if (item.review_requirement is None or item.review_requirement != "none")
-        or item.freshness_status == "stale"
+        if (item.review_requirement is None or item.review_requirement != "none") or item.freshness_status == "stale"
     )
     quality_status = _quality_status(main.status, items, days, pending_facts)
     issues = _quality_issues(quality_status, days, items, pending_facts)
@@ -304,14 +303,14 @@ def _build_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
         "sources": _source_records(items),
         "suggestions": _loads_suggestions(main.suggestions_json),
         "dayList": day_list,
-        "budgetList": [
-            {"category": b.category, "amount": _num(b.amount), "itemCount": b.item_count} for b in budgets
-        ],
+        "budgetList": [{"category": b.category, "amount": _num(b.amount), "itemCount": b.item_count} for b in budgets],
         "totalAmount": float(total_amount),
     }
 
 
-def _item_vo(item: ItineraryItem, descriptions: dict[str, str | None], intro_by_name: dict[str, ItineraryItem]) -> dict[str, Any]:
+def _item_vo(
+    item: ItineraryItem, descriptions: dict[str, str | None], intro_by_name: dict[str, ItineraryItem]
+) -> dict[str, Any]:
     return {
         "id": item.id,
         "itemType": item.item_type,
@@ -344,7 +343,9 @@ def _item_vo(item: ItineraryItem, descriptions: dict[str, str | None], intro_by_
     }
 
 
-def _quality_status(status: int | None, items: list[ItineraryItem], days: list[ItineraryDay], pending_facts: int) -> str:
+def _quality_status(
+    status: int | None, items: list[ItineraryItem], days: list[ItineraryDay], pending_facts: int
+) -> str:
     has_failed_day = any(d.generation_status in _FAILED_DAY_STATUSES for d in days)
     has_incomplete_day = any(d.generation_status in _INCOMPLETE_DAY_STATUSES for d in days)
     has_stale = any(item.freshness_status == "stale" for item in items)
@@ -359,7 +360,9 @@ def _quality_status(status: int | None, items: list[ItineraryItem], days: list[I
     return "READY_WITH_WARNINGS" if pending_facts > 0 else "READY"
 
 
-def _quality_issues(quality_status: str, days: list[ItineraryDay], items: list[ItineraryItem], pending_facts: int) -> list[dict[str, str]]:
+def _quality_issues(
+    quality_status: str, days: list[ItineraryDay], items: list[ItineraryItem], pending_facts: int
+) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
     if quality_status == "BLOCKED":
         if not items:

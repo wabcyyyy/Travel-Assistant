@@ -14,8 +14,8 @@
 
 from __future__ import annotations
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 from app.db.schema_source import SQL_MIGRATION_DIR, statements_upto
 
@@ -55,6 +55,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     raise NotImplementedError(
-        "基线 revision 不提供 downgrade：Flyway 时代即无回滚，"
-        "业务库回退请走备份恢复，而不是 DROP 全表。"
+        "基线 revision 不提供 downgrade：Flyway 时代即无回滚，业务库回退请走备份恢复，而不是 DROP 全表。"
     )

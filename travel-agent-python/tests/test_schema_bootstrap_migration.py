@@ -39,9 +39,7 @@ def _head_revision() -> str:
 
 def _record_upgrade(monkeypatch) -> list[str]:
     calls: list[str] = []
-    monkeypatch.setattr(
-        db_migrate.command, "upgrade", lambda config, revision: calls.append(revision)
-    )
+    monkeypatch.setattr(db_migrate.command, "upgrade", lambda config, revision: calls.append(revision))
     return calls
 
 
@@ -56,9 +54,7 @@ def test_existing_database_stamps_baseline_then_upgrades(sqlite_db, monkeypatch)
 
     with sqlite_db.connect() as connection:
         recorded = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar()
-    assert recorded == "0001_wrap_flyway_baseline", (
-        "打点必须落在基线：打到 head 会跳过 V2+ 的 DDL，库看着最新实际缺列"
-    )
+    assert recorded == "0001_wrap_flyway_baseline", "打点必须落在基线：打到 head 会跳过 V2+ 的 DDL，库看着最新实际缺列"
     assert upgrade_calls == ["head"], "打点后必须继续 upgrade，把基线之后的迁移补齐"
     assert _head_revision() != "0001_wrap_flyway_baseline", (
         "head 尚等于基线说明 V2 revision 不存在——本断言的防跳过后半段失去意义"
@@ -69,14 +65,10 @@ def test_second_boot_skips_stamp_and_only_upgrades(sqlite_db, monkeypatch) -> No
     Base.metadata.create_all(sqlite_db)
     with sqlite_db.begin() as connection:
         connection.exec_driver_sql("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
-        connection.exec_driver_sql(
-            "INSERT INTO alembic_version (version_num) VALUES ('0001_wrap_flyway_baseline')"
-        )
+        connection.exec_driver_sql("INSERT INTO alembic_version (version_num) VALUES ('0001_wrap_flyway_baseline')")
 
     stamp_calls: list[str] = []
-    monkeypatch.setattr(
-        db_migrate.command, "stamp", lambda config, revision: stamp_calls.append(revision)
-    )
+    monkeypatch.setattr(db_migrate.command, "stamp", lambda config, revision: stamp_calls.append(revision))
     upgrade_calls = _record_upgrade(monkeypatch)
 
     assert db_migrate.ensure_schema() == "upgraded"

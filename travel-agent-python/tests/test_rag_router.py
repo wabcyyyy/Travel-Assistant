@@ -1,5 +1,6 @@
 """P2 查询路由测试：enumerate / lexical / hybrid 三级执行路径。"""
 
+from app.common.config import settings
 from app.rag.retriever import (
     HashedEmbeddingProvider,
     HybridRetriever,
@@ -7,7 +8,6 @@ from app.rag.retriever import (
     build_poi_document,
     strip_generic_words,
 )
-from app.common.config import settings
 
 
 class MemoryCollection:
@@ -17,13 +17,12 @@ class MemoryCollection:
 
     def query(self, *, vector, limit, where=None):
         def allowed(item):
-            return all(item["metadata"].get(key) == value
-                       for key, value in (where or {}).items())
+            return all(item["metadata"].get(key) == value for key, value in (where or {}).items())
 
         scored = []
         for item in self._items:
             if allowed(item):
-                similarity = sum(a * b for a, b in zip(vector, item["embedding"]))
+                similarity = sum(a * b for a, b in zip(vector, item["embedding"], strict=False))
                 scored.append((similarity, item["metadata"]))
         scored.sort(key=lambda pair: pair[0], reverse=True)
         return [(meta, score) for score, meta in scored[:limit]]
@@ -32,17 +31,41 @@ class MemoryCollection:
 def _retriever():
     provider = HashedEmbeddingProvider()
     pois = [
-        {"id": 1, "city": "杭州", "category": "attraction", "name": "西湖", "tags": "自然 拍照",
-         "description": "适合老人休闲游览", "rating": 4.9, "ticket_price": 0},
-        {"id": 2, "city": "杭州", "category": "attraction", "name": "灵隐寺", "tags": "人文 历史",
-         "description": "古建筑", "rating": 4.8, "ticket_price": 45},
-        {"id": 3, "city": "上海", "category": "attraction", "name": "外滩", "tags": "地标",
-         "description": "城市景观", "rating": 4.8, "ticket_price": 0},
+        {
+            "id": 1,
+            "city": "杭州",
+            "category": "attraction",
+            "name": "西湖",
+            "tags": "自然 拍照",
+            "description": "适合老人休闲游览",
+            "rating": 4.9,
+            "ticket_price": 0,
+        },
+        {
+            "id": 2,
+            "city": "杭州",
+            "category": "attraction",
+            "name": "灵隐寺",
+            "tags": "人文 历史",
+            "description": "古建筑",
+            "rating": 4.8,
+            "ticket_price": 45,
+        },
+        {
+            "id": 3,
+            "city": "上海",
+            "category": "attraction",
+            "name": "外滩",
+            "tags": "地标",
+            "description": "城市景观",
+            "rating": 4.8,
+            "ticket_price": 0,
+        },
     ]
     documents = {str(poi["id"]): {"document": build_poi_document(poi), "metadata": poi} for poi in pois}
-    collection = MemoryCollection(provider, [
-        {**item, "embedding": provider.embed_query(item["document"])} for item in documents.values()
-    ])
+    collection = MemoryCollection(
+        provider, [{**item, "embedding": provider.embed_query(item["document"])} for item in documents.values()]
+    )
     retriever = HybridRetriever(collection, provider, reranker=NoopReranker())
     retriever.set_documents(documents)
     return retriever
@@ -80,8 +103,7 @@ def test_city_only_query_routes_to_rating_enumeration_without_embedding():
 
 def test_enumeration_respects_preferences_before_rating():
     retriever = _retriever()
-    rows = retriever.search("杭州", city="杭州", category="attraction",
-                            top_k=2, preferences=["人文"])
+    rows = retriever.search("杭州", city="杭州", category="attraction", top_k=2, preferences=["人文"])
     assert rows[0]["name"] == "灵隐寺"  # 偏好命中优先于评分
 
 
@@ -97,8 +119,7 @@ def test_exact_name_query_routes_to_lexical_without_embedding():
 
 def test_intent_query_still_routes_to_hybrid_with_semantic_and_rerank():
     retriever, counter = _counting_retriever()
-    retriever.search("杭州适合老人的自然景点", city="杭州", category="attraction",
-                     top_k=2, preferences=["自然"])
+    retriever.search("杭州适合老人的自然景点", city="杭州", category="attraction", top_k=2, preferences=["自然"])
     assert counter["n"] == 1  # hybrid 保持向量召回
     assert retriever.last_telemetry["route"] == "hybrid"
     assert retriever.last_telemetry["provider"] == "semantic+bm25"

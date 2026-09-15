@@ -14,7 +14,6 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Optional
 
 from app.common.config import settings
 
@@ -28,7 +27,7 @@ _down_until = 0.0
 _lock = threading.Lock()
 
 
-def client() -> Optional[object]:
+def client() -> object | None:
     """返回共享客户端；熔断窗口内返回 None，调用方按 Redis 不可用处理。"""
     global _client
     if is_down():

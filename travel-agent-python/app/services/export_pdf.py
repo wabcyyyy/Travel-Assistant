@@ -63,8 +63,7 @@ SOURCE_LABELS = {
 def register_font(path: Path) -> None:
     """注册嵌入字体；SimHei 无粗体字面，把粗体也映射到同一支，避免 reportlab 找不到变体。"""
     pdfmetrics.registerFont(TTFont(FONT_NAME, str(path)))
-    pdfmetrics.registerFontFamily(FONT_NAME, normal=FONT_NAME, bold=FONT_NAME,
-                                  italic=FONT_NAME, boldItalic=FONT_NAME)
+    pdfmetrics.registerFontFamily(FONT_NAME, normal=FONT_NAME, bold=FONT_NAME, italic=FONT_NAME, boldItalic=FONT_NAME)
 
 
 def type_label(value: str | None) -> str:
@@ -83,10 +82,15 @@ def source_label(value: str | None) -> str:
 def build_pdf(model: dict[str, Any], target: Path) -> int:
     """把行程模型排版成 PDF 文件，返回页数。"""
     target.parent.mkdir(parents=True, exist_ok=True)
-    doc = SimpleDocTemplate(str(target), pagesize=A4,
-                            leftMargin=14 * mm, rightMargin=14 * mm,
-                            topMargin=16 * mm, bottomMargin=16 * mm,
-                            title=str(model.get("title") or "行程单"))
+    doc = SimpleDocTemplate(
+        str(target),
+        pagesize=A4,
+        leftMargin=14 * mm,
+        rightMargin=14 * mm,
+        topMargin=16 * mm,
+        bottomMargin=16 * mm,
+        title=str(model.get("title") or "行程单"),
+    )
     story = [_masthead(model)]
     for day in model.get("dayList") or []:
         story.extend(_day_block(day))
@@ -97,8 +101,7 @@ def build_pdf(model: dict[str, Any], target: Path) -> int:
 
 
 def _style(name: str, size: int, color: colors.Color, **extra: Any) -> ParagraphStyle:
-    return ParagraphStyle(name, fontName=FONT_NAME, fontSize=size, leading=size * 1.6,
-                           textColor=color, **extra)
+    return ParagraphStyle(name, fontName=FONT_NAME, fontSize=size, leading=size * 1.6, textColor=color, **extra)
 
 
 _H_STYLES = {
@@ -122,28 +125,43 @@ _H_STYLES = {
 
 
 def _masthead(model: dict[str, Any]) -> Table:
-    inner: list[Any] = [Paragraph("TRAVEL FIELD HANDBOOK", _H_STYLES["brand"]),
-                        Paragraph(str(model.get("title") or "行程单"), _H_STYLES["title"]),
-                        Paragraph(str(model.get("city") or ""), _H_STYLES["city"])]
-    rule = Table([[""]], colWidths=[64], rowHeights=[2],
-                 style=TableStyle([("BACKGROUND", (0, 0), (-1, -1), TERRA)]))
+    inner: list[Any] = [
+        Paragraph("TRAVEL FIELD HANDBOOK", _H_STYLES["brand"]),
+        Paragraph(str(model.get("title") or "行程单"), _H_STYLES["title"]),
+        Paragraph(str(model.get("city") or ""), _H_STYLES["city"]),
+    ]
+    rule = Table([[""]], colWidths=[64], rowHeights=[2], style=TableStyle([("BACKGROUND", (0, 0), (-1, -1), TERRA)]))
     rule.hAlign = "LEFT"
     inner.append(rule)
-    chips = [chunk for chunk in (
-        _chip(model, f"{model['days']} 天 {model['persons']} 人", model.get("days")),
-        _chip(model, f"{model.get('startDate')} ~ {model.get('endDate')}", model.get("startDate")),
-        _chip(model, f"偏好：{model.get('preferences')}", model.get("preferences")),
-        _chip(model, f"预算上限 ￥{model.get('budget')}", model.get("budget")),
-    ) if chunk]
+    chips = [
+        chunk
+        for chunk in (
+            _chip(model, f"{model['days']} 天 {model['persons']} 人", model.get("days")),
+            _chip(model, f"{model.get('startDate')} ~ {model.get('endDate')}", model.get("startDate")),
+            _chip(model, f"偏好：{model.get('preferences')}", model.get("preferences")),
+            _chip(model, f"预算上限 ￥{model.get('budget')}", model.get("budget")),
+        )
+        if chunk
+    ]
     if chips:
-        inner.append(Table([[chips]], style=TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0),
-                                                        ("TOPPADDING", (0, 0), (-1, -1), 2)])))
-    block = Table([[inner]], colWidths=[None],
-                  style=TableStyle([
-                      ("BACKGROUND", (0, 0), (-1, -1), MASTHEAD),
-                      ("LEFTPADDING", (0, 0), (-1, -1), 22), ("RIGHTPADDING", (0, 0), (-1, -1), 22),
-                      ("TOPPADDING", (0, 0), (-1, -1), 20), ("BOTTOMPADDING", (0, 0), (-1, -1), 16),
-                  ]))
+        inner.append(
+            Table(
+                [[chips]], style=TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 2)])
+            )
+        )
+    block = Table(
+        [[inner]],
+        colWidths=[None],
+        style=TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), MASTHEAD),
+                ("LEFTPADDING", (0, 0), (-1, -1), 22),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 22),
+                ("TOPPADDING", (0, 0), (-1, -1), 20),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 16),
+            ]
+        ),
+    )
     return _spaced(block, 14)
 
 
@@ -163,12 +181,20 @@ def _day_block(day: dict[str, Any]) -> list[Any]:
     content.extend(Paragraph(f"• {tip}", _H_STYLES["tip"]) for tip in day.get("practicalNotes") or [])
     if day.get("backupPlan"):
         content.append(Paragraph(f"备选：{day['backupPlan']}", _H_STYLES["guide"]))
-    card = Table([[content]], colWidths=[None], style=TableStyle([
-        ("BOX", (0, 0), (-1, -1), 1, LINE),
-        ("LINEBEFORE", (0, 0), (0, -1), 3, TEAL),
-        ("LEFTPADDING", (0, 0), (-1, -1), 12), ("RIGHTPADDING", (0, 0), (-1, -1), 12),
-        ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-    ]))
+    card = Table(
+        [[content]],
+        colWidths=[None],
+        style=TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 1, LINE),
+                ("LINEBEFORE", (0, 0), (0, -1), 3, TEAL),
+                ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ]
+        ),
+    )
     # 卡片只包日头：整块（含明细表）套进一个单元格会让 reportlab 无法跨页拆分，
     # 一天超过一页就直接 LayoutError。明细表独立成流、重复表头跨页，是印刷版
     # 更稳的等价做法（模板里的 page-break-inside 在内容超过一页时本来也必须断）。
@@ -182,20 +208,24 @@ def _item_table(items: list[dict[str, Any]]) -> Table:
         # 只画一层网格线 = CSS 的 border-collapse: collapse
         ("GRID", (0, 0), (-1, -1), 1, CELL),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]
     row = 1
     for item in items:
-        rows.append([
-            Paragraph(str(item.get("typeLabel") or ""), _H_STYLES["cell"]),
-            Paragraph(str(item.get("poiName") or ""), _H_STYLES["cell"]),
-            Paragraph(_time_range(item), _H_STYLES["cell"]),
-            Paragraph("" if item.get("durationMin") is None else str(item["durationMin"]), _H_STYLES["cell"]),
-            Paragraph("" if item.get("cost") is None else str(item["cost"]), _H_STYLES["cell"]),
-            Paragraph(_source_cell(item), _H_STYLES["cell"]),
-            Paragraph(str(item.get("remark") or ""), _H_STYLES["cell"]),
-        ])
+        rows.append(
+            [
+                Paragraph(str(item.get("typeLabel") or ""), _H_STYLES["cell"]),
+                Paragraph(str(item.get("poiName") or ""), _H_STYLES["cell"]),
+                Paragraph(_time_range(item), _H_STYLES["cell"]),
+                Paragraph("" if item.get("durationMin") is None else str(item["durationMin"]), _H_STYLES["cell"]),
+                Paragraph("" if item.get("cost") is None else str(item["cost"]), _H_STYLES["cell"]),
+                Paragraph(_source_cell(item), _H_STYLES["cell"]),
+                Paragraph(str(item.get("remark") or ""), _H_STYLES["cell"]),
+            ]
+        )
         row += 1
         why = item.get("whyThis")
         if why:
@@ -226,35 +256,59 @@ def _source_cell(item: dict[str, Any]) -> str:
 
 
 def _budget_appendix(model: dict[str, Any]) -> list[Any]:
-    rows = [[Paragraph("分类", _H_STYLES["head"]), Paragraph("金额", _H_STYLES["head"]),
-             Paragraph("项目数", _H_STYLES["head"])]]
+    rows = [
+        [
+            Paragraph("分类", _H_STYLES["head"]),
+            Paragraph("金额", _H_STYLES["head"]),
+            Paragraph("项目数", _H_STYLES["head"]),
+        ]
+    ]
     for budget in model.get("budgetList") or []:
-        rows.append([Paragraph(str(budget.get("category") or ""), _H_STYLES["cell"]),
-                     Paragraph(str(budget.get("amount") or ""), _H_STYLES["cell"]),
-                     Paragraph("" if budget.get("itemCount") is None else str(budget["itemCount"]),
-                               _H_STYLES["cell"])])
-    table = Table(rows, colWidths=[ITEM_COLUMN_WIDTHS[1], ITEM_COLUMN_WIDTHS[2], ITEM_COLUMN_WIDTHS[3]],
-                  style=TableStyle([("BACKGROUND", (0, 0), (-1, 0), HEAD_BG),
-                                    ("GRID", (0, 0), (-1, -1), 1, CELL),
-                                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                                    ("TOPPADDING", (0, 0), (-1, -1), 4),
-                                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+        rows.append(
+            [
+                Paragraph(str(budget.get("category") or ""), _H_STYLES["cell"]),
+                Paragraph(str(budget.get("amount") or ""), _H_STYLES["cell"]),
+                Paragraph("" if budget.get("itemCount") is None else str(budget["itemCount"]), _H_STYLES["cell"]),
+            ]
+        )
+    table = Table(
+        rows,
+        colWidths=[ITEM_COLUMN_WIDTHS[1], ITEM_COLUMN_WIDTHS[2], ITEM_COLUMN_WIDTHS[3]],
+        style=TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), HEAD_BG),
+                ("GRID", (0, 0), (-1, -1), 1, CELL),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        ),
+    )
     # 与日卡同理：标题条与表格分开成两个流，预算行很多时表格可以跨页而不是炸掉
-    title_card = Table([[Paragraph("预算附录（人民币估算）", _H_STYLES["budget_title"])]], colWidths=[None],
-                       style=TableStyle([
-                           ("BACKGROUND", (0, 0), (-1, -1), PAPER_BG),
-                           ("BOX", (0, 0), (-1, -1), 1, LINE),
-                           ("LINEBEFORE", (0, 0), (0, -1), 3, TERRA),
-                           ("LEFTPADDING", (0, 0), (-1, -1), 12), ("RIGHTPADDING", (0, 0), (-1, -1), 12),
-                           ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                       ]))
-    return [title_card, table,
-            Paragraph(f"合计：￥{model.get('totalAmount')}", _H_STYLES["total"])]
+    title_card = Table(
+        [[Paragraph("预算附录（人民币估算）", _H_STYLES["budget_title"])]],
+        colWidths=[None],
+        style=TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), PAPER_BG),
+                ("BOX", (0, 0), (-1, -1), 1, LINE),
+                ("LINEBEFORE", (0, 0), (0, -1), 3, TERRA),
+                ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+        ),
+    )
+    return [title_card, table, Paragraph(f"合计：￥{model.get('totalAmount')}", _H_STYLES["total"])]
 
 
 def _colophon() -> Paragraph:
-    return Paragraph("本刊由 Travel Assistant 排印生成 · 价格均为人民币估算，请以现场或官方渠道为准<br/>"
-                     "出发前请再次确认各点位营业时间与票价", _H_STYLES["colophon"])
+    return Paragraph(
+        "本刊由 Travel Assistant 排印生成 · 价格均为人民币估算，请以现场或官方渠道为准<br/>"
+        "出发前请再次确认各点位营业时间与票价",
+        _H_STYLES["colophon"],
+    )
 
 
 def _spaced(flowable: Any, space: int):

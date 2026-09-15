@@ -30,10 +30,13 @@ def test_validate_ok():
 def test_validate_flags_day_without_attractions():
     """只有酒店/餐饮没有景点的天必须进校验问题（丽江占位酒店事故缺口）。"""
     plans = [
-        {"day_no": 1, "items": [
-            {"item_type": "food", "poi_name": "餐厅", "start_time": "12:00", "end_time": "13:00"},
-            {"item_type": "hotel", "poi_name": "酒店", "start_time": "21:00", "end_time": "08:00"},
-        ]},
+        {
+            "day_no": 1,
+            "items": [
+                {"item_type": "food", "poi_name": "餐厅", "start_time": "12:00", "end_time": "13:00"},
+                {"item_type": "hotel", "poi_name": "酒店", "start_time": "21:00", "end_time": "08:00"},
+            ],
+        },
         {"day_no": 2, "items": []},  # 完全空日仍走"无行程项"日志语义，不重复报 issue
     ]
     issues, _log = validate_plans(plans)
@@ -47,8 +50,13 @@ def test_validate_conflict_and_open_time():
             "items": [
                 {"item_type": "attraction", "poi_name": "A", "start_time": "09:00", "end_time": "12:00"},
                 {"item_type": "attraction", "poi_name": "B", "start_time": "11:00", "end_time": "13:00"},
-                {"item_type": "attraction", "poi_name": "C", "start_time": "19:00", "end_time": "20:00",
-                 "open_time": "08:00-17:00"},
+                {
+                    "item_type": "attraction",
+                    "poi_name": "C",
+                    "start_time": "19:00",
+                    "end_time": "20:00",
+                    "open_time": "08:00-17:00",
+                },
             ],
         }
     ]
@@ -58,31 +66,75 @@ def test_validate_conflict_and_open_time():
 
 
 def test_validate_requires_full_opening_window():
-    plans = [{"day_no": 1, "items": [{
-        "item_type": "attraction", "poi_name": "闭馆前进不去",
-        "start_time": "16:00", "end_time": "18:00", "open_time": "09:00-17:00",
-    }]}]
+    plans = [
+        {
+            "day_no": 1,
+            "items": [
+                {
+                    "item_type": "attraction",
+                    "poi_name": "闭馆前进不去",
+                    "start_time": "16:00",
+                    "end_time": "18:00",
+                    "open_time": "09:00-17:00",
+                }
+            ],
+        }
+    ]
     issues, _ = validate_plans(plans)
     assert any("开放时间不符" in i for i in issues)
 
 
 def test_route_constraint_uses_coordinates_and_reports_tolerant_gap():
-    far = [{"day_no": 1, "items": [
-        {"item_type": "attraction", "poi_name": "远点A", "start_time": "09:00", "end_time": "10:00",
-         "latitude": 30.0, "longitude": 120.0},
-        {"item_type": "attraction", "poi_name": "远点B", "start_time": "10:30", "end_time": "12:00",
-         "latitude": 30.2, "longitude": 120.0},
-    ]}]
+    far = [
+        {
+            "day_no": 1,
+            "items": [
+                {
+                    "item_type": "attraction",
+                    "poi_name": "远点A",
+                    "start_time": "09:00",
+                    "end_time": "10:00",
+                    "latitude": 30.0,
+                    "longitude": 120.0,
+                },
+                {
+                    "item_type": "attraction",
+                    "poi_name": "远点B",
+                    "start_time": "10:30",
+                    "end_time": "12:00",
+                    "latitude": 30.2,
+                    "longitude": 120.0,
+                },
+            ],
+        }
+    ]
     issues, _ = validate_plans(far)
     assert any("路线时间不足" in i for i in issues)
     assert estimate_transfer_minutes(far[0]["items"][0], far[0]["items"][1]) > 30
 
-    close = [{"day_no": 1, "items": [
-        {"item_type": "attraction", "poi_name": "近点A", "start_time": "09:00", "end_time": "10:00",
-         "latitude": 30.0, "longitude": 120.0},
-        {"item_type": "attraction", "poi_name": "近点B", "start_time": "10:20", "end_time": "12:00",
-         "latitude": 30.005, "longitude": 120.005},
-    ]}]
+    close = [
+        {
+            "day_no": 1,
+            "items": [
+                {
+                    "item_type": "attraction",
+                    "poi_name": "近点A",
+                    "start_time": "09:00",
+                    "end_time": "10:00",
+                    "latitude": 30.0,
+                    "longitude": 120.0,
+                },
+                {
+                    "item_type": "attraction",
+                    "poi_name": "近点B",
+                    "start_time": "10:20",
+                    "end_time": "12:00",
+                    "latitude": 30.005,
+                    "longitude": 120.005,
+                },
+            ],
+        }
+    ]
     close_issues, _ = validate_plans(close)
     assert not any("路线时间不足" in i for i in close_issues)
 
@@ -96,7 +148,13 @@ def test_validate_saturation_hotel_excluded():
                 {"item_type": "attraction", "poi_name": "B", "start_time": "13:30", "end_time": "16:00"},
                 {"item_type": "attraction", "poi_name": "C", "start_time": "19:00", "end_time": "20:30"},
                 {"item_type": "food", "poi_name": "D", "start_time": "18:00", "end_time": "19:00"},
-                {"item_type": "hotel", "poi_name": "酒店", "start_time": "21:00", "end_time": "08:00", "duration_min": 660},
+                {
+                    "item_type": "hotel",
+                    "poi_name": "酒店",
+                    "start_time": "21:00",
+                    "end_time": "08:00",
+                    "duration_min": 660,
+                },
             ],
         }
     ]

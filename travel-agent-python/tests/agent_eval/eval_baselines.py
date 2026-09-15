@@ -14,18 +14,18 @@ import argparse
 import json
 import sys
 import time
+from itertools import pairwise
 from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from app.agent import generators, route_service, schedule_optimizer
+from app.agent import generators, schedule_optimizer
 from app.agent.reflect import _item_end, _item_start, _route_from_matrix, validate_plans
 from app.agent.route_service import RouteService, clear_route_cache
 from app.common.config import settings
 from tests.agent_eval import mock_llm
-
 
 CASES_PATH = Path(__file__).with_name("cases.json")
 REPORT_DIR = Path(__file__).with_name("report")
@@ -53,11 +53,10 @@ def _route_violation_counts(plans: list[dict], matrix: dict) -> tuple[int, int]:
     pairs = 0
     for plan in plans:
         active = sorted(
-            [item for item in plan.get("items") or []
-             if item.get("item_type") in ("attraction", "food")],
+            [item for item in plan.get("items") or [] if item.get("item_type") in ("attraction", "food")],
             key=_item_start,
         )
-        for previous, following in zip(active, active[1:]):
+        for previous, following in pairwise(active):
             pairs += 1
             route = _route_from_matrix(previous, following, matrix)
             required = int((route or {}).get("duration_min") or 0)
@@ -72,23 +71,30 @@ def _run_variant(case: dict, *, optimizer_enabled: bool, route: RouteService) ->
     foods = catalog["foods"]
     hotels = catalog["hotels"]
     consumption = catalog["consumption"]
-    route_matrix = route.matrix(
-        attractions[: min(len(attractions), 7)], mode="walking"
-    )
+    _route_matrix = route.matrix(attractions[: min(len(attractions), 7)], mode="walking")
     started = time.perf_counter()
-    with patch.object(settings, "schedule_optimizer_enabled", optimizer_enabled), \
-            patch.object(settings, "route_service_enabled", optimizer_enabled), \
-            patch.object(schedule_optimizer, "default_route_service", route):
+    with (
+        patch.object(settings, "schedule_optimizer_enabled", optimizer_enabled),
+        patch.object(settings, "route_service_enabled", optimizer_enabled),
+        patch.object(schedule_optimizer, "default_route_service", route),
+    ):
         plans, _ = generators.fallback_generate(
-            case["city"], case["days"], case["persons"], case.get("preferences") or [],
-            hotels=hotels, attractions=attractions, foods=foods, consumption=consumption,
+            case["city"],
+            case["days"],
+            case["persons"],
+            case.get("preferences") or [],
+            hotels=hotels,
+            attractions=attractions,
+            foods=foods,
+            consumption=consumption,
             budget_limit=None,
         )
     duration_ms = round((time.perf_counter() - started) * 1000, 2)
     # 使用同一条 fixture-route 作为验收真值，确保 A 的“坐标合理”不会被误报为
     # 真实交通通过；B 的优化结果必须在相同真值下复核。
-    active = [item for plan in plans for item in plan.get("items") or []
-              if item.get("item_type") in ("attraction", "food")]
+    active = [
+        item for plan in plans for item in plan.get("items") or [] if item.get("item_type") in ("attraction", "food")
+    ]
     truth_matrix = route.matrix(active, mode="walking")
     issues, _ = validate_plans(plans, route_matrix=truth_matrix)
     violated, pairs = _route_violation_counts(plans, truth_matrix)
@@ -117,15 +123,11 @@ def build_report(cases: list[dict]) -> dict:
             "initial_pass_rate" if not enabled else "final_pass_rate": round(
                 sum(row["initial_or_final_pass"] for row in rows) / max(len(rows), 1), 4
             ),
-            "route_violation_rate": round(
-                sum(row["route_violations"] for row in rows) / max(total_pairs, 1), 4
-            ),
+            "route_violation_rate": round(sum(row["route_violations"] for row in rows) / max(total_pairs, 1), 4),
             # 两个 variant 都明确使用 deterministic fallback，不能解读为真实 LLM
             # fallback 率；这个字段只记录评测执行模式。
             "fallback_rate": 1.0,
-            "average_duration_ms": round(
-                sum(row["duration_ms"] for row in rows) / max(len(rows), 1), 2
-            ),
+            "average_duration_ms": round(sum(row["duration_ms"] for row in rows) / max(len(rows), 1), 2),
             "details": rows,
         }
     return {
@@ -137,11 +139,10 @@ def build_report(cases: list[dict]) -> dict:
 
 def write_report(report: dict) -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    (REPORT_DIR / "baseline_report.json").write_text(
-        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    (REPORT_DIR / "baseline_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     lines = [
-        "# 路线与优化器离线消融报告", "",
+        "# 路线与优化器离线消融报告",
+        "",
         "> 路线数据来自固定 `fixture-route` 替身，不代表线上高德交通效果。",
         "",
         "| 方案 | 首次/最终通过率 | 路线违规率 | fallback 率（执行模式） | 平均耗时 ms |",
@@ -161,7 +162,7 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=0)
     args = parser.parse_args()
     cases = json.loads(CASES_PATH.read_text(encoding="utf-8"))
-    report = build_report(cases[:args.limit] if args.limit else cases)
+    report = build_report(cases[: args.limit] if args.limit else cases)
     write_report(report)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0

@@ -41,12 +41,17 @@ from app.db.models import (
     ItineraryMain,
     SysUser,
 )
-from app.services import cache_store, export_pdf, export_service, generation_events, state_and_sessions
+from app.services import (
+    cache_store,
+    export_pdf,
+    export_service,
+    generation_events,
+    state_and_sessions,
+)
 
 JWT_MATERIAL = "example-only-hs256-test-signing-material"
 PASSWORD = "example123"
-VO_FIELDS = {"id", "itineraryId", "taskType", "status", "errorMsg", "createdAt", "finishedAt",
-             "downloadUrl"}
+VO_FIELDS = {"id", "itineraryId", "taskType", "status", "errorMsg", "createdAt", "finishedAt", "downloadUrl"}
 
 
 @pytest.fixture(autouse=True)
@@ -73,47 +78,78 @@ def _seed() -> None:
 
     hashed = user_service.hash_password(PASSWORD)
     with db_session.session_scope() as session:
-        session.add_all([
-            SysUser(username="alice", password=hashed, status=1, role="user"),
-            SysUser(username="mallory", password=hashed, status=1, role="user"),
-        ])
+        session.add_all(
+            [
+                SysUser(username="alice", password=hashed, status=1, role="user"),
+                SysUser(username="mallory", password=hashed, status=1, role="user"),
+            ]
+        )
         trip = ItineraryMain(
-            user_id=1, title="杭州2日游", city="杭州", start_date=date(2026, 4, 20),
-            end_date=date(2026, 4, 21), days=2, persons=2, budget=Decimal("3000.00"),
-            status=2, preferences="亲子,美食",
+            user_id=1,
+            title="杭州2日游",
+            city="杭州",
+            start_date=date(2026, 4, 20),
+            end_date=date(2026, 4, 21),
+            days=2,
+            persons=2,
+            budget=Decimal("3000.00"),
+            status=2,
+            preferences="亲子,美食",
         )
         foreign = ItineraryMain(user_id=2, title="别人的行程", city="北京", days=1, persons=1, status=2)
-        gone = ItineraryMain(user_id=1, title="已删除行程", city="杭州", days=1, persons=1,
-                             status=2, deleted=1)
+        gone = ItineraryMain(user_id=1, title="已删除行程", city="杭州", days=1, persons=1, status=2, deleted=1)
         session.add_all([trip, foreign, gone])
         session.flush()
         day = ItineraryDay(
-            itinerary_id=trip.id, day_no=1, travel_date=date(2026, 4, 20), note="湖山线",
+            itinerary_id=trip.id,
+            day_no=1,
+            travel_date=date(2026, 4, 20),
+            note="湖山线",
             generation_status="SUCCEEDED",
             metadata_json='{"theme":"把西湖走成一条动线","practicalNotes":["出发前确认游船班次","带伞"],'
-                          '"backupPlan":[{"name":"浙江省博"},{"name":"灵隐"}]}',
+            '"backupPlan":[{"name":"浙江省博"},{"name":"灵隐"}]}',
         )
-        empty_day = ItineraryDay(itinerary_id=trip.id, day_no=2, generation_status="PENDING",
-                                 metadata_json="{ 这不是合法 JSON")
+        empty_day = ItineraryDay(
+            itinerary_id=trip.id, day_no=2, generation_status="PENDING", metadata_json="{ 这不是合法 JSON"
+        )
         session.add_all([day, empty_day])
         session.flush()
-        session.add_all([
-            ItineraryItem(
-                day_id=day.id, itinerary_id=trip.id, item_type="attraction", poi_name="西湖",
-                start_time=time(9, 30), end_time=time(11, 0), duration_min=120,
-                cost=Decimal("0.00"), source="mysql.poi_knowledge", open_time="全天",
-                why_note="清晨的白堤几乎没有旅行团", remark="早上人少", sort_no=0,
-            ),
-            ItineraryItem(
-                day_id=day.id, itinerary_id=trip.id, item_type="food", poi_name="楼外楼",
-                start_time=time(12, 0), duration_min=90, cost=Decimal("240.00"),
-                source="some-unknown-source", sort_no=1,
-            ),
-        ])
-        session.add_all([
-            BudgetDetail(itinerary_id=trip.id, category="门票", amount=Decimal("45.00"), item_count=2),
-            BudgetDetail(itinerary_id=trip.id, category="餐饮", amount=Decimal("480.00"), item_count=4),
-        ])
+        session.add_all(
+            [
+                ItineraryItem(
+                    day_id=day.id,
+                    itinerary_id=trip.id,
+                    item_type="attraction",
+                    poi_name="西湖",
+                    start_time=time(9, 30),
+                    end_time=time(11, 0),
+                    duration_min=120,
+                    cost=Decimal("0.00"),
+                    source="mysql.poi_knowledge",
+                    open_time="全天",
+                    why_note="清晨的白堤几乎没有旅行团",
+                    remark="早上人少",
+                    sort_no=0,
+                ),
+                ItineraryItem(
+                    day_id=day.id,
+                    itinerary_id=trip.id,
+                    item_type="food",
+                    poi_name="楼外楼",
+                    start_time=time(12, 0),
+                    duration_min=90,
+                    cost=Decimal("240.00"),
+                    source="some-unknown-source",
+                    sort_no=1,
+                ),
+            ]
+        )
+        session.add_all(
+            [
+                BudgetDetail(itinerary_id=trip.id, category="门票", amount=Decimal("45.00"), item_count=2),
+                BudgetDetail(itinerary_id=trip.id, category="餐饮", amount=Decimal("480.00"), item_count=4),
+            ]
+        )
 
 
 def _app() -> FastAPI:
@@ -151,14 +187,12 @@ def trip_id() -> int:
 
 def _run_inline(monkeypatch) -> None:
     """把渲染池换成同步执行：测的是终态机，不是线程调度。"""
-    monkeypatch.setattr(export_service.export_pool, "submit",
-                        lambda task, *args: task(*args))
+    monkeypatch.setattr(export_service.export_pool, "submit", lambda task, *args: task(*args))
 
 
 def _no_render(monkeypatch) -> list:
     calls: list = []
-    monkeypatch.setattr(export_service.export_pool, "submit",
-                        lambda task, *args: calls.append(args))
+    monkeypatch.setattr(export_service.export_pool, "submit", lambda task, *args: calls.append(args))
     return calls
 
 
@@ -171,6 +205,7 @@ def _set_status(task_id: int, status: str, file_path: str | None = None) -> None
 
 
 # ---------- 创建 ----------
+
 
 def test_create_returns_running_task_without_download_url(client: TestClient, trip_id: int, monkeypatch) -> None:
     _no_render(monkeypatch)
@@ -191,10 +226,13 @@ def test_create_rejects_foreign_and_soft_deleted_itinerary(client: TestClient, m
     _no_render(monkeypatch)
     with db_session.session_scope() as session:
         foreign = session.execute(select(ItineraryMain).where(ItineraryMain.user_id == 2)).scalars().first()
-        gone = session.execute(
-            select(ItineraryMain).execution_options(include_deleted=True)
-            .where(ItineraryMain.title == "已删除行程")
-        ).scalars().first()
+        gone = (
+            session.execute(
+                select(ItineraryMain).execution_options(include_deleted=True).where(ItineraryMain.title == "已删除行程")
+            )
+            .scalars()
+            .first()
+        )
     for doomed in (foreign.id, gone.id):
         resp = client.post(f"/api/export/pdf/{doomed}")
         # 归属与软删都收敛成同一个 404 文案，不暴露资源是否存在（同 Java）
@@ -210,11 +248,15 @@ def test_export_endpoints_are_not_anonymous(anon: TestClient, trip_id: int) -> N
 
 # ---------- 渲染终态 ----------
 
+
 def test_render_produces_real_pdf_and_publishes_export_done(client: TestClient, trip_id: int, monkeypatch) -> None:
     _run_inline(monkeypatch)
     events: list = []
-    monkeypatch.setattr(generation_events, "publish_event",
-                        lambda itinerary_id, event_type, data: events.append((itinerary_id, event_type, data)))
+    monkeypatch.setattr(
+        generation_events,
+        "publish_event",
+        lambda itinerary_id, event_type, data: events.append((itinerary_id, event_type, data)),
+    )
 
     data = client.post(f"/api/export/pdf/{trip_id}").json()["data"]
 
@@ -226,9 +268,13 @@ def test_render_produces_real_pdf_and_publishes_export_done(client: TestClient, 
     assert target.parent == Path(settings.export_dir) and target.name == f"itinerary_{data['id']}.pdf"
     raw = target.read_bytes()
     assert raw[:5] == b"%PDF-" and len(raw) > 5000, "必须真出片，不能只写任务行"
-    assert events == [(trip_id, "export_done",
-                       {"taskId": data["id"], "status": "DONE",
-                        "downloadUrl": f"/api/export/download/{data['id']}"})]
+    assert events == [
+        (
+            trip_id,
+            "export_done",
+            {"taskId": data["id"], "status": "DONE", "downloadUrl": f"/api/export/download/{data['id']}"},
+        )
+    ]
 
     polled = client.get(f"/api/export/tasks/{data['id']}").json()["data"]
     assert polled["status"] == "DONE" and polled["downloadUrl"] == f"/api/export/download/{data['id']}"
@@ -255,11 +301,12 @@ def _raise_rejected(task, *args):
     raise TaskRejected("export pool saturated")
 
 
-def test_render_failure_writes_failed_task_and_swallows_the_exception(client: TestClient, trip_id: int, monkeypatch) -> None:
+def test_render_failure_writes_failed_task_and_swallows_the_exception(
+    client: TestClient, trip_id: int, monkeypatch
+) -> None:
     _run_inline(monkeypatch)
     monkeypatch.setattr(generation_events, "publish_event", lambda *args: None)
-    monkeypatch.setattr(export_pdf, "build_pdf",
-                        lambda model, target: (_ for _ in ()).throw(RuntimeError("x" * 900)))
+    monkeypatch.setattr(export_pdf, "build_pdf", lambda model, target: (_ for _ in ()).throw(RuntimeError("x" * 900)))
 
     data = client.post(f"/api/export/pdf/{trip_id}").json()["data"]
     # 后台线程的异常以任务终态呈现，不能让 200 变 500
@@ -272,8 +319,7 @@ def test_render_failure_writes_failed_task_and_swallows_the_exception(client: Te
 def test_messageless_exception_falls_back_to_unknown_error(client: TestClient, trip_id: int, monkeypatch) -> None:
     _run_inline(monkeypatch)
     monkeypatch.setattr(generation_events, "publish_event", lambda *args: None)
-    monkeypatch.setattr(export_pdf, "build_pdf",
-                        lambda model, target: (_ for _ in ()).throw(RuntimeError()))
+    monkeypatch.setattr(export_pdf, "build_pdf", lambda model, target: (_ for _ in ()).throw(RuntimeError()))
     data = client.post(f"/api/export/pdf/{trip_id}").json()["data"]
     # Java 判的是 `getMessage() == null`；Python 侧 `str(exc)` 对无消息异常是空串，
     # 用 `or` 收敛才能落「未知错误」——否则前端只剩一个空 toast。
@@ -283,8 +329,7 @@ def test_messageless_exception_falls_back_to_unknown_error(client: TestClient, t
 def test_blank_but_present_message_is_kept_verbatim(client: TestClient, trip_id: int, monkeypatch) -> None:
     _run_inline(monkeypatch)
     monkeypatch.setattr(generation_events, "publish_event", lambda *args: None)
-    monkeypatch.setattr(export_pdf, "build_pdf",
-                        lambda model, target: (_ for _ in ()).throw(RuntimeError("   ")))
+    monkeypatch.setattr(export_pdf, "build_pdf", lambda model, target: (_ for _ in ()).throw(RuntimeError("   ")))
     data = client.post(f"/api/export/pdf/{trip_id}").json()["data"]
     # 「有消息但全空白」Java 原样落库（只有 null 才替换），这里不能顺手 strip 掉
     assert data["errorMsg"] == "   "
@@ -301,12 +346,14 @@ def test_missing_font_fails_the_task_with_an_actionable_message(client: TestClie
 
 # ---------- 任务归属与下载前置条件 ----------
 
-def test_task_reads_are_scoped_to_the_owner(client: TestClient, other_user: TestClient, trip_id: int, monkeypatch) -> None:
+
+def test_task_reads_are_scoped_to_the_owner(
+    client: TestClient, other_user: TestClient, trip_id: int, monkeypatch
+) -> None:
     _run_inline(monkeypatch)
     monkeypatch.setattr(generation_events, "publish_event", lambda *args: None)
     task_id = client.post(f"/api/export/pdf/{trip_id}").json()["data"]["id"]
-    for resp in (other_user.get(f"/api/export/tasks/{task_id}"),
-                 other_user.get(f"/api/export/download/{task_id}")):
+    for resp in (other_user.get(f"/api/export/tasks/{task_id}"), other_user.get(f"/api/export/download/{task_id}")):
         assert resp.status_code == 404 and resp.json()["message"] == "导出任务不存在"
 
 
@@ -325,6 +372,7 @@ def test_download_requires_done_and_an_existing_file(client: TestClient, trip_id
 
 
 # ---------- 印刷模型 ----------
+
 
 def test_build_model_maps_labels_times_and_metadata(trip_id: int) -> None:
     with db_session.session_scope() as session:
@@ -351,9 +399,11 @@ def test_build_model_maps_labels_times_and_metadata(trip_id: int) -> None:
 def test_corrupt_metadata_and_blank_columns_do_not_break_the_model(trip_id: int) -> None:
     with db_session.session_scope() as session:
         main = session.get(ItineraryMain, trip_id)
-        day = session.execute(
-            select(ItineraryDay).where(ItineraryDay.itinerary_id == trip_id, ItineraryDay.day_no == 1)
-        ).scalars().one()
+        day = (
+            session.execute(select(ItineraryDay).where(ItineraryDay.itinerary_id == trip_id, ItineraryDay.day_no == 1))
+            .scalars()
+            .one()
+        )
         day.metadata_json = '{"theme":"", "practicalNotes":["", "  "], "backupPlan":[]}'
     model = export_service.build_model(main)
     row = model["dayList"][0]
@@ -361,17 +411,41 @@ def test_corrupt_metadata_and_blank_columns_do_not_break_the_model(trip_id: int)
 
 
 def test_label_tables_match_java_switches() -> None:
-    assert [export_pdf.type_label(v) for v in ("attraction", "food", "hotel", "transport", "other", None)] \
-        == ["景点", "美食", "酒店", "交通", "other", ""]
+    assert [export_pdf.type_label(v) for v in ("attraction", "food", "hotel", "transport", "other", None)] == [
+        "景点",
+        "美食",
+        "酒店",
+        "交通",
+        "other",
+        "",
+    ]
     # 去高德后新增 local-grounding；amap* 仅剩存量数据标签
-    assert [export_pdf.source_label(v) for v in
-            (None, "client-context", "mysql.poi_knowledge", "llm.open_day", "local-grounding",
-             "amap-grounding", "amap", "x")] \
-        == ["行程设定", "行程设定", "目的地知识库", "开放研究", "本地知识库",
-            "高德地图（存量）", "高德地图（存量）", "AI 生成"]
+    assert [
+        export_pdf.source_label(v)
+        for v in (
+            None,
+            "client-context",
+            "mysql.poi_knowledge",
+            "llm.open_day",
+            "local-grounding",
+            "amap-grounding",
+            "amap",
+            "x",
+        )
+    ] == [
+        "行程设定",
+        "行程设定",
+        "目的地知识库",
+        "开放研究",
+        "本地知识库",
+        "高德地图（存量）",
+        "高德地图（存量）",
+        "AI 生成",
+    ]
 
 
 # ---------- 版式：跨页拆分（迁移期真实踩过的坑） ----------
+
 
 def test_a_day_longer_than_one_page_splits_instead_of_crashing(tmp_path: Path) -> None:
     """整日套进一个不可拆的单元格会让 reportlab 直接 LayoutError。
@@ -379,15 +453,35 @@ def test_a_day_longer_than_one_page_splits_instead_of_crashing(tmp_path: Path) -
     模板里的 `page-break-inside: avoid` 只在日块能放进一页时成立；长日程必须能续页，
     否则最常被导出的恰恰是那种 13 项的一天。
     """
-    items = [{"typeLabel": "美食", "poiName": f"点位 {i}", "startTime": "12:00", "endTime": None,
-              "durationMin": 90, "cost": Decimal("88.00"), "srcLabel": "AI 生成", "source": None,
-              "openTime": None, "remark": "现场以官方渠道为准" * 3, "whyThis": "顺路且不用排队" * 4}
-             for i in range(40)]
+    items = [
+        {
+            "typeLabel": "美食",
+            "poiName": f"点位 {i}",
+            "startTime": "12:00",
+            "endTime": None,
+            "durationMin": 90,
+            "cost": Decimal("88.00"),
+            "srcLabel": "AI 生成",
+            "source": None,
+            "openTime": None,
+            "remark": "现场以官方渠道为准" * 3,
+            "whyThis": "顺路且不用排队" * 4,
+        }
+        for i in range(40)
+    ]
     model = {
-        "title": "长日程", "city": "杭州", "days": 1, "persons": 1, "budget": Decimal("1000.00"),
-        "startDate": "2026-04-20", "endDate": "2026-04-20", "preferences": None,
-        "dayList": [{"dayNo": 1, "travelDate": None, "note": None, "items": items},
-                    {"dayNo": 2, "travelDate": None, "note": None, "items": items[:1]}],
+        "title": "长日程",
+        "city": "杭州",
+        "days": 1,
+        "persons": 1,
+        "budget": Decimal("1000.00"),
+        "startDate": "2026-04-20",
+        "endDate": "2026-04-20",
+        "preferences": None,
+        "dayList": [
+            {"dayNo": 1, "travelDate": None, "note": None, "items": items},
+            {"dayNo": 2, "travelDate": None, "note": None, "items": items[:1]},
+        ],
         "budgetList": [{"category": f"分类{i}", "amount": Decimal("10.00"), "itemCount": i} for i in range(30)],
         "totalAmount": Decimal("300.00"),
     }

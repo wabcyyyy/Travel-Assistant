@@ -41,6 +41,5 @@ def test_locale_parsed_files_are_pure_ascii():
         except UnicodeDecodeError:
             offenders.append(str(path.relative_to(REPO_ROOT)))
     assert not offenders, (
-        "以下文件含非 ASCII 字节，会被按区域编码(GBK)解析而在中文 Windows 上崩溃: "
-        f"{offenders}；请把注释改为英文"
+        f"以下文件含非 ASCII 字节，会被按区域编码(GBK)解析而在中文 Windows 上崩溃: {offenders}；请把注释改为英文"
     )

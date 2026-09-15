@@ -60,38 +60,95 @@ def db(monkeypatch, tmp_path):
 def _seed() -> None:
     with db_session.session_scope() as session:
         session.add(SysUser(username="alice", password=user_service.hash_password(PASSWORD), status=1, role="user"))
-        trip = ItineraryMain(user_id=1, title="杭州2日游", city="杭州", start_date=date(2026, 4, 20),
-                             end_date=date(2026, 4, 21), days=2, persons=2, budget=Decimal("3000.00"), status=2)
+        trip = ItineraryMain(
+            user_id=1,
+            title="杭州2日游",
+            city="杭州",
+            start_date=date(2026, 4, 20),
+            end_date=date(2026, 4, 21),
+            days=2,
+            persons=2,
+            budget=Decimal("3000.00"),
+            status=2,
+        )
         session.add(trip)
         session.flush()
-        first = ItineraryDay(itinerary_id=trip.id, day_no=1, travel_date=date(2026, 4, 20), city="杭州",
-                             note="旧备注", metadata_json='{"theme":"旧主题","backupPlan":[{"name":"下雨就去博物馆"}]}',
-                             generation_status="SUCCEEDED")
-        second = ItineraryDay(itinerary_id=trip.id, day_no=2, travel_date=date(2026, 4, 21), city="杭州",
-                              generation_status="SUCCEEDED")
+        first = ItineraryDay(
+            itinerary_id=trip.id,
+            day_no=1,
+            travel_date=date(2026, 4, 20),
+            city="杭州",
+            note="旧备注",
+            metadata_json='{"theme":"旧主题","backupPlan":[{"name":"下雨就去博物馆"}]}',
+            generation_status="SUCCEEDED",
+        )
+        second = ItineraryDay(
+            itinerary_id=trip.id, day_no=2, travel_date=date(2026, 4, 21), city="杭州", generation_status="SUCCEEDED"
+        )
         session.add_all([first, second])
         session.flush()
-        session.add_all([
-            ItineraryItem(day_id=first.id, itinerary_id=trip.id, item_type="attraction",
-                          poi_name="西湖", cost=Decimal("0.00"), sort_no=0, start_time=time(9, 30)),
-            ItineraryItem(day_id=first.id, itinerary_id=trip.id, item_type="food",
-                          poi_name="楼外楼", cost=Decimal("100.00"), sort_no=1),
-            ItineraryItem(day_id=second.id, itinerary_id=trip.id, item_type="hotel",
-                          poi_name="杭州老旅馆", poi_id="1", cost=Decimal("200.00"), sort_no=0),
-        ])
-        session.add_all([
-            PoiKnowledge(city="杭州", name="灵隐寺", category="attraction", ticket_price=Decimal("45.00"),
-                         duration_min=120, source="mysql.poi_knowledge", source_updated_at=None),
-            PoiKnowledge(city="杭州", name=HOTEL_NAME, category="hotel", ticket_price=Decimal("880.00"),
-                         duration_min=None, tags="五星", source="mysql.poi_knowledge",
-                         source_updated_at=None),
-        ])
+        session.add_all(
+            [
+                ItineraryItem(
+                    day_id=first.id,
+                    itinerary_id=trip.id,
+                    item_type="attraction",
+                    poi_name="西湖",
+                    cost=Decimal("0.00"),
+                    sort_no=0,
+                    start_time=time(9, 30),
+                ),
+                ItineraryItem(
+                    day_id=first.id,
+                    itinerary_id=trip.id,
+                    item_type="food",
+                    poi_name="楼外楼",
+                    cost=Decimal("100.00"),
+                    sort_no=1,
+                ),
+                ItineraryItem(
+                    day_id=second.id,
+                    itinerary_id=trip.id,
+                    item_type="hotel",
+                    poi_name="杭州老旅馆",
+                    poi_id="1",
+                    cost=Decimal("200.00"),
+                    sort_no=0,
+                ),
+            ]
+        )
+        session.add_all(
+            [
+                PoiKnowledge(
+                    city="杭州",
+                    name="灵隐寺",
+                    category="attraction",
+                    ticket_price=Decimal("45.00"),
+                    duration_min=120,
+                    source="mysql.poi_knowledge",
+                    source_updated_at=None,
+                ),
+                PoiKnowledge(
+                    city="杭州",
+                    name=HOTEL_NAME,
+                    category="hotel",
+                    ticket_price=Decimal("880.00"),
+                    duration_min=None,
+                    tags="五星",
+                    source="mysql.poi_knowledge",
+                    source_updated_at=None,
+                ),
+            ]
+        )
 
 
 def _hotel_room(poi_id: int, room_name: str, base_price: str) -> None:
     with db_session.session_scope() as session:
-        session.add(HotelRoomType(poi_id=poi_id, room_name=room_name,
-                                  base_price=Decimal(base_price), capacity=2, description="含双早"))
+        session.add(
+            HotelRoomType(
+                poi_id=poi_id, room_name=room_name, base_price=Decimal(base_price), capacity=2, description="含双早"
+            )
+        )
 
 
 @pytest.fixture
@@ -111,10 +168,15 @@ def _trip_id(client: TestClient) -> int:
 
 def _item_ids(trip_id: int) -> dict[str, int]:
     with db_session.session_scope() as session:
-        rows = session.execute(
-            select(ItineraryItem).execution_options(include_deleted=True)
-            .where(ItineraryItem.itinerary_id == trip_id)
-        ).scalars().all()
+        rows = (
+            session.execute(
+                select(ItineraryItem)
+                .execution_options(include_deleted=True)
+                .where(ItineraryItem.itinerary_id == trip_id)
+            )
+            .scalars()
+            .all()
+        )
         return {row.poi_name: row.id for row in rows}
 
 
@@ -125,9 +187,14 @@ def _draft(trip_id: int, plans: list[dict], *, hotel_options: list[dict] | None 
     options = [{**option, "baseRevision": revision} for option in (hotel_options or [])]
     with db_session.session_scope() as session:
         message = ItineraryChatMessage(
-            itinerary_id=trip_id, user_id=1, role="ai", content="建议", changed=1,
+            itinerary_id=trip_id,
+            user_id=1,
+            role="ai",
+            content="建议",
+            changed=1,
             plans_json=json.dumps(rows, ensure_ascii=False),
-            hotel_options_json=json.dumps(options, ensure_ascii=False))
+            hotel_options_json=json.dumps(options, ensure_ascii=False),
+        )
         session.add(message)
         session.flush()
         return message.id, revision
@@ -137,46 +204,66 @@ def _live_items(day_no: int) -> list[str]:
     with db_session.session_scope() as session:
         day = session.execute(select(ItineraryDay).where(ItineraryDay.day_no == day_no)).scalar_one()
         return [
-            item.poi_name for item in session.execute(
+            item.poi_name
+            for item in session.execute(
                 select(ItineraryItem).where(ItineraryItem.day_id == day.id).order_by(ItineraryItem.sort_no)
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         ]
 
 
 def _deleted_names(trip_id: int) -> list[str]:
     with db_session.session_scope() as session:
         return [
-            item.poi_name for item in session.execute(
-                select(ItineraryItem).execution_options(include_deleted=True)
+            item.poi_name
+            for item in session.execute(
+                select(ItineraryItem)
+                .execution_options(include_deleted=True)
                 .where(ItineraryItem.itinerary_id == trip_id, ItineraryItem.deleted == 1)
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         ]
 
 
 def _operations(trip_id: int) -> list[str]:
     with db_session.session_scope() as session:
-        return [row.operation for row in session.execute(
-            select(ItineraryVersion).where(ItineraryVersion.itinerary_id == trip_id)
-            .order_by(ItineraryVersion.version_no)
-        ).scalars().all()]
+        return [
+            row.operation
+            for row in session.execute(
+                select(ItineraryVersion)
+                .where(ItineraryVersion.itinerary_id == trip_id)
+                .order_by(ItineraryVersion.version_no)
+            )
+            .scalars()
+            .all()
+        ]
 
 
 # ---------- apply-plans ----------
+
 
 def test_apply_plans_replaces_items_keeps_identity_and_soft_deletes_rest(client: TestClient) -> None:
     trip_id = _trip_id(client)
     xihu = _item_ids(trip_id)["西湖"]
     plans = [
-        {"day_no": 1, "note": "湖山线", "theme": "西湖晨游", "items": [
-            {"id": xihu, "item_type": "attraction", "poi_name": "西湖", "start_time": "09:00"},
-            {"item_type": "attraction", "poi_name": "灵隐寺"},
-        ]},
+        {
+            "day_no": 1,
+            "note": "湖山线",
+            "theme": "西湖晨游",
+            "items": [
+                {"id": xihu, "item_type": "attraction", "poi_name": "西湖", "start_time": "09:00"},
+                {"item_type": "attraction", "poi_name": "灵隐寺"},
+            ],
+        },
         {"day_no": 2, "items": [{"item_type": "hotel", "poi_name": HOTEL_NAME}]},
     ]
     message_id, revision = _draft(trip_id, plans)
 
-    body = client.post(f"/api/itinerary/{trip_id}/apply-plans",
-                       json={"actionMessageId": message_id, "baseRevision": revision}).json()
+    body = client.post(
+        f"/api/itinerary/{trip_id}/apply-plans", json={"actionMessageId": message_id, "baseRevision": revision}
+    ).json()
     assert body["code"] == 200, body
     assert _live_items(1) == ["西湖", "灵隐寺"] and _live_items(2) == [HOTEL_NAME]
     # 草稿没点名的项软删（含第二天原来的老旅馆）
@@ -205,12 +292,15 @@ def test_body_plans_are_ignored_and_server_draft_wins(client: TestClient) -> Non
     任何 AI 没建议过的点位，审计链也就此断开。
     """
     trip_id = _trip_id(client)
-    message_id, revision = _draft(trip_id, [{"day_no": 1, "items": [
-        {"item_type": "attraction", "poi_name": "灵隐寺"}]}])
+    message_id, revision = _draft(
+        trip_id, [{"day_no": 1, "items": [{"item_type": "attraction", "poi_name": "灵隐寺"}]}]
+    )
     forged = [{"day_no": 1, "items": [{"item_type": "transport", "poi_name": "客户端伪造接驳"}]}]
 
-    body = client.post(f"/api/itinerary/{trip_id}/apply-plans",
-                       json={"plans": forged, "actionMessageId": message_id, "baseRevision": revision}).json()
+    body = client.post(
+        f"/api/itinerary/{trip_id}/apply-plans",
+        json={"plans": forged, "actionMessageId": message_id, "baseRevision": revision},
+    ).json()
     assert body["code"] == 200, body
     assert _live_items(1) == ["灵隐寺"]
     assert "客户端伪造接驳" not in _deleted_names(trip_id) + _live_items(1)
@@ -219,12 +309,16 @@ def test_body_plans_are_ignored_and_server_draft_wins(client: TestClient) -> Non
 def test_apply_plans_drops_missing_days_and_rewrites_trip_shape(client: TestClient) -> None:
     trip_id = _trip_id(client)
     message_id, revision = _draft(trip_id, [{"day_no": 1, "items": []}])
-    client.post(f"/api/itinerary/{trip_id}/apply-plans",
-                json={"actionMessageId": message_id, "baseRevision": revision})
+    client.post(f"/api/itinerary/{trip_id}/apply-plans", json={"actionMessageId": message_id, "baseRevision": revision})
     with db_session.session_scope() as session:
         main = session.get(ItineraryMain, trip_id)
-        days = session.execute(select(ItineraryDay).execution_options(include_deleted=True)
-                               .where(ItineraryDay.itinerary_id == trip_id)).scalars().all()
+        days = (
+            session.execute(
+                select(ItineraryDay).execution_options(include_deleted=True).where(ItineraryDay.itinerary_id == trip_id)
+            )
+            .scalars()
+            .all()
+        )
         assert main.days == 1 and main.title == "杭州1日游"
         assert str(main.end_date) == "2026-04-20"
         assert {day.day_no: day.deleted for day in days} == {1: 0, 2: 1}, "尾部日期软删"
@@ -234,8 +328,7 @@ def test_create_missing_days_when_plan_is_longer(client: TestClient) -> None:
     trip_id = _trip_id(client)
     plans = [{"day_no": no, "items": []} for no in (1, 2, 3)]
     message_id, revision = _draft(trip_id, plans)
-    client.post(f"/api/itinerary/{trip_id}/apply-plans",
-                json={"actionMessageId": message_id, "baseRevision": revision})
+    client.post(f"/api/itinerary/{trip_id}/apply-plans", json={"actionMessageId": message_id, "baseRevision": revision})
     with db_session.session_scope() as session:
         created = session.execute(select(ItineraryDay).where(ItineraryDay.day_no == 3)).scalar_one()
         main = session.get(ItineraryMain, trip_id)
@@ -248,21 +341,24 @@ def test_revision_ladder_returns_the_same_409_wording(client: TestClient) -> Non
     trip_id = _trip_id(client)
     plans = [{"day_no": 1, "items": []}]
     first_id, _first_rev = _draft(trip_id, plans)
-    second_id, second_rev = _draft(trip_id, plans)
+    second_id, _second_rev = _draft(trip_id, plans)
 
     missing = client.post(f"/api/itinerary/{trip_id}/apply-plans", json={"actionMessageId": None}).json()
     assert missing["code"] == 409 and missing["message"] == "该方案缺少版本信息，请重新生成后再应用"
 
-    gone = client.post(f"/api/itinerary/{trip_id}/apply-plans",
-                       json={"actionMessageId": 999999, "baseRevision": "x"}).json()
+    gone = client.post(
+        f"/api/itinerary/{trip_id}/apply-plans", json={"actionMessageId": 999999, "baseRevision": "x"}
+    ).json()
     assert gone["code"] == 409 and gone["message"] == "该方案已失效，请使用最新建议"
 
-    superseded = client.post(f"/api/itinerary/{trip_id}/apply-plans",
-                             json={"actionMessageId": first_id, "baseRevision": "x"}).json()
+    superseded = client.post(
+        f"/api/itinerary/{trip_id}/apply-plans", json={"actionMessageId": first_id, "baseRevision": "x"}
+    ).json()
     assert superseded["message"] == "该方案已被更新的建议取代，请使用最新方案"
 
-    stale = client.post(f"/api/itinerary/{trip_id}/apply-plans",
-                        json={"actionMessageId": second_id, "baseRevision": "stale-revision"}).json()
+    stale = client.post(
+        f"/api/itinerary/{trip_id}/apply-plans", json={"actionMessageId": second_id, "baseRevision": "stale-revision"}
+    ).json()
     assert stale["code"] == 409 and stale["message"] == "行程已发生变化，该方案已失效，请重新生成建议"
     with db_session.session_scope() as session:
         stale_attempt = session.get(ItineraryChatMessage, second_id)
@@ -272,25 +368,39 @@ def test_revision_ladder_returns_the_same_409_wording(client: TestClient) -> Non
     assert stale_attempt.plans_json != "[]" and superseded_row.plans_json != "[]"
 
 
-@pytest.mark.parametrize(("plans", "expected"), [
-    ([{"day_no": no, "items": []} for no in range(1, 9)],
-     "行程草稿必须包含 1 到 7 个完整日期，未应用任何修改"),
-    ([{"day_no": 1, "items": []}, {"day_no": 1, "items": []}], "行程草稿日期重复或越界，未应用任何修改"),
-    ([{"day_no": 1, "items": [{"item_type": "spa", "poi_name": "汤屋"}]}], "行程项名称或类型不合法，未应用任何修改"),
-    ([{"day_no": 1, "items": [{"item_type": "attraction", "poi_name": "西湖", "cost": "30"}]}],
-     "行程项费用不合法，未应用任何修改"),
-    ([{"day_no": 1, "items": [{"item_type": "attraction", "poi_name": "西湖", "duration_min": 2000}]}],
-     "行程项时长不合法，未应用任何修改"),
-    ([{"day_no": 1, "items": [{"item_type": "attraction", "poi_name": "西湖", "start_time": "9:30"}]}],
-     "时间格式不合法，未应用任何修改"),
-    ([{"day_no": 1, "items": [{"item_type": "attraction", "poi_name": "西湖"}] * 21}],
-     "单日行程项数量或格式不合法，未应用任何修改"),
-])
+@pytest.mark.parametrize(
+    ("plans", "expected"),
+    [
+        ([{"day_no": no, "items": []} for no in range(1, 9)], "行程草稿必须包含 1 到 7 个完整日期，未应用任何修改"),
+        ([{"day_no": 1, "items": []}, {"day_no": 1, "items": []}], "行程草稿日期重复或越界，未应用任何修改"),
+        (
+            [{"day_no": 1, "items": [{"item_type": "spa", "poi_name": "汤屋"}]}],
+            "行程项名称或类型不合法，未应用任何修改",
+        ),
+        (
+            [{"day_no": 1, "items": [{"item_type": "attraction", "poi_name": "西湖", "cost": "30"}]}],
+            "行程项费用不合法，未应用任何修改",
+        ),
+        (
+            [{"day_no": 1, "items": [{"item_type": "attraction", "poi_name": "西湖", "duration_min": 2000}]}],
+            "行程项时长不合法，未应用任何修改",
+        ),
+        (
+            [{"day_no": 1, "items": [{"item_type": "attraction", "poi_name": "西湖", "start_time": "9:30"}]}],
+            "时间格式不合法，未应用任何修改",
+        ),
+        (
+            [{"day_no": 1, "items": [{"item_type": "attraction", "poi_name": "西湖"}] * 21}],
+            "单日行程项数量或格式不合法，未应用任何修改",
+        ),
+    ],
+)
 def test_plan_validation_rejects_before_writing_anything(client: TestClient, plans, expected) -> None:
     trip_id = _trip_id(client)
     message_id, revision = _draft(trip_id, plans)
-    body = client.post(f"/api/itinerary/{trip_id}/apply-plans",
-                       json={"actionMessageId": message_id, "baseRevision": revision}).json()
+    body = client.post(
+        f"/api/itinerary/{trip_id}/apply-plans", json={"actionMessageId": message_id, "baseRevision": revision}
+    ).json()
     assert body["code"] == 400 and body["message"] == expected
     assert _live_items(1) == ["西湖", "楼外楼"], "校验失败必须什么都没写"
 
@@ -300,46 +410,54 @@ def test_item_id_that_does_not_match_name_aborts_the_whole_apply(client: TestCli
     lou = _item_ids(trip_id)["楼外楼"]
     plans = [{"day_no": 1, "items": [{"id": lou, "item_type": "attraction", "poi_name": "西湖"}]}]
     message_id, revision = _draft(trip_id, plans)
-    body = client.post(f"/api/itinerary/{trip_id}/apply-plans",
-                       json={"actionMessageId": message_id, "baseRevision": revision}).json()
+    body = client.post(
+        f"/api/itinerary/{trip_id}/apply-plans", json={"actionMessageId": message_id, "baseRevision": revision}
+    ).json()
     assert body["code"] == 400 and body["message"] == "行程项身份校验失败，未应用任何修改"
     assert _live_items(1) == ["西湖", "楼外楼"]
 
 
 def test_poi_outside_city_is_rejected_but_transport_is_allowed(client: TestClient) -> None:
     trip_id = _trip_id(client)
-    message_id, revision = _draft(trip_id, [{"day_no": 1, "items": [
-        {"item_type": "attraction", "poi_name": "外滩"}]}])
-    body = client.post(f"/api/itinerary/{trip_id}/apply-plans",
-                       json={"actionMessageId": message_id, "baseRevision": revision}).json()
+    message_id, revision = _draft(trip_id, [{"day_no": 1, "items": [{"item_type": "attraction", "poi_name": "外滩"}]}])
+    body = client.post(
+        f"/api/itinerary/{trip_id}/apply-plans", json={"actionMessageId": message_id, "baseRevision": revision}
+    ).json()
     assert body["code"] == 400 and body["message"] == "行程项不属于当前城市候选 POI，未应用任何修改"
 
-    message_id, revision = _draft(trip_id, [{"day_no": 1, "items": [
-        {"item_type": "transport", "poi_name": "杭州东站接驳"}]}])
-    assert client.post(f"/api/itinerary/{trip_id}/apply-plans",
-                       json={"actionMessageId": message_id, "baseRevision": revision}).json()["code"] == 200
+    message_id, revision = _draft(
+        trip_id, [{"day_no": 1, "items": [{"item_type": "transport", "poi_name": "杭州东站接驳"}]}]
+    )
+    assert (
+        client.post(
+            f"/api/itinerary/{trip_id}/apply-plans", json={"actionMessageId": message_id, "baseRevision": revision}
+        ).json()["code"]
+        == 200
+    )
     assert "杭州东站接驳" in _live_items(1)
 
 
 def test_apply_requires_owned_itinerary(client: TestClient) -> None:
-    body = client.post("/api/itinerary/999999/apply-plans",
-                       json={"actionMessageId": 1, "baseRevision": "x"}).json()
+    body = client.post("/api/itinerary/999999/apply-plans", json={"actionMessageId": 1, "baseRevision": "x"}).json()
     assert body["code"] == 404 and body["message"] == "行程不存在"
 
 
 # ---------- hotel-option ----------
 
+
 def _hotel_draft(trip_id: int, room_name: str = ROOM_NAME) -> tuple[int, str]:
-    options = [{"hotelName": HOTEL_NAME, "tier": "豪华型",
-                "roomTypes": [{"roomName": room_name, "basePrice": 900}]}]
+    options = [{"hotelName": HOTEL_NAME, "tier": "豪华型", "roomTypes": [{"roomName": room_name, "basePrice": 900}]}]
     return _draft(trip_id, [], hotel_options=options)
 
 
-@pytest.mark.parametrize(("payload", "expected"), [
-    ({"roomType": ROOM_NAME, "dayNos": [1]}, "酒店名称不能为空"),
-    ({"hotelName": HOTEL_NAME, "dayNos": [1]}, "请选择房型"),
-    ({"hotelName": HOTEL_NAME, "roomType": ROOM_NAME, "dayNos": []}, "请选择具体入住晚次"),
-])
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"roomType": ROOM_NAME, "dayNos": [1]}, "酒店名称不能为空"),
+        ({"hotelName": HOTEL_NAME, "dayNos": [1]}, "请选择房型"),
+        ({"hotelName": HOTEL_NAME, "roomType": ROOM_NAME, "dayNos": []}, "请选择具体入住晚次"),
+    ],
+)
 def test_hotel_option_bean_validation_messages(client: TestClient, payload, expected) -> None:
     trip_id = _trip_id(client)
     _hotel_draft(trip_id)
@@ -352,18 +470,30 @@ def test_hotel_option_prices_by_room_type_season_and_writes_remark(client: TestC
     _hotel_room(poi_id=2, room_name=ROOM_NAME, base_price="900.00")
     message_id, revision = _hotel_draft(trip_id)
 
-    body = client.post(f"/api/itinerary/{trip_id}/hotel-option", json={
-        "hotelName": HOTEL_NAME, "roomType": ROOM_NAME, "tier": "豪华型",
-        "dayNos": [1, 2], "actionMessageId": message_id, "baseRevision": revision,
-    }).json()
+    body = client.post(
+        f"/api/itinerary/{trip_id}/hotel-option",
+        json={
+            "hotelName": HOTEL_NAME,
+            "roomType": ROOM_NAME,
+            "tier": "豪华型",
+            "dayNos": [1, 2],
+            "actionMessageId": message_id,
+            "baseRevision": revision,
+        },
+    ).json()
     assert body["code"] == 200, body
     # 4 月是平季、系数 1；两晚各写一条酒店项
     assert body["data"]["dayList"][0]["items"][-1]["remark"].startswith(
-        f"房型：{ROOM_NAME}；基准价￥900.00；按平季系数×1；")
+        f"房型：{ROOM_NAME}；基准价￥900.00；按平季系数×1；"
+    )
     with db_session.session_scope() as session:
-        hotels = session.execute(select(ItineraryItem)
-                                 .where(ItineraryItem.itinerary_id == trip_id,
-                                        ItineraryItem.item_type == "hotel")).scalars().all()
+        hotels = (
+            session.execute(
+                select(ItineraryItem).where(ItineraryItem.itinerary_id == trip_id, ItineraryItem.item_type == "hotel")
+            )
+            .scalars()
+            .all()
+        )
         # 第二天原有的老旅馆行被**原地替换**成所选酒店，不是补一条新的（同 Java）
         assert len(hotels) == 2 and {item.poi_name for item in hotels} == {HOTEL_NAME}
         assert {item.cost for item in hotels} == {Decimal("900.00")}, "4 月平季、系数 1"
@@ -375,13 +505,21 @@ def test_hotel_option_prices_by_room_type_season_and_writes_remark(client: TestC
 def test_hotel_option_basic_room_falls_back_to_knowledge_price(client: TestClient) -> None:
     trip_id = _trip_id(client)
     message_id, revision = _hotel_draft(trip_id, "基础房型")
-    body = client.post(f"/api/itinerary/{trip_id}/hotel-option", json={
-        "hotelName": HOTEL_NAME, "roomType": "基础房型", "dayNos": [2],
-        "actionMessageId": message_id, "baseRevision": revision}).json()
+    body = client.post(
+        f"/api/itinerary/{trip_id}/hotel-option",
+        json={
+            "hotelName": HOTEL_NAME,
+            "roomType": "基础房型",
+            "dayNos": [2],
+            "actionMessageId": message_id,
+            "baseRevision": revision,
+        },
+    ).json()
     assert body["code"] == 200, body
     with db_session.session_scope() as session:
-        item = session.execute(select(ItineraryItem).where(
-            ItineraryItem.itinerary_id == trip_id, ItineraryItem.poi_name == HOTEL_NAME)).scalar_one()
+        item = session.execute(
+            select(ItineraryItem).where(ItineraryItem.itinerary_id == trip_id, ItineraryItem.poi_name == HOTEL_NAME)
+        ).scalar_one()
         assert item.cost == Decimal("880.00"), "基础房型用知识库参考价"
         assert "知识库酒店基础房型参考价" in item.remark
 
@@ -391,19 +529,40 @@ def test_hotel_option_rejects_choices_outside_the_draft(client: TestClient) -> N
     _hotel_room(poi_id=2, room_name=ROOM_NAME, base_price="900.00")
 
     message_id, revision = _hotel_draft(trip_id)
-    unknown_room = client.post(f"/api/itinerary/{trip_id}/hotel-option", json={
-        "hotelName": HOTEL_NAME, "roomType": "不存在的房型", "dayNos": [1],
-        "actionMessageId": message_id, "baseRevision": revision}).json()
+    unknown_room = client.post(
+        f"/api/itinerary/{trip_id}/hotel-option",
+        json={
+            "hotelName": HOTEL_NAME,
+            "roomType": "不存在的房型",
+            "dayNos": [1],
+            "actionMessageId": message_id,
+            "baseRevision": revision,
+        },
+    ).json()
     assert unknown_room["code"] == 409 and "所选酒店或房型不属于当前有效方案" in unknown_room["message"]
 
-    wrong_day = client.post(f"/api/itinerary/{trip_id}/hotel-option", json={
-        "hotelName": HOTEL_NAME, "roomType": ROOM_NAME, "dayNos": [9],
-        "actionMessageId": message_id, "baseRevision": revision}).json()
+    wrong_day = client.post(
+        f"/api/itinerary/{trip_id}/hotel-option",
+        json={
+            "hotelName": HOTEL_NAME,
+            "roomType": ROOM_NAME,
+            "dayNos": [9],
+            "actionMessageId": message_id,
+            "baseRevision": revision,
+        },
+    ).json()
     assert wrong_day["code"] == 400 and wrong_day["message"] == "选择的入住晚次不在当前行程中"
 
-    missing_hotel = client.post(f"/api/itinerary/{trip_id}/hotel-option", json={
-        "hotelName": "不存在酒店", "roomType": ROOM_NAME, "dayNos": [1],
-        "actionMessageId": message_id, "baseRevision": revision}).json()
+    missing_hotel = client.post(
+        f"/api/itinerary/{trip_id}/hotel-option",
+        json={
+            "hotelName": "不存在酒店",
+            "roomType": ROOM_NAME,
+            "dayNos": [1],
+            "actionMessageId": message_id,
+            "baseRevision": revision,
+        },
+    ).json()
     assert missing_hotel["code"] == 404 and missing_hotel["message"] == "未找到该城市的酒店候选"
 
 
@@ -411,7 +570,14 @@ def test_hotel_option_requires_positive_price(client: TestClient) -> None:
     trip_id = _trip_id(client)
     _hotel_room(poi_id=2, room_name=ROOM_NAME, base_price="0.00")
     message_id, revision = _hotel_draft(trip_id)
-    body = client.post(f"/api/itinerary/{trip_id}/hotel-option", json={
-        "hotelName": HOTEL_NAME, "roomType": ROOM_NAME, "dayNos": [1],
-        "actionMessageId": message_id, "baseRevision": revision}).json()
+    body = client.post(
+        f"/api/itinerary/{trip_id}/hotel-option",
+        json={
+            "hotelName": HOTEL_NAME,
+            "roomType": ROOM_NAME,
+            "dayNos": [1],
+            "actionMessageId": message_id,
+            "baseRevision": revision,
+        },
+    ).json()
     assert body["code"] == 400 and body["message"] == "所选房型暂无有效参考价"

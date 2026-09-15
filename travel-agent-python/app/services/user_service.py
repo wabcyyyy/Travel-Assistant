@@ -17,12 +17,11 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 import bcrypt
 from sqlalchemy import select
 
-from app.common import jwt_compat, token_revocation
+from app.common import jwt_compat
 from app.common.config import settings
 from app.common.envelope import ApiError
 from app.db.models import SysUser
@@ -72,7 +71,7 @@ def to_vo(user: SysUser) -> dict:
     }
 
 
-def _find_user(username: str) -> Optional[SysUser]:
+def _find_user(username: str) -> SysUser | None:
     with session_scope() as session:
         # 软删用户不可登录：SELECT 走全局作用域，这里再显式限定 username 唯一索引
         return session.execute(select(SysUser).where(SysUser.username == username)).scalar_one_or_none()

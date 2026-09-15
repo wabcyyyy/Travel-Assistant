@@ -16,35 +16,30 @@
 依赖：intent（天数解析）、document（文档提取）、validate（时钟/冲突）。
 """
 
-import re
-import json
-from copy import deepcopy
-from datetime import date, timedelta
-from difflib import SequenceMatcher
 import logging
+import re
+from copy import deepcopy
 
-from app.agent import tools
 from app.agent.day_stream import run_generate_day, run_plan_context
-from app.common.config import settings
-from app.common.llm_client import get_llm_client
-from app.common.season import season_factor, season_label
 from app.schemas.trip import (
-    MAX_TRIP_DAYS, ChatTurnRequest, ChatTurnResponse, GenerateDayRequest, HotelOption, HotelRoomOption,
+    MAX_TRIP_DAYS,
+    ChatTurnRequest,
+    GenerateDayRequest,
 )
 
+from .document import _extract_document_plans
+from .intent import _requested_day_count
+from .validate import _clock_minutes, _format_clock, _reschedule_moved_item
+
 logger = logging.getLogger(__name__)
-
-
-from .validate import (_clock_minutes, _format_clock, _reschedule_moved_item)
-from .intent import (_requested_day_count)
-from .document import (_extract_document_plans)
 
 
 def _apply_decision_patches(data: dict, req: ChatTurnRequest) -> list[dict] | None:
     """在业务侧应用模型返回的短补丁，避免要求模型复述整份计划。"""
     requested_days = _requested_day_count(req.message, req.days)
     try:
-        proposed_days = int(data.get("target_days")) if data.get("target_days") is not None else None
+        # 模型给的 target_days 只做合法性探测（坏值放弃补丁）；用户原话解析的天数才是权威。
+        _ = int(data.get("target_days")) if data.get("target_days") is not None else None
     except (TypeError, ValueError):
         return None
     # 用户原话解析出的目标天数优先；若模型给出的 target_days 不一致，仍以用户意图为准继续执行，
@@ -52,10 +47,12 @@ def _apply_decision_patches(data: dict, req: ChatTurnRequest) -> list[dict] | No
     target_days = requested_days if requested_days is not None else req.days
     if target_days < 1 or target_days > MAX_TRIP_DAYS:
         return None
-    deletion_requested = target_days < req.days or bool(re.search(
-        r"删除|删掉|去掉|移除|替换|换成|换掉|减少|精简|不重要|重复|宽松|轻松|别太赶|不要太赶|少一点",
-        req.message,
-    ))
+    deletion_requested = target_days < req.days or bool(
+        re.search(
+            r"删除|删掉|去掉|移除|替换|换成|换掉|减少|精简|不重要|重复|宽松|轻松|别太赶|不要太赶|少一点",
+            req.message,
+        )
+    )
 
     plans = deepcopy(req.plans)
     by_day = {int(plan.get("day_no")): plan for plan in plans if isinstance(plan.get("day_no"), int)}
@@ -95,7 +92,8 @@ def _apply_decision_patches(data: dict, req: ChatTurnRequest) -> list[dict] | No
                     continue
                 remaining_non_hotel = sum(
                     candidate.get("item_type") != "hotel"
-                    for plan in by_day.values() for candidate in (plan.get("items") or [])
+                    for plan in by_day.values()
+                    for candidate in (plan.get("items") or [])
                 )
                 # 延长行程时最多删到“每天至少一个普通安排”，避免生成大量空白日。
                 if target_days > req.days and remaining_non_hotel <= target_days:
@@ -133,9 +131,12 @@ def _apply_decision_patches(data: dict, req: ChatTurnRequest) -> list[dict] | No
                 continue
             if not isinstance(item, dict) or item.get("item_type") == "hotel" or not item.get("poi_name"):
                 continue
-            clean_item = {key: value for key, value in item.items() if key in {
-                "item_type", "poi_name", "address", "start_time", "end_time", "duration_min", "tag", "remark"
-            }}
+            clean_item = {
+                key: value
+                for key, value in item.items()
+                if key
+                in {"item_type", "poi_name", "address", "start_time", "end_time", "duration_min", "tag", "remark"}
+            }
             clean_item.setdefault("item_type", "attraction")
             by_day[day_no]["items"].append(clean_item)
         elif operation == "set_day_note":
@@ -168,28 +169,35 @@ def _apply_decision_patches(data: dict, req: ChatTurnRequest) -> list[dict] | No
                 ),
                 reverse=True,
             )
-            donor_day_no = next((day_no for day_no in donors if sum(
-                item.get("item_type") != "hotel" for item in (by_day[day_no].get("items") or [])
-            ) > 1), None)
+            donor_day_no = next(
+                (
+                    day_no
+                    for day_no in donors
+                    if sum(item.get("item_type") != "hotel" for item in (by_day[day_no].get("items") or [])) > 1
+                ),
+                None,
+            )
             if donor_day_no is None:
                 break
             donor_items = by_day[donor_day_no]["items"]
             moving_index = next(
-                index for index in range(len(donor_items) - 1, -1, -1)
-                if donor_items[index].get("item_type") != "hotel"
+                index for index in range(len(donor_items) - 1, -1, -1) if donor_items[index].get("item_type") != "hotel"
             )
             by_day[empty_day_no]["items"].append(donor_items.pop(moving_index))
     result = [by_day[day_no] for day_no in range(1, target_days + 1)]
     # move/add 默认追加到末尾；按时间重新排序，保证时间线展示顺序与实际游览顺序一致。
     for plan in result:
         indexed = list(enumerate(plan.get("items") or []))
-        indexed.sort(key=lambda row: (
-            _clock_minutes(row[1].get("start_time")) is None,
-            _clock_minutes(row[1].get("start_time")) or 0,
-            row[0],
-        ))
+        indexed.sort(
+            key=lambda row: (
+                _clock_minutes(row[1].get("start_time")) is None,
+                _clock_minutes(row[1].get("start_time")) or 0,
+                row[0],
+            )
+        )
         plan["items"] = [item for _, item in indexed]
     return result
+
 
 def _deterministic_reduce(req: ChatTurnRequest, target_days: int | None = None) -> list[dict]:
     """模型编辑失败时的确定性兜底：去重跨天重复景点，并按需缩短行程天数。
@@ -213,12 +221,15 @@ def _deterministic_reduce(req: ChatTurnRequest, target_days: int | None = None) 
         plans = [plan for plan in plans if isinstance(plan.get("day_no"), int) and plan["day_no"] <= target_days]
     for plan in plans:
         items = plan.get("items") or []
-        items.sort(key=lambda it: (
-            _clock_minutes(it.get("start_time")) is None,
-            _clock_minutes(it.get("start_time")) or 0,
-        ))
+        items.sort(
+            key=lambda it: (
+                _clock_minutes(it.get("start_time")) is None,
+                _clock_minutes(it.get("start_time")) or 0,
+            )
+        )
         plan["items"] = items
     return plans
+
 
 def _apply_plan_update(decision: dict, req: ChatTurnRequest) -> list[dict] | None:
     """把模型的结构化提案落地成具体草稿；失败（结构不合法）返回 None。
@@ -231,6 +242,7 @@ def _apply_plan_update(decision: dict, req: ChatTurnRequest) -> list[dict] | Non
     if isinstance(decision.get("patches"), list):
         return _apply_decision_patches(decision, req)
     return _extract_document_plans(decision, req)
+
 
 def _dedupe_plans(plans: list[dict]) -> list[dict]:
     """防御性去重：保证返回给前端的草稿里不存在跨天重复景点/餐饮。
@@ -252,29 +264,34 @@ def _dedupe_plans(plans: list[dict]) -> list[dict]:
         out.append({**plan, "items": kept})
     return out
 
+
 def _deterministic_extend(req: ChatTurnRequest, target_days: int) -> list[dict]:
     """模型编辑失败时的加天数兜底：用单日生成器补齐新增日期，保证“加一天”也能产出完整草稿。
 
     新增日期含自身住宿，属于延长行程的预期副作用；仍只动行程内容、不改动既有权威字段。
     """
     plans = deepcopy(req.plans)
-    used: set[str] = {
-        it.get("poi_name") for plan in plans for it in plan.get("items") or []
-        if it.get("poi_name")
-    }
+    used: set[str] = {it.get("poi_name") for plan in plans for it in plan.get("items") or [] if it.get("poi_name")}
     try:
         ctx = run_plan_context(req.city, req.preferences)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("deterministic extend context failed: %s", exc)
         ctx = {}
     for day_no in range(req.days + 1, target_days + 1):
         try:
-            daily = run_generate_day(GenerateDayRequest(
-                city=req.city, day_no=day_no, persons=req.persons,
-                hotel_tier=req.hotel_tier, preferences=req.preferences,
-                context=ctx, used_names=list(used), start_date=req.start_date,
-            ))
-        except Exception as exc:  # noqa: BLE001
+            daily = run_generate_day(
+                GenerateDayRequest(
+                    city=req.city,
+                    day_no=day_no,
+                    persons=req.persons,
+                    hotel_tier=req.hotel_tier,
+                    preferences=req.preferences,
+                    context=ctx,
+                    used_names=list(used),
+                    start_date=req.start_date,
+                )
+            )
+        except Exception as exc:
             logger.warning("deterministic extend day %s failed: %s", day_no, exc)
             daily = None
         if daily and getattr(daily, "items", None):

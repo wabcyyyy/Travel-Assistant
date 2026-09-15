@@ -17,15 +17,6 @@ import re
 import threading
 from collections.abc import Iterator
 
-from app.agent.generation_core import PoiSeenRegistry, norm_poi_key, spread_hotels, stay_nights
-from app.agent.generators import (
-    ReferencePool,
-    _budget_tier,
-    _parse_json,
-    build_suggestions,
-    fill_suggestion_gaps,
-    _pick_hotels,
-)
 from app.agent.day_stream import (
     DAY_ATTRACTION_CONTEXT_LIMIT,
     DAY_FOOD_CONTEXT_LIMIT,
@@ -33,6 +24,15 @@ from app.agent.day_stream import (
     _local_ground,
     _open_trip_prompt,
     _sanitize_narrative,
+)
+from app.agent.generation_core import PoiSeenRegistry, norm_poi_key, spread_hotels, stay_nights
+from app.agent.generators import (
+    ReferencePool,
+    _budget_tier,
+    _parse_json,
+    _pick_hotels,
+    build_suggestions,
+    fill_suggestion_gaps,
 )
 from app.agent.trace import record_event
 from app.common.config import settings
@@ -165,7 +165,7 @@ class DailyPlansStreamParser:
         suggestions: list[dict] = []
         try:
             data = _parse_json(self._text)
-        except Exception:  # noqa: BLE001 - 完整解析失败按截断处理
+        except Exception:
             data = None
         if isinstance(data, dict) and isinstance(data.get("daily_plans"), list):
             complete = True
@@ -191,7 +191,7 @@ def _city_label_match(raw_city: str, dest_city: str) -> bool:
     if not b:
         return False
     text = str(raw_city or "")
-    tokens = [text] + re.findall(r"[（(【\[〔]([^）)】\]〕]*)[）)】\]〕]", text)
+    tokens = [text, *re.findall(r"[（(【\[〔]([^）)】\]〕]*)[）)】\]〕]", text)]
     for token in tokens:
         a = norm_poi_key(token)
         if a and (a == b or a in b or b in a):
@@ -207,19 +207,30 @@ def _filter_suggestions_by_city(raw: list[dict], city: str) -> list[dict]:
         c = str(s.get("city") or s.get("poiCity") or "").strip()
         if c and not _city_label_match(c, city):
             dropped += 1
-            record_event("decision", "suggestion_city_mismatch_dropped",
-                         metadata={"city": c, "poi_name": str(s.get("poi_name") or "")})
+            record_event(
+                "decision",
+                "suggestion_city_mismatch_dropped",
+                metadata={"city": c, "poi_name": str(s.get("poi_name") or "")},
+            )
             continue
         kept.append(s)
     if dropped:
-        record_event("decision", "suggestion_city_filter", metadata={
-            "dest": city, "dropped": dropped, "kept": len(kept)})
+        record_event(
+            "decision", "suggestion_city_filter", metadata={"dest": city, "dropped": dropped, "kept": len(kept)}
+        )
     return kept
 
 
-def _prepare_day(raw_day: dict, *, day_no: int, req: GenerateDayRequest,
-                 ref_pool: ReferencePool, seen: PoiSeenRegistry,
-                 ground_cache: dict, price_lookup: dict[str, dict]) -> dict:
+def _prepare_day(
+    raw_day: dict,
+    *,
+    day_no: int,
+    req: GenerateDayRequest,
+    ref_pool: ReferencePool,
+    seen: PoiSeenRegistry,
+    ground_cache: dict,
+    price_lookup: dict[str, dict],
+) -> dict:
     """单天落地：叙事清洗 → 脏项过滤 → 事实落地 → 同日/跨天双通道去重 → 权威价补水。
 
     去重顺序：先按归一化名称做廉价判重（重复项不做网络落地），再对落地后
@@ -230,23 +241,21 @@ def _prepare_day(raw_day: dict, *, day_no: int, req: GenerateDayRequest,
     plan = _sanitize_narrative(raw_day)
     plan["day_no"] = day_no
     plan.setdefault("items", [])
-    plan["items"] = [it for it in plan["items"]
-                     if isinstance(it, dict) and str(it.get("poi_name") or "").strip()]
+    plan["items"] = [it for it in plan["items"] if isinstance(it, dict) and str(it.get("poi_name") or "").strip()]
     kept_items: list[dict] = []
     for item in plan["items"]:
         name = str(item.get("poi_name") or "").strip()
         item_type = str(item.get("item_type") or "")
         if name and seen.is_duplicate(name, item_type):
-            record_event("decision", "stream_duplicate_dropped",
-                         metadata={"day_no": day_no, "poi_name": name})
+            record_event("decision", "stream_duplicate_dropped", metadata={"day_no": day_no, "poi_name": name})
             continue
         if not ref_pool.ground(item):
             _local_ground(item, req.city, ground_cache)
-        if name and seen.is_duplicate(name, item_type,
-                                      item.get("latitude"), item.get("longitude")):
+        if name and seen.is_duplicate(name, item_type, item.get("latitude"), item.get("longitude")):
             # 落地后坐标通道判重命中（名称变体指向同一地点）
-            record_event("decision", "stream_duplicate_dropped",
-                         metadata={"day_no": day_no, "poi_name": name, "via": "coord"})
+            record_event(
+                "decision", "stream_duplicate_dropped", metadata={"day_no": day_no, "poi_name": name, "via": "coord"}
+            )
             continue
         if name:
             seen.register(name, item_type, item.get("latitude"), item.get("longitude"))
@@ -290,8 +299,7 @@ def _raise_if_cancelled(cancel: threading.Event | None) -> None:
         raise StreamCancelled("客户端断开，生成已取消")
 
 
-def run_generate_trip_stream(req: GenerateDayRequest,
-                             cancel: threading.Event | None = None) -> Iterator[dict]:
+def run_generate_trip_stream(req: GenerateDayRequest, cancel: threading.Event | None = None) -> Iterator[dict]:
     """整段流式生成主链路。逐个 yield 事件 dict（见模块 docstring）。
 
     cancel：客户端断开的取消信号。置位后不再发起新的 LLM 调用，在途流式
@@ -300,8 +308,12 @@ def run_generate_trip_stream(req: GenerateDayRequest,
     不误报失败）。
     """
     if cancel is not None and cancel.is_set():
-        record_event("decision", "run_status", status="cancelled", metadata={
-            "status": "cancelled", "reason": "cancelled_before_start"})
+        record_event(
+            "decision",
+            "run_status",
+            status="cancelled",
+            metadata={"status": "cancelled", "reason": "cancelled_before_start"},
+        )
         return
     if not settings.llm_api_key:
         raise ValueError("未配置 LLM，无法生成行程内容")
@@ -349,8 +361,7 @@ def run_generate_trip_stream(req: GenerateDayRequest,
                 parse_failures = parser.parse_failures
                 if len(emitted_nos) >= total_days:
                     # 模型输出超出天数：丢弃并遥测（与 _llm_open_trip [:days] 口径一致）
-                    record_event("decision", "stream_extra_day_dropped",
-                                 metadata={"day_no": raw_day.get("day_no")})
+                    record_event("decision", "stream_extra_day_dropped", metadata={"day_no": raw_day.get("day_no")})
                     continue
                 # day_no 修正：非法/越界/重复时顺位补齐
                 try:
@@ -358,37 +369,43 @@ def run_generate_trip_stream(req: GenerateDayRequest,
                 except (TypeError, ValueError):
                     day_no = 0
                 if day_no < 1 or day_no > total_days or day_no in emitted_nos:
-                    day_no = next((n for n in range(1, total_days + 1)
-                                   if n not in emitted_nos), 0)
+                    day_no = next((n for n in range(1, total_days + 1) if n not in emitted_nos), 0)
                 if day_no == 0:
                     continue
                 # 开放模式也可能按天携带 suggestions（open_day 契约）：收集进备选池
                 raw_sugg = raw_day.get("suggestions")
                 if isinstance(raw_sugg, list):
-                    per_day_suggestions.extend(
-                        s for s in raw_sugg if isinstance(s, dict))
-                plan = _prepare_day(raw_day, day_no=day_no, req=req,
-                                    ref_pool=ref_pool, seen=seen,
-                                    ground_cache=ground_cache, price_lookup=price_lookup)
+                    per_day_suggestions.extend(s for s in raw_sugg if isinstance(s, dict))
+                plan = _prepare_day(
+                    raw_day,
+                    day_no=day_no,
+                    req=req,
+                    ref_pool=ref_pool,
+                    seen=seen,
+                    ground_cache=ground_cache,
+                    price_lookup=price_lookup,
+                )
                 plans.append(plan)
                 emitted_nos.append(day_no)
-                if day_no == 1 and isinstance(plan.get("trip_theme"), str) \
-                        and plan["trip_theme"].strip():
+                if day_no == 1 and isinstance(plan.get("trip_theme"), str) and plan["trip_theme"].strip():
                     trip_theme = plan["trip_theme"].strip()
                 yield to_wire(DayEvent(type="day", plan=_plan_model(plan)))
     except StreamCancelled:
         cancelled = True
         logger.info("trip stream cancelled for %s after %d day(s)", req.city, len(emitted_nos))
-    except Exception as exc:  # noqa: BLE001 - 流中断：已产出的天有效，其余走修复
+    except Exception as exc:
         stream_error = str(exc)
-        logger.warning("trip stream interrupted for %s after %d days: %s",
-                       req.city, len(emitted_nos), exc)
+        logger.warning("trip stream interrupted for %s after %d days: %s", req.city, len(emitted_nos), exc)
 
     if cancelled or (cancel is not None and cancel.is_set()):
         # 取消：消费端已断开，不产出 done/suggestions，也跳过摊铺与备选池等重活；
         # run_status=cancelled 让 metrics 把本次 run 记入 cancelled_runs 而非失败。
-        record_event("decision", "run_status", status="cancelled", metadata={
-            "status": "cancelled", "days_emitted": emitted_nos, "days_expected": total_days})
+        record_event(
+            "decision",
+            "run_status",
+            status="cancelled",
+            metadata={"status": "cancelled", "days_emitted": emitted_nos, "days_expected": total_days},
+        )
         return
 
     parse_failures = parser.parse_failures
@@ -413,30 +430,37 @@ def run_generate_trip_stream(req: GenerateDayRequest,
     raw_suggestions = _filter_suggestions_by_city(raw_suggestions, req.city)
     tier_label, _g, _ppd = _budget_tier(req.budget, req.persons or 1, total_days)
     suggestion_rows = build_suggestions(
-        plans, candidates[:DAY_ATTRACTION_CONTEXT_LIMIT],
-        foods[:DAY_FOOD_CONTEXT_LIMIT], _pick_hotels(hotels, req.hotel_tier, 3),
-        raw_suggestions, allow_external=True,
+        plans,
+        candidates[:DAY_ATTRACTION_CONTEXT_LIMIT],
+        foods[:DAY_FOOD_CONTEXT_LIMIT],
+        _pick_hotels(hotels, req.hotel_tier, 3),
+        raw_suggestions,
+        allow_external=True,
     )
-    suggestion_rows = fill_suggestion_gaps(suggestion_rows, req.city,
-                                           budget_tier=tier_label or None)
-    yield to_wire(SuggestionsEvent(type="suggestions",
-                                   items=_suggestion_models(suggestion_rows)))
+    suggestion_rows = fill_suggestion_gaps(suggestion_rows, req.city, budget_tier=tier_label or None)
+    yield to_wire(SuggestionsEvent(type="suggestions", items=_suggestion_models(suggestion_rows)))
 
-    record_event("decision", "trip_stream_done", metadata={
-        "city": req.city,
-        "days_expected": total_days,
-        "days_emitted": emitted_nos,
-        "complete": final.get("complete"),
-        "parse_failures": parse_failures,
-        "stream_error": stream_error,
-        "raw_suggestions": len(raw_suggestions),
-        "suggestions_final": len(suggestion_rows),
-    })
-    yield to_wire(DoneEvent(
-        type="done",
-        days_expected=total_days,
-        days_emitted=emitted_nos,
-        trip_theme=trip_theme,
-        complete=bool(final.get("complete")) and stream_error is None,
-        message=stream_error,
-    ))
+    record_event(
+        "decision",
+        "trip_stream_done",
+        metadata={
+            "city": req.city,
+            "days_expected": total_days,
+            "days_emitted": emitted_nos,
+            "complete": final.get("complete"),
+            "parse_failures": parse_failures,
+            "stream_error": stream_error,
+            "raw_suggestions": len(raw_suggestions),
+            "suggestions_final": len(suggestion_rows),
+        },
+    )
+    yield to_wire(
+        DoneEvent(
+            type="done",
+            days_expected=total_days,
+            days_emitted=emitted_nos,
+            trip_theme=trip_theme,
+            complete=bool(final.get("complete")) and stream_error is None,
+            message=stream_error,
+        )
+    )

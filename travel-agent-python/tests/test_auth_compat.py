@@ -36,6 +36,7 @@ def _b64(raw: bytes) -> str:
 
 # ---------- 1. 算法定档 ----------
 
+
 @pytest.mark.parametrize(
     "secret,expected",
     [(SECRET_32, "HS256"), (SECRET_48, "HS384"), (SECRET_64, "HS512")],
@@ -57,6 +58,7 @@ def test_token_header_alg_follows_secret_length():
 
 
 # ---------- 2. 验签与算法混淆 ----------
+
 
 def test_roundtrip_claims_match_java_shape():
     token = encode_token("alice", SECRET_32, 3600, jti="fixed-jti")
@@ -120,6 +122,7 @@ def test_remaining_seconds_ceil_and_zero_on_expired():
 
 # ---------- 3/4. 黑名单 key 与降级 ----------
 
+
 class FakeRedis:
     def __init__(self, fail: bool = False):
         self.store: dict[str, str] = {}
@@ -179,6 +182,7 @@ def test_blank_inputs_are_no_ops():
 
 
 # ---------- 依赖层：取票顺序与用户映射 ----------
+
 
 def test_extract_token_prefers_bearer_over_cookie():
     from app.api.deps import extract_token

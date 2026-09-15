@@ -32,11 +32,21 @@ class _FixedDimProvider(EmbeddingProvider):
 
 def _poi() -> dict:
     return {
-        "id": 1, "city": "杭州", "name": "西湖", "category": "attraction",
-        "address": "西湖区", "latitude": 30.24, "longitude": 120.15,
-        "ticket_price": 0.0, "duration_min": 120, "open_time": "08:00-18:00",
-        "tags": "自然", "rating": 4.9, "description": "适合休闲游览",
-        "source": "mysql.poi_knowledge", "source_updated_at": "2026-08-28 10:00:00",
+        "id": 1,
+        "city": "杭州",
+        "name": "西湖",
+        "category": "attraction",
+        "address": "西湖区",
+        "latitude": 30.24,
+        "longitude": 120.15,
+        "ticket_price": 0.0,
+        "duration_min": 120,
+        "open_time": "08:00-18:00",
+        "tags": "自然",
+        "rating": 4.9,
+        "description": "适合休闲游览",
+        "source": "mysql.poi_knowledge",
+        "source_updated_at": "2026-08-28 10:00:00",
     }
 
 
@@ -60,8 +70,7 @@ def test_collection_resets_when_dimension_mismatch(tmp_path):
 
 def test_store_guards_dimension_change_on_source_unavailable_path(tmp_path):
     rows = [_poi()]
-    with patch.object(poi_repository, "list_all_pois_with_status",
-                      side_effect=lambda: (rows, True)):
+    with patch.object(poi_repository, "list_all_pois_with_status", side_effect=lambda: (rows, True)):
         store = PoIKnowledgeStore(tmp_path, embedding_provider=_FixedDimProvider(256))
         store.ensure_loaded()
         assert store.collection.current_vector_size() == 256
@@ -69,8 +78,7 @@ def test_store_guards_dimension_change_on_source_unavailable_path(tmp_path):
 
     # DB 不可用 + provider 维度变化（恢复分支不走版本签名重建）：
     # 守护逻辑应重置集合，检索返回空结果而不是抛错/混用错误维度
-    with patch.object(poi_repository, "list_all_pois_with_status",
-                      side_effect=lambda: ([], False)):
+    with patch.object(poi_repository, "list_all_pois_with_status", side_effect=lambda: ([], False)):
         restored = PoIKnowledgeStore(tmp_path, embedding_provider=_FixedDimProvider(512))
         assert restored.search("西湖", city="杭州", limit=1) == []
         assert restored.collection.current_vector_size() == 512

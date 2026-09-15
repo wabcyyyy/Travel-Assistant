@@ -7,16 +7,15 @@ Prompt 注入、单日生成引用落地集成、生成评测指标与聚合。
 
 import json
 
-import pytest
-
 from app.agent import day_stream
 from app.agent.generators import ReferencePool, normalize_poi_name
 from app.rag import evaluation_generation as eg
 from app.schemas.trip import GenerateDayRequest
 
 
-def _poi(name="西湖风景名胜区", category="attraction", price=0, pid=1,
-         source="mysql.poi_knowledge", updated="2026-09-01"):
+def _poi(
+    name="西湖风景名胜区", category="attraction", price=0, pid=1, source="mysql.poi_knowledge", updated="2026-09-01"
+):
     return {
         "id": pid,
         "name": name,
@@ -61,9 +60,11 @@ def test_reference_pool_empty_context_block_is_blank():
 
 
 def test_reference_pool_caps_collection():
-    context = {"candidates": [_poi(f"景点{index}", pid=index) for index in range(30)],
-               "foods": [_poi(f"餐厅{index}", category="food", pid=100 + index) for index in range(20)],
-               "hotels": [_poi(f"酒店{index}", category="hotel", pid=200 + index) for index in range(10)]}
+    context = {
+        "candidates": [_poi(f"景点{index}", pid=index) for index in range(30)],
+        "foods": [_poi(f"餐厅{index}", category="food", pid=100 + index) for index in range(20)],
+        "hotels": [_poi(f"酒店{index}", category="hotel", pid=200 + index) for index in range(10)],
+    }
     pool = ReferencePool(context)
     assert len(pool) == 16 + 6 + 4
 
@@ -77,8 +78,14 @@ def test_normalize_poi_name_strips_variants():
 
 def test_ground_by_name_overrides_authority_fields():
     pool = ReferencePool(_context())
-    item = {"item_type": "attraction", "poi_name": "西湖风景名胜区",
-            "cost": 9999, "latitude": 0, "longitude": 0, "refs": [1]}
+    item = {
+        "item_type": "attraction",
+        "poi_name": "西湖风景名胜区",
+        "cost": 9999,
+        "latitude": 0,
+        "longitude": 0,
+        "refs": [1],
+    }
     assert pool.ground(item) is True
     assert item["cost"] == 0
     assert item["latitude"] == 30.24
@@ -155,8 +162,9 @@ def test_open_day_prompt_includes_reference_block(monkeypatch):
         captured["client"] = client
         return client
 
-    monkeypatch.setattr(day_stream, "get_llm_client",
-                        lambda: fake_client({"note": "西湖一日", "items": [], "suggestions": []}))
+    monkeypatch.setattr(
+        day_stream, "get_llm_client", lambda: fake_client({"note": "西湖一日", "items": [], "suggestions": []})
+    )
     req = GenerateDayRequest(city="杭州", day_no=1, days=1, context=_context())
     day_stream._llm_open_day(req, set())
     system = captured["client"].calls[0]["system"]
@@ -172,8 +180,9 @@ def test_open_day_without_references_keeps_prompt_clean(monkeypatch):
         captured["client"] = client
         return client
 
-    monkeypatch.setattr(day_stream, "get_llm_client",
-                        lambda: fake_client({"note": "苏州一日", "items": [], "suggestions": []}))
+    monkeypatch.setattr(
+        day_stream, "get_llm_client", lambda: fake_client({"note": "苏州一日", "items": [], "suggestions": []})
+    )
     req = GenerateDayRequest(city="苏州", day_no=1, days=1, context={})
     day_stream._llm_open_day(req, set())
     system = captured["client"].calls[0]["system"]
@@ -193,15 +202,33 @@ def test_generate_day_once_grounds_reference_items(monkeypatch):
 
     monkeypatch.setattr(day_stream.settings, "llm_api_key", "test-key")
     monkeypatch.setattr(day_stream, "_local_ground", fake_ground)
-    monkeypatch.setattr(day_stream, "get_llm_client", lambda: _FakeLLM({
-        "note": "杭州一日", "items": [
-            {"item_type": "attraction", "poi_name": "西湖", "refs": [1],
-             "start_time": "09:00", "end_time": "11:30", "cost": 999},
-            {"item_type": "attraction", "poi_name": "自选新景点",
-             "start_time": "13:00", "end_time": "15:00", "cost": 50},
-        ],
-        "suggestions": [],
-    }))
+    monkeypatch.setattr(
+        day_stream,
+        "get_llm_client",
+        lambda: _FakeLLM(
+            {
+                "note": "杭州一日",
+                "items": [
+                    {
+                        "item_type": "attraction",
+                        "poi_name": "西湖",
+                        "refs": [1],
+                        "start_time": "09:00",
+                        "end_time": "11:30",
+                        "cost": 999,
+                    },
+                    {
+                        "item_type": "attraction",
+                        "poi_name": "自选新景点",
+                        "start_time": "13:00",
+                        "end_time": "15:00",
+                        "cost": 50,
+                    },
+                ],
+                "suggestions": [],
+            }
+        ),
+    )
     plan, source = day_stream._generate_day_once(
         GenerateDayRequest(city="杭州", day_no=1, days=1, context=_context()),
     )
@@ -229,13 +256,19 @@ def test_generate_day_once_external_item_falls_back_to_amap(monkeypatch):
 
     monkeypatch.setattr(day_stream.settings, "llm_api_key", "test-key")
     monkeypatch.setattr(day_stream, "_local_ground", fake_ground)
-    monkeypatch.setattr(day_stream, "get_llm_client", lambda: _FakeLLM({
-        "note": "苏州一日", "items": [
-            {"item_type": "attraction", "poi_name": "自选新景点",
-             "start_time": "09:00", "end_time": "11:00"},
-        ],
-        "suggestions": [],
-    }))
+    monkeypatch.setattr(
+        day_stream,
+        "get_llm_client",
+        lambda: _FakeLLM(
+            {
+                "note": "苏州一日",
+                "items": [
+                    {"item_type": "attraction", "poi_name": "自选新景点", "start_time": "09:00", "end_time": "11:00"},
+                ],
+                "suggestions": [],
+            }
+        ),
+    )
     plan, source = day_stream._generate_day_once(
         GenerateDayRequest(city="苏州", day_no=1, days=1, context={}),
         force_fallback=True,
@@ -261,7 +294,9 @@ def test_reference_metrics_from_pool_stats():
 
 def test_reference_metrics_empty_case_is_neutral():
     assert eg.reference_metrics({}) == {
-        "citation_coverage": 1.0, "citation_validity": 1.0, "context_utilization": 1.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "context_utilization": 1.0,
     }
 
 
@@ -272,8 +307,7 @@ def test_faithfulness_with_injected_judge():
     def judge(reference_block, plans_json):
         assert "西湖风景名胜区" in reference_block
         assert "西湖风景名胜区" in plans_json
-        return [{"text": "西湖免费", "supported": True},
-                {"text": "雷峰塔票价40", "supported": False}]
+        return [{"text": "西湖免费", "supported": True}, {"text": "雷峰塔票价40", "supported": False}]
 
     assert eg.faithfulness_score(plans, block, judge) == 0.5
 
@@ -285,10 +319,12 @@ def test_evaluate_generation_skips_faithfulness_without_references():
 
 
 def test_aggregate_ignores_missing_faithfulness():
-    aggregate = eg.aggregate_generation_metrics([
-        {"citation_coverage": 0.8, "faithfulness": 0.9},
-        {"citation_coverage": 1.0},
-    ])
+    aggregate = eg.aggregate_generation_metrics(
+        [
+            {"citation_coverage": 0.8, "faithfulness": 0.9},
+            {"citation_coverage": 1.0},
+        ]
+    )
     assert aggregate["citation_coverage"] == 0.9
     assert aggregate["faithfulness"] == 0.9
     assert eg.aggregate_generation_metrics([]) == {}
@@ -302,16 +338,19 @@ def test_run_generation_case_offline_with_stubs(monkeypatch):
         return _context()
 
     def fake_open_plans(req, feedback, hotels, candidates=None, foods=None):
-        pool = ReferencePool({"candidates": candidates or [], "foods": foods or [],
-                              "hotels": hotels or []})
-        plans = [{"day_no": 1, "items": [
-            {"item_type": "attraction", "poi_name": "西湖", "refs": [1]},
-        ]}]
+        pool = ReferencePool({"candidates": candidates or [], "foods": foods or [], "hotels": hotels or []})
+        plans = [
+            {
+                "day_no": 1,
+                "items": [
+                    {"item_type": "attraction", "poi_name": "西湖", "refs": [1]},
+                ],
+            }
+        ]
         for plan in plans:
             for item in plan["items"]:
                 pool.ground(item)
-        return {"daily_plans": plans, "schedule_report": {
-            "reference_stats": dict(pool.stats)}}
+        return {"daily_plans": plans, "schedule_report": {"reference_stats": dict(pool.stats)}}
 
     monkeypatch.setattr(eg, "run_plan_context", fake_context)
     # run_generation_case 在函数内 from app.agent.workflow import _generate_open_plans，

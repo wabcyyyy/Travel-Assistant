@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -58,26 +58,19 @@ def _trace_stats(trace: dict) -> dict:
     events = trace.get("events") or []
     prompt_tokens = sum(
         int((event.get("metadata") or {}).get("prompt_tokens") or 0)
-        for event in events if event.get("name") == "llm.request"
+        for event in events
+        if event.get("name") == "llm.request"
     )
     completion_tokens = sum(
         int((event.get("metadata") or {}).get("completion_tokens") or 0)
-        for event in events if event.get("name") == "llm.request"
+        for event in events
+        if event.get("name") == "llm.request"
     )
     return {
-        "llm_calls": sum(
-            event.get("kind") == "llm" and event.get("name") == "llm.request"
-            for event in events
-        ),
+        "llm_calls": sum(event.get("kind") == "llm" and event.get("name") == "llm.request" for event in events),
         "tool_calls": sum(event.get("kind") == "tool" for event in events),
-        "retry_count": sum(
-            event.get("kind") == "route" and event.get("name") in ("fix", "retry")
-            for event in events
-        ),
-        "fallback_count": sum(
-            event.get("kind") == "route" and event.get("name") == "fallback"
-            for event in events
-        ),
+        "retry_count": sum(event.get("kind") == "route" and event.get("name") in ("fix", "retry") for event in events),
+        "fallback_count": sum(event.get("kind") == "route" and event.get("name") == "fallback" for event in events),
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": prompt_tokens + completion_tokens,
@@ -129,7 +122,8 @@ def _report_markdown(report: dict) -> str:
     """
     themed = report.get("mode") == "real-llm-themed"
     lines = [
-        "# 主题化评测报告（真实 LLM）" if themed else "# 真实 LLM 评测报告", "",
+        "# 主题化评测报告（真实 LLM）" if themed else "# 真实 LLM 评测报告",
+        "",
         f"- model：`{report['model']}` ｜ temperature：{report['temperature']} ｜ "
         f"open_day prompt：`{report['open_day_prompt_version']}` ｜ "
         f"open_trip prompt：`{report['open_trip_prompt_version']}`",
@@ -144,11 +138,14 @@ def _report_markdown(report: dict) -> str:
         narrative = run1.get("narrative") or {}
         title = case.get("name") or f"{case['city']}-{case['days']}d"
         lines += [
-            f"## {title}（{case['city']} {case['days']} 日）", "",
+            f"## {title}（{case['city']} {case['days']} 日）",
+            "",
             f"- prompt_version：`{case.get('prompt_version')}` ｜ "
             f"run1 status：{run1['status']} ｜ run2 status：{run2['status']} ｜ "
             f"两遍一致：{'是' if detail['consistent'] else '否'}",
-            "", "| 指标 | 结果 |", "| --- | ---: |",
+            "",
+            "| 指标 | 结果 |",
+            "| --- | ---: |",
         ]
         rows = [
             ("poi_authority_rate", quality.get("poi_authority_rate")),
@@ -183,19 +180,18 @@ def main() -> int:
         return 2
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=0)
-    parser.add_argument("--cases", default=str(CASES_PATH),
-                        help="用例文件：默认 cases.json；主题化同题评测传 themed_cases.json")
+    parser.add_argument(
+        "--cases", default=str(CASES_PATH), help="用例文件：默认 cases.json；主题化同题评测传 themed_cases.json"
+    )
     args = parser.parse_args()
     cases_path = Path(args.cases)
     # 文件名以 themed 开头即走主题化报告输出（themed_report.json + .md）
     themed = cases_path.name.startswith("themed")
     cases = json.loads(cases_path.read_text(encoding="utf-8"))
     if args.limit:
-        cases = cases[:args.limit]
+        cases = cases[: args.limit]
     # prompt_version 占位在运行时填充实际契约版本（M5），随 case 落报告
-    cases = [{**case,
-              "prompt_version": f"{OPEN_DAY_PROMPT_VERSION}/{OPEN_TRIP_PROMPT_VERSION}"}
-             for case in cases]
+    cases = [{**case, "prompt_version": f"{OPEN_DAY_PROMPT_VERSION}/{OPEN_TRIP_PROMPT_VERSION}"} for case in cases]
     details = []
     same_count = 0
     status_counts = {"success": 0, "degraded": 0, "failed": 0}
@@ -216,22 +212,24 @@ def main() -> int:
                 aggregate_stats[key] += run["stats"].get(key, 0)
         same = signature1 == signature2
         same_count += same
-        details.append({
-            "case": case,
-            "consistent": same,
-            "signature1": signature1,
-            "signature2": signature2,
-            "run1": first,
-            "run2": second,
-            "failure_reasons": [
-                run["status_reason"]
-                for run in (first, second)
-                if run.get("status") != "success" and run.get("status_reason")
-            ],
-        })
+        details.append(
+            {
+                "case": case,
+                "consistent": same,
+                "signature1": signature1,
+                "signature2": signature2,
+                "run1": first,
+                "run2": second,
+                "failure_reasons": [
+                    run["status_reason"]
+                    for run in (first, second)
+                    if run.get("status") != "success" and run.get("status_reason")
+                ],
+            }
+        )
     report = {
         # 产物自带新鲜度：口径变更后旧报告可据此识别为过期
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "mode": "real-llm-themed" if themed else "real-llm",
         "model": settings.llm_model,
         # 与开放模式真实生成调用同源（day_stream.GENERATION_TEMPERATURE）
@@ -264,7 +262,8 @@ def main() -> int:
     report_path = REPORT_DIR / f"{report_stem}.json"
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     (REPORT_DIR / f"{report_stem}.md").write_text(_report_markdown(report), encoding="utf-8")
-    print(json.dumps({k: report[k] for k in ("mode", "model", "temperature", "prompt_version", "case_count", "consistency_rate")}, ensure_ascii=False, indent=2))
+    keys = ("mode", "model", "temperature", "prompt_version", "case_count", "consistency_rate")
+    print(json.dumps({k: report[k] for k in keys}, ensure_ascii=False, indent=2))
     print(f"报告已生成：{report_path}")
     return 0
 

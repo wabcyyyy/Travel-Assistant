@@ -58,8 +58,8 @@ def run_poi_intros(city: str, names: list[str], intent: str | None = None) -> di
     # 意图连接句规则随 intent 有无切换（无 intent 时降级为口碑/地理理由）
     link_rule = (
         f"每段末尾用一句话点出该地点与本趟旅行意图「{intent}」的连接。"
-        if (intent or "").strip() else
-        "每段末尾用一句话点出该地点的口碑理由或地理优势。"
+        if (intent or "").strip()
+        else "每段末尾用一句话点出该地点的口碑理由或地理优势。"
     )
     system = (
         "你是目的地百科编辑。为每个地点写一段 200~300 字的详细介绍（硬性要求：低于 180 字视为不合格，"
@@ -67,8 +67,8 @@ def run_poi_intros(city: str, names: list[str], intent: str | None = None) -> di
         "第一段讲特色亮点与定位（这里以什么闻名、最值得看的是什么）；"
         "第二段讲历史/文化/建筑背景（一两句有信息量的事实，不确定的细节宁可不写）；"
         "第三段给实用游玩建议（建议停留时长、最佳时段、门票预约方式、周边顺游 tips）。"
-        + link_rule +
-        "若对某地点事实不确定，可先调用 search_pois 工具检索该城市候选再写；"
+        + link_rule
+        + "若对某地点事实不确定，可先调用 search_pois 工具检索该城市候选再写；"
         "工具只读，禁止编造具体价格。只输出 JSON："
         '{"intros":{"名称":"介绍",...}}，必须覆盖给出的所有名称。'
     )
@@ -83,7 +83,9 @@ def run_poi_intros(city: str, names: list[str], intent: str | None = None) -> di
     raw = ""
     try:
         loop = run_tool_call_loop(
-            client, messages, max_rounds=2,
+            client,
+            messages,
+            max_rounds=2,
             model=settings.llm_fast_model or None,
             max_tokens=max_tokens,
         )
@@ -93,12 +95,15 @@ def run_poi_intros(city: str, names: list[str], intent: str | None = None) -> di
         # FC 超轮/协议失败：降级单轮生成，不拖垮介绍接口
         logger.warning("poi_intros function calling fallback: %s", exc)
         raw = ""
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("poi_intros FC unexpected error, fallback: %s", exc)
         raw = ""
     if not raw.strip():
         raw = client.complete(
-            user, system_prompt=system, temperature=0.3, max_tokens=max_tokens,
+            user,
+            system_prompt=system,
+            temperature=0.3,
+            max_tokens=max_tokens,
             model=settings.llm_fast_model or None,
         )
     text = raw.strip()
@@ -120,8 +125,7 @@ def run_poi_intros(city: str, names: list[str], intent: str | None = None) -> di
     if short:
         try:
             retry_system = (
-                system +
-                "\n上一轮生成的介绍过短未达标。本轮只针对下列地点重写介绍，"
+                system + "\n上一轮生成的介绍过短未达标。本轮只针对下列地点重写介绍，"
                 "每段必须达到 200~300 字，直接沿用并扩充上一轮的事实，不得缩水。"
             )
             retry_user = (
@@ -129,8 +133,11 @@ def run_poi_intros(city: str, names: list[str], intent: str | None = None) -> di
                 f"上一轮过短介绍：{json.dumps(short, ensure_ascii=False)}"
             )
             raw2 = client.complete(
-                retry_user, system_prompt=retry_system, temperature=0.3,
-                max_tokens=max_tokens, model=settings.llm_fast_model or None,
+                retry_user,
+                system_prompt=retry_system,
+                temperature=0.3,
+                max_tokens=max_tokens,
+                model=settings.llm_fast_model or None,
             )
             text2 = raw2.strip()
             if text2.startswith("```"):
@@ -141,6 +148,6 @@ def run_poi_intros(city: str, names: list[str], intent: str | None = None) -> di
                 for n, t in fixed.items():
                     if n in intros and isinstance(t, str) and len(t) > len(str(intros[n] or "")):
                         intros[n] = t
-        except Exception as exc:  # noqa: BLE001 - 扩写失败保留过短原值
+        except Exception as exc:
             logger.warning("poi_intros rewrite pass failed: %s", exc)
     return intros

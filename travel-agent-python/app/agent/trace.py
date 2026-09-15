@@ -10,20 +10,16 @@ import contextvars
 import re
 import time
 import uuid
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from functools import wraps
-from typing import Any, Callable, Iterator
+from typing import Any
 
-
-_active_recorder: contextvars.ContextVar["TraceRecorder | None"] = contextvars.ContextVar(
+_active_recorder: contextvars.ContextVar[TraceRecorder | None] = contextvars.ContextVar(
     "active_agent_trace", default=None
 )
-_active_span: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "active_agent_span", default=None
-)
-_active_registry_tool: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "active_registry_tool", default=None
-)
+_active_span: contextvars.ContextVar[str | None] = contextvars.ContextVar("active_agent_span", default=None)
+_active_registry_tool: contextvars.ContextVar[str | None] = contextvars.ContextVar("active_registry_tool", default=None)
 
 
 def _safe_id(value: str | None, *, fallback: str | None = None) -> str:
@@ -59,7 +55,7 @@ def _summary(value: Any) -> Any:
                 return value[:77] + "..."
         return value
     if isinstance(value, dict):
-        return {"keys": sorted(str(k) for k in value.keys())[:30], "size": len(value)}
+        return {"keys": sorted(str(k) for k in value)[:30], "size": len(value)}
     if isinstance(value, (list, tuple, set)):
         values = list(value)
         if len(values) <= 20 and all(isinstance(item, (str, int, float, bool)) for item in values):
@@ -69,18 +65,26 @@ def _summary(value: Any) -> Any:
 
 
 class TraceRecorder:
-    def __init__(self, run_id: str | None = None, request_id: str | None = None,
-                 action_id: str | None = None):
+    def __init__(self, run_id: str | None = None, request_id: str | None = None, action_id: str | None = None):
         self.run_id = _safe_id(run_id)
         self.request_id = _safe_id(request_id)
         self.action_id = _safe_id(action_id) if action_id else None
         self.events: list[dict[str, Any]] = []
 
-    def record(self, kind: str, name: str, *, status: str = "ok",
-               duration_ms: float | None = None, metadata: dict[str, Any] | None = None,
-               error: str | None = None, span_id: str | None = None,
-               parent_span_id: str | None = None, tool_call_id: str | None = None,
-               action_id: str | None = None) -> None:
+    def record(
+        self,
+        kind: str,
+        name: str,
+        *,
+        status: str = "ok",
+        duration_ms: float | None = None,
+        metadata: dict[str, Any] | None = None,
+        error: str | None = None,
+        span_id: str | None = None,
+        parent_span_id: str | None = None,
+        tool_call_id: str | None = None,
+        action_id: str | None = None,
+    ) -> None:
         event_span_id = _safe_id(span_id)
         event: dict[str, Any] = {
             "kind": kind,
@@ -106,16 +110,16 @@ class TraceRecorder:
         self.events.append(event)
 
     def to_dict(self) -> dict[str, Any]:
-        payload = {"run_id": self.run_id, "request_id": self.request_id,
-                "events": list(self.events)}
+        payload = {"run_id": self.run_id, "request_id": self.request_id, "events": list(self.events)}
         if self.action_id:
             payload["action_id"] = self.action_id
         return payload
 
 
 @contextmanager
-def trace_run(run_id: str | None = None, request_id: str | None = None,
-              action_id: str | None = None) -> Iterator[TraceRecorder]:
+def trace_run(
+    run_id: str | None = None, request_id: str | None = None, action_id: str | None = None
+) -> Iterator[TraceRecorder]:
     recorder = TraceRecorder(run_id, request_id, action_id)
     token = _active_recorder.set(recorder)
     span_token = _active_span.set(None)
@@ -126,20 +130,35 @@ def trace_run(run_id: str | None = None, request_id: str | None = None,
         _active_recorder.reset(token)
 
 
-def record_event(kind: str, name: str, *, status: str = "ok",
-                 metadata: dict[str, Any] | None = None, error: str | None = None,
-                 tool_call_id: str | None = None, action_id: str | None = None,
-                 span_id: str | None = None, parent_span_id: str | None = None) -> None:
+def record_event(
+    kind: str,
+    name: str,
+    *,
+    status: str = "ok",
+    metadata: dict[str, Any] | None = None,
+    error: str | None = None,
+    tool_call_id: str | None = None,
+    action_id: str | None = None,
+    span_id: str | None = None,
+    parent_span_id: str | None = None,
+) -> None:
     # Registry 会在调用结束后写入一条规范化审计事件；忽略其 handler 内部
     # 的旧式 tool span，避免一次工具调用在指标中被计数两次。
     if kind == "tool" and _active_registry_tool.get():
         return
     recorder = _active_recorder.get()
     if recorder is not None:
-        recorder.record(kind, name, status=status, metadata=metadata, error=error,
-                        span_id=span_id or uuid.uuid4().hex,
-                        parent_span_id=parent_span_id or _active_span.get(), tool_call_id=tool_call_id,
-                        action_id=action_id)
+        recorder.record(
+            kind,
+            name,
+            status=status,
+            metadata=metadata,
+            error=error,
+            span_id=span_id or uuid.uuid4().hex,
+            parent_span_id=parent_span_id or _active_span.get(),
+            tool_call_id=tool_call_id,
+            action_id=action_id,
+        )
 
 
 def current_span_id() -> str | None:
@@ -169,8 +188,14 @@ def registry_tool_call(tool_call_id: str) -> Iterator[None]:
 
 
 @contextmanager
-def trace_span(kind: str, name: str, *, metadata: dict[str, Any] | None = None,
-               tool_call_id: str | None = None, action_id: str | None = None) -> Iterator[None]:
+def trace_span(
+    kind: str,
+    name: str,
+    *,
+    metadata: dict[str, Any] | None = None,
+    tool_call_id: str | None = None,
+    action_id: str | None = None,
+) -> Iterator[None]:
     started = time.perf_counter()
     recorder = _active_recorder.get()
     parent_span_id = _active_span.get()
@@ -180,28 +205,45 @@ def trace_span(kind: str, name: str, *, metadata: dict[str, Any] | None = None,
         yield
     except Exception as exc:
         if recorder is not None and not (kind == "tool" and _active_registry_tool.get()):
-            recorder.record(kind, name, status="error",
-                            duration_ms=(time.perf_counter() - started) * 1000,
-                            metadata=metadata, error=str(exc), span_id=span_id,
-                            parent_span_id=parent_span_id, tool_call_id=tool_call_id,
-                            action_id=action_id)
+            recorder.record(
+                kind,
+                name,
+                status="error",
+                duration_ms=(time.perf_counter() - started) * 1000,
+                metadata=metadata,
+                error=str(exc),
+                span_id=span_id,
+                parent_span_id=parent_span_id,
+                tool_call_id=tool_call_id,
+                action_id=action_id,
+            )
         raise
     else:
         if recorder is not None and not (kind == "tool" and _active_registry_tool.get()):
-            recorder.record(kind, name, duration_ms=(time.perf_counter() - started) * 1000,
-                            metadata=metadata, span_id=span_id, parent_span_id=parent_span_id,
-                            tool_call_id=tool_call_id, action_id=action_id)
+            recorder.record(
+                kind,
+                name,
+                duration_ms=(time.perf_counter() - started) * 1000,
+                metadata=metadata,
+                span_id=span_id,
+                parent_span_id=parent_span_id,
+                tool_call_id=tool_call_id,
+                action_id=action_id,
+            )
     finally:
         _active_span.reset(span_token)
 
 
 def traced(kind: str, name: str) -> Callable:
     """给同步 LangGraph 节点或工具增加统一轨迹事件。"""
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             metadata = {"arg_count": len(args), "kwarg_names": sorted(kwargs)}
             with trace_span(kind, name, metadata=metadata):
                 return func(*args, **kwargs)
+
         return wrapper
+
     return decorator

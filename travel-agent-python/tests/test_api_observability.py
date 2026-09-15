@@ -12,8 +12,9 @@ def test_generate_exposes_run_id_without_exposing_trace(monkeypatch):
         lambda _req: GenerateResponse(city="杭州", days=1, title="杭州1日游", daily_plans=[]),
     )
     with TestClient(app) as client:
-        response = client.post("/api/agent/v1/generate", headers={"X-Request-ID": "request-api"},
-                               json={"city": "杭州", "days": 1})
+        response = client.post(
+            "/api/agent/v1/generate", headers={"X-Request-ID": "request-api"}, json={"city": "杭州", "days": 1}
+        )
     assert response.status_code == 200
     assert response.headers.get("X-Agent-Run-ID")
     assert response.headers.get("X-Request-ID") == "request-api"
@@ -46,9 +47,11 @@ def test_failed_generation_keeps_run_id_for_trace_lookup(monkeypatch):
     assert response.json()["code"] == 500
     assert run_id
     assert trace_response.status_code == 200
-    assert any(event["metadata"]["status"] == "failed"
-               for event in trace_response.json()["data"]["events"]
-               if event["name"] == "run_status")
+    assert any(
+        event["metadata"]["status"] == "failed"
+        for event in trace_response.json()["data"]["events"]
+        if event["name"] == "run_status"
+    )
 
 
 def test_metrics_endpoint_returns_aggregates():

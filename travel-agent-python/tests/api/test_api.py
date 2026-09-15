@@ -42,9 +42,11 @@ def generate(client, token, city="北京", days=2):
     生成接口先异步建壳返回 status=1（draft），逐日由后台填充后 status=2。
     测试需轮询等待，不能对同步建壳响应做完整 data 断言。
     """
-    r = client.post("/api/itinerary/generate",
-                    json={"city": city, "days": days, "persons": 2, "budget": 3000, "preferences": ["人文"]},
-                    headers=auth_headers(token))
+    r = client.post(
+        "/api/itinerary/generate",
+        json={"city": city, "days": days, "persons": 2, "budget": 3000, "preferences": ["人文"]},
+        headers=auth_headers(token),
+    )
     assert r.status_code == 200
     body = r.json()
     assert body["code"] == 200
@@ -117,9 +119,9 @@ class TestItinerary:
         u = _uid()
         register(client, u)
         token = login(client, u)
-        body = client.post("/api/itinerary/generate",
-                           json={"city": "北京", "days": 0, "persons": 2},
-                           headers=auth_headers(token)).json()
+        body = client.post(
+            "/api/itinerary/generate", json={"city": "北京", "days": 0, "persons": 2}, headers=auth_headers(token)
+        ).json()
         assert body["code"] == 400
 
     def test_cross_user_isolation(self, client):
@@ -142,8 +144,11 @@ class TestItinerary:
         day_id = detail["dayList"][0]["dayId"]
         total0 = float(detail["totalAmount"])
 
-        r = client.post(f"/api/itinerary/{itin_id}/items", json={
-            "dayId": day_id, "itemType": "attraction", "poiName": "新增测试景点", "cost": 25.5}, headers=auth_headers(token)).json()
+        r = client.post(
+            f"/api/itinerary/{itin_id}/items",
+            json={"dayId": day_id, "itemType": "attraction", "poiName": "新增测试景点", "cost": 25.5},
+            headers=auth_headers(token),
+        ).json()
         assert r["code"] == 200
         assert float(r["data"]["totalAmount"]) == total0 + 25.5 * 2
         item_id = next(i["id"] for i in r["data"]["dayList"][0]["items"] if i["poiName"] == "新增测试景点")
@@ -153,7 +158,9 @@ class TestItinerary:
         assert float(r["data"]["totalAmount"]) == total0 + 30 * 2
 
         ids = [i["id"] for i in r["data"]["dayList"][0]["items"]]
-        r = client.put(f"/api/itinerary/{itin_id}/days/{day_id}/order", json=list(reversed(ids)), headers=auth_headers(token)).json()
+        r = client.put(
+            f"/api/itinerary/{itin_id}/days/{day_id}/order", json=list(reversed(ids)), headers=auth_headers(token)
+        ).json()
         assert r["code"] == 200
         assert [i["id"] for i in r["data"]["dayList"][0]["items"]] == list(reversed(ids))
 
@@ -208,8 +215,7 @@ class TestLocalPoiSearch:
         u = _uid()
         register(client, u)
         token = login(client, u)
-        body = client.get("/api/pois", params={"city": "北京", "keywords": "故宫"},
-                          headers=auth_headers(token)).json()
+        body = client.get("/api/pois", params={"city": "北京", "keywords": "故宫"}, headers=auth_headers(token)).json()
         assert body["code"] == 200
         assert isinstance(body["data"]["items"], list)
         assert isinstance(body["data"]["coveredCities"], list)
@@ -218,6 +224,7 @@ class TestLocalPoiSearch:
         u = _uid()
         register(client, u)
         token = login(client, u)
-        body = client.get("/api/pois", params={"city": "北京", "category": "shopping"},
-                          headers=auth_headers(token)).json()
+        body = client.get(
+            "/api/pois", params={"city": "北京", "category": "shopping"}, headers=auth_headers(token)
+        ).json()
         assert body["code"] == 400

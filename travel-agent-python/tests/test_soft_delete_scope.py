@@ -48,9 +48,7 @@ def test_include_deleted_opt_out_works(session: Session) -> None:
     session.add_all([_trip("活着的"), _trip("已删的", deleted=True)])
     session.commit()
 
-    everything = session.execute(
-        select(ItineraryMain).execution_options(include_deleted=True)
-    ).scalars().all()
+    everything = session.execute(select(ItineraryMain).execution_options(include_deleted=True)).scalars().all()
     assert sorted(t.title for t in everything) == ["已删的", "活着的"]
 
 

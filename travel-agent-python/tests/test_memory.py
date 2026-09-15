@@ -22,9 +22,10 @@ def test_filter_used_records_candidate_exhaustion():
     with observe_run("exhausted-run") as trace:
         kept = _filter_used(items, {"西湖", "灵隐寺"})
     assert kept == []
-    assert any(e["name"] == "candidates_exhausted"
-               and e["metadata"] == {"input": 2, "used": 2}
-               for e in trace.to_dict()["events"])
+    assert any(
+        e["name"] == "candidates_exhausted" and e["metadata"] == {"input": 2, "used": 2}
+        for e in trace.to_dict()["events"]
+    )
 
 
 def test_working_memory_hotel_and_feedback():

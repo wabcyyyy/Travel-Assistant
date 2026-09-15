@@ -69,8 +69,10 @@ def encode_token(
     header = {"alg": algorithm, "typ": "JWT"}
     payload = {"jti": jti or str(uuid.uuid4()), "sub": subject, "iat": now, "exp": now + int(ttl_seconds)}
     signing_input = ".".join(
-        (_b64url_encode(json.dumps(header, separators=(",", ":"), sort_keys=True).encode()),
-         _b64url_encode(json.dumps(payload, separators=(",", ":")).encode()))
+        (
+            _b64url_encode(json.dumps(header, separators=(",", ":"), sort_keys=True).encode()),
+            _b64url_encode(json.dumps(payload, separators=(",", ":")).encode()),
+        )
     ).encode("ascii")
     signature = hmac.new(secret.encode("utf-8"), signing_input, _HMAC_ALGS[algorithm]).digest()
     return f"{signing_input.decode('ascii')}.{_b64url_encode(signature)}"

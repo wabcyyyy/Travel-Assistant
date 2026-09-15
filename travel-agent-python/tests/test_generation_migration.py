@@ -62,8 +62,7 @@ def env(monkeypatch, tmp_path):
     cache_store.reset_for_tests()
     state_and_sessions.reset_for_tests()
     with db_session.session_scope() as session:
-        session.add(SysUser(username="alice", password=user_service.hash_password(PASSWORD),
-                            status=1, role="user"))
+        session.add(SysUser(username="alice", password=user_service.hash_password(PASSWORD), status=1, role="user"))
     # 事件与幂等锁都走进程内兜底：Redis 指向不可达端口
     yield
     db_session.init_engine(None, None)
@@ -81,35 +80,57 @@ def client() -> TestClient:
     return test
 
 
-def _plan(day_no: int, names: list[str], *, theme: str = "湖山线",
-          trip_theme: str | None = None, suggestions: list | None = None) -> DailyPlan:
+def _plan(
+    day_no: int,
+    names: list[str],
+    *,
+    theme: str = "湖山线",
+    trip_theme: str | None = None,
+    suggestions: list | None = None,
+) -> DailyPlan:
     return DailyPlan(
-        day_no=day_no, note=f"第 {day_no} 天", theme=theme, trip_theme=trip_theme,
-        items=[TripItem(poi_name=name, item_type="hotel" if name.startswith("酒店") else "attraction",
-                        cost=300 if name.startswith("酒店") else 45,
-                        start_time="24:00" if name.startswith("酒店") else "09:30",
-                        why_this="离西湖步行十分钟" if name == "西湖" else None,
-                        image="https://example.com/a.jpg" if name == "西湖" else None)
-               for name in names],
+        day_no=day_no,
+        note=f"第 {day_no} 天",
+        theme=theme,
+        trip_theme=trip_theme,
+        items=[
+            TripItem(
+                poi_name=name,
+                item_type="hotel" if name.startswith("酒店") else "attraction",
+                cost=300 if name.startswith("酒店") else 45,
+                start_time="24:00" if name.startswith("酒店") else "09:30",
+                why_this="离西湖步行十分钟" if name == "西湖" else None,
+                image="https://example.com/a.jpg" if name == "西湖" else None,
+            )
+            for name in names
+        ],
         suggestions=suggestions or [],
     )
 
 
 def _wire_plan(day_no: int, names: list[str]) -> dict:
     """整段流式事件里的 plan 是 camel 化 wire dict，测试必须喂真形状。"""
-    return {"dayNo": day_no, "note": f"第 {day_no} 天", "theme": "湖山线", "tripTheme": None,
-            "items": [{"itemType": "attraction", "poiName": name, "cost": 45, "startTime": "09:30"}
-                      for name in names]}
+    return {
+        "dayNo": day_no,
+        "note": f"第 {day_no} 天",
+        "theme": "湖山线",
+        "tripTheme": None,
+        "items": [{"itemType": "attraction", "poiName": name, "cost": 45, "startTime": "09:30"} for name in names],
+    }
 
 
 def _fake_agents(monkeypatch, per_day: list[DailyPlan], stream_events: list[dict] | None = None) -> dict:
     """把三个 agent 入口打桩，并记录调用。`stream_events=None` 表示整段流式直接抛错。"""
     calls: dict = {"day": [], "stream": 0, "context": 0}
 
-    monkeypatch.setattr(itinerary_generation, "run_plan_context",
-                        lambda city, prefs, itinerary_id=None: (calls.__setitem__("context", calls["context"] + 1),
-                                                                {"candidates": [], "foods": [],
-                                                                 "hotels": [], "consumption": None})[1])
+    monkeypatch.setattr(
+        itinerary_generation,
+        "run_plan_context",
+        lambda city, prefs, itinerary_id=None: (
+            calls.__setitem__("context", calls["context"] + 1),
+            {"candidates": [], "foods": [], "hotels": [], "consumption": None},
+        )[1],
+    )
 
     def fake_day(request):
         calls["day"].append(request)
@@ -124,16 +145,17 @@ def _fake_agents(monkeypatch, per_day: list[DailyPlan], stream_events: list[dict
     monkeypatch.setattr(itinerary_generation, "run_generate_day", fake_day)
     monkeypatch.setattr(itinerary_generation, "run_generate_trip_stream", fake_stream)
     monkeypatch.setattr(itinerary_generation, "_submit_budget_recalculate", lambda itinerary_id: None)
-    monkeypatch.setattr(itinerary_generation.enricher_pool, "submit",
-                        lambda task, *args: None)   # 富化留到单独用例验证
+    monkeypatch.setattr(itinerary_generation.enricher_pool, "submit", lambda task, *args: None)  # 富化留到单独用例验证
     return calls
 
 
 def _run_inline(monkeypatch):
     """让"异步"提交在当前线程里同步跑完，断言才确定。"""
+
     def inline(task, *args):
         task(*args)
         return None
+
     monkeypatch.setattr(itinerary_generation.generation_pool, "submit", inline)
 
 
@@ -146,8 +168,13 @@ def _trip(client: TestClient, body: dict) -> dict:
 def _rows(trip_id: int) -> tuple[ItineraryMain, list[ItineraryDay]]:
     with db_session.session_scope() as session:
         main = session.get(ItineraryMain, trip_id)
-        days = session.execute(select(ItineraryDay).where(ItineraryDay.itinerary_id == trip_id)
-                               .order_by(ItineraryDay.day_no)).scalars().all()
+        days = (
+            session.execute(
+                select(ItineraryDay).where(ItineraryDay.itinerary_id == trip_id).order_by(ItineraryDay.day_no)
+            )
+            .scalars()
+            .all()
+        )
         session.expunge(main)
         for day in days:
             session.expunge(day)
@@ -156,8 +183,11 @@ def _rows(trip_id: int) -> tuple[ItineraryMain, list[ItineraryDay]]:
 
 def _items(day_id: int) -> list[ItineraryItem]:
     with db_session.session_scope() as session:
-        rows = session.execute(select(ItineraryItem).where(ItineraryItem.day_id == day_id)
-                               .order_by(ItineraryItem.sort_no)).scalars().all()
+        rows = (
+            session.execute(select(ItineraryItem).where(ItineraryItem.day_id == day_id).order_by(ItineraryItem.sort_no))
+            .scalars()
+            .all()
+        )
         for row in rows:
             session.expunge(row)
         return list(rows)
@@ -165,25 +195,27 @@ def _items(day_id: int) -> list[ItineraryItem]:
 
 # ---------- 校验阶梯 ----------
 
-@pytest.mark.parametrize(("body", "expected"), [
-    ({"days": 2, "startDate": "2026-04-20"}, "目的地不能为空"),
-    ({"city": "  ", "days": 2}, "目的地不能为空"),
-    ({"city": CITY}, "出行天数不能为空"),
-    ({"city": CITY, "days": 0}, "天数至少为 1 天"),
-    ({"city": CITY, "days": 8}, "天数最多为 7 天"),
-    ({"city": CITY, "days": 2, "persons": 0}, "人数至少为 1 人"),
-    ({"city": CITY, "days": 2, "persons": 21}, "人数最多为 20 人"),
-    ({"city": CITY, "days": 2, "stayNights": -1}, "住宿晚数不能为负数"),
-    ({"city": CITY, "days": 2, "stayNights": 8}, "住宿晚数最多为 7 晚"),
-    ({"city": CITY, "days": 2, "budget": -1}, "预算不能为负数"),
-    ({"city": CITY, "days": 2, "intent": "意" * 801}, "旅行意图最多 800 字"),
-    ({"city": "杭州!!", "days": 2}, "目的地名称格式不正确，请输入城市或景点所在城市"),
-    ({"city": CITY, "days": 2, "startDate": "2026-04-21", "endDate": "2026-04-20"},
-     "结束日期不能早于开始日期"),
-    ({"city": CITY, "days": 2, "startDate": "2026-04-20", "endDate": "2026-04-23"},
-     "日期范围与行程天数不一致"),
-    ({"city": CITY, "days": 2, "stayNights": 3}, "住宿晚数必须在 0 到行程天数之间"),
-])
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ({"days": 2, "startDate": "2026-04-20"}, "目的地不能为空"),
+        ({"city": "  ", "days": 2}, "目的地不能为空"),
+        ({"city": CITY}, "出行天数不能为空"),
+        ({"city": CITY, "days": 0}, "天数至少为 1 天"),
+        ({"city": CITY, "days": 8}, "天数最多为 7 天"),
+        ({"city": CITY, "days": 2, "persons": 0}, "人数至少为 1 人"),
+        ({"city": CITY, "days": 2, "persons": 21}, "人数最多为 20 人"),
+        ({"city": CITY, "days": 2, "stayNights": -1}, "住宿晚数不能为负数"),
+        ({"city": CITY, "days": 2, "stayNights": 8}, "住宿晚数最多为 7 晚"),
+        ({"city": CITY, "days": 2, "budget": -1}, "预算不能为负数"),
+        ({"city": CITY, "days": 2, "intent": "意" * 801}, "旅行意图最多 800 字"),
+        ({"city": "杭州!!", "days": 2}, "目的地名称格式不正确，请输入城市或景点所在城市"),
+        ({"city": CITY, "days": 2, "startDate": "2026-04-21", "endDate": "2026-04-20"}, "结束日期不能早于开始日期"),
+        ({"city": CITY, "days": 2, "startDate": "2026-04-20", "endDate": "2026-04-23"}, "日期范围与行程天数不一致"),
+        ({"city": CITY, "days": 2, "stayNights": 3}, "住宿晚数必须在 0 到行程天数之间"),
+    ],
+)
 def test_generate_validation_messages_match_java(client: TestClient, body, expected) -> None:
     response = client.post("/api/itinerary/generate", json=body).json()
     assert response["code"] == 400 and response["message"] == expected
@@ -191,13 +223,23 @@ def test_generate_validation_messages_match_java(client: TestClient, body, expec
 
 # ---------- 建壳 + 编排 ----------
 
+
 def test_generate_creates_shell_then_completes(client: TestClient, monkeypatch) -> None:
-    calls = _fake_agents(monkeypatch, [_plan(1, ["西湖", "酒店A"], trip_theme="西子湖畔慢行"),
-                                       _plan(2, ["灵隐寺"])])
+    calls = _fake_agents(monkeypatch, [_plan(1, ["西湖", "酒店A"], trip_theme="西子湖畔慢行"), _plan(2, ["灵隐寺"])])
     _run_inline(monkeypatch)
-    detail = _trip(client, {"city": CITY, "days": 2, "persons": 2, "budget": 3000,
-                            "startDate": "2026-04-20", "endDate": "2026-04-21",
-                            "preferences": ["亲子"], "hotelTier": "舒适型"})
+    detail = _trip(
+        client,
+        {
+            "city": CITY,
+            "days": 2,
+            "persons": 2,
+            "budget": 3000,
+            "startDate": "2026-04-20",
+            "endDate": "2026-04-21",
+            "preferences": ["亲子"],
+            "hotelTier": "舒适型",
+        },
+    )
     main, days = _rows(detail["id"])
 
     assert main.days == 2 and main.stay_nights == 1 and main.status == 2
@@ -246,8 +288,7 @@ def test_item_field_mapping_and_time_normalization(client: TestClient, monkeypat
 def test_day_lock_prevents_concurrent_writes_for_same_day(client: TestClient, monkeypatch) -> None:
     _fake_agents(monkeypatch, [_plan(1, ["西湖"]), _plan(2, ["灵隐寺"])])
     _run_inline(monkeypatch)
-    monkeypatch.setattr(itinerary_generation.generation_gate, "try_day_lock",
-                        lambda itinerary_id, day_no: day_no != 2)
+    monkeypatch.setattr(itinerary_generation.generation_gate, "try_day_lock", lambda itinerary_id, day_no: day_no != 2)
     detail = _trip(client, {"city": CITY, "days": 2})
     _main, days = _rows(detail["id"])
     assert days[1].generation_status == "PENDING", "日锁被占用时该天留给下一轮，不并发写"
@@ -274,8 +315,14 @@ def test_stream_path_persists_days_and_suggestion_pool(client: TestClient, monke
         {"type": "day", "plan": _wire_plan(1, ["西湖"])},
         {"type": "day_patch", "plan": _wire_plan(2, ["灵隐寺"])},
         {"type": "suggestions", "items": [{"name": "河坊街", "category": "attraction"}]},
-        {"type": "done", "daysExpected": 2, "daysEmitted": [1, 2], "tripTheme": "西子湖畔慢行",
-         "complete": True, "message": None},
+        {
+            "type": "done",
+            "daysExpected": 2,
+            "daysEmitted": [1, 2],
+            "tripTheme": "西子湖畔慢行",
+            "complete": True,
+            "message": None,
+        },
     ]
     calls = _fake_agents(monkeypatch, [_plan(1, ["不该被用到"])], stream_events=events)
     _run_inline(monkeypatch)
@@ -304,12 +351,11 @@ def test_stream_contract_violations_are_tolerated_until_limit(client: TestClient
 def test_unknown_stream_event_type_is_ignored_without_counting(client: TestClient, monkeypatch) -> None:
     events = [{"type": "metrics_tick"} for _ in range(9)] + [
         {"type": "day", "plan": _wire_plan(1, ["西湖"])},
-        {"type": "done", "daysExpected": 1, "daysEmitted": [1], "tripTheme": None,
-         "complete": True, "message": None},
+        {"type": "done", "daysExpected": 1, "daysEmitted": [1], "tripTheme": None, "complete": True, "message": None},
     ]
     calls = _fake_agents(monkeypatch, [_plan(1, ["不该出现"])], stream_events=events)
     _run_inline(monkeypatch)
-    detail = _trip(client, {"city": CITY, "days": 1})
+    _trip(client, {"city": CITY, "days": 1})
     assert calls["day"] == [], "未知类型是前向兼容事件，不该被当成协议破坏"
 
 
@@ -359,6 +405,7 @@ def test_bounded_pool_rejects_after_capacity(monkeypatch) -> None:
 
 # ---------- 自动续跑 ----------
 
+
 def _command(trip_id: int) -> itinerary_generation.GenerateCommand:
     with db_session.session_scope() as session:
         main = session.get(ItineraryMain, trip_id)
@@ -367,10 +414,16 @@ def _command(trip_id: int) -> itinerary_generation.GenerateCommand:
 
 def _versions(trip_id: int) -> list[str]:
     with db_session.session_scope() as session:
-        return [row.operation for row in session.execute(
-            select(ItineraryVersion).where(ItineraryVersion.itinerary_id == trip_id)
-            .order_by(ItineraryVersion.version_no.desc())
-        ).scalars().all()]
+        return [
+            row.operation
+            for row in session.execute(
+                select(ItineraryVersion)
+                .where(ItineraryVersion.itinerary_id == trip_id)
+                .order_by(ItineraryVersion.version_no.desc())
+            )
+            .scalars()
+            .all()
+        ]
 
 
 @pytest.fixture
@@ -390,15 +443,13 @@ def broken_trip(client: TestClient, monkeypatch) -> int:
 
 def test_recovery_resubmits_zombie_generation(broken_trip: int, monkeypatch) -> None:
     submitted: list[int] = []
-    monkeypatch.setattr(itinerary_generation.generation_pool, "submit",
-                        lambda task, *args: submitted.append(args[1]))
+    monkeypatch.setattr(itinerary_generation.generation_pool, "submit", lambda task, *args: submitted.append(args[1]))
     # Java 的 recoverOne 只在 failedResume 分支返回 true，僵尸重拉不改计数（也就不会触发
     # 那趟全量缓存清理）；这里保持同口径，可观察效果是"重新提交了一次"。
     assert generation_recovery.recover() == 0
     assert submitted == [broken_trip]
     with db_session.session_scope() as session:
-        assert session.get(ItineraryMain, broken_trip).gen_resumed is False, \
-            "僵尸分支不算续跑，不该占用那一次性标记"
+        assert session.get(ItineraryMain, broken_trip).gen_resumed is False, "僵尸分支不算续跑，不该占用那一次性标记"
 
 
 def test_recovery_resumes_failed_trip_only_once(broken_trip: int, monkeypatch) -> None:
@@ -408,8 +459,7 @@ def test_recovery_resumes_failed_trip_only_once(broken_trip: int, monkeypatch) -
         for day in session.execute(select(ItineraryDay)).scalars().all():
             day.generation_status, day.generation_error = "FAILED", "模型超时"
     submitted: list[int] = []
-    monkeypatch.setattr(itinerary_generation.generation_pool, "submit",
-                        lambda task, *args: submitted.append(args[1]))
+    monkeypatch.setattr(itinerary_generation.generation_pool, "submit", lambda task, *args: submitted.append(args[1]))
     generation_recovery.recover()
     assert submitted == [broken_trip]
     with db_session.session_scope() as session:
@@ -428,8 +478,7 @@ def test_recovery_completes_trip_whose_days_are_done(broken_trip: int, monkeypat
         for day in session.execute(select(ItineraryDay)).scalars().all():
             day.generation_status = "SUCCEEDED"
     submitted: list[int] = []
-    monkeypatch.setattr(itinerary_generation.generation_pool, "submit",
-                        lambda task, *args: submitted.append(args[1]))
+    monkeypatch.setattr(itinerary_generation.generation_pool, "submit", lambda task, *args: submitted.append(args[1]))
     assert generation_recovery.recover() == 1
     assert submitted == [], "数据齐了只需补终态，不该重新花钱生成"
     with db_session.session_scope() as session:
@@ -443,17 +492,16 @@ def test_recovery_skips_trip_with_active_day(broken_trip: int, monkeypatch) -> N
         first.generation_status = "RUNNING"
         first.updated_at = datetime.now()
     submitted: list[int] = []
-    monkeypatch.setattr(itinerary_generation.generation_pool, "submit",
-                        lambda task, *args: submitted.append(args[1]))
+    monkeypatch.setattr(itinerary_generation.generation_pool, "submit", lambda task, *args: submitted.append(args[1]))
     generation_recovery.recover()
     assert submitted == [], "有天正在生成（5 分钟内心跳未过期）就不该抢跑"
 
 
 def test_recovery_is_deduplicated_by_resume_lock(broken_trip: int, monkeypatch) -> None:
     from app.services import generation_gate
+
     assert generation_gate.try_resume_lock(broken_trip)
     submitted: list[int] = []
-    monkeypatch.setattr(itinerary_generation.generation_pool, "submit",
-                        lambda task, *args: submitted.append(args[1]))
+    monkeypatch.setattr(itinerary_generation.generation_pool, "submit", lambda task, *args: submitted.append(args[1]))
     generation_recovery.recover()
     assert submitted == []

@@ -69,10 +69,18 @@ def run_refill_case(city: str) -> dict:
         state["calls"] += 1
         if state["calls"] == 1:
             return []
-        return [{"id": 1, "name": "补查景点", "category": "attraction",
-                 "latitude": 30.0, "longitude": 120.0, "ticket_price": 40}]
+        return [
+            {
+                "id": 1,
+                "name": "补查景点",
+                "category": "attraction",
+                "latitude": 30.0,
+                "longitude": 120.0,
+                "ticket_price": 40,
+            }
+        ]
 
-    patches = _research_patch() + (patch.object(tools, "search_attractions", search_attractions),)
+    patches = [*_research_patch(), patch.object(tools, "search_attractions", search_attractions)]
     for item in patches:
         item.start()
     try:
@@ -86,8 +94,12 @@ def run_refill_case(city: str) -> dict:
     finally:
         for item in reversed(patches):
             item.stop()
-    return {"city": city, "first_round_empty": first_round_empty,
-            "refill_items": len(pack.items), "refill_filled": refill_filled}
+    return {
+        "city": city,
+        "first_round_empty": first_round_empty,
+        "refill_items": len(pack.items),
+        "refill_filled": refill_filled,
+    }
 
 
 def build_report(city: str = "杭州") -> dict:
@@ -111,26 +123,32 @@ def build_report(city: str = "杭州") -> dict:
 def write_report(report: dict) -> None:
     report_dir = Path(__file__).with_name("report")
     report_dir.mkdir(parents=True, exist_ok=True)
-    (report_dir / "research_report.json").write_text(
-        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    (report_dir / "research_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     lines = [
-        "# 多 Agent 研究编排评测报告", "",
+        "# 多 Agent 研究编排评测报告",
+        "",
         f"- 城市：{report['city']}",
-        "- 数据模式：固定权威 fixture + 确定性 LLM 推理（不依赖外部服务）", "",
+        "- 数据模式：固定权威 fixture + 确定性 LLM 推理（不依赖外部服务）",
+        "",
         "| 域 | 证据数 | 置信度 | 轮次 | 降级 | 缺口 |",
         "| --- | ---: | ---: | ---: | ---: | --- |",
     ]
     for domain in report["domains"]:
         lines.append(
             f"| {domain['domain']} | {domain['count']} | {domain['confidence']} | "
-            f"{domain['rounds']} | {domain['degraded']} | {'；'.join(domain['gaps']) or '-'} |")
+            f"{domain['rounds']} | {domain['degraded']} | {'；'.join(domain['gaps']) or '-'} |"
+        )
     lines.append("")
-    lines.append(f"- 补查有效性：首轮景点证据为空 = {report['refill']['first_round_empty']}；"
-                 f"补查后证据可合并 = {report['refill']['refill_filled']}")
-    lines.append(f"- 指标：平均推理轮次 {report['metrics']['avg_rounds']}，"
-                 f"证据总量 {report['metrics']['pack_total']}，"
-                 f"降级率 {report['metrics']['degraded_rate']}，"
-                 f"补查有效率 {report['metrics']['refill_effectiveness']}")
+    lines.append(
+        f"- 补查有效性：首轮景点证据为空 = {report['refill']['first_round_empty']}；"
+        f"补查后证据可合并 = {report['refill']['refill_filled']}"
+    )
+    lines.append(
+        f"- 指标：平均推理轮次 {report['metrics']['avg_rounds']}，"
+        f"证据总量 {report['metrics']['pack_total']}，"
+        f"降级率 {report['metrics']['degraded_rate']}，"
+        f"补查有效率 {report['metrics']['refill_effectiveness']}"
+    )
     (report_dir / "research_report.md").write_text("\n".join(lines), encoding="utf-8")
 
 

@@ -9,9 +9,9 @@ from __future__ import annotations
 import json
 import logging
 
+from app.agent.run_limits import current_limits
 from app.common.config import settings
 from app.common.llm_client import get_llm_client
-from app.agent.run_limits import current_limits
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +41,14 @@ def web_search_text(question: str, *, max_tokens: int = 400) -> str:
         return client.complete(
             question.strip()[:500],
             system_prompt=(
-                "你是旅行资料检索助手。基于联网搜索结果回答，不要编造。"
-                "只输出可直接使用的事实要点，不要寒暄。"
+                "你是旅行资料检索助手。基于联网搜索结果回答，不要编造。只输出可直接使用的事实要点，不要寒暄。"
             ),
             temperature=0.1,
             max_tokens=max_tokens,
             enable_search=True,
             model=settings.llm_fast_model or None,
         ).strip()
-    except Exception as exc:  # noqa: BLE001 —— 搜索失败不允许阻断生成
+    except Exception as exc:
         logger.warning("web search failed: %s", exc)
         return ""
 
@@ -62,10 +61,7 @@ def web_search_json(question: str, *, schema_hint: str, max_tokens: int = 800) -
         client = get_llm_client()
         raw = client.complete(
             question.strip()[:500],
-            system_prompt=(
-                "你是旅行资料检索助手。基于联网搜索结果回答，不要编造。"
-                f"只输出 JSON，结构：{schema_hint}"
-            ),
+            system_prompt=(f"你是旅行资料检索助手。基于联网搜索结果回答，不要编造。只输出 JSON，结构：{schema_hint}"),
             temperature=0.1,
             max_tokens=max_tokens,
             enable_search=True,
@@ -81,7 +77,7 @@ def web_search_json(question: str, *, schema_hint: str, max_tokens: int = 800) -
         if start_arr != -1 and end_arr != -1:
             return json.loads(raw[start_arr : end_arr + 1])
         return None
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("web search json failed: %s", exc)
         return None
 
@@ -95,16 +91,21 @@ _CATEGORY_PROMPTS = {
 }
 
 
-def search_places_via_web(city: str, category: str, limit: int = 4, *, budget_tier: str | None = None,
-                          intent_keywords: list[str] | None = None) -> list[dict]:
+def search_places_via_web(
+    city: str,
+    category: str,
+    limit: int = 4,
+    *,
+    budget_tier: str | None = None,
+    intent_keywords: list[str] | None = None,
+) -> list[dict]:
     """按类目联网补池：返回 [{name, category, intro, estimated_cost}]，不保证有坐标。"""
     if not web_search_enabled() or limit <= 0:
         return []
     kind = _CATEGORY_PROMPTS.get(category, "真实存在的地点名")
     tier_hint = f"消费档次参考：{budget_tier}。" if budget_tier else ""
     # M3-②（AD5）最小增量：意图关键词逐词以「city + keyword」追加进 query（只追加不改既有规则）
-    intent_pairs = "、".join(f"{city} {str(k).strip()}"
-                             for k in (intent_keywords or []) if str(k).strip())
+    intent_pairs = "、".join(f"{city} {str(k).strip()}" for k in (intent_keywords or []) if str(k).strip())
     intent_hint = f"另请优先考虑与这些意图词相关的地点：{intent_pairs}。" if intent_pairs else ""
     data = web_search_json(
         f"{city}有哪些{kind}？请给出 {limit} 个，优先高口碑、有代表性、名称可搜索到的。"
@@ -123,11 +124,13 @@ def search_places_via_web(city: str, category: str, limit: int = 4, *, budget_ti
         if not name:
             continue
         cost = row.get("estimated_cost")
-        out.append({
-            "name": name,
-            "category": category,
-            "intro": str(row.get("intro") or "").strip()[:80] or None,
-            "estimated_cost": float(cost) if isinstance(cost, (int, float)) and cost > 0 else None,
-            "source": "web.search",
-        })
+        out.append(
+            {
+                "name": name,
+                "category": category,
+                "intro": str(row.get("intro") or "").strip()[:80] or None,
+                "estimated_cost": float(cost) if isinstance(cost, (int, float)) and cost > 0 else None,
+                "source": "web.search",
+            }
+        )
     return out

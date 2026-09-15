@@ -79,37 +79,105 @@ def env(monkeypatch, tmp_path):
 def _seed() -> None:
     hashed = user_service.hash_password(PASSWORD)
     with db_session.session_scope() as session:
-        session.add_all([
-            # created_at 各不相同：列表按 created_at 倒序，同一秒内的行两侧都是不稳定序
-            SysUser(id=ADMIN_ID, username="root", password=hashed, status=1, role="admin",
-                    created_at=datetime(2026, 4, 1, 9, 0)),
-            SysUser(id=ALICE_ID, username="alice", nickname="小爱", password=hashed, status=1,
-                    role="user", created_at=datetime(2026, 4, 2, 9, 0)),
-            SysUser(id=BOB_ID, username="bob", password=hashed, status=0, role="user",
-                    phone="13800000000", created_at=datetime(2026, 4, 3, 9, 0)),
-            SysUser(id=GHOST_ID, username="ghost", password=hashed, status=1, role="user",
-                    created_at=datetime(2026, 4, 4, 9, 0)),
-        ])
+        session.add_all(
+            [
+                # created_at 各不相同：列表按 created_at 倒序，同一秒内的行两侧都是不稳定序
+                SysUser(
+                    id=ADMIN_ID,
+                    username="root",
+                    password=hashed,
+                    status=1,
+                    role="admin",
+                    created_at=datetime(2026, 4, 1, 9, 0),
+                ),
+                SysUser(
+                    id=ALICE_ID,
+                    username="alice",
+                    nickname="小爱",
+                    password=hashed,
+                    status=1,
+                    role="user",
+                    created_at=datetime(2026, 4, 2, 9, 0),
+                ),
+                SysUser(
+                    id=BOB_ID,
+                    username="bob",
+                    password=hashed,
+                    status=0,
+                    role="user",
+                    phone="13800000000",
+                    created_at=datetime(2026, 4, 3, 9, 0),
+                ),
+                SysUser(
+                    id=GHOST_ID,
+                    username="ghost",
+                    password=hashed,
+                    status=1,
+                    role="user",
+                    created_at=datetime(2026, 4, 4, 9, 0),
+                ),
+            ]
+        )
         trip = ItineraryMain(
-            id=TRIP_ID, user_id=ALICE_ID, title="杭州2日游", city="杭州", days=2, persons=2,
-            status=2, start_date=date(2026, 4, 20), end_date=date(2026, 4, 21),
-            budget=Decimal("3000.00"), created_at=datetime(2026, 4, 20, 8, 0))
-        draft = ItineraryMain(id=DRAFT_ID, user_id=BOB_ID, title="北京1日游", city="北京", days=1,
-                              persons=1, status=1, created_at=datetime(2026, 9, 14, 8, 0))
-        gone = ItineraryMain(id=GONE_ID, user_id=ALICE_ID, title="已删除", city="杭州", days=1,
-                             persons=1, status=2, deleted=1, created_at=datetime(2026, 4, 21, 8, 0))
+            id=TRIP_ID,
+            user_id=ALICE_ID,
+            title="杭州2日游",
+            city="杭州",
+            days=2,
+            persons=2,
+            status=2,
+            start_date=date(2026, 4, 20),
+            end_date=date(2026, 4, 21),
+            budget=Decimal("3000.00"),
+            created_at=datetime(2026, 4, 20, 8, 0),
+        )
+        draft = ItineraryMain(
+            id=DRAFT_ID,
+            user_id=BOB_ID,
+            title="北京1日游",
+            city="北京",
+            days=1,
+            persons=1,
+            status=1,
+            created_at=datetime(2026, 9, 14, 8, 0),
+        )
+        gone = ItineraryMain(
+            id=GONE_ID,
+            user_id=ALICE_ID,
+            title="已删除",
+            city="杭州",
+            days=1,
+            persons=1,
+            status=2,
+            deleted=1,
+            created_at=datetime(2026, 4, 21, 8, 0),
+        )
         session.add_all([trip, draft, gone])
         day = ItineraryDay(id=DAY_ID, itinerary_id=trip.id, day_no=1, generation_status="SUCCEEDED")
         session.add(day)
         session.flush()
-        session.add_all([
-            ItineraryItem(day_id=DAY_ID, itinerary_id=TRIP_ID, item_type="attraction",
-                          poi_name="西湖", cost=Decimal("0.00"), sort_no=0),
-            BudgetDetail(itinerary_id=TRIP_ID, category="门票", amount=Decimal("45.00"), item_count=1),
-            ItineraryChatMessage(itinerary_id=TRIP_ID, user_id=ALICE_ID, role="ai", content="管家说"),
-            ItineraryVersion(itinerary_id=TRIP_ID, user_id=ALICE_ID, version_no=1,
-                             operation="generate", summary="生成", snapshot_json='{"dayList":[]}'),
-        ])
+        session.add_all(
+            [
+                ItineraryItem(
+                    day_id=DAY_ID,
+                    itinerary_id=TRIP_ID,
+                    item_type="attraction",
+                    poi_name="西湖",
+                    cost=Decimal("0.00"),
+                    sort_no=0,
+                ),
+                BudgetDetail(itinerary_id=TRIP_ID, category="门票", amount=Decimal("45.00"), item_count=1),
+                ItineraryChatMessage(itinerary_id=TRIP_ID, user_id=ALICE_ID, role="ai", content="管家说"),
+                ItineraryVersion(
+                    itinerary_id=TRIP_ID,
+                    user_id=ALICE_ID,
+                    version_no=1,
+                    operation="generate",
+                    summary="生成",
+                    snapshot_json='{"dayList":[]}',
+                ),
+            ]
+        )
 
 
 def _login(username: str) -> TestClient:
@@ -141,6 +209,7 @@ def _app():
 
 # ---------- 管理面鉴权方向 ----------
 
+
 def test_admin_paths_require_admin_role(admin: TestClient, alice: TestClient) -> None:
     anon = TestClient(_app(), follow_redirects=False)
     # 匿名 401、登录但非管理员 403：与 Java SecurityConfig 的 /api/admin/** hasRole(ADMIN) 同
@@ -153,10 +222,18 @@ def test_admin_paths_require_admin_role(admin: TestClient, alice: TestClient) ->
 
 # ---------- 概览 ----------
 
+
 def test_stats_counts_are_the_java_calibration(admin: TestClient) -> None:
     data = admin.get("/api/admin/stats").json()["data"]
-    assert set(data) == {"totalUsers", "activeUsers", "disabledUsers", "totalItineraries",
-                         "todayNewUsers", "todayNewItineraries", "generatingItineraries"}
+    assert set(data) == {
+        "totalUsers",
+        "activeUsers",
+        "disabledUsers",
+        "totalItineraries",
+        "todayNewUsers",
+        "todayNewItineraries",
+        "generatingItineraries",
+    }
     # totalUsers = MAX(id) = 9 而不是 4 行：Java 有意反映"注册过的最大自增位"
     assert data["totalUsers"] == GHOST_ID
     assert data["activeUsers"] == 3 and data["disabledUsers"] == 1
@@ -170,10 +247,24 @@ def test_stats_today_boundary_is_local_midnight(admin: TestClient) -> None:
     """今日口径 = 应用本地时区零点起（Java 用 LocalDate.now().atStartOfDay()）。"""
     midnight = datetime.combine(date.today(), time.min)
     with db_session.session_scope() as session:
-        session.add(SysUser(username="fresh", password=user_service.hash_password(PASSWORD),
-                            status=1, role="user", created_at=midnight))
-        session.add(SysUser(username="late-yesterday", password=user_service.hash_password(PASSWORD),
-                            status=1, role="user", created_at=midnight - timedelta(microseconds=1)))
+        session.add(
+            SysUser(
+                username="fresh",
+                password=user_service.hash_password(PASSWORD),
+                status=1,
+                role="user",
+                created_at=midnight,
+            )
+        )
+        session.add(
+            SysUser(
+                username="late-yesterday",
+                password=user_service.hash_password(PASSWORD),
+                status=1,
+                role="user",
+                created_at=midnight - timedelta(microseconds=1),
+            )
+        )
     data = admin.get("/api/admin/stats").json()["data"]
     assert data["todayNewUsers"] == 1, "零点整计入、差 1 微秒不计入"
     assert data["activeUsers"] == 5
@@ -181,14 +272,23 @@ def test_stats_today_boundary_is_local_midnight(admin: TestClient) -> None:
 
 # ---------- 用户分页 ----------
 
+
 def test_user_page_shape_order_and_itinerary_counts(admin: TestClient) -> None:
     data = admin.get("/api/admin/users", params={"page": 1, "size": 2}).json()["data"]
     assert set(data) == {"records", "total", "size", "current", "pages"}
     assert (data["total"], data["size"], data["current"], data["pages"]) == (4, 2, 1, 2)
     # created_at 倒序：ghost(4/4) > bob(4/3) > alice(4/2) > root(4/1)
     assert [row["username"] for row in data["records"]] == ["ghost", "bob"]
-    assert set(data["records"][0]) == {"id", "username", "nickname", "phone", "status", "role",
-                                       "itineraryCount", "createdAt"}
+    assert set(data["records"][0]) == {
+        "id",
+        "username",
+        "nickname",
+        "phone",
+        "status",
+        "role",
+        "itineraryCount",
+        "createdAt",
+    }
     by_name = {row["username"]: row for row in data["records"]}
     # status 是 1/0 而不是 true/false：Java 侧字段是 Integer
     assert by_name["bob"]["status"] == 0 and by_name["ghost"]["status"] == 1
@@ -228,11 +328,13 @@ def test_user_keyword_matches_username_or_nickname(admin: TestClient) -> None:
     # LIKE '%o%'：bob/ghost/root 命中，alice 不命中（昵称也参与匹配）
     by_letter = admin.get("/api/admin/users", params={"keyword": "o"}).json()["data"]
     assert sorted(row["username"] for row in by_letter["records"]) == ["bob", "ghost", "root"]
-    assert admin.get("/api/admin/users", params={"keyword": "  "}).json()["data"]["total"] == 4, \
+    assert admin.get("/api/admin/users", params={"keyword": "  "}).json()["data"]["total"] == 4, (
         "空白关键词等价不过滤（Java 判 isBlank）"
+    )
 
 
 # ---------- 用户状态与删除 ----------
+
 
 def test_update_status_rejects_illegal_value_missing_user_and_self(admin: TestClient) -> None:
     illegal = admin.put("/api/admin/users/3/status/2")
@@ -273,11 +375,23 @@ def test_delete_user_is_soft_and_refuses_self(admin: TestClient) -> None:
 
 # ---------- 行程分页与删除 ----------
 
+
 def test_itinerary_page_filters_combine(admin: TestClient) -> None:
     all_rows = admin.get("/api/admin/itineraries").json()["data"]
     assert [row["title"] for row in all_rows["records"]] == ["北京1日游", "杭州2日游"]
-    assert set(all_rows["records"][0]) == {"id", "userId", "title", "city", "startDate", "endDate",
-                                           "days", "persons", "budget", "status", "createdAt"}
+    assert set(all_rows["records"][0]) == {
+        "id",
+        "userId",
+        "title",
+        "city",
+        "startDate",
+        "endDate",
+        "days",
+        "persons",
+        "budget",
+        "status",
+        "createdAt",
+    }
     by_city = admin.get("/api/admin/itineraries", params={"keyword": "杭州"}).json()["data"]
     assert [row["title"] for row in by_city["records"]] == ["杭州2日游"], "关键词命中 title 或 city"
     by_owner = admin.get("/api/admin/itineraries", params={"userId": ALICE_ID}).json()["data"]
@@ -301,14 +415,17 @@ def test_admin_delete_itinerary_cascades_without_a_snapshot(admin: TestClient, a
         main = session.get(ItineraryMain, TRIP_ID, execution_options={"include_deleted": True})
         assert main.deleted == 1, "主表软删"
         for model in (ItineraryDay, ItineraryItem, BudgetDetail):
-            rows = session.execute(
-                select(model).execution_options(include_deleted=True).where(
-                    model.itinerary_id == TRIP_ID)
-            ).scalars().all()
-            assert rows and all(row.deleted == 1 for row in rows), \
-                f"{model.__tablename__} 必须一并软删，否则留孤儿"
-        assert session.execute(select(ItineraryChatMessage)).scalars().all() == [], \
+            rows = (
+                session.execute(
+                    select(model).execution_options(include_deleted=True).where(model.itinerary_id == TRIP_ID)
+                )
+                .scalars()
+                .all()
+            )
+            assert rows and all(row.deleted == 1 for row in rows), f"{model.__tablename__} 必须一并软删，否则留孤儿"
+        assert session.execute(select(ItineraryChatMessage)).scalars().all() == [], (
             "chat 表无 deleted 列：Java 同样是物理删"
+        )
         versions = session.execute(select(ItineraryVersion)).scalars().all()
         assert [v.operation for v in versions] == ["generate"], "管理员删除不做版本快照（归属校验在快照侧）"
     assert cache_store.get_json(itinerary_query.DETAIL_CACHE_NAMESPACE, cache_key) is None
@@ -320,16 +437,27 @@ def test_admin_delete_itinerary_cascades_without_a_snapshot(admin: TestClient, a
 # ---------- Agent 指标与 LLM 用量 ----------
 
 METRICS_UNAVAILABLE = {
-    "agentAvailable": False, "runs": 0, "successes": 0, "failures": 0, "degraded_runs": 0,
-    "llm_calls": 0, "tool_calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
-    "success_rate": 0.0, "failure_rate": 0.0, "degraded_rate": 0.0,
-    "avg_event_latency_ms": 0.0, "recent_failures": [],
+    "agentAvailable": False,
+    "runs": 0,
+    "successes": 0,
+    "failures": 0,
+    "degraded_runs": 0,
+    "llm_calls": 0,
+    "tool_calls": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "success_rate": 0.0,
+    "failure_rate": 0.0,
+    "degraded_rate": 0.0,
+    "avg_event_latency_ms": 0.0,
+    "recent_failures": [],
 }
 
 
 def test_agent_metrics_reports_in_process_snapshot(admin: TestClient, monkeypatch) -> None:
-    monkeypatch.setattr(admin_service.metrics, "snapshot",
-                        lambda: {"runs": 5, "successes": 4, "failures": 1, "recent_failures": []})
+    monkeypatch.setattr(
+        admin_service.metrics, "snapshot", lambda: {"runs": 5, "successes": 4, "failures": 1, "recent_failures": []}
+    )
     data = admin.get("/api/admin/agent-metrics").json()["data"]
     assert data["agentAvailable"] is True and data["runs"] == 5
 
@@ -351,15 +479,13 @@ def test_llm_usage_matches_the_agent_endpoint_payload(admin: TestClient) -> None
     store.record("clarify", "qwen-turbo", 10, 2, 100, False, "timeout")
 
     data = admin.get("/api/admin/llm-usage", params={"range": "1h"}).json()["data"]
-    assert set(data) == {"range", "bucket", "summary", "by_scene", "by_model", "timeline", "calls",
-                         "agentAvailable"}
+    assert set(data) == {"range", "bucket", "summary", "by_scene", "by_model", "timeline", "calls", "agentAvailable"}
     assert data["agentAvailable"] is True
     assert data["range"] == "1h" and data["bucket"] == 60, "1h 按分钟分桶"
     assert data["summary"]["calls"] == 2 and data["summary"]["failures"] == 1
     assert [row["scene"] for row in data["by_scene"]] == ["generate", "clarify"]
     assert data["calls"]["total"] == 2
-    assert {row["scene"]: row["success"] for row in data["calls"]["records"]} == {
-        "generate": True, "clarify": False}
+    assert {row["scene"]: row["success"] for row in data["calls"]["records"]} == {"generate": True, "clarify": False}
 
     # 同一份取数：内部 agent 端点也必须给归一化后的窗口（M6 把这段逻辑收敛进 usage_store）
     payload = agent_api.agent_usage(range="7d").data
@@ -387,8 +513,21 @@ def test_llm_usage_limits_and_degraded_shape(admin: TestClient, monkeypatch) -> 
     downgraded = admin.get("/api/admin/llm-usage", params={"range": "7d"}).json()["data"]
     # 兜底里 range 原样回显入参、bucket 恒为 3600（Java 既有形状，前端只读 agentAvailable）
     assert downgraded == {
-        "agentAvailable": False, "range": "7d", "bucket": 3600,
-        "summary": {"calls": 0, "successes": 0, "failures": 0, "success_rate": 0.0,
-                    "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
-                    "avg_duration_ms": 0.0},
-        "by_scene": [], "by_model": [], "timeline": [], "calls": {"total": 0, "records": []}}
+        "agentAvailable": False,
+        "range": "7d",
+        "bucket": 3600,
+        "summary": {
+            "calls": 0,
+            "successes": 0,
+            "failures": 0,
+            "success_rate": 0.0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "avg_duration_ms": 0.0,
+        },
+        "by_scene": [],
+        "by_model": [],
+        "timeline": [],
+        "calls": {"total": 0, "records": []},
+    }

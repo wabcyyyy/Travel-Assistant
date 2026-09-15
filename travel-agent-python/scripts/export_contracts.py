@@ -13,7 +13,7 @@ from pathlib import Path
 # 允许脚本独立运行（sys.path[0] 是 scripts/，需补模块根）
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.schemas.stream_events import export_schema  # noqa: E402
+from app.schemas.stream_events import export_schema
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = REPO_ROOT / "contracts" / "stream_events.schema.json"
@@ -21,8 +21,7 @@ OUTPUT = REPO_ROOT / "contracts" / "stream_events.schema.json"
 
 def main() -> None:
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(json.dumps(export_schema(), ensure_ascii=False, indent=2) + "\n",
-                      encoding="utf-8")
+    OUTPUT.write_text(json.dumps(export_schema(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"exported {OUTPUT}")
 
 

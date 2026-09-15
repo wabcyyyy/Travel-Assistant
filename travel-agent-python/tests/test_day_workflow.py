@@ -89,12 +89,27 @@ def test_day_graph_retries_when_route_gap_is_too_short(monkeypatch):
     def fake_once(req, *, force_fallback=False):
         calls.append(req.feedback)
         if len(calls) == 1:
-            return DailyPlan(day_no=1, items=[
-                TripItem(item_type="attraction", poi_name="远点A", start_time="09:00", end_time="10:00",
-                         latitude=30.0, longitude=120.0),
-                TripItem(item_type="attraction", poi_name="远点B", start_time="10:30", end_time="12:00",
-                         latitude=30.2, longitude=120.0),
-            ]), "llm"
+            return DailyPlan(
+                day_no=1,
+                items=[
+                    TripItem(
+                        item_type="attraction",
+                        poi_name="远点A",
+                        start_time="09:00",
+                        end_time="10:00",
+                        latitude=30.0,
+                        longitude=120.0,
+                    ),
+                    TripItem(
+                        item_type="attraction",
+                        poi_name="远点B",
+                        start_time="10:30",
+                        end_time="12:00",
+                        latitude=30.2,
+                        longitude=120.0,
+                    ),
+                ],
+            ), "llm"
         return _plan(), "llm"
 
     monkeypatch.setattr(day_workflow, "_generate_day_once", fake_once)

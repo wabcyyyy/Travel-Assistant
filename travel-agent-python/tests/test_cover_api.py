@@ -55,8 +55,11 @@ def client(tmp_path, uploads_dir, monkeypatch) -> TestClient:
 
     monkeypatch.setattr(deps.settings, "jwt_secret", SIGNING_MATERIAL)
     monkeypatch.setattr(deps.token_revocation, "is_revoked", lambda _t: False)
-    monkeypatch.setattr(deps.user_repository, "find_by_username",
-                        lambda _u: {"id": 42, "username": "alice", "role": "user", "status": 1})
+    monkeypatch.setattr(
+        deps.user_repository,
+        "find_by_username",
+        lambda _u: {"id": 42, "username": "alice", "role": "user", "status": 1},
+    )
 
     app = FastAPI()
     install_exception_handlers(app)
@@ -107,12 +110,13 @@ class _FakeClient:
         self._payload = payload
         self._calls = calls
 
-    def get(self, url: str, **kwargs) -> _FakeResponse:  # noqa: ANN003
+    def get(self, url: str, **kwargs) -> _FakeResponse:
         self._calls.append(url)
         return _FakeResponse(self._payload)
 
 
 # ---------- 搜索代理 ----------
+
 
 def test_search_requires_key(client: TestClient, monkeypatch) -> None:
     monkeypatch.setattr(cover_service.settings, "unsplash_access_key", "")
@@ -154,7 +158,7 @@ def test_search_maps_items_and_caches(client: TestClient, monkeypatch) -> None:
 
 def test_search_upstream_failure_is_502(client: TestClient, monkeypatch) -> None:
     class _Boom:
-        def get(self, url, **kwargs):  # noqa: ANN001, ANN003
+        def get(self, url, **kwargs):
             raise RuntimeError("upstream down")
 
     monkeypatch.setattr(cover_service, "image_client", lambda: _Boom())
@@ -164,18 +168,22 @@ def test_search_upstream_failure_is_502(client: TestClient, monkeypatch) -> None
 
 # ---------- 设定封面（unsplash snapshot） ----------
 
+
 def test_set_unsplash_cover_snapshots_locally(client: TestClient, uploads_dir: Path, monkeypatch) -> None:
     trip_id = _seed_trip()
-    monkeypatch.setattr(cover_service, "resolve_unsplash_photo", lambda ref: {
-        "url": "https://images.unsplash.com/photo-x",
-        "author": "Ada",
-        "authorUrl": "https://unsplash.com/@ada",
-        "downloadTrackUrl": None,  # 不触发 download trigger 的联网分支
-    })
+    monkeypatch.setattr(
+        cover_service,
+        "resolve_unsplash_photo",
+        lambda ref: {
+            "url": "https://images.unsplash.com/photo-x",
+            "author": "Ada",
+            "authorUrl": "https://unsplash.com/@ada",
+            "downloadTrackUrl": None,  # 不触发 download trigger 的联网分支
+        },
+    )
     monkeypatch.setattr(cover_service, "_download_cover", lambda url: _jpeg_bytes())
     evicted: list[tuple[int, int]] = []
-    monkeypatch.setattr(cover_service.itinerary_query, "evict_detail",
-                        lambda uid, iid: evicted.append((uid, iid)))
+    monkeypatch.setattr(cover_service.itinerary_query, "evict_detail", lambda uid, iid: evicted.append((uid, iid)))
 
     response = client.post(
         f"/api/itinerary/{trip_id}/cover",
@@ -215,21 +223,18 @@ def test_download_cover_rejects_non_unsplash_host() -> None:
 
 def test_unsplash_cover_requires_id(client: TestClient) -> None:
     trip_id = _seed_trip()
-    response = client.post(
-        f"/api/itinerary/{trip_id}/cover", json={"source": "unsplash"}, headers=_headers()
-    )
+    response = client.post(f"/api/itinerary/{trip_id}/cover", json={"source": "unsplash"}, headers=_headers())
     assert response.status_code == 400
 
 
 def test_cover_unknown_source_is_400(client: TestClient) -> None:
     trip_id = _seed_trip()
-    response = client.post(
-        f"/api/itinerary/{trip_id}/cover", json={"source": "pexels"}, headers=_headers()
-    )
+    response = client.post(f"/api/itinerary/{trip_id}/cover", json={"source": "pexels"}, headers=_headers())
     assert response.status_code == 400
 
 
 # ---------- 上传 ----------
+
 
 def test_upload_cover_ok(client: TestClient, uploads_dir: Path) -> None:
     trip_id = _seed_trip()
@@ -278,6 +283,7 @@ def test_upload_requires_auth(client: TestClient) -> None:
 
 # ---------- 恢复默认 ----------
 
+
 def test_default_clears_columns_and_keeps_file(client: TestClient, uploads_dir: Path) -> None:
     trip_id = _seed_trip()
     uploaded = client.post(
@@ -287,9 +293,7 @@ def test_default_clears_columns_and_keeps_file(client: TestClient, uploads_dir: 
     ).json()["data"]
     stored = uploads_dir / uploaded["coverUrl"].removeprefix("/api/uploads/")
 
-    response = client.post(
-        f"/api/itinerary/{trip_id}/cover", json={"source": "default"}, headers=_headers()
-    )
+    response = client.post(f"/api/itinerary/{trip_id}/cover", json={"source": "default"}, headers=_headers())
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["coverUrl"] is None and data["coverSource"] is None
@@ -301,6 +305,7 @@ def test_default_clears_columns_and_keeps_file(client: TestClient, uploads_dir: 
 
 
 # ---------- 静态访问（§6.4） ----------
+
 
 def test_uploads_served_anonymously_with_uuid_cache(client: TestClient, uploads_dir: Path) -> None:
     trip_id = _seed_trip()

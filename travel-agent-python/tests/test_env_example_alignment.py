@@ -48,7 +48,7 @@ def _extract_config_defaults(source: str) -> dict[str, tuple[str, Any, str | Non
                 continue
             env_name = call.args[0].value
             second = call.args[1] if len(call.args) > 1 else None
-            if isinstance(second, ast.Constant):
+            if isinstance(second, ast.Constant):  # noqa: SIM108 -- 嵌套三元比 if/else 链更不可读，保持分支写法
                 raw = second.value
             else:
                 raw = False if call.func.id == "_get_bool" else None
@@ -81,9 +81,9 @@ def test_env_example_covers_all_non_secret_config_keys():
     assert defaults, "未能从 config.py 解析出任何配置键（解析逻辑可能失效）"
     active, commented = _parse_example(EXAMPLE_PATH.read_text(encoding="utf-8"))
     missing = sorted(
-        key for key in defaults
-        if not any(mark in key.upper() for mark in _SECRET_MARKS)
-        and key not in active and key not in commented
+        key
+        for key in defaults
+        if not any(mark in key.upper() for mark in _SECRET_MARKS) and key not in active and key not in commented
     )
     assert not missing, f".env.example 缺少以下 config 键（活动行或 # KEY= 注释行均可）: {missing}"
 

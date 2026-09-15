@@ -15,18 +15,16 @@
 - app.agent：各业务子模块；app.schemas：请求/响应模型；app.common.config：鉴权配置。
 """
 
-from fastapi import APIRouter, Depends, Header, HTTPException
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
-
 import asyncio
 import functools
 import json
 import logging
 import queue
 import threading
-import time
 from collections.abc import AsyncIterator, Callable, Iterator
 
+from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import ValidationError
 
 from app.agent.butler import run_butler_note, run_poi_intros
@@ -34,24 +32,43 @@ from app.agent.chat_draft import run_chat_turn
 from app.agent.city_guide import run_city_guide
 from app.agent.clarify import run_clarify
 from app.agent.day_stream import run_generate_day, run_plan_context
-from app.agent.nl_edit import run_edit_ops
-from app.agent.trip_stream import run_generate_trip_stream
-from app.agent.workflow import run_adjust, run_generate
 from app.agent.local_replan import run_local_replan
-from app.agent.tools import find_nearby_pois
-from app.agent.tool_registry import registry
-from app.agent.usage_store import usage_store
-from app.schemas.common import ApiResponse
-from app.schemas.agent_ops import (ButlerNoteRequest, ButlerNoteResponse, CityGuideRequest,
-                                   CityGuideResponse, PoiIntrosRequest, PoiIntrosResponse,
-                                   PoiNearbyItem, PoiNearbyRequest, PoiNearbyResponse)
-from app.schemas.stream_events import ErrorEvent, StartEvent, to_wire
-from app.schemas.trip import (AdjustRequest, AdjustResponse, ChatTurnRequest, ChatTurnResponse,
-                              ClarifyRequest, ClarifyResponse, DailyPlan, EditOp, EditOpRequest,
-                              GenerateDayRequest, GenerateRequest, GenerateResponse,
-                              PlanContextRequest, LocalReplanRequest)
-from app.common.config import settings
+from app.agent.nl_edit import run_edit_ops
 from app.agent.observability import metrics, observe_run, scene, use_scene
+from app.agent.tool_registry import registry
+from app.agent.tools import find_nearby_pois
+from app.agent.trip_stream import run_generate_trip_stream
+from app.agent.usage_store import usage_store
+from app.agent.workflow import run_adjust, run_generate
+from app.common.config import settings
+from app.schemas.agent_ops import (
+    ButlerNoteRequest,
+    ButlerNoteResponse,
+    CityGuideRequest,
+    CityGuideResponse,
+    PoiIntrosRequest,
+    PoiIntrosResponse,
+    PoiNearbyItem,
+    PoiNearbyRequest,
+    PoiNearbyResponse,
+)
+from app.schemas.common import ApiResponse
+from app.schemas.stream_events import ErrorEvent, StartEvent, to_wire
+from app.schemas.trip import (
+    AdjustRequest,
+    AdjustResponse,
+    ChatTurnRequest,
+    ChatTurnResponse,
+    ClarifyRequest,
+    ClarifyResponse,
+    DailyPlan,
+    EditOpRequest,
+    GenerateDayRequest,
+    GenerateRequest,
+    GenerateResponse,
+    LocalReplanRequest,
+    PlanContextRequest,
+)
 
 router = APIRouter()
 
@@ -64,8 +81,7 @@ _STREAM_QUEUE_MAXSIZE = 256
 _STREAM_POLL_SECONDS = 0.5
 
 
-async def _bridge_worker_events(
-        producer: Callable[[threading.Event], Iterator[dict]]) -> AsyncIterator[str]:
+async def _bridge_worker_events(producer: Callable[[threading.Event], Iterator[dict]]) -> AsyncIterator[str]:
     """worker 线程 → 异步响应生成器 的桥接（有界队列 + 断连即取消）。
 
     生成跑在独立 worker 线程（contextvars 完整，见 generate-stream docstring），
@@ -94,7 +110,7 @@ async def _bridge_worker_events(
             for event in producer(cancel):
                 # 取消后事件不再投递；生成端会在下个检查点自行退出
                 _put(event)
-        except Exception:  # noqa: BLE001 - 生产者兜底：哨兵必达，消费端不悬挂
+        except Exception:
             logger.exception("generate-stream producer crashed")
         finally:
             _put(sentinel)
@@ -104,8 +120,7 @@ async def _bridge_worker_events(
     try:
         while True:
             try:
-                item = await loop.run_in_executor(
-                    None, functools.partial(events.get, timeout=_STREAM_POLL_SECONDS))
+                item = await loop.run_in_executor(None, functools.partial(events.get, timeout=_STREAM_POLL_SECONDS))
             except queue.Empty:
                 continue
             if item is sentinel:
@@ -157,8 +172,9 @@ def agent_metrics(_auth: None = Depends(require_internal_token)) -> ApiResponse[
 
 
 @router.get("/v1/usage")
-def agent_usage(range: str = "24h", limit: int = 200, offset: int = 0,
-                _auth: None = Depends(require_internal_token)) -> ApiResponse[dict]:
+def agent_usage(
+    range: str = "24h", limit: int = 200, offset: int = 0, _auth: None = Depends(require_internal_token)
+) -> ApiResponse[dict]:
     """SQLite 落库的 LLM 用量历史（汇总/场景/模型/趋势/明细），重启不清零。
 
     时间窗与分桶规则在 `usage_store.report` 里，与 `/api/admin/llm-usage` 同源。
@@ -178,8 +194,7 @@ def agent_tools(_auth: None = Depends(require_internal_token)) -> ApiResponse[li
 
 
 @router.get("/v1/runs/{run_id}")
-def agent_run_trace(run_id: str,
-                    _auth: None = Depends(require_internal_token)) -> ApiResponse[dict]:
+def agent_run_trace(run_id: str, _auth: None = Depends(require_internal_token)) -> ApiResponse[dict]:
     """查询最近一次运行的脱敏轨迹；轨迹过期后返回 404。"""
     trace = metrics.get_trace(run_id)
     if trace is None:
@@ -189,9 +204,9 @@ def agent_run_trace(run_id: str,
 
 @router.post("/v1/generate")
 @scene("generate")
-def generate(req: GenerateRequest,
-             x_request_id: str | None = Header(default=None),
-             _auth: None = Depends(require_internal_token)) -> ApiResponse[GenerateResponse]:
+def generate(
+    req: GenerateRequest, x_request_id: str | None = Header(default=None), _auth: None = Depends(require_internal_token)
+) -> ApiResponse[GenerateResponse]:
     trace = None
     try:
         with observe_run(request_id=x_request_id) as trace:
@@ -201,10 +216,9 @@ def generate(req: GenerateRequest,
             content=payload.model_dump(mode="json", by_alias=True),
             headers={"X-Agent-Run-ID": trace.run_id, "X-Request-ID": trace.request_id},
         )
-    except Exception as e:  # noqa: BLE001 - 统一转安全错误信封
+    except Exception as e:
         payload = _fail_payload(e, "generate")
-        headers = ({"X-Agent-Run-ID": trace.run_id, "X-Request-ID": trace.request_id}
-                   if trace is not None else None)
+        headers = {"X-Agent-Run-ID": trace.run_id, "X-Request-ID": trace.request_id} if trace is not None else None
         return JSONResponse(content=payload.model_dump(mode="json", by_alias=True), headers=headers)
 
 
@@ -238,15 +252,16 @@ def edit_ops(req: EditOpRequest, _auth: None = Depends(require_internal_token)) 
 @scene("assist")
 def plan_context(req: PlanContextRequest, _auth: None = Depends(require_internal_token)) -> ApiResponse[dict]:
     # itinerary_id 透传给研究链路发布进度事件；旧调用方不传则不发布
-    return ApiResponse.ok(run_plan_context(req.city, req.preferences,
-                                           itinerary_id=req.itinerary_id))
+    return ApiResponse.ok(run_plan_context(req.city, req.preferences, itinerary_id=req.itinerary_id))
 
 
 @router.post("/v1/generate-day")
 @scene("generate")
-def generate_day(req: GenerateDayRequest,
-                 x_request_id: str | None = Header(default=None),
-                 _auth: None = Depends(require_internal_token)) -> ApiResponse[DailyPlan]:
+def generate_day(
+    req: GenerateDayRequest,
+    x_request_id: str | None = Header(default=None),
+    _auth: None = Depends(require_internal_token),
+) -> ApiResponse[DailyPlan]:
     trace = None
     try:
         with observe_run(request_id=req.request_id or x_request_id, action_id=req.action_id) as trace:
@@ -256,18 +271,19 @@ def generate_day(req: GenerateDayRequest,
             content=payload.model_dump(mode="json", by_alias=True),
             headers={"X-Agent-Run-ID": trace.run_id, "X-Request-ID": trace.request_id},
         )
-    except Exception as e:  # noqa: BLE001 - 统一转安全错误信封
+    except Exception as e:
         payload = _fail_payload(e, "generate-day")
-        headers = ({"X-Agent-Run-ID": trace.run_id, "X-Request-ID": trace.request_id}
-                   if trace is not None else None)
+        headers = {"X-Agent-Run-ID": trace.run_id, "X-Request-ID": trace.request_id} if trace is not None else None
         return JSONResponse(content=payload.model_dump(mode="json", by_alias=True), headers=headers)
 
 
 @router.post("/v1/generate-stream")
 @scene("generate")
-def generate_trip_stream(req: GenerateDayRequest,
-                         x_request_id: str | None = Header(default=None),
-                         _auth: None = Depends(require_internal_token)) -> StreamingResponse:
+def generate_trip_stream(
+    req: GenerateDayRequest,
+    x_request_id: str | None = Header(default=None),
+    _auth: None = Depends(require_internal_token),
+) -> StreamingResponse:
     """整段流式生成：JSON Lines 逐行产出 start / day / day_patch / suggestions / done / error 事件。
 
     与 /v1/generate 的区别：LLM 边流边解析、逐天落地即时下发，Java 逐天
@@ -281,44 +297,48 @@ def generate_trip_stream(req: GenerateDayRequest,
     事件经有界队列转交异步响应生成器（见 _bridge_worker_events）；
     客户端断开即取消生成：在途 LLM 流被掐断，token 停止消耗。
     """
+
     def _producer(cancel: threading.Event) -> Iterator[dict]:
         try:
             with use_scene("generate"), observe_run(request_id=req.request_id or x_request_id) as trace:
                 yield to_wire(StartEvent(type="start", run_id=trace.run_id))
                 yield from run_generate_trip_stream(req, cancel=cancel)
-        except Exception as e:  # noqa: BLE001 - 统一转安全错误行，由 Java 降级修复
+        except Exception as e:
             logger.warning("generate-stream failed: %s", e)
             yield to_wire(ErrorEvent(type="error", message="生成服务暂不可用，请稍后重试"))
 
     return StreamingResponse(
-        _bridge_worker_events(_producer), media_type="application/x-ndjson",
+        _bridge_worker_events(_producer),
+        media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
 @router.post("/v1/replan-local")
 @scene("generate")
-def replan_local(req: LocalReplanRequest,
-                 x_request_id: str | None = Header(default=None),
-                 _auth: None = Depends(require_internal_token)) -> ApiResponse[dict]:
+def replan_local(
+    req: LocalReplanRequest,
+    x_request_id: str | None = Header(default=None),
+    _auth: None = Depends(require_internal_token),
+) -> ApiResponse[dict]:
     trace = None
     try:
         with observe_run(request_id=req.request_id or x_request_id, action_id=req.action_id) as trace:
             result = run_local_replan(req)
         payload = ApiResponse.ok(result)
-        return JSONResponse(content=payload.model_dump(mode="json", by_alias=True),
-                            headers={"X-Agent-Run-ID": trace.run_id, "X-Request-ID": trace.request_id})
-    except Exception as exc:  # noqa: BLE001 - 统一转安全错误信封
+        return JSONResponse(
+            content=payload.model_dump(mode="json", by_alias=True),
+            headers={"X-Agent-Run-ID": trace.run_id, "X-Request-ID": trace.request_id},
+        )
+    except Exception as exc:
         payload = _fail_payload(exc, "replan-local")
-        headers = ({"X-Agent-Run-ID": trace.run_id, "X-Request-ID": trace.request_id}
-                   if trace is not None else None)
+        headers = {"X-Agent-Run-ID": trace.run_id, "X-Request-ID": trace.request_id} if trace is not None else None
         return JSONResponse(content=payload.model_dump(mode="json", by_alias=True), headers=headers)
 
 
 @router.post("/v1/chat-turn")
 @scene("chat")
-def chat_turn(req: ChatTurnRequest,
-              _auth: None = Depends(require_internal_token)) -> ApiResponse[ChatTurnResponse]:
+def chat_turn(req: ChatTurnRequest, _auth: None = Depends(require_internal_token)) -> ApiResponse[ChatTurnResponse]:
     try:
         return ApiResponse.ok(run_chat_turn(req))
     except ValueError as e:
@@ -327,8 +347,9 @@ def chat_turn(req: ChatTurnRequest,
 
 @router.post("/v1/butler-note")
 @scene("assist")
-def butler_note(req: ButlerNoteRequest,
-                _auth: None = Depends(require_internal_token)) -> ApiResponse[ButlerNoteResponse]:
+def butler_note(
+    req: ButlerNoteRequest, _auth: None = Depends(require_internal_token)
+) -> ApiResponse[ButlerNoteResponse]:
     try:
         # model_dump() 输出 snake_case 键，与 run_butler_note 读取的键一致
         return ApiResponse.ok(ButlerNoteResponse(note=run_butler_note(req.model_dump())))
@@ -339,22 +360,19 @@ def butler_note(req: ButlerNoteRequest,
 
 @router.post("/v1/poi-intros")
 @scene("assist")
-def poi_intros(req: PoiIntrosRequest,
-               _auth: None = Depends(require_internal_token)) -> ApiResponse[PoiIntrosResponse]:
+def poi_intros(req: PoiIntrosRequest, _auth: None = Depends(require_internal_token)) -> ApiResponse[PoiIntrosResponse]:
     try:
         # Pydantic 已保证 list[str]；沿用历史行为过滤空名
         names = [n for n in req.names if n]
         # M3-②：intent 透传进介绍 Prompt（为空时由 butler 层降级为口碑/地理理由）
-        return ApiResponse.ok(PoiIntrosResponse(
-            intros=run_poi_intros(req.city, names, intent=req.intent)))
+        return ApiResponse.ok(PoiIntrosResponse(intros=run_poi_intros(req.city, names, intent=req.intent)))
     except Exception:
         return ApiResponse.ok(PoiIntrosResponse())
 
 
 @router.post("/v1/poi-nearby")
 @scene("assist")
-def poi_nearby(req: PoiNearbyRequest,
-               _auth: None = Depends(require_internal_token)) -> ApiResponse[PoiNearbyResponse]:
+def poi_nearby(req: PoiNearbyRequest, _auth: None = Depends(require_internal_token)) -> ApiResponse[PoiNearbyResponse]:
     """同城权威 POI 近邻（轻量 GraphRAG）：名称解析坐标或直接传坐标。
 
     坐标缺失时返回空列表——附近推荐只使用权威库真实坐标，不伪造。
@@ -378,8 +396,7 @@ def poi_nearby(req: PoiNearbyRequest,
 
 @router.post("/v1/city-guide")
 @scene("assist")
-def city_guide(req: CityGuideRequest,
-               _auth: None = Depends(require_internal_token)) -> ApiResponse[CityGuideResponse]:
+def city_guide(req: CityGuideRequest, _auth: None = Depends(require_internal_token)) -> ApiResponse[CityGuideResponse]:
     try:
         # by_alias=True：user_input 字段 dump 成 wire 键 "input"，与 run_city_guide 读取的键一致
         data = run_city_guide(req.model_dump(by_alias=True))

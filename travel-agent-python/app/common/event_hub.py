@@ -40,7 +40,7 @@ CLOSED = object()
 class Subscription:
     """一条 SSE 连接。生产端可能在任意线程，消费端固定在自己的事件循环上。"""
 
-    __slots__ = ("itinerary_id", "loop", "open", "_queue")
+    __slots__ = ("_queue", "itinerary_id", "loop", "open")
 
     def __init__(self, itinerary_id: int, loop: asyncio.AbstractEventLoop) -> None:
         self.itinerary_id = itinerary_id
@@ -53,7 +53,7 @@ class Subscription:
         wait = HEARTBEAT_SECONDS if timeout is None else timeout
         try:
             return await asyncio.wait_for(self._queue.get(), wait)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return None if self.open else CLOSED
 
     def offer(self, envelope: str) -> bool:

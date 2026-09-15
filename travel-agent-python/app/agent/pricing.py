@@ -47,10 +47,7 @@ def query_live_price(city: str, hotel_name: str, checkin_date: str | None) -> di
     """
     try:
         client = get_llm_client()
-        question = (
-            f"{city}「{hotel_name}」标准房型 目前一晚 网络挂牌价大约多少人民币？"
-            "只报一个有代表性的每晚价格。"
-        )
+        question = f"{city}「{hotel_name}」标准房型 目前一晚 网络挂牌价大约多少人民币？只报一个有代表性的每晚价格。"
         raw = client.complete(
             question,
             system_prompt=_HOTEL_SYSTEM_PROMPT,
@@ -58,7 +55,7 @@ def query_live_price(city: str, hotel_name: str, checkin_date: str | None) -> di
             enable_search=True,
         )
         return _parse_price_json(raw, "price_per_night")
-    except Exception as e:  # noqa: BLE001 —— 定价失败不允许影响主流程
+    except Exception as e:
         logger.warning("live hotel price search failed (%s/%s): %s", city, hotel_name, e)
         return None
 
@@ -68,8 +65,7 @@ def query_live_food_price(city: str, restaurant_name: str) -> dict | None:
     try:
         client = get_llm_client()
         question = (
-            f"{city}「{restaurant_name}」正常一餐人均消费大约多少人民币？"
-            "只报一个有代表性的人均价格，已换算人民币。"
+            f"{city}「{restaurant_name}」正常一餐人均消费大约多少人民币？只报一个有代表性的人均价格，已换算人民币。"
         )
         raw = client.complete(
             question,
@@ -78,6 +74,6 @@ def query_live_food_price(city: str, restaurant_name: str) -> dict | None:
             enable_search=True,
         )
         return _parse_price_json(raw, "price_per_person")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.warning("live food price search failed (%s/%s): %s", city, restaurant_name, e)
         return None

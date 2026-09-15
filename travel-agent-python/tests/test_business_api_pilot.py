@@ -18,8 +18,8 @@ from app.api.business.itinerary import router
 from app.common import token_revocation
 from app.common.envelope import ApiError, install_exception_handlers, ok
 from app.common.jwt_compat import encode_token
-from app.db.models import Base, PoiKnowledge
 from app.db import session as db_session
+from app.db.models import Base, PoiKnowledge
 
 SIGNING_MATERIAL = "example-only-hs256-signing-material-32b"  # 测试占位串，非真实凭据
 
@@ -30,14 +30,21 @@ def client(tmp_path, monkeypatch) -> TestClient:
     Base.metadata.create_all(engine)
     db_session.init_engine(engine, sessionmaker(bind=engine, expire_on_commit=False))
     with db_session.session_scope() as s:
-        s.add_all([PoiKnowledge(city="杭州", name="西湖", category="attraction"),
-                   PoiKnowledge(city="北京", name="故宫", category="attraction"),
-                   PoiKnowledge(city="杭州", name="灵隐寺", category="attraction")])
+        s.add_all(
+            [
+                PoiKnowledge(city="杭州", name="西湖", category="attraction"),
+                PoiKnowledge(city="北京", name="故宫", category="attraction"),
+                PoiKnowledge(city="杭州", name="灵隐寺", category="attraction"),
+            ]
+        )
 
     monkeypatch.setattr(deps.settings, "jwt_secret", SIGNING_MATERIAL)
     monkeypatch.setattr(deps.token_revocation, "is_revoked", lambda _t: False)
-    monkeypatch.setattr(deps.user_repository, "find_by_username",
-                        lambda _u: {"id": 42, "username": "alice", "role": "user", "status": 1})
+    monkeypatch.setattr(
+        deps.user_repository,
+        "find_by_username",
+        lambda _u: {"id": 42, "username": "alice", "role": "user", "status": 1},
+    )
 
     app = FastAPI()
     install_exception_handlers(app)
@@ -83,7 +90,7 @@ def test_api_error_maps_status_into_both_http_and_body() -> None:
     install_exception_handlers(app)
 
     @app.get("/_probe")
-    def _probe():  # noqa: ANN201
+    def _probe():
         raise ApiError(404, "行程不存在")
 
     response = TestClient(app).get("/_probe")

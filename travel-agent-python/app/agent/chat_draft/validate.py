@@ -13,28 +13,21 @@
 依赖：无内部依赖（叶子模块）。
 """
 
-import re
 import json
-from copy import deepcopy
-from datetime import date, timedelta
-from difflib import SequenceMatcher
 import logging
+import re
+from itertools import pairwise
 
-from app.agent import tools
-from app.agent.day_stream import run_generate_day, run_plan_context
-from app.common.config import settings
-from app.common.llm_client import get_llm_client
-from app.common.season import season_factor, season_label
 from app.schemas.trip import (
-    ChatTurnRequest, ChatTurnResponse, GenerateDayRequest, HotelOption, HotelRoomOption,
+    ChatTurnRequest,
 )
 
 logger = logging.getLogger(__name__)
 
 
-
 class DecisionJsonError(ValueError):
     """模型决策不是可安全执行的 JSON；避免把解析器英文异常暴露给用户。"""
+
 
 def _parse_json_object(raw: str) -> dict:
     text = raw.strip()
@@ -44,12 +37,13 @@ def _parse_json_object(raw: str) -> dict:
     if start < 0 or end < start:
         raise ValueError("LLM 未返回 JSON 对象")
     try:
-        data = json.loads(text[start:end + 1])
+        data = json.loads(text[start : end + 1])
     except json.JSONDecodeError as exc:
         raise DecisionJsonError("模型返回的结构化结果不完整") from exc
     if not isinstance(data, dict):
         raise ValueError("LLM 决策不是 JSON 对象")
     return data
+
 
 def _clock_minutes(value: object) -> int | None:
     match = re.fullmatch(r"\s*(\d{1,2}):(\d{2})(?::\d{2})?\s*", str(value or ""))
@@ -58,10 +52,12 @@ def _clock_minutes(value: object) -> int | None:
     hour, minute = int(match.group(1)), int(match.group(2))
     return hour * 60 + minute if 0 <= hour <= 23 and 0 <= minute <= 59 else None
 
+
 def _format_clock(minutes: int) -> str | None:
     if not 0 <= minutes < 24 * 60:
         return None
     return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
 
 def _plan_conflict(plans: list[dict]) -> tuple[int, str, str] | None:
     """返回首个日内时间冲突；酒店入住点不视为占用型活动。"""
@@ -79,21 +75,28 @@ def _plan_conflict(plans: list[dict]) -> tuple[int, str, str] | None:
                 continue
             intervals.append((start, end, str(item.get("poi_name") or "未命名安排")))
         intervals.sort()
-        for previous, current in zip(intervals, intervals[1:]):
+        for previous, current in pairwise(intervals):
             if current[0] < previous[1]:
                 return day_no, previous[2], current[2]
     return None
 
+
 def _substantive_plan_signature(plans: list[dict]) -> list[tuple]:
     return [
         (
-            int(plan.get("day_no") or 0), item_index,
-            str(item.get("id") or ""), str(item.get("item_type") or ""),
-            str(item.get("poi_name") or ""), str(item.get("start_time") or ""),
-            str(item.get("end_time") or ""), str(item.get("duration_min") or ""),
+            int(plan.get("day_no") or 0),
+            item_index,
+            str(item.get("id") or ""),
+            str(item.get("item_type") or ""),
+            str(item.get("poi_name") or ""),
+            str(item.get("start_time") or ""),
+            str(item.get("end_time") or ""),
+            str(item.get("duration_min") or ""),
         )
-        for plan in plans for item_index, item in enumerate(plan.get("items") or [])
+        for plan in plans
+        for item_index, item in enumerate(plan.get("items") or [])
     ]
+
 
 def _decision_reply(value: object, fallback: str) -> str:
     reply = str(value or "").strip()
@@ -101,6 +104,7 @@ def _decision_reply(value: object, fallback: str) -> str:
     if not reply or compact in {"中文markdown", "markdown", "中文", "reply", "回复"}:
         return fallback
     return reply
+
 
 def _reschedule_moved_item(plans_by_day: dict[int, dict], item: dict, day_no: int) -> bool:
     """移动到新日期后若原时间冲突，寻找 07:00-22:00 的首个合理空档。"""
@@ -133,6 +137,7 @@ def _reschedule_moved_item(plans_by_day: dict[int, dict], item: dict, day_no: in
             item["end_time"] = _format_clock(candidate + duration)
             return True
     return False
+
 
 def _default_plan_update_reply(req: ChatTurnRequest, plans: list[dict]) -> str:
     before_count = sum(len(plan.get("items") or []) for plan in req.plans)

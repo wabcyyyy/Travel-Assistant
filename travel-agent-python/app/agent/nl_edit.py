@@ -35,11 +35,12 @@ def run_edit_ops(req: EditOpRequest) -> list[EditOp]:
             text = text.split("\n", 1)[-1].rsplit("```", 1)[0]
         data = json.loads(text[text.find("{") : text.rfind("}") + 1])
         ops = [o for o in data.get("ops", []) if o.get("action") in _ALLOWED]
-        return [EditOp(**{k: o.get(k) for k in ("action", "day_no", "poi_name", "start_time", "tier")})
-                for o in ops[:8]]
-    except Exception as e:  # noqa: BLE001
+        return [
+            EditOp(**{k: o.get(k) for k in ("action", "day_no", "poi_name", "start_time", "tier")}) for o in ops[:8]
+        ]
+    except Exception as e:
         logger.warning("edit ops parse failed: %s | raw=%s", e, raw[:200])
-        raise ValueError("没能理解这条修改指令，请换种说法")
+        raise ValueError("没能理解这条修改指令，请换种说法") from e
 
 
 def city_of(req: EditOpRequest) -> str:
@@ -49,12 +50,13 @@ def city_of(req: EditOpRequest) -> str:
 def _compact(plans: list[dict]) -> list[dict]:
     out = []
     for p in plans:
-        out.append({
-            "day_no": p.get("day_no"),
-            "items": [
-                {"item_type": i.get("item_type"), "poi_name": i.get("poi_name"),
-                 "start_time": i.get("start_time")}
-                for i in (p.get("items") or [])
-            ],
-        })
+        out.append(
+            {
+                "day_no": p.get("day_no"),
+                "items": [
+                    {"item_type": i.get("item_type"), "poi_name": i.get("poi_name"), "start_time": i.get("start_time")}
+                    for i in (p.get("items") or [])
+                ],
+            }
+        )
     return out

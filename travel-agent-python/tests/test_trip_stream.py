@@ -26,7 +26,6 @@ from app.agent.trip_stream import (
 from app.common.config import settings
 from app.schemas.trip import GenerateDayRequest
 
-
 TRIP_JSON = (
     '{"trip_theme":"巴塞罗那·高迪之光","daily_plans":['
     '{"day_no":1,"theme":"高迪代表作日：圣家堂与格拉西亚大道","note":"经典地标日",'
@@ -46,7 +45,8 @@ TRIP_JSON = (
     '],"suggestions":['
     '{"poi_name":"米拉之家","city":"巴塞罗那","category":"attraction","intro":"高迪代表作之一","need_reservation":true,"estimated_cost":24},'
     '{"poi_name":"唐吉诃德涩谷","city":"东京","category":"shopping","intro":"东京连锁免税店","need_reservation":false}'
-    ']}')
+    "]}"
+)
 
 
 class FakeLLMClient:
@@ -71,14 +71,12 @@ def stream_env(monkeypatch):
         return None
 
     monkeypatch.setattr("app.agent.trip_stream._local_ground", _no_ground)
-    monkeypatch.setattr("app.agent.trip_stream.fill_suggestion_gaps",
-                        lambda rows, city, **kw: rows)
+    monkeypatch.setattr("app.agent.trip_stream.fill_suggestion_gaps", lambda rows, city, **kw: rows)
     return _install
 
 
 def _req(days: int = 3) -> GenerateDayRequest:
-    return GenerateDayRequest(city="巴塞罗那", persons=2, days=days, day_no=1,
-                              needs_hotel=True, hotel_tier="豪华型")
+    return GenerateDayRequest(city="巴塞罗那", persons=2, days=days, day_no=1, needs_hotel=True, hotel_tier="豪华型")
 
 
 class TestDailyPlansStreamParser:
@@ -105,8 +103,11 @@ class TestDailyPlansStreamParser:
         payload = {
             "trip_theme": '花括号}{与"引号"主题',
             "daily_plans": [
-                {"day_no": 1, "note": "转义\\\"与{嵌套}",
-                 "items": [{"item_type": "attraction", "poi_name": "国泰艺术中心"}]}
+                {
+                    "day_no": 1,
+                    "note": '转义\\"与{嵌套}',
+                    "items": [{"item_type": "attraction", "poi_name": "国泰艺术中心"}],
+                }
             ],
             "suggestions": [],
         }
@@ -153,17 +154,28 @@ class TestDedupPrimitives:
 
     def test_drop_cross_day_duplicates_keeps_first(self):
         plans = [
-            {"day_no": 1, "items": [
-                {"item_type": "attraction", "poi_name": "圣家堂",
-                 "latitude": 41.4036, "longitude": 2.1744}]},
-            {"day_no": 2, "items": [
-                {"item_type": "attraction", "poi_name": "圣家堂大教堂",
-                 "latitude": 41.40362, "longitude": 2.17438},
-                {"item_type": "attraction", "poi_name": "古埃尔公园",
-                 "latitude": 41.4145, "longitude": 2.1527}]},
-            {"day_no": 3, "items": [
-                {"item_type": "attraction", "poi_name": "圣家堂（Sagrada Família）",
-                 "latitude": 41.4036, "longitude": 2.1744}]},
+            {
+                "day_no": 1,
+                "items": [{"item_type": "attraction", "poi_name": "圣家堂", "latitude": 41.4036, "longitude": 2.1744}],
+            },
+            {
+                "day_no": 2,
+                "items": [
+                    {"item_type": "attraction", "poi_name": "圣家堂大教堂", "latitude": 41.40362, "longitude": 2.17438},
+                    {"item_type": "attraction", "poi_name": "古埃尔公园", "latitude": 41.4145, "longitude": 2.1527},
+                ],
+            },
+            {
+                "day_no": 3,
+                "items": [
+                    {
+                        "item_type": "attraction",
+                        "poi_name": "圣家堂（Sagrada Família）",
+                        "latitude": 41.4036,
+                        "longitude": 2.1744,
+                    }
+                ],
+            },
         ]
         dropped = drop_cross_day_duplicates(plans)
         assert [d["poi_name"] for d in dropped] == ["圣家堂大教堂", "圣家堂（Sagrada Família）"]
@@ -188,7 +200,7 @@ class TestCityFilter:
 
 class TestRunGenerateTripStream:
     def test_event_sequence_and_dedup(self, stream_env):
-        chunks = [TRIP_JSON[i:i + 64] for i in range(0, len(TRIP_JSON), 64)]
+        chunks = [TRIP_JSON[i : i + 64] for i in range(0, len(TRIP_JSON), 64)]
         stream_env(chunks)
         events = list(run_generate_trip_stream(_req()))
         types = [e["type"] for e in events]

@@ -57,21 +57,29 @@ class HotelOptionRequest(BaseModel):
 
 # ---------- 应用 AI 草稿 ----------
 
-def apply_plans(user_id: int, itinerary_id: int, action_message_id: int | None,
-                base_revision: str | None) -> dict[str, Any]:
+
+def apply_plans(
+    user_id: int, itinerary_id: int, action_message_id: int | None, base_revision: str | None
+) -> dict[str, Any]:
     with session_scope() as session:
         main = itinerary_query.require_main(session, user_id, itinerary_id)
         message = itinerary_chat.require_pending_action(
-            session, user_id, itinerary_id, action_message_id, base_revision, False)
+            session, user_id, itinerary_id, action_message_id, base_revision, False
+        )
         plans = itinerary_chat.read_plans(message)
-        days = list(session.execute(
-            select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id).order_by(ItineraryDay.day_no)
-        ).scalars().all())
+        days = list(
+            session.execute(
+                select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id).order_by(ItineraryDay.day_no)
+            )
+            .scalars()
+            .all()
+        )
         _validate_plans(plans)
         existing_items = {
-            item.id: item for item in session.execute(
-                select(ItineraryItem).where(ItineraryItem.itinerary_id == itinerary_id)
-            ).scalars().all()
+            item.id: item
+            for item in session.execute(select(ItineraryItem).where(ItineraryItem.itinerary_id == itinerary_id))
+            .scalars()
+            .all()
         }
         retained_item_ids: set[int] = set()
         day_by_no = {day.day_no: day for day in days}
@@ -81,7 +89,9 @@ def apply_plans(user_id: int, itinerary_id: int, action_message_id: int | None,
             if day_no in day_by_no:
                 continue
             created = ItineraryDay(
-                itinerary_id=itinerary_id, day_no=day_no, city=main.city,
+                itinerary_id=itinerary_id,
+                day_no=day_no,
+                city=main.city,
                 travel_date=None if main.start_date is None else main.start_date + timedelta(days=day_no - 1),
                 note=DEFAULT_NEW_DAY_NOTE,
             )
@@ -104,8 +114,9 @@ def apply_plans(user_id: int, itinerary_id: int, action_message_id: int | None,
                 name = str(raw_item.get("poi_name"))
                 if not name.strip() or name == "null":
                     continue
-                sort_no = _apply_plan_item(session, raw_item, name, main.city, itinerary_id,
-                                          day.id, existing_items, retained_item_ids, sort_no)
+                sort_no = _apply_plan_item(
+                    session, raw_item, name, main.city, itinerary_id, day.id, existing_items, retained_item_ids, sort_no
+                )
 
         for item_id, item in existing_items.items():
             if item_id not in retained_item_ids:
@@ -127,9 +138,17 @@ def apply_plans(user_id: int, itinerary_id: int, action_message_id: int | None,
     return itinerary_query.detail(user_id, itinerary_id)
 
 
-def _apply_plan_item(session, raw_item: dict[str, Any], name: str, city: str | None, itinerary_id: int,
-                     day_id: int, existing_items: dict[int, ItineraryItem],
-                     retained: set[int], sort_no: int) -> int:
+def _apply_plan_item(
+    session,
+    raw_item: dict[str, Any],
+    name: str,
+    city: str | None,
+    itinerary_id: int,
+    day_id: int,
+    existing_items: dict[int, ItineraryItem],
+    retained: set[int],
+    sort_no: int,
+) -> int:
     poi = session.execute(
         select(PoiKnowledge).where(PoiKnowledge.city == city, PoiKnowledge.name == name).limit(1)
     ).scalar_one_or_none()
@@ -200,53 +219,60 @@ def _apply_plan_item(session, raw_item: dict[str, Any], name: str, city: str | N
 
 # ---------- 应用酒店房型 ----------
 
+
 def apply_hotel_option(user_id: int, itinerary_id: int, request: HotelOptionRequest | None) -> dict[str, Any]:
     request = request or HotelOptionRequest()
     _validate_hotel_request(request)
     with session_scope() as session:
         main = itinerary_query.require_main(session, user_id, itinerary_id)
         message = itinerary_chat.require_pending_action(
-            session, user_id, itinerary_id, request.actionMessageId, request.baseRevision, True)
+            session, user_id, itinerary_id, request.actionMessageId, request.baseRevision, True
+        )
         hotel_name = request.hotelName or ""
         if not hotel_name.strip() or len(hotel_name) > MAX_POI_NAME:
             raise ApiError(400, "酒店名称不合法")
 
         hotel = session.execute(
-            select(PoiKnowledge).where(PoiKnowledge.city == main.city,
-                                        PoiKnowledge.category == "hotel",
-                                        PoiKnowledge.name == hotel_name).limit(1)
+            select(PoiKnowledge)
+            .where(PoiKnowledge.city == main.city, PoiKnowledge.category == "hotel", PoiKnowledge.name == hotel_name)
+            .limit(1)
         ).scalar_one_or_none()
         # 省级目的地的酒店候选来自省内具体城市，按名称兜底解析。
         if hotel is None:
             hotel = session.execute(
-                select(PoiKnowledge).where(PoiKnowledge.category == "hotel",
-                                           PoiKnowledge.name == hotel_name).limit(1)
+                select(PoiKnowledge).where(PoiKnowledge.category == "hotel", PoiKnowledge.name == hotel_name).limit(1)
             ).scalar_one_or_none()
         if hotel is None:
             raise ApiError(404, "未找到该城市的酒店候选")
         itinerary_chat.validate_hotel_choice(message, hotel_name, request.roomType or "")
 
         itinerary_version.create_snapshot(user_id, itinerary_id, "apply_hotel", "应用酒店方案前快照")
-        hotel_items = list(session.execute(
-            select(ItineraryItem).where(ItineraryItem.itinerary_id == itinerary_id,
-                                       ItineraryItem.item_type == "hotel")
-        ).scalars().all())
-        days = list(session.execute(
-            select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id)
-        ).scalars().all())
+        hotel_items = list(
+            session.execute(
+                select(ItineraryItem).where(
+                    ItineraryItem.itinerary_id == itinerary_id, ItineraryItem.item_type == "hotel"
+                )
+            )
+            .scalars()
+            .all()
+        )
+        days = list(
+            session.execute(select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id)).scalars().all()
+        )
         day_by_id = {day.id: day for day in days}
         day_by_no = {day.day_no: day for day in days}
-        existing_hotel_day_nos = {day.day_no for day in
-                                  (day_by_id.get(item.day_id) for item in hotel_items)
-                                  if day is not None}
+        existing_hotel_day_nos = {
+            day.day_no for day in (day_by_id.get(item.day_id) for item in hotel_items) if day is not None
+        }
         # LinkedHashSet 语义：去重且保持用户选择顺序
         selected_day_nos = list(dict.fromkeys(request.dayNos or []))
         if not selected_day_nos or not day_by_no.keys() >= set(selected_day_nos):
             raise ApiError(400, "选择的入住晚次不在当前行程中")
 
         room = session.execute(
-            select(HotelRoomType).where(HotelRoomType.poi_id == hotel.id,
-                                        HotelRoomType.room_name == request.roomType).limit(1)
+            select(HotelRoomType)
+            .where(HotelRoomType.poi_id == hotel.id, HotelRoomType.room_name == request.roomType)
+            .limit(1)
         ).scalar_one_or_none()
         if room is not None:
             room_base_price, room_description = room.base_price, room.description
@@ -262,8 +288,13 @@ def apply_hotel_option(user_id: int, itinerary_id: int, request: HotelOptionRequ
             item = next((existing for existing in hotel_items if existing.day_id == day.id), None)
             is_new = item is None
             if is_new:
-                item = ItineraryItem(itinerary_id=itinerary_id, day_id=day.id, item_type="hotel",
-                                     start_time=HOTEL_START_TIME, sort_no=itinerary_query.next_sort(session, day.id))
+                item = ItineraryItem(
+                    itinerary_id=itinerary_id,
+                    day_id=day.id,
+                    item_type="hotel",
+                    start_time=HOTEL_START_TIME,
+                    sort_no=itinerary_query.next_sort(session, day.id),
+                )
                 session.add(item)
             stay_date = day.travel_date or main.start_date
             item.poi_id = str(hotel.id)
@@ -287,16 +318,20 @@ def apply_hotel_option(user_id: int, itinerary_id: int, request: HotelOptionRequ
     return itinerary_query.detail(user_id, itinerary_id)
 
 
-def _hotel_price_remark(room_type: str, base_price: Decimal, stay_date: date | None,
-                        room_description: str | None) -> str:
-    remark = (f"房型：{room_type}；基准价￥{base_price}；按{season_price.label(stay_date)}"
-              f"系数×{season_price.factor(stay_date)}")
+def _hotel_price_remark(
+    room_type: str, base_price: Decimal, stay_date: date | None, room_description: str | None
+) -> str:
+    remark = (
+        f"房型：{room_type}；基准价￥{base_price}；按{season_price.label(stay_date)}"
+        f"系数×{season_price.factor(stay_date)}"
+    )
     if room_description and room_description.strip():
         remark += f"；{room_description}"
     return remark
 
 
 # ---------- 校验与元数据 ----------
+
 
 def _validate_hotel_request(request: HotelOptionRequest) -> None:
     """对应 Java DTO 上的 Bean Validation（在进服务之前执行）。"""

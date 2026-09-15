@@ -26,8 +26,11 @@ def enrich():
 
 def _amap_raw(category_type, cost):
     return {
-        "name": "测试点", "type": category_type, "location": "120.15,30.24",
-        "address": "某路1号", "id": "B0TEST",
+        "name": "测试点",
+        "type": category_type,
+        "location": "120.15,30.24",
+        "address": "某路1号",
+        "id": "B0TEST",
         "biz_ext": {"rating": "4.6", "cost": str(cost), "opentime2": "09:00-17:00"},
     }
 
@@ -70,36 +73,72 @@ def test_name_compatible(enrich):
 
 def test_merge_requires_name_match(enrich):
     """核心区 200m 内同类但名称无关的记录不得合并（误并污染权威字段）。"""
-    amap = {"attraction": [{
-        "name": "灵隐寺", "category": "attraction",
-        "latitude": 30.2430, "longitude": 120.1000, "description": None,
-        "open_time": None, "ticket_price": None, "avg_cost": None, "tags": "",
-        "_source_parts": {"amap.poi"},
-    }]}
-    wv = [{
-        "name": "法喜寺", "category": "attraction",
-        "latitude": 30.2432, "longitude": 120.1002,  # 距灵隐寺 ~30m
-        "description": "误并风险条目", "open_time": None, "ticket_price": None,
-        "avg_cost": None, "tags": "", "_source_parts": {"wikivoyage"},
-    }]
+    amap = {
+        "attraction": [
+            {
+                "name": "灵隐寺",
+                "category": "attraction",
+                "latitude": 30.2430,
+                "longitude": 120.1000,
+                "description": None,
+                "open_time": None,
+                "ticket_price": None,
+                "avg_cost": None,
+                "tags": "",
+                "_source_parts": {"amap.poi"},
+            }
+        ]
+    }
+    wv = [
+        {
+            "name": "法喜寺",
+            "category": "attraction",
+            "latitude": 30.2432,
+            "longitude": 120.1002,  # 距灵隐寺 ~30m
+            "description": "误并风险条目",
+            "open_time": None,
+            "ticket_price": None,
+            "avg_cost": None,
+            "tags": "",
+            "_source_parts": {"wikivoyage"},
+        }
+    ]
     standalone = enrich.merge_wv_into_amap(wv, amap)
     assert len(standalone) == 1  # 未合并，作为独立记录
     assert amap["attraction"][0]["description"] is None
 
 
 def test_merge_allows_same_name(enrich):
-    amap = {"attraction": [{
-        "name": "灵隐寺", "category": "attraction",
-        "latitude": 30.2430, "longitude": 120.1000, "description": None,
-        "open_time": None, "ticket_price": None, "avg_cost": None, "tags": "",
-        "_source_parts": {"amap.poi"},
-    }]}
-    wv = [{
-        "name": "灵隐寺", "category": "attraction",
-        "latitude": 30.2432, "longitude": 120.1002,
-        "description": "禅宗名刹", "open_time": "07:00-18:00", "ticket_price": 45,
-        "avg_cost": None, "tags": "", "_source_parts": {"wikivoyage"},
-    }]
+    amap = {
+        "attraction": [
+            {
+                "name": "灵隐寺",
+                "category": "attraction",
+                "latitude": 30.2430,
+                "longitude": 120.1000,
+                "description": None,
+                "open_time": None,
+                "ticket_price": None,
+                "avg_cost": None,
+                "tags": "",
+                "_source_parts": {"amap.poi"},
+            }
+        ]
+    }
+    wv = [
+        {
+            "name": "灵隐寺",
+            "category": "attraction",
+            "latitude": 30.2432,
+            "longitude": 120.1002,
+            "description": "禅宗名刹",
+            "open_time": "07:00-18:00",
+            "ticket_price": 45,
+            "avg_cost": None,
+            "tags": "",
+            "_source_parts": {"wikivoyage"},
+        }
+    ]
     standalone = enrich.merge_wv_into_amap(wv, amap)
     assert standalone == []
     target = amap["attraction"][0]
@@ -118,8 +157,17 @@ def test_source_union_does_not_downgrade(enrich):
 
 
 def test_row_completeness_prefers_richer_row(enrich):
-    sparse = {"address": None, "latitude": None, "longitude": None, "ticket_price": None,
-              "avg_cost": None, "open_time": None, "description": None, "rating": None, "tags": None}
+    sparse = {
+        "address": None,
+        "latitude": None,
+        "longitude": None,
+        "ticket_price": None,
+        "avg_cost": None,
+        "open_time": None,
+        "description": None,
+        "rating": None,
+        "tags": None,
+    }
     rich = dict(sparse, address="a", latitude=1.0, longitude=2.0, rating=4.5)
     assert enrich._row_completeness(rich) > enrich._row_completeness(sparse)
 
@@ -131,10 +179,17 @@ def test_parse_nominatim_poi_contract(enrich):
     """Nominatim 记录 → 内部契约（source=nominatim，坐标必须落城市范围）。"""
     bbox = (2.22, 48.79, 2.47, 48.93)  # 巴黎
     rec = enrich.parse_nominatim_poi(
-        {"lat": "48.8584", "lon": "2.2945", "name": "Eiffel Tower",
-         "display_name": "Eiffel Tower, Champ de Mars, 75007 Paris, France",
-         "extratags": {"rating": "4.6"}},
-        "巴黎", "attraction", bbox)
+        {
+            "lat": "48.8584",
+            "lon": "2.2945",
+            "name": "Eiffel Tower",
+            "display_name": "Eiffel Tower, Champ de Mars, 75007 Paris, France",
+            "extratags": {"rating": "4.6"},
+        },
+        "巴黎",
+        "attraction",
+        bbox,
+    )
     assert rec is not None
     assert rec["name"] == "Eiffel Tower"
     assert rec["latitude"] == 48.8584 and rec["longitude"] == 2.2945
@@ -147,9 +202,11 @@ def test_parse_nominatim_poi_rejects_outside_bbox(enrich):
     """城市范围外的坐标必须丢弃（不造假坐标）。"""
     bbox = (2.22, 48.79, 2.47, 48.93)
     rec = enrich.parse_nominatim_poi(
-        {"lat": "34.0522", "lon": "-118.2437", "name": "LA Downtown",
-         "display_name": "Los Angeles, CA, USA"},
-        "巴黎", "attraction", bbox)
+        {"lat": "34.0522", "lon": "-118.2437", "name": "LA Downtown", "display_name": "Los Angeles, CA, USA"},
+        "巴黎",
+        "attraction",
+        bbox,
+    )
     assert rec is None
 
 

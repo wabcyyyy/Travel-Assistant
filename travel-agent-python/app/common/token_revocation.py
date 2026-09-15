@@ -51,8 +51,9 @@ def revoke(token: str, ttl_seconds: int) -> None:
         except Exception as exc:
             already_down = redis_client.is_down()
             redis_client.note_failure(exc)
-            logger.log(logging.DEBUG if already_down else logging.WARNING,
-                       "redis revoke failed, fallback to local: %s", exc)
+            logger.log(
+                logging.DEBUG if already_down else logging.WARNING, "redis revoke failed, fallback to local: %s", exc
+            )
     _local_blacklist[key] = int(time.time()) + int(ttl_seconds)
 
 

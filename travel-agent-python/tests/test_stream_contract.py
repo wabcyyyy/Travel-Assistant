@@ -13,8 +13,16 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.stream_events import (DayEvent, DayPatchEvent, DoneEvent, ErrorEvent,
-                                       StartEvent, SuggestionsEvent, export_schema, to_wire)
+from app.schemas.stream_events import (
+    DayEvent,
+    DayPatchEvent,
+    DoneEvent,
+    ErrorEvent,
+    StartEvent,
+    SuggestionsEvent,
+    export_schema,
+    to_wire,
+)
 from app.schemas.trip import DailyPlan, Suggestion
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -23,10 +31,8 @@ SCHEMA_PATH = REPO_ROOT / "contracts" / "stream_events.schema.json"
 
 class TestEventWireShape:
     def test_start_and_error_wire_keys(self):
-        assert to_wire(StartEvent(type="start", run_id="run-1")) == {
-            "type": "start", "runId": "run-1"}
-        assert to_wire(ErrorEvent(type="error", message="boom")) == {
-            "type": "error", "message": "boom"}
+        assert to_wire(StartEvent(type="start", run_id="run-1")) == {"type": "start", "runId": "run-1"}
+        assert to_wire(ErrorEvent(type="error", message="boom")) == {"type": "error", "message": "boom"}
 
     def test_day_event_plan_wire_shape(self):
         plan = DailyPlan(day_no=2, items=[{"poi_name": "圣家堂", "item_type": "attraction"}])
@@ -47,11 +53,24 @@ class TestEventWireShape:
         assert event["items"][0]["needReservation"] is False
 
     def test_done_event_wire_keys(self):
-        event = to_wire(DoneEvent(type="done", days_expected=3, days_emitted=[1, 2],
-                                  trip_theme=None, complete=False, message="upstream down"))
+        event = to_wire(
+            DoneEvent(
+                type="done",
+                days_expected=3,
+                days_emitted=[1, 2],
+                trip_theme=None,
+                complete=False,
+                message="upstream down",
+            )
+        )
         assert event == {
-            "type": "done", "daysExpected": 3, "daysEmitted": [1, 2],
-            "tripTheme": None, "complete": False, "message": "upstream down"}
+            "type": "done",
+            "daysExpected": 3,
+            "daysEmitted": [1, 2],
+            "tripTheme": None,
+            "complete": False,
+            "message": "upstream down",
+        }
 
     def test_type_literal_mismatch_rejected(self):
         with pytest.raises(ValidationError):
@@ -67,25 +86,32 @@ class TestSchemaContract:
         committed = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
         assert committed == export_schema(), (
             "contracts/stream_events.schema.json 与模型不同步："
-            "运行 uv run python scripts/export_contracts.py 重新导出并提交")
+            "运行 uv run python scripts/export_contracts.py 重新导出并提交"
+        )
 
     def test_six_event_types_declared(self):
         schema = export_schema()
-        assert set(schema["discriminator"]["mapping"]) == {
-            "start", "day", "day_patch", "suggestions", "done", "error"}
+        assert set(schema["discriminator"]["mapping"]) == {"start", "day", "day_patch", "suggestions", "done", "error"}
 
     def test_required_fields_pinned(self):
         """Java 消费方依赖的字段必须保持必填（改名/降级可选都会在此暴露）。"""
         defs = export_schema()["$defs"]
         assert defs["DayEvent"]["required"] == ["type", "plan"]
         assert set(defs["DoneEvent"]["required"]) == {
-            "type", "daysExpected", "daysEmitted", "tripTheme", "complete", "message"}
+            "type",
+            "daysExpected",
+            "daysEmitted",
+            "tripTheme",
+            "complete",
+            "message",
+        }
         for model in ("DailyPlan", "TripItem", "Suggestion", "DayOption", "FactEvidence"):
             props = defs[model]["properties"]
             assert defs[model]["required"] == list(props), f"{model} 应全键必填"
 
     def test_all_object_schemas_require_every_property(self):
         """wire 契约不变式：dump 必带全部键（可空值为 null），故 required == properties。"""
+
         def check(node):
             if isinstance(node, dict):
                 props = node.get("properties")
@@ -100,6 +126,7 @@ class TestSchemaContract:
             elif isinstance(node, list):
                 for item in node:
                     check(item)
+
         check(export_schema())
 
     def test_descriptions_stripped(self):

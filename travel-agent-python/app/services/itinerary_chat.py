@@ -14,11 +14,11 @@ import hashlib
 import json
 import logging
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from decimal import Decimal
-from typing import Any, Iterable
+from typing import Any
 
 from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
@@ -28,7 +28,13 @@ from app.agent.observability import observe_run, use_scene
 from app.common import event_hub, event_publisher
 from app.common.envelope import ApiError
 from app.common.task_pool import SlotExecutor, TaskRejected
-from app.db.models import BudgetDetail, ItineraryChatMessage, ItineraryDay, ItineraryItem, ItineraryMain
+from app.db.models import (
+    BudgetDetail,
+    ItineraryChatMessage,
+    ItineraryDay,
+    ItineraryItem,
+    ItineraryMain,
+)
 from app.db.session import session_scope
 from app.schemas.trip import ChatTurnRequest
 from app.services import itinerary_city, itinerary_query
@@ -89,11 +95,7 @@ def canonical_json(value: Any) -> str:
     if isinstance(value, (list, tuple)):
         return "[" + ",".join(canonical_json(item) for item in value) + "]"
     if isinstance(value, dict):
-        return (
-            "{"
-            + ",".join(f"{canonical_json(str(k))}:{canonical_json(v)}" for k, v in value.items())
-            + "}"
-        )
+        return "{" + ",".join(f"{canonical_json(str(k))}:{canonical_json(v)}" for k, v in value.items()) + "}"
     return _escape(str(value))
 
 
@@ -114,14 +116,22 @@ def read_json_list(raw: str | None) -> list[Any]:
 def current_plans(itinerary_id: int) -> list[dict[str, Any]]:
     """按 Java `currentPlans` 的字段顺序生成 plans（指纹依赖该顺序）。"""
     with session_scope() as session:
-        days = session.execute(
-            select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id).order_by(ItineraryDay.day_no)
-        ).scalars().all()
-        items = session.execute(
-            select(ItineraryItem)
-            .where(ItineraryItem.itinerary_id == itinerary_id)
-            .order_by(ItineraryItem.day_id, ItineraryItem.sort_no)
-        ).scalars().all()
+        days = (
+            session.execute(
+                select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id).order_by(ItineraryDay.day_no)
+            )
+            .scalars()
+            .all()
+        )
+        items = (
+            session.execute(
+                select(ItineraryItem)
+                .where(ItineraryItem.itinerary_id == itinerary_id)
+                .order_by(ItineraryItem.day_id, ItineraryItem.sort_no)
+            )
+            .scalars()
+            .all()
+        )
 
     by_day: dict[int, list[ItineraryItem]] = {}
     for item in items:
@@ -183,8 +193,14 @@ def consume_pending_action(message: ItineraryChatMessage) -> None:
     message.changed = 0
 
 
-def require_pending_action(session, user_id: int, itinerary_id: int, message_id: int | None,
-                           base_revision: str | None, hotel_action: bool = False) -> ItineraryChatMessage:
+def require_pending_action(
+    session,
+    user_id: int,
+    itinerary_id: int,
+    message_id: int | None,
+    base_revision: str | None,
+    hotel_action: bool = False,
+) -> ItineraryChatMessage:
     """取回「当前唯一可应用」的 AI 草稿并过四道 409 关卡（同 Java `requirePendingAction`）。
 
     由调用方传 session：应用链路是一个事务（校验 → 落库 → 消费草稿），返回的消息对象随后
@@ -196,23 +212,31 @@ def require_pending_action(session, user_id: int, itinerary_id: int, message_id:
 
     message = session.execute(
         select(ItineraryChatMessage)
-        .where(ItineraryChatMessage.id == message_id,
-               ItineraryChatMessage.itinerary_id == itinerary_id,
-               ItineraryChatMessage.user_id == user_id,
-               ItineraryChatMessage.role == "ai")
+        .where(
+            ItineraryChatMessage.id == message_id,
+            ItineraryChatMessage.itinerary_id == itinerary_id,
+            ItineraryChatMessage.user_id == user_id,
+            ItineraryChatMessage.role == "ai",
+        )
         .limit(1)
     ).scalar_one_or_none()
     payload = read_json_list(message.hotel_options_json if hotel_action else message.plans_json) if message else []
     if message is None or not payload:
         raise ApiError(409, "该方案已失效，请使用最新建议")
 
-    candidates = session.execute(
-        select(ItineraryChatMessage)
-        .where(ItineraryChatMessage.itinerary_id == itinerary_id,
-               ItineraryChatMessage.user_id == user_id,
-               ItineraryChatMessage.role == "ai")
-        .order_by(ItineraryChatMessage.id.desc())
-    ).scalars().all()
+    candidates = (
+        session.execute(
+            select(ItineraryChatMessage)
+            .where(
+                ItineraryChatMessage.itinerary_id == itinerary_id,
+                ItineraryChatMessage.user_id == user_id,
+                ItineraryChatMessage.role == "ai",
+            )
+            .order_by(ItineraryChatMessage.id.desc())
+        )
+        .scalars()
+        .all()
+    )
     latest = next((row for row in candidates if has_action_payload(row)), None)
     if latest is None or latest.id != message.id:
         raise ApiError(409, "该方案已被更新的建议取代，请使用最新方案")
@@ -233,8 +257,9 @@ def validate_hotel_choice(message: ItineraryChatMessage, hotel_name: str, room_n
         if not isinstance(option, dict) or hotel_name != str(option.get("hotelName")):
             continue
         rooms = option.get("roomTypes")
-        if isinstance(rooms, list) and any(isinstance(room, dict) and room_name == str(room.get("roomName"))
-                                           for room in rooms):
+        if isinstance(rooms, list) and any(
+            isinstance(room, dict) and room_name == str(room.get("roomName")) for room in rooms
+        ):
             return
     raise ApiError(409, "所选酒店或房型不属于当前有效方案，请重新获取建议")
 
@@ -245,12 +270,16 @@ def clear_history(user_id: int, itinerary_id: int) -> None:
         main = session.get(ItineraryMain, itinerary_id)
         if main is None or main.user_id != user_id:
             raise ApiError(404, "行程不存在")
-        rows = session.execute(
-            select(ItineraryChatMessage).where(
-                ItineraryChatMessage.itinerary_id == itinerary_id,
-                ItineraryChatMessage.user_id == user_id,
+        rows = (
+            session.execute(
+                select(ItineraryChatMessage).where(
+                    ItineraryChatMessage.itinerary_id == itinerary_id,
+                    ItineraryChatMessage.user_id == user_id,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for row in rows:
             session.delete(row)
 
@@ -258,13 +287,17 @@ def clear_history(user_id: int, itinerary_id: int) -> None:
 def invalidate_pending_actions(user_id: int, itinerary_id: int) -> None:
     """任何手工编辑都会让未应用的 AI 草稿失效（避免把旧方案应用到已改过的行程上）。"""
     with session_scope() as session:
-        messages = session.execute(
-            select(ItineraryChatMessage).where(
-                ItineraryChatMessage.itinerary_id == itinerary_id,
-                ItineraryChatMessage.user_id == user_id,
-                ItineraryChatMessage.role == "ai",
+        messages = (
+            session.execute(
+                select(ItineraryChatMessage).where(
+                    ItineraryChatMessage.itinerary_id == itinerary_id,
+                    ItineraryChatMessage.user_id == user_id,
+                    ItineraryChatMessage.role == "ai",
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for message in messages:
             if has_action_payload(message):
                 consume_pending_action(message)
@@ -273,15 +306,19 @@ def invalidate_pending_actions(user_id: int, itinerary_id: int) -> None:
 def chat_history(user_id: int, itinerary_id: int) -> list[dict[str, Any]]:
     """最近 100 条，DB 按 id 倒序取、返回前翻正（与 Java 一致）。"""
     with session_scope() as session:
-        messages = session.execute(
-            select(ItineraryChatMessage)
-            .where(
-                ItineraryChatMessage.itinerary_id == itinerary_id,
-                ItineraryChatMessage.user_id == user_id,
+        messages = (
+            session.execute(
+                select(ItineraryChatMessage)
+                .where(
+                    ItineraryChatMessage.itinerary_id == itinerary_id,
+                    ItineraryChatMessage.user_id == user_id,
+                )
+                .order_by(ItineraryChatMessage.id.desc())
+                .limit(100)
             )
-            .order_by(ItineraryChatMessage.id.desc())
-            .limit(100)
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for message in messages:
             session.expunge(message)
     return [
@@ -301,6 +338,7 @@ def chat_history(user_id: int, itinerary_id: int) -> list[dict[str, Any]]:
 
 # ---------- 对话改行程（M7-a：与 /chat-edit/stream 共用同一条上下文与收尾路径） ----------
 
+
 @dataclass(frozen=True)
 class ChatTurnContext:
     """chatTurn 请求上下文：`chat_body` 发给 agent，`base_revision` 供草稿一致性校验。"""
@@ -309,15 +347,15 @@ class ChatTurnContext:
     base_revision: str
 
 
-def build_chat_turn_context(user_id: int, itinerary_id: int, message: str,
-                            history: list[dict[str, Any]] | None) -> ChatTurnContext:
+def build_chat_turn_context(
+    user_id: int, itinerary_id: int, message: str, history: list[dict[str, Any]] | None
+) -> ChatTurnContext:
     """构建发给 agent 的请求体——阻塞版与流式版的「同参构造」入口，两条路径输入必须一致。"""
     main = itinerary_query.find_owned_main(user_id, itinerary_id)
     persisted = chat_history(user_id, itinerary_id)
     if persisted:
         # 库里已有记忆时以它为准，并压成 {role, content} 两键；只有空历史才用客户端传的
-        effective = [{"role": item.get("role", "ai"), "content": item.get("content", "")}
-                     for item in persisted]
+        effective = [{"role": item.get("role", "ai"), "content": item.get("content", "")} for item in persisted]
     else:
         effective = history or []
     persisted_plans = current_plans(itinerary_id)
@@ -325,27 +363,27 @@ def build_chat_turn_context(user_id: int, itinerary_id: int, message: str,
     # 有未应用的"调整行程天数"草稿时，后续对话继续基于草稿天数，而不是数据库旧值
     plans = latest_pending_plans(user_id, itinerary_id, base_revision) or persisted_plans
     with session_scope() as session:
-        budgets = session.execute(
-            select(BudgetDetail).where(BudgetDetail.itinerary_id == itinerary_id)
-        ).scalars().all()
+        budgets = session.execute(select(BudgetDetail).where(BudgetDetail.itinerary_id == itinerary_id)).scalars().all()
         current_total = float(sum((b.amount or Decimal("0") for b in budgets), Decimal("0")))
-        hotel_total = float(sum((b.amount or Decimal("0") for b in budgets if b.category == "酒店"),
-                                Decimal("0")))
-    return ChatTurnContext({
-        "city": main.city,
-        "days": len(plans),
-        "persons": 1 if main.persons is None else main.persons,
-        "budget": None if main.budget is None else float(main.budget),
-        "current_total": current_total,
-        "current_hotel_total": hotel_total,
-        "start_date": None if main.start_date is None else str(main.start_date),
-        "end_date": None if main.end_date is None else str(main.end_date),
-        "preferences": [] if not main.preferences else main.preferences.split(","),
-        "hotel_tier": main.hotel_tier,
-        "plans": _json_numbers(plans),
-        "history": effective[-HISTORY_WINDOW:],
-        "message": message or "",
-    }, base_revision)
+        hotel_total = float(sum((b.amount or Decimal("0") for b in budgets if b.category == "酒店"), Decimal("0")))
+    return ChatTurnContext(
+        {
+            "city": main.city,
+            "days": len(plans),
+            "persons": 1 if main.persons is None else main.persons,
+            "budget": None if main.budget is None else float(main.budget),
+            "current_total": current_total,
+            "current_hotel_total": hotel_total,
+            "start_date": None if main.start_date is None else str(main.start_date),
+            "end_date": None if main.end_date is None else str(main.end_date),
+            "preferences": [] if not main.preferences else main.preferences.split(","),
+            "hotel_tier": main.hotel_tier,
+            "plans": _json_numbers(plans),
+            "history": effective[-HISTORY_WINDOW:],
+            "message": message or "",
+        },
+        base_revision,
+    )
 
 
 def _json_numbers(value: Any) -> Any:
@@ -363,14 +401,20 @@ def _json_numbers(value: Any) -> Any:
 def latest_pending_plans(user_id: int, itinerary_id: int, base_revision: str) -> list[dict[str, Any]]:
     """最近一条"仍与当前行程同版本"的 AI 草稿 plans（同 Java `latestPendingPlans`）。"""
     with session_scope() as session:
-        messages = session.execute(
-            select(ItineraryChatMessage)
-            .where(ItineraryChatMessage.itinerary_id == itinerary_id,
-                   ItineraryChatMessage.user_id == user_id,
-                   ItineraryChatMessage.role == "ai",
-                   ItineraryChatMessage.changed == 1)
-            .order_by(ItineraryChatMessage.id.desc())
-        ).scalars().all()
+        messages = (
+            session.execute(
+                select(ItineraryChatMessage)
+                .where(
+                    ItineraryChatMessage.itinerary_id == itinerary_id,
+                    ItineraryChatMessage.user_id == user_id,
+                    ItineraryChatMessage.role == "ai",
+                    ItineraryChatMessage.changed == 1,
+                )
+                .order_by(ItineraryChatMessage.id.desc())
+            )
+            .scalars()
+            .all()
+        )
         for message in messages:
             if base_revision == action_base_revision(message):
                 return read_plans(message)
@@ -388,33 +432,50 @@ def attach_base_revision(rows: list[Any], base_revision: str, camel_case: bool) 
     return attached
 
 
-def save_chat_message(session, user_id: int, itinerary_id: int, role: str, content: str,
-                      plans: list[Any], hotel_options: list[Any], changed: bool) -> ItineraryChatMessage:
+def save_chat_message(
+    session,
+    user_id: int,
+    itinerary_id: int,
+    role: str,
+    content: str,
+    plans: list[Any],
+    hotel_options: list[Any],
+    changed: bool,
+) -> ItineraryChatMessage:
     message = ItineraryChatMessage(
-        itinerary_id=itinerary_id, user_id=user_id, role=role, content=content or "",
+        itinerary_id=itinerary_id,
+        user_id=user_id,
+        role=role,
+        content=content or "",
         plans_json=json.dumps(plans or [], ensure_ascii=False),
         hotel_options_json=json.dumps(hotel_options or [], ensure_ascii=False),
-        changed=1 if changed else 0)
+        changed=1 if changed else 0,
+    )
     session.add(message)
     session.flush()  # 需要 id 回填给响应的 messageId
     return message
 
 
 def invalidate_in_session(session, user_id: int, itinerary_id: int) -> None:
-    messages = session.execute(
-        select(ItineraryChatMessage).where(
-            ItineraryChatMessage.itinerary_id == itinerary_id,
-            ItineraryChatMessage.user_id == user_id,
-            ItineraryChatMessage.role == "ai",
+    messages = (
+        session.execute(
+            select(ItineraryChatMessage).where(
+                ItineraryChatMessage.itinerary_id == itinerary_id,
+                ItineraryChatMessage.user_id == user_id,
+                ItineraryChatMessage.role == "ai",
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for message in messages:
         if has_action_payload(message):
             consume_pending_action(message)
 
 
-def finalize_chat_turn(user_id: int, itinerary_id: int, message: str, ctx: ChatTurnContext,
-                       turn: dict[str, Any]) -> dict[str, Any]:
+def finalize_chat_turn(
+    user_id: int, itinerary_id: int, message: str, ctx: ChatTurnContext, turn: dict[str, Any]
+) -> dict[str, Any]:
     """把 chatTurn 结果组装成 /chat-edit 的出参并落库两条对话记忆。
 
     流式与非流式必须走这同一条收尾路径：不落库就没有历史、`requirePendingAction` 也找不到
@@ -438,14 +499,14 @@ def finalize_chat_turn(user_id: int, itinerary_id: int, message: str, ctx: ChatT
         save_chat_message(session, user_id, itinerary_id, "user", message, [], [], False)
         if out["changed"] or hotel_options:
             invalidate_in_session(session, user_id, itinerary_id)
-        ai_message = save_chat_message(session, user_id, itinerary_id, "ai", str(out["reply"]),
-                                       plans, hotel_options, out["changed"])
+        ai_message = save_chat_message(
+            session, user_id, itinerary_id, "ai", str(out["reply"]), plans, hotel_options, out["changed"]
+        )
         out["messageId"] = ai_message.id
     return out
 
 
-def chat_edit(user_id: int, itinerary_id: int, message: str,
-              history: list[dict[str, Any]] | None) -> dict[str, Any]:
+def chat_edit(user_id: int, itinerary_id: int, message: str, history: list[dict[str, Any]] | None) -> dict[str, Any]:
     """阻塞版对话改行程（同 Java `chatEdit`）。"""
     ctx = build_chat_turn_context(user_id, itinerary_id, message, history)
     return finalize_chat_turn(user_id, itinerary_id, message, ctx, run_chat_turn_in_process(ctx, itinerary_id))
@@ -460,7 +521,8 @@ def run_chat_turn_in_process(ctx: ChatTurnContext, itinerary_id: int) -> dict[st
     request = ctx.chat_body
     with use_scene("chat"), observe_run(request_id=f"itinerary-{itinerary_id}"):
         response = itinerary_city.guard_agent_call(
-            "行程助手暂不可用", lambda: run_chat_turn(ChatTurnRequest.model_validate(request)))
+            "行程助手暂不可用", lambda: run_chat_turn(ChatTurnRequest.model_validate(request))
+        )
     return response.model_dump(by_alias=True)
 
 
@@ -480,11 +542,12 @@ def chunk_reply(text: str, size: int = CHAT_TOKEN_CHUNK_SIZE) -> list[str]:
     """reply 按 size 字符切片（最后一片可能更短）；空文本不产帧（同 Java `chunk`）。"""
     if not text or size <= 0:
         return []
-    return [text[i:i + size] for i in range(0, len(text), size)]
+    return [text[i : i + size] for i in range(0, len(text), size)]
 
 
-async def chat_edit_stream(user_id: int, itinerary_id: int, message: str,
-                           history: list[dict[str, Any]] | None) -> AsyncIterator[str]:
+async def chat_edit_stream(
+    user_id: int, itinerary_id: int, message: str, history: list[dict[str, Any]] | None
+) -> AsyncIterator[str]:
     """流式版对话改行程：产出**信封 JSON 字符串**，由路由层包成 SSE 帧。
 
     与阻塞版共用 `build_chat_turn_context` + `finalize_chat_turn`，因此两条路径发给 agent 的
@@ -499,7 +562,7 @@ async def chat_edit_stream(user_id: int, itinerary_id: int, message: str,
     # 上下文构建是一串索引查询：放在线程里跑，别占着事件循环
     try:
         ctx = await run_in_threadpool(build_chat_turn_context, user_id, itinerary_id, message, history)
-    except Exception as exc:  # noqa: BLE001 - 连接已建立，失败只能以事件形式告知
+    except Exception as exc:
         logger.warning("chat stream context failed for itinerary %s: %s", itinerary_id, exc)
         yield event_publisher.error_envelope(itinerary_id, "AGENT_ERROR", str(exc))
         return
@@ -519,7 +582,7 @@ async def chat_edit_stream(user_id: int, itinerary_id: int, message: str,
         try:
             out, error = await asyncio.wait_for(outcomes.get(), event_hub.HEARTBEAT_SECONDS)
             break
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # 模型跑得久时靠心跳帧保持连接不被代理层掐掉（Java 的本地 emitter 不注册进
             # 网关心跳表，所以那段等待窗口是完全静默的）
             yield event_publisher.heartbeat_envelope(itinerary_id)
@@ -528,26 +591,30 @@ async def chat_edit_stream(user_id: int, itinerary_id: int, message: str,
         yield event_publisher.error_envelope(itinerary_id, "AGENT_ERROR", error)
         return
     for delta in chunk_reply(str(out["reply"])):
-        yield event_publisher.publish_local(itinerary_id, "chat_token",
-                                            {"messageId": stream_id, "delta": delta})
+        yield event_publisher.publish_local(itinerary_id, "chat_token", {"messageId": stream_id, "delta": delta})
     draft = dict(out)
     draft.pop("reply", None)
     yield event_publisher.publish_local(itinerary_id, "chat_draft", draft)
     yield event_publisher.publish_local(itinerary_id, "chat_done", {"messageId": stream_id})
 
 
-def _stream_turn(outcomes: asyncio.Queue, loop: asyncio.AbstractEventLoop, user_id: int,
-                 itinerary_id: int, message: str, ctx: ChatTurnContext) -> None:
+def _stream_turn(
+    outcomes: asyncio.Queue,
+    loop: asyncio.AbstractEventLoop,
+    user_id: int,
+    itinerary_id: int,
+    message: str,
+    ctx: ChatTurnContext,
+) -> None:
     """工作线程主体：跑完一轮并落库，结果（或错误文本）投回事件循环。
 
     始终经 `call_soon_threadsafe` 非阻塞投递：客户端断开后循环可能已经关掉，
     阻塞 put 会把池线程永久 park 住。
     """
     try:
-        out = finalize_chat_turn(user_id, itinerary_id, message, ctx,
-                                 run_chat_turn_in_process(ctx, itinerary_id))
+        out = finalize_chat_turn(user_id, itinerary_id, message, ctx, run_chat_turn_in_process(ctx, itinerary_id))
         _offer(outcomes, loop, (out, None))
-    except Exception as exc:  # noqa: BLE001 - 失败以 error 事件呈现
+    except Exception as exc:
         logger.warning("chat stream turn failed for itinerary %s: %s", itinerary_id, exc, exc_info=True)
         _offer(outcomes, loop, (None, str(exc) or "行程助手暂不可用"))
 

@@ -54,8 +54,7 @@ def test_font_default_resolves_to_the_in_repo_copy(monkeypatch, tmp_path) -> Non
     monkeypatch.setattr(config, "BASE_DIR", service_root)
 
     # Java 模块已删除：字体全仓只有本仓一份；历史位置即使残留也不再回读
-    java_font = (tmp_path / "repo" / "travel-backend-java" / "src" / "main" / "resources"
-                 / "fonts" / "simhei.ttf")
+    java_font = tmp_path / "repo" / "travel-backend-java" / "src" / "main" / "resources" / "fonts" / "simhei.ttf"
     java_font.parent.mkdir(parents=True)
     java_font.write_bytes(b"font")
     assert config._default_font_path() == str(service_root / "app" / "resources" / "fonts" / "simhei.ttf")
@@ -100,4 +99,4 @@ def test_script_fallback_matches_the_app_resolver(monkeypatch) -> None:
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
     module = _load_script("check_schema_contract_nodeps", "check_schema_contract")
-    assert module.MIGRATION_DIR == schema_source.resolve_migration_dir()
+    assert schema_source.resolve_migration_dir() == module.MIGRATION_DIR

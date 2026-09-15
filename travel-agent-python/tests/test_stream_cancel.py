@@ -80,28 +80,26 @@ class TestStreamChatDeltasCancel:
         fake = _FakeHttpClient(_FakeStreamResponse([], cancel, None))
         monkeypatch.setattr(llm_client, "_get_http_client", lambda: fake)
         with pytest.raises(StreamCancelled):
-            list(llm_client.LLMClient().stream_chat_deltas(
-                [{"role": "user", "content": "hi"}], cancel=cancel))
+            list(llm_client.LLMClient().stream_chat_deltas([{"role": "user", "content": "hi"}], cancel=cancel))
         assert fake.stream_calls == 0
 
     def test_cancel_mid_stream_aborts_closes_and_skips_usage(self, monkeypatch):
         metrics.reset()
         cancel = threading.Event()
         response = _FakeStreamResponse(_llm_lines(5), cancel, cancel_at=2)
-        monkeypatch.setattr(llm_client, "_get_http_client",
-                            lambda: _FakeHttpClient(response))
+        monkeypatch.setattr(llm_client, "_get_http_client", lambda: _FakeHttpClient(response))
         received: list[str] = []
         with observe_run("cancel-llm-run"):
             with pytest.raises(StreamCancelled):
                 for delta in llm_client.LLMClient().stream_chat_deltas(
-                        [{"role": "user", "content": "hi"}], cancel=cancel):
+                    [{"role": "user", "content": "hi"}], cancel=cancel
+                ):
                     received.append(delta)
         assert received == ["chunk-0", "chunk-1"]  # 第 3 行到达时取消，未继续消费
         assert response.consumed == 3
         assert response.closed, "退出 with 块应在途 HTTP 流被断开"
         trace = metrics.get_trace("cancel-llm-run")
-        assert any(e["name"] == "llm.stream_request" and e["status"] == "cancelled"
-                   for e in trace["events"])
+        assert any(e["name"] == "llm.stream_request" and e["status"] == "cancelled" for e in trace["events"])
         # 用量分片未到：token 未知，不计 llm_calls（避免把取消误计为失败/成功）
         assert metrics.snapshot()["llm_calls"] == 0
 
@@ -115,9 +113,11 @@ class _CancelAfterFirstChunkClient:
         self.chunks = 0
 
     def stream_chat_deltas(self, messages, **kwargs):
-        first = ('{"trip_theme":"测试主题","daily_plans":['
-                 '{"day_no":1,"items":[{"item_type":"attraction","poi_name":"测试点",'
-                 '"latitude":30.0,"longitude":120.0}]}')
+        first = (
+            '{"trip_theme":"测试主题","daily_plans":['
+            '{"day_no":1,"items":[{"item_type":"attraction","poi_name":"测试点",'
+            '"latitude":30.0,"longitude":120.0}]}'
+        )
         yield first
         self.chunks += 1
         for _ in range(100):
@@ -173,11 +173,14 @@ class TestBridgeWorkerEvents:
             def producer(cancel):
                 yield {"type": "start", "runId": "r"}
                 yield {"type": "done", "complete": True}
+
             return [line async for line in _bridge_worker_events(producer)]
 
         lines = asyncio.run(scenario())
         assert [json.loads(line) for line in lines] == [
-            {"type": "start", "runId": "r"}, {"type": "done", "complete": True}]
+            {"type": "start", "runId": "r"},
+            {"type": "done", "complete": True},
+        ]
 
     def test_consumer_cancel_stops_producer(self):
         """消费端被取消（等价 Starlette 断连取消响应生成器）→ 生产者停止。"""
@@ -225,14 +228,19 @@ class TestGenerateStreamEndpoint:
 
         monkeypatch.setattr("app.api.agent.run_generate_trip_stream", fake_stream)
         with TestClient(app) as client:
-            return client.post("/api/agent/v1/generate-stream",
-                               json={"city": "杭州", "days": 1, "persons": 1})
+            return client.post("/api/agent/v1/generate-stream", json={"city": "杭州", "days": 1, "persons": 1})
 
     def test_streams_contract_events(self, monkeypatch):
         def fake_stream(req, cancel=None):
             # start 由端点自身产出（runId 来自 trace），生成器只负责业务事件
-            yield {"type": "done", "daysExpected": 1, "daysEmitted": [1],
-                   "tripTheme": None, "complete": True, "message": None}
+            yield {
+                "type": "done",
+                "daysExpected": 1,
+                "daysEmitted": [1],
+                "tripTheme": None,
+                "complete": True,
+                "message": None,
+            }
 
         response = self._post(monkeypatch, fake_stream)
         assert response.status_code == 200

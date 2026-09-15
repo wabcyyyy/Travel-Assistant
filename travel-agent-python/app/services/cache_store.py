@@ -14,7 +14,7 @@ import json
 import logging
 import threading
 import time
-from typing import Any, Optional
+from typing import Any
 
 from app.common import redis_client
 
@@ -43,7 +43,7 @@ def full_key(namespace: str, key: str) -> str:
     return f"{KEY_PREFIX}{namespace}:{key}"
 
 
-def get_json(namespace: str, key: str) -> Optional[Any]:
+def get_json(namespace: str, key: str) -> Any | None:
     """返回缓存值；未命中返回 None。空结果哨兵转成 None（调用方按未命中处理但不再打外网）。"""
     full = full_key(namespace, key)
     try:
@@ -93,7 +93,7 @@ def reset_for_tests() -> None:
     redis_client.reset_for_tests()
 
 
-def _local_get(full: str) -> Optional[str]:
+def _local_get(full: str) -> str | None:
     with _lock:
         entry = _local.get(full)
         if entry is None:

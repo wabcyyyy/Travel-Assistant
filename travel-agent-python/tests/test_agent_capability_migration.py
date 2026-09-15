@@ -30,7 +30,6 @@ from app.db.models import (
     ItineraryDay,
     ItineraryItem,
     ItineraryMain,
-    ItineraryVersion,
     PoiKnowledge,
     SysUser,
 )
@@ -57,30 +56,78 @@ def db(monkeypatch, tmp_path):
 def _seed() -> None:
     with db_session.session_scope() as session:
         session.add(SysUser(username="alice", password=user_service.hash_password(PASSWORD), status=1, role="user"))
-        trip = ItineraryMain(user_id=1, title="杭州2日游", city="杭州", start_date=date(2026, 4, 1),
-                             end_date=date(2026, 4, 2), days=2, persons=2, budget=Decimal("2000.00"), status=2)
+        trip = ItineraryMain(
+            user_id=1,
+            title="杭州2日游",
+            city="杭州",
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 4, 2),
+            days=2,
+            persons=2,
+            budget=Decimal("2000.00"),
+            status=2,
+        )
         session.add(trip)
         session.flush()
         first = ItineraryDay(itinerary_id=trip.id, day_no=1, generation_status="SUCCEEDED")
         second = ItineraryDay(itinerary_id=trip.id, day_no=2, generation_status="SUCCEEDED")
         session.add_all([first, second])
         session.flush()
-        session.add_all([
-            ItineraryItem(day_id=first.id, itinerary_id=trip.id, item_type="attraction",
-                          poi_name="西湖", cost=Decimal("0.00"), sort_no=0, start_time=time(9, 30)),
-            ItineraryItem(day_id=first.id, itinerary_id=trip.id, item_type="food",
-                          poi_name="楼外楼", cost=Decimal("100.00"), sort_no=1),
-            ItineraryItem(day_id=second.id, itinerary_id=trip.id, item_type="hotel",
-                          poi_name="杭州老旅馆", poi_id="1", cost=Decimal("200.00"), sort_no=0),
-        ])
-        session.add_all([
-            PoiKnowledge(city="杭州", name="灵隐寺", category="attraction", ticket_price=Decimal("45.00"),
-                         duration_min=120, open_time="07:00-18:00", tags="古迹,佛教",
-                         source="mysql.poi_knowledge", source_updated_at=None),
-            PoiKnowledge(city="杭州", name="杭州国际酒店", category="hotel", ticket_price=Decimal("880.00"),
-                         tags="五星,地标", description="城市地标酒店",
-                         source="mysql.poi_knowledge", source_updated_at=None),
-        ])
+        session.add_all(
+            [
+                ItineraryItem(
+                    day_id=first.id,
+                    itinerary_id=trip.id,
+                    item_type="attraction",
+                    poi_name="西湖",
+                    cost=Decimal("0.00"),
+                    sort_no=0,
+                    start_time=time(9, 30),
+                ),
+                ItineraryItem(
+                    day_id=first.id,
+                    itinerary_id=trip.id,
+                    item_type="food",
+                    poi_name="楼外楼",
+                    cost=Decimal("100.00"),
+                    sort_no=1,
+                ),
+                ItineraryItem(
+                    day_id=second.id,
+                    itinerary_id=trip.id,
+                    item_type="hotel",
+                    poi_name="杭州老旅馆",
+                    poi_id="1",
+                    cost=Decimal("200.00"),
+                    sort_no=0,
+                ),
+            ]
+        )
+        session.add_all(
+            [
+                PoiKnowledge(
+                    city="杭州",
+                    name="灵隐寺",
+                    category="attraction",
+                    ticket_price=Decimal("45.00"),
+                    duration_min=120,
+                    open_time="07:00-18:00",
+                    tags="古迹,佛教",
+                    source="mysql.poi_knowledge",
+                    source_updated_at=None,
+                ),
+                PoiKnowledge(
+                    city="杭州",
+                    name="杭州国际酒店",
+                    category="hotel",
+                    ticket_price=Decimal("880.00"),
+                    tags="五星,地标",
+                    description="城市地标酒店",
+                    source="mysql.poi_knowledge",
+                    source_updated_at=None,
+                ),
+            ]
+        )
 
 
 @pytest.fixture
@@ -107,12 +154,21 @@ def _items(trip_id: int) -> dict[str, list[dict]]:
         days = session.execute(select(ItineraryDay).order_by(ItineraryDay.day_no)).scalars().all()
         return {
             str(day.day_no): [
-                {"poi": item.poi_name, "type": item.item_type, "sort": item.sort_no,
-                 "start": item.start_time, "deleted": item.deleted}
+                {
+                    "poi": item.poi_name,
+                    "type": item.item_type,
+                    "sort": item.sort_no,
+                    "start": item.start_time,
+                    "deleted": item.deleted,
+                }
                 for item in session.execute(
-                    select(ItineraryItem).execution_options(include_deleted=True)
-                    .where(ItineraryItem.day_id == day.id).order_by(ItineraryItem.sort_no)
-                ).scalars().all()
+                    select(ItineraryItem)
+                    .execution_options(include_deleted=True)
+                    .where(ItineraryItem.day_id == day.id)
+                    .order_by(ItineraryItem.sort_no)
+                )
+                .scalars()
+                .all()
             ]
             for day in days
         }
@@ -120,11 +176,14 @@ def _items(trip_id: int) -> dict[str, list[dict]]:
 
 # ---------- nl-edit：五种 op ----------
 
+
 def test_nl_edit_delete_and_add_report_in_java_wording(client: TestClient, monkeypatch) -> None:
     trip_id = _trip_id(client)
-    _ops(monkeypatch,
-         EditOp(action="delete", day_no=1, poi_name="楼外楼"),
-         EditOp(action="add", day_no=1, poi_name="灵隐寺", start_time="14:00"))
+    _ops(
+        monkeypatch,
+        EditOp(action="delete", day_no=1, poi_name="楼外楼"),
+        EditOp(action="add", day_no=1, poi_name="灵隐寺", start_time="14:00"),
+    )
 
     body = client.post(f"/api/itinerary/{trip_id}/nl-edit", json={"instruction": "删了楼外楼，下午加灵隐寺"}).json()
     assert body["data"]["applied"] == ["删除「楼外楼」", "第1天新增「灵隐寺」"]
@@ -143,9 +202,7 @@ def test_add_op_copies_authoritative_facts_and_marks_them_pending(client: TestCl
     client.post(f"/api/itinerary/{trip_id}/nl-edit", json={"instruction": "第二天加灵隐寺"})
 
     with db_session.session_scope() as session:
-        item = session.execute(
-            select(ItineraryItem).where(ItineraryItem.poi_name == "灵隐寺")
-        ).scalar_one()
+        item = session.execute(select(ItineraryItem).where(ItineraryItem.poi_name == "灵隐寺")).scalar_one()
         assert item.item_type == "attraction" and item.cost == Decimal("45.00")
         assert item.duration_min == 120 and item.open_time == "07:00-18:00" and item.tag == "古迹,佛教"
         assert item.verification_status == "unverified"
@@ -158,14 +215,15 @@ def test_add_op_without_knowledge_hit_falls_back_to_plain_attraction(client: Tes
     _ops(monkeypatch, EditOp(action="add", day_no=1, poi_name=" nonexistent 点位"))
     client.post(f"/api/itinerary/{trip_id}/nl-edit", json={"instruction": "加个不存在的点位"})
     with db_session.session_scope() as session:
-        item = session.execute(
-            select(ItineraryItem).where(ItineraryItem.poi_name == " nonexistent 点位")
-        ).scalar_one()
+        item = session.execute(select(ItineraryItem).where(ItineraryItem.poi_name == " nonexistent 点位")).scalar_one()
         assert item.item_type == "attraction" and item.cost is None and item.source_updated_at is None
         # verification_status/value_kind/freshness_status 是 NOT NULL + DDL 默认值：
         # 未命中知识库只能落默认值，写显式 NULL 在 MySQL 上直接违约
-        assert (item.verification_status, item.value_kind, item.freshness_status) == \
-            ("unverified", "generated", "unknown")
+        assert (item.verification_status, item.value_kind, item.freshness_status) == (
+            "unverified",
+            "generated",
+            "unknown",
+        )
 
 
 def test_move_day_lands_on_next_day_and_appends(client: TestClient, monkeypatch) -> None:
@@ -191,9 +249,7 @@ def test_upgrade_hotel_matches_tier_keywords(client: TestClient, monkeypatch) ->
     body = client.post(f"/api/itinerary/{trip_id}/nl-edit", json={"instruction": "酒店换成豪华点的"}).json()
     assert body["data"]["applied"] == ["酒店已调整为豪华型"]
     with db_session.session_scope() as session:
-        hotel = session.execute(
-            select(ItineraryItem).where(ItineraryItem.item_type == "hotel")
-        ).scalar_one()
+        hotel = session.execute(select(ItineraryItem).where(ItineraryItem.item_type == "hotel")).scalar_one()
         assert hotel.poi_name == "杭州国际酒店" and hotel.cost == Decimal("880.00")
         assert hotel.remark == "城市地标酒店", "档次关键词命中描述/标签"
 
@@ -208,9 +264,11 @@ def test_delete_without_day_no_spans_whole_trip(client: TestClient, monkeypatch)
 def test_bad_time_aborts_whole_request_and_rolls_back_applied_ops(client: TestClient, monkeypatch) -> None:
     """一条 op 的时间不合法 → 整单 400，前面已执行的 op 也要一起回滚（同 Java 的单事务）。"""
     trip_id = _trip_id(client)
-    _ops(monkeypatch,
-         EditOp(action="delete", day_no=1, poi_name="楼外楼"),
-         EditOp(action="add", day_no=1, poi_name="灵隐寺", start_time="9:30"))
+    _ops(
+        monkeypatch,
+        EditOp(action="delete", day_no=1, poi_name="楼外楼"),
+        EditOp(action="add", day_no=1, poi_name="灵隐寺", start_time="9:30"),
+    )
     body = client.post(f"/api/itinerary/{trip_id}/nl-edit", json={"instruction": "改一下"}).json()
     assert body["code"] == 400 and body["message"] == "时间格式必须为 HH:mm"
     assert all(not row["deleted"] for row in _items(trip_id)["1"]), "回滚后楼外楼仍在"
@@ -220,8 +278,17 @@ def test_nl_edit_writes_two_snapshots_and_invalidates_ai_drafts(client: TestClie
     trip_id = _trip_id(client)
     with db_session.session_scope() as session:
         from app.db.models import ItineraryChatMessage
-        session.add(ItineraryChatMessage(itinerary_id=trip_id, user_id=1, role="ai", content="建议",
-                                         plans_json='[{"day_no":1,"_baseRevision":"abc"}]', changed=1))
+
+        session.add(
+            ItineraryChatMessage(
+                itinerary_id=trip_id,
+                user_id=1,
+                role="ai",
+                content="建议",
+                plans_json='[{"day_no":1,"_baseRevision":"abc"}]',
+                changed=1,
+            )
+        )
     _ops(monkeypatch, EditOp(action="delete", day_no=1, poi_name="楼外楼"))
     client.post(f"/api/itinerary/{trip_id}/nl-edit", json={"instruction": "删楼外楼"})
 
@@ -232,6 +299,7 @@ def test_nl_edit_writes_two_snapshots_and_invalidates_ai_drafts(client: TestClie
 
 
 # ---------- agent 失败的 502 口径 ----------
+
 
 def test_agent_business_failure_keeps_request_failed_prefix(client: TestClient, monkeypatch) -> None:
     def refuse(_req):
@@ -257,12 +325,15 @@ def test_missing_itinerary_is_404_before_calling_the_model(client: TestClient, m
 
 # ---------- 三个城市能力端点 ----------
 
+
 def test_clarify_shape_and_empty_message_rejection(client: TestClient, monkeypatch) -> None:
     from app.schemas.trip import ClarifyResponse
 
-    monkeypatch.setattr(itinerary_city, "run_clarify",
-                        lambda req: ClarifyResponse(slots={"city": "杭州"}, missing=["days"],
-                                                    question="去玩几天？", ready=True))
+    monkeypatch.setattr(
+        itinerary_city,
+        "run_clarify",
+        lambda req: ClarifyResponse(slots={"city": "杭州"}, missing=["days"], question="去玩几天？", ready=True),
+    )
     data = client.post("/api/itinerary/clarify", json={"message": "想去杭州", "slots": {}}).json()["data"]
     assert data == {"slots": {"city": "杭州"}, "missing": ["days"], "question": "去玩几天？", "ready": True}
 
@@ -273,13 +344,18 @@ def test_clarify_shape_and_empty_message_rejection(client: TestClient, monkeypat
 def test_city_guide_fills_java_defaults_and_drops_nameless_suggestions(client: TestClient, monkeypatch) -> None:
     def fake_run(payload):
         captured.append(payload)
-        return {"kind": None, "city": None, "message": "",
-                "suggestions": [{"name": "杭州", "reason": None}, {"reason": "无名也保留"}]}
+        return {
+            "kind": None,
+            "city": None,
+            "message": "",
+            "suggestions": [{"name": "杭州", "reason": None}, {"reason": "无名也保留"}],
+        }
 
     captured: list[dict] = []
     monkeypatch.setattr(itinerary_city, "run_city_guide", fake_run)
-    data = client.post("/api/itinerary/city-guide",
-                       json={"input": "想看江南", "history": [{"role": "user", "content": "想看江南"}]}).json()["data"]
+    data = client.post(
+        "/api/itinerary/city-guide", json={"input": "想看江南", "history": [{"role": "user", "content": "想看江南"}]}
+    ).json()["data"]
     assert data["kind"] == "unclear" and data["message"] == "想去哪里玩？说说你的想法～"
     assert data["suggestions"] == [{"name": "杭州", "reason": ""}]
     # supported 由服务端现算（不接受客户端伪造）
@@ -295,10 +371,12 @@ def test_poi_nearby_degrades_silently_and_applies_default_limit(client: TestClie
         return [{"name": "雷峰塔", "distance_m": 320, "latitude": 30.2}]
 
     monkeypatch.setattr(itinerary_city, "find_nearby_pois", fake_nearby)
-    data = client.post("/api/itinerary/poi-nearby",
-                       json={"city": "杭州", "name": "西湖", "limit": 0, "radiusM": 0}).json()["data"]
-    assert data["items"] == [{"name": "雷峰塔", "category": "attraction", "rating": None,
-                              "address": None, "distanceM": 320}]
+    data = client.post(
+        "/api/itinerary/poi-nearby", json={"city": "杭州", "name": "西湖", "limit": 0, "radiusM": 0}
+    ).json()["data"]
+    assert data["items"] == [
+        {"name": "雷峰塔", "category": "attraction", "rating": None, "address": None, "distanceM": 320}
+    ]
     assert seen["limit"] == 5 and seen["radius_m"] is None, "0 值 falsy 归默认（同迁移前）"
     assert seen["latitude"] is None
 

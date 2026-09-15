@@ -30,11 +30,7 @@ def ndcg(rows: list[dict[str, Any]], expected: list[str], k: int = 10) -> float:
     expected_set = set(expected)
     if not expected_set:
         return 1.0
-    dcg = sum(
-        1.0 / math.log2(rank + 1)
-        for rank, name in enumerate(_names(rows[:k]), start=1)
-        if name in expected_set
-    )
+    dcg = sum(1.0 / math.log2(rank + 1) for rank, name in enumerate(_names(rows[:k]), start=1) if name in expected_set)
     ideal = sum(1.0 / math.log2(rank + 1) for rank in range(1, min(k, len(expected_set)) + 1))
     return dcg / ideal if ideal else 0.0
 
@@ -50,8 +46,11 @@ def evaluate_retrieval_case(rows: list[dict[str, Any]], case: dict[str, Any]) ->
     category = case.get("category")
     expected = list(case.get("expected") or [])
     all_rows = list(case.get("all_rows") or rows)
-    filtered_rows = [row for row in rows if (not city or row.get("city") == city)
-                     and (not category or row.get("category") == category)]
+    filtered_rows = [
+        row
+        for row in rows
+        if (not city or row.get("city") == city) and (not category or row.get("category") == category)
+    ]
     preferences = [str(value).lower() for value in case.get("preferences") or []]
     preference_hit = 0
     if preferences:
@@ -62,14 +61,15 @@ def evaluate_retrieval_case(rows: list[dict[str, Any]], case: dict[str, Any]) ->
         preference_hit = len(filtered_rows)
     # 过滤准确率：全集中满足条件的行里，有多少确实出现在结果集中；
     # 同时结果集中不得混入不满足条件的行（越权召回）。
-    eligible = [row for row in all_rows
-                if (not city or row.get("city") == city)
-                and (not category or row.get("category") == category)]
+    eligible = [
+        row
+        for row in all_rows
+        if (not city or row.get("city") == city) and (not category or row.get("category") == category)
+    ]
     eligible_names = {str(row.get("name") or "") for row in eligible}
     result_names = [str(row.get("name") or "") for row in rows]
     leaked = sum(1 for name in result_names if name not in eligible_names)
-    city_filter_accuracy = 1.0 if not rows or leaked == 0 else round(
-        (len(rows) - leaked) / len(rows), 4)
+    city_filter_accuracy = 1.0 if not rows or leaked == 0 else round((len(rows) - leaked) / len(rows), 4)
     authority_prefixes = tuple(case.get("authority_prefixes") or ("mysql", "amap", "wikivoyage"))
     return {
         "query": case.get("query", ""),
@@ -82,12 +82,17 @@ def evaluate_retrieval_case(rows: list[dict[str, Any]], case: dict[str, Any]) ->
         "preference_hit_rate": round(preference_hit / len(filtered_rows), 4) if filtered_rows else 1.0,
         "price_field_completeness": round(
             sum(row.get("ticket_price") is not None for row in filtered_rows) / len(filtered_rows), 4
-        ) if filtered_rows else 1.0,
+        )
+        if filtered_rows
+        else 1.0,
         # 值域校验：source 必须落在权威前缀白名单内（不再信任代码自设标志）。
         "poi_authority_rate": round(
             sum(str(row.get("source", "")).startswith(authority_prefixes) for row in filtered_rows)
-            / len(filtered_rows), 4
-        ) if filtered_rows else 1.0,
+            / len(filtered_rows),
+            4,
+        )
+        if filtered_rows
+        else 1.0,
     }
 
 

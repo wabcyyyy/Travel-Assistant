@@ -16,18 +16,19 @@
 - app.common.config.settings；httpx；外部 LLM 服务。
 """
 
-import time
+import contextlib
 import json
 import threading
+import time
 from collections.abc import Iterator
 
 import httpx
 
-from app.common.config import settings
+from app.agent.observability import current_scene, metrics
+from app.agent.run_limits import RunLimitExceeded, current_limits
 from app.agent.trace import record_event
-from app.agent.run_limits import current_limits, RunLimitExceeded
-from app.agent.observability import metrics, current_scene
 from app.agent.usage_store import usage_store
+from app.common.config import settings
 
 _http_client: httpx.Client | None = None
 _http_lock = threading.Lock()
@@ -70,10 +71,17 @@ def close_http_client() -> None:
         _http_client = None
 
 
-def _record_usage(model: str | None, prompt_tokens: int, completion_tokens: int,
-                  started: float, success: bool, error: str | None = None) -> None:
+def _record_usage(
+    model: str | None,
+    prompt_tokens: int,
+    completion_tokens: int,
+    started: float,
+    success: bool,
+    error: str | None = None,
+) -> None:
     """把一次调用明细写入用量库（场景由 contextvar 推断）。"""
-    try:
+    # 用量记录失败不影响主流程
+    with contextlib.suppress(Exception):
         usage_store.record(
             scene=current_scene(),
             model=model or settings.llm_model,
@@ -83,8 +91,7 @@ def _record_usage(model: str | None, prompt_tokens: int, completion_tokens: int,
             success=success,
             error=error,
         )
-    except Exception:  # 用量记录失败不影响主流程
-        pass
+
 
 DEFAULT_SYSTEM_PROMPT = "你是一个专业的旅游行程规划助手，请用中文回答，只输出结构化结果。"
 
@@ -114,7 +121,7 @@ def _is_retryable(exc: Exception) -> bool:
 
 def _retry_sleep(attempt: int) -> None:
     # 指数退避 + 少量抖动，避免同步 LLM 网关的瞬时过载被放大。
-    time.sleep(min(2.0 ** attempt * 0.3, 2.0))
+    time.sleep(min(2.0**attempt * 0.3, 2.0))
 
 
 class LLMClient:
@@ -124,10 +131,17 @@ class LLMClient:
         self._model = settings.llm_model
         self._timeout = settings.llm_timeout
 
-    def chat_response(self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 2048,
-                      enable_search: bool = False, model: str | None = None,
-                      json_mode: bool = False, tools: list[dict] | None = None,
-                      tool_choice: str | dict | None = None) -> dict:
+    def chat_response(
+        self,
+        messages: list[dict],
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        enable_search: bool = False,
+        model: str | None = None,
+        json_mode: bool = False,
+        tools: list[dict] | None = None,
+        tool_choice: str | dict | None = None,
+    ) -> dict:
         url = self._base_url.rstrip("/") + "/chat/completions"
         headers = {
             "Authorization": f"Bearer {self._api_key}",
@@ -163,7 +177,9 @@ class LLMClient:
                     if limits and attempt > 0:
                         limits.check("llm")
                     resp = _get_http_client().post(
-                        url, json=payload, headers=headers,
+                        url,
+                        json=payload,
+                        headers=headers,
                         timeout=_build_timeout(timeout),
                     )
                     resp.raise_for_status()
@@ -173,48 +189,62 @@ class LLMClient:
                     # 瞬时错误（超时/429/5xx）指数退避后重试一次；其余直接上抛。
                     if attempt + 1 >= _LLM_MAX_ATTEMPTS or not _is_retryable(exc):
                         raise
-                    record_event("llm", "llm.retry", status="error", error=str(exc),
-                                 metadata={"attempt": attempt + 1})
+                    record_event("llm", "llm.retry", status="error", error=str(exc), metadata={"attempt": attempt + 1})
                     _retry_sleep(attempt)
         except RunLimitExceeded as exc:
-            record_event("llm", "llm.request", status="error", error=str(exc),
-                         metadata={"budget_exhausted": True})
+            record_event("llm", "llm.request", status="error", error=str(exc), metadata={"budget_exhausted": True})
             raise
         except Exception as exc:
             _record_usage(model, 0, 0, started, False, str(exc))
             raise
         usage = body.get("usage") or {}
         # 全局 token 统计收口：无论是否处于 trace 上下文，每次真实调用都上报。
-        metrics.record_llm_call(
-            int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0))
-        _record_usage(model, int(usage.get("prompt_tokens") or 0),
-                      int(usage.get("completion_tokens") or 0), started, True)
+        metrics.record_llm_call(int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0))
+        _record_usage(
+            model, int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0), started, True
+        )
         if limits:
             try:
                 limits.record_llm(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
             except RunLimitExceeded as exc:
-                record_event("llm", "llm.request", status="error", error=str(exc),
-                             metadata={"budget_exhausted": True,
-                                       "prompt_tokens": usage.get("prompt_tokens"),
-                                       "completion_tokens": usage.get("completion_tokens")})
+                record_event(
+                    "llm",
+                    "llm.request",
+                    status="error",
+                    error=str(exc),
+                    metadata={
+                        "budget_exhausted": True,
+                        "prompt_tokens": usage.get("prompt_tokens"),
+                        "completion_tokens": usage.get("completion_tokens"),
+                    },
+                )
                 raise
-        record_event("llm", "llm.request", metadata={
-            "model": model or self._model,
-            "prompt_tokens": usage.get("prompt_tokens"),
-            "completion_tokens": usage.get("completion_tokens"),
-        })
+        record_event(
+            "llm",
+            "llm.request",
+            metadata={
+                "model": model or self._model,
+                "prompt_tokens": usage.get("prompt_tokens"),
+                "completion_tokens": usage.get("completion_tokens"),
+            },
+        )
         choices = body.get("choices") or []
         if not choices:
             # 内容审查/风控等场景网关会返回空 choices；抛语义化 ValueError
             # 而不是 IndexError，上层降级链按普通失败处理。
             raise ValueError(f"LLM 未返回任何候选（finish_reason={body.get('finish_reason')}）")
-        return {"message": choices[0]["message"], "usage": usage,
-                "finish_reason": choices[0].get("finish_reason")}
+        return {"message": choices[0]["message"], "usage": usage, "finish_reason": choices[0].get("finish_reason")}
 
-    def stream_chat_deltas(self, messages: list[dict], temperature: float = 0.7,
-                           max_tokens: int = 2048, enable_search: bool = False,
-                           model: str | None = None, json_mode: bool = False,
-                           cancel: threading.Event | None = None) -> Iterator[str]:
+    def stream_chat_deltas(
+        self,
+        messages: list[dict],
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        enable_search: bool = False,
+        model: str | None = None,
+        json_mode: bool = False,
+        cancel: threading.Event | None = None,
+    ) -> Iterator[str]:
         """流式调用 LLM，逐段 yield 内容增量（不做重试；异常在迭代时抛出）。
 
         适用于整段多日生成的「边流边解析」场景：调用方增量喂给 JSON 解析器，
@@ -261,7 +291,10 @@ class LLMClient:
         stream_usage: dict = {}
         content_length = 0
         with _get_http_client().stream(
-            "POST", url, json=payload, headers=headers,
+            "POST",
+            url,
+            json=payload,
+            headers=headers,
             timeout=_build_timeout(timeout),
         ) as resp:
             resp.raise_for_status()
@@ -269,11 +302,16 @@ class LLMClient:
                 if cancel is not None and cancel.is_set():
                     # 深度取消：抛异常退出 with 块即断开在途 HTTP 流（网关侧停止生成）。
                     # 用量分片未到（token 未知）故不写 usage 行；轨迹事件供成本排查。
-                    record_event("llm", "llm.stream_request", status="cancelled", metadata={
-                        "model": model or self._model,
-                        "content_length": content_length,
-                        "duration_ms": int((time.monotonic() - started) * 1000),
-                    })
+                    record_event(
+                        "llm",
+                        "llm.stream_request",
+                        status="cancelled",
+                        metadata={
+                            "model": model or self._model,
+                            "content_length": content_length,
+                            "duration_ms": int((time.monotonic() - started) * 1000),
+                        },
+                    )
                     raise StreamCancelled("客户端断开，LLM 流已中断")
                 if not line or not line.startswith("data: "):
                     continue
@@ -297,46 +335,78 @@ class LLMClient:
         completion = int(stream_usage.get("completion_tokens") or 0)
         metrics.record_llm_call(prompt, completion)
         _record_usage(model, prompt, completion, started, True)
-        record_event("llm", "llm.stream_request", metadata={
-            "model": model or self._model,
-            "content_length": content_length,
-            "prompt_tokens": prompt,
-            "completion_tokens": completion,
-        })
+        record_event(
+            "llm",
+            "llm.stream_request",
+            metadata={
+                "model": model or self._model,
+                "content_length": content_length,
+                "prompt_tokens": prompt,
+                "completion_tokens": completion,
+            },
+        )
 
-    def stream_chat(self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 2048,
-                    enable_search: bool = False, model: str | None = None,
-                    json_mode: bool = False) -> str:
+    def stream_chat(
+        self,
+        messages: list[dict],
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        enable_search: bool = False,
+        model: str | None = None,
+        json_mode: bool = False,
+    ) -> str:
         """流式调用 LLM，返回完整响应文本。适用于多日整段生成等长响应场景。"""
         started = time.monotonic()
         content_parts: list[str] = []
         try:
-            for delta in self.stream_chat_deltas(messages, temperature=temperature,
-                                                 max_tokens=max_tokens,
-                                                 enable_search=enable_search, model=model,
-                                                 json_mode=json_mode):
+            for delta in self.stream_chat_deltas(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                enable_search=enable_search,
+                model=model,
+                json_mode=json_mode,
+            ):
                 content_parts.append(delta)
         except RunLimitExceeded as exc:
-            record_event("llm", "llm.stream_request", status="error", error=str(exc),
-                         metadata={"budget_exhausted": True})
+            record_event(
+                "llm", "llm.stream_request", status="error", error=str(exc), metadata={"budget_exhausted": True}
+            )
             raise
         except Exception as exc:
             _record_usage(model, 0, 0, started, False, str(exc))
             raise
         return "".join(content_parts)
 
-    def chat(self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 2048,
-             enable_search: bool = False, model: str | None = None,
-             json_mode: bool = False) -> str:
-        response = self.chat_response(messages, temperature=temperature, max_tokens=max_tokens,
-                                      enable_search=enable_search, model=model,
-                                      json_mode=json_mode)
+    def chat(
+        self,
+        messages: list[dict],
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        enable_search: bool = False,
+        model: str | None = None,
+        json_mode: bool = False,
+    ) -> str:
+        response = self.chat_response(
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            enable_search=enable_search,
+            model=model,
+            json_mode=json_mode,
+        )
         return str(response["message"].get("content") or "")
 
-    def complete(self, user_prompt: str, system_prompt: str = DEFAULT_SYSTEM_PROMPT,
-                 temperature: float = 0.7, max_tokens: int = 2048,
-                 enable_search: bool = False, model: str | None = None,
-                 json_mode: bool = False) -> str:
+    def complete(
+        self,
+        user_prompt: str,
+        system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        enable_search: bool = False,
+        model: str | None = None,
+        json_mode: bool = False,
+    ) -> str:
         return self.chat(
             [
                 {"role": "system", "content": system_prompt},
@@ -349,10 +419,16 @@ class LLMClient:
             json_mode=json_mode,
         )
 
-    def stream_complete(self, user_prompt: str, system_prompt: str = DEFAULT_SYSTEM_PROMPT,
-                        temperature: float = 0.7, max_tokens: int = 2048,
-                        enable_search: bool = False, model: str | None = None,
-                        json_mode: bool = False) -> str:
+    def stream_complete(
+        self,
+        user_prompt: str,
+        system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        enable_search: bool = False,
+        model: str | None = None,
+        json_mode: bool = False,
+    ) -> str:
         """流式单轮调用的便捷封装。"""
         return self.stream_chat(
             [

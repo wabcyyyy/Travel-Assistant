@@ -7,16 +7,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.api.business.auth import client_ip
-from app.api.business.auth import auth_router, user_router
+from app.api.business.auth import auth_router, client_ip, user_router
 from app.common import jwt_compat
 from app.common.config import settings
 from app.common.envelope import install_exception_handlers
@@ -59,6 +56,7 @@ def _register(client: TestClient, username: str = "alice", password: str = PASSW
 
 
 # ---------- 注册 ----------
+
 
 def test_register_persists_bcrypt_2a_hash(client: TestClient) -> None:
     body = _register(client)
@@ -106,6 +104,7 @@ def test_register_throttle_after_five_attempts_per_ip(client: TestClient) -> Non
 
 # ---------- 登录 ----------
 
+
 def test_login_sets_httponly_cookie_and_never_returns_token(client: TestClient) -> None:
     _register(client)
     response = client.post("/api/auth/login", json={"username": "alice", "password": PASSWORD})
@@ -121,7 +120,10 @@ def test_login_sets_httponly_cookie_and_never_returns_token(client: TestClient) 
 def test_login_wrong_password_and_failure_counter(client: TestClient) -> None:
     _register(client)
     for _ in range(5):  # 前 5 次失败各计一次（Java: getCount >= 5 才拒绝）
-        assert client.post("/api/auth/login", json={"username": "alice", "password": "bad1234"}).json()["message"] == "用户名或密码错误"
+        assert (
+            client.post("/api/auth/login", json={"username": "alice", "password": "bad1234"}).json()["message"]
+            == "用户名或密码错误"
+        )
     locked = client.post("/api/auth/login", json={"username": "alice", "password": "bad1234"}).json()
     assert locked["code"] == 429 and locked["message"] == "登录失败次数过多，请稍后再试"
 
@@ -145,6 +147,7 @@ def test_login_disabled_account_is_403(client: TestClient) -> None:
 
 
 # ---------- 会话链路 / 用户信息 ----------
+
 
 def test_user_info_requires_session(client: TestClient) -> None:
     assert client.get("/api/user/info").status_code == 401
@@ -183,6 +186,7 @@ def _issue_token(username: str) -> str:
 
 
 # ---------- IP 归属与共享键 ----------
+
 
 class _Addr:
     def __init__(self, host):

@@ -41,6 +41,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise NotImplementedError(
-        "本仓库不提供 downgrade：业务库回退请走备份恢复，而不是 DROP 列/表。"
-    )
+    raise NotImplementedError("本仓库不提供 downgrade：业务库回退请走备份恢复，而不是 DROP 列/表。")

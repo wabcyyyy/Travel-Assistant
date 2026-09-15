@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import pytest
+import redis
 
 from app.common import redis_client, token_revocation
 from app.common.config import settings
@@ -37,7 +38,7 @@ def test_shared_client_sets_fast_fail_timeouts():
 
 
 def test_failed_command_opens_breaker_and_client_returns_none():
-    with pytest.raises(Exception):
+    with pytest.raises(redis.exceptions.TimeoutError):
         redis_client.client().exists("probe")
     redis_client.note_failure(RuntimeError("connection refused"))
     assert redis_client.is_down() is True

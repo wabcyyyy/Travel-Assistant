@@ -68,8 +68,9 @@ def guard_agent_call(unavailable_message: str, invoke: Callable[[], T]) -> T:
 
 def clarify(message: str, slots: dict[str, Any]) -> dict[str, Any]:
     """槽位澄清：抽取行程参数并返回缺失字段与追问（纯解析，不落库）。"""
-    response = guard_agent_call("意图解析服务暂不可用",
-                      lambda: run_clarify(ClarifyRequest(message=message, slots=slots or {})))
+    response = guard_agent_call(
+        "意图解析服务暂不可用", lambda: run_clarify(ClarifyRequest(message=message, slots=slots or {}))
+    )
     return {
         "slots": response.slots,
         "missing": response.missing,
@@ -80,13 +81,16 @@ def clarify(message: str, slots: dict[str, Any]) -> dict[str, Any]:
 
 def city_guide(input_text: str, history: list[dict[str, Any]] | None) -> dict[str, Any]:
     """目的地不确定时的城市推荐对话。`supported` 由服务端现算，不接受客户端伪造。"""
-    request = CityGuideRequest(user_input=input_text or "", supported=supported_cities(),
-                               history=_guide_history(history))
+    request = CityGuideRequest(
+        user_input=input_text or "", supported=supported_cities(), history=_guide_history(history)
+    )
     # by_alias=True：user_input 落成 wire 键 "input"，与 run_city_guide 读取的键一致（同迁移前）
-    response = guard_agent_call("城市引导服务暂不可用",
-                      lambda: run_city_guide(request.model_dump(by_alias=True)))
-    suggestions = [{"name": item["name"], "reason": item.get("reason") or ""}
-                   for item in (response.get("suggestions") or []) if item.get("name")]
+    response = guard_agent_call("城市引导服务暂不可用", lambda: run_city_guide(request.model_dump(by_alias=True)))
+    suggestions = [
+        {"name": item["name"], "reason": item.get("reason") or ""}
+        for item in (response.get("suggestions") or [])
+        if item.get("name")
+    ]
     return {
         "kind": response.get("kind") or "unclear",
         "city": response.get("city"),
@@ -118,7 +122,7 @@ def poi_nearby(payload: dict[str, Any]) -> dict[str, Any]:
             category=request.category or None,
         )
         return {"items": [_nearby_row(row) for row in rows]}
-    except Exception as exc:  # noqa: BLE001 - 与迁移前一致：附近推荐失败只降级为空
+    except Exception as exc:
         logger.warning("poi nearby failed, returned empty list: %s", exc)
         return {"items": []}
 
@@ -136,8 +140,7 @@ def _nearby_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _guide_history(history: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    return [{"role": _as_str(row.get("role")), "content": _as_str(row.get("content"))}
-            for row in (history or [])]
+    return [{"role": _as_str(row.get("role")), "content": _as_str(row.get("content"))} for row in (history or [])]
 
 
 def _as_str(value: Any) -> str | None:

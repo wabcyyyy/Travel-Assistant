@@ -29,7 +29,7 @@ from app.agent.research.evidence import (
     ResearchDomain,
     ResearchTask,
 )
-from app.agent.run_limits import current_limits, RunLimitExceeded
+from app.agent.run_limits import current_limits
 from app.agent.trace import record_event, trace_span
 
 logger = logging.getLogger(__name__)
@@ -86,8 +86,7 @@ def _run_search(state: ResearchAgentState) -> dict:
     limits = current_limits()
     if limits:
         limits.record_retrieval(1)
-    extras = list(dict.fromkeys((plan.get("extra_keywords") or [])
-                                + (state.get("extra_keywords") or [])))
+    extras = list(dict.fromkeys((plan.get("extra_keywords") or []) + (state.get("extra_keywords") or [])))
     # M3-②（AD5）最小增量：任务卡携带的意图关键词并入补池链（新旧行为兼容，仅追加）
     extras = list(dict.fromkeys(extras + list(task.intent_keywords or [])))
     if extras:
@@ -101,9 +100,12 @@ def _run_search(state: ResearchAgentState) -> dict:
     # 本地知识库仍偏少时：联网搜索补真实地点名（池空/海外城市的证据缺口）
     if len(items) < 3:
         from app.agent.web_search import search_places_via_web, web_search_enabled
+
         if web_search_enabled():
             web_rows = search_places_via_web(
-                task.city, task.domain, limit=max(4, 6 - len(items)),
+                task.city,
+                task.domain,
+                limit=max(4, 6 - len(items)),
                 intent_keywords=task.intent_keywords,
             )
             items = _merge_supplement(items, web_rows)
@@ -125,8 +127,9 @@ def _evaluate_node(state: ResearchAgentState) -> dict:
 def _refine_node(state: ResearchAgentState) -> dict:
     """补查节点：把评估给出的补充词并入检索计划，进入下一轮检索。"""
     plan = dict(state.get("plan") or {})
-    plan["extra_keywords"] = list(dict.fromkeys(
-        (plan.get("extra_keywords") or []) + (state.get("extra_keywords") or [])))
+    plan["extra_keywords"] = list(
+        dict.fromkeys((plan.get("extra_keywords") or []) + (state.get("extra_keywords") or []))
+    )
     return {"plan": plan}
 
 
@@ -140,8 +143,7 @@ def _route_after_search(state: ResearchAgentState) -> str:
 def _route_after_evaluate(state: ResearchAgentState) -> str:
     if state.get("sufficient"):
         return "finalize"
-    record_event("decision", f"research.{state['task'].domain}.refine",
-                 metadata={"round": state.get("round")})
+    record_event("decision", f"research.{state['task'].domain}.refine", metadata={"round": state.get("round")})
     return "refine"
 
 
@@ -193,26 +195,25 @@ def build_research_graph(domain: ResearchDomain):
     return graph.compile()
 
 
-_research_graphs: dict[ResearchDomain, object] = {
-    domain: build_research_graph(domain) for domain in RESEARCH_DOMAINS
-}
+_research_graphs: dict[ResearchDomain, object] = {domain: build_research_graph(domain) for domain in RESEARCH_DOMAINS}
 
 
 def run_research(task: ResearchTask) -> EvidencePack:
     """执行一次研究任务；异常向上抛，由 Supervisor 做单域降级。"""
     if task.domain not in _research_graphs:
         raise ValueError(f"未知研究域：{task.domain}")
-    with trace_span("agent", f"research.{task.domain}",
-                    metadata={"city": task.city, "limit": task.limit}):
-        result = _research_graphs[task.domain].invoke({
-            "task": task,
-            "plan": {},
-            "items": [],
-            "round": 0,
-            "sufficient": True,
-            "extra_keywords": [],
-            "pack": None,
-        })
+    with trace_span("agent", f"research.{task.domain}", metadata={"city": task.city, "limit": task.limit}):
+        result = _research_graphs[task.domain].invoke(
+            {
+                "task": task,
+                "plan": {},
+                "items": [],
+                "round": 0,
+                "sufficient": True,
+                "extra_keywords": [],
+                "pack": None,
+            }
+        )
     pack = result.get("pack")
     if pack is None:
         raise RuntimeError(f"研究域 {task.domain} 未产出证据包")

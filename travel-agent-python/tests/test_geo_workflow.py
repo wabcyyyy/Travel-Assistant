@@ -1,5 +1,3 @@
-import math
-
 from app.agent.geo import haversine_meters, nearest_neighbor_order
 from app.agent.reflect import parse_time
 from app.agent.workflow import needs_fix

@@ -35,9 +35,7 @@ def _to_vo(row: dict) -> dict:
 
 
 def search_local(city: str, keywords: str = "", category: str | None = None) -> dict:
-    rows = poi_repository.search_pois_by_keyword(
-        city, keywords=keywords, category=category, limit=MAX_LIMIT
-    )
+    rows = poi_repository.search_pois_by_keyword(city, keywords=keywords, category=category, limit=MAX_LIMIT)
     coverage = poi_repository.count_pois_by_city()
     return {
         "city": city,

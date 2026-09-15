@@ -16,8 +16,7 @@ def test_run_limits_enforce_llm_and_token_budgets():
 
 
 def test_run_limits_detect_no_progress():
-    limits = RunLimits(deadline_seconds=60, max_llm_calls=2, max_tokens=10,
-                       max_replans=3)
+    limits = RunLimits(deadline_seconds=60, max_llm_calls=2, max_tokens=10, max_replans=3)
     limits.record_replan(False)
     with pytest.raises(RunLimitExceeded, match="无进展"):
         limits.record_replan(False)

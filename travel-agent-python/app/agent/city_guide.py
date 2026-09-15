@@ -24,18 +24,20 @@ def run_city_guide(req: dict) -> dict:
         "3. 实在无法判断（如输入完全无意义）→ kind=unclear，友好地请TA说更多。"
         "语气要求：自然、热情、有画面感；禁止出现「支持列表」「暂未开通」「服务」这类系统腔；"
         "不要跨省硬塞；不要重复同一个城市；推荐词用「我更推荐」「尤其适合你」这种管家口吻。"
-        "只输出 JSON：{\"kind\":\"province|city|unclear\",\"city\":null或规范城市名,"
-        "\"message\":\"2~3句自然对话\",\"suggestions\":[{\"name\":\"城市\",\"reason\":\"一句话卖点\"}]}"
+        '只输出 JSON：{"kind":"province|city|unclear","city":null或规范城市名,'
+        '"message":"2~3句自然对话","suggestions":[{"name":"城市","reason":"一句话卖点"}]}'
     )
     messages = [{"role": "system", "content": system}]
     for h in (req.get("history") or [])[-8:]:
         role = "user" if h.get("role") == "user" else "assistant"
         if h.get("content"):
             messages.append({"role": role, "content": str(h["content"])[:600]})
-    messages.append({
-        "role": "user",
-        "content": f"用户输入：{req.get('input')}",
-    })
+    messages.append(
+        {
+            "role": "user",
+            "content": f"用户输入：{req.get('input')}",
+        }
+    )
     raw = client.chat(messages, temperature=0.5, max_tokens=800)
     text = raw.strip()
     if text.startswith("```"):
@@ -45,11 +47,9 @@ def run_city_guide(req: dict) -> dict:
     except (json.JSONDecodeError, ValueError):
         # 模型输出无花括号/截断时切片为空串会抛 JSONDecodeError；按"意图不明"
         # 的引导语义降级，而不是让异常冒泡成 API 500。
-        return {"kind": "unclear", "city": None,
-                "message": "想去哪里玩？说说你的想法～", "suggestions": []}
+        return {"kind": "unclear", "city": None, "message": "想去哪里玩？说说你的想法～", "suggestions": []}
     if not isinstance(data, dict):
-        return {"kind": "unclear", "city": None,
-                "message": "想去哪里玩？说说你的想法～", "suggestions": []}
+        return {"kind": "unclear", "city": None, "message": "想去哪里玩？说说你的想法～", "suggestions": []}
 
     suggestions = []
     for s in data.get("suggestions") or []:

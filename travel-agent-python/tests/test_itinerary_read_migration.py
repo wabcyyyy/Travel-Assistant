@@ -55,14 +55,25 @@ def _seed() -> None:
 
     hashed = user_service.hash_password("x")
     with db_session.session_scope() as session:
-        session.add_all([
-            SysUser(username="alice", password=hashed, nickname=None, status=1, role="user"),
-            SysUser(username="mallory", password=hashed, nickname=None, status=1, role="user"),
-        ])
+        session.add_all(
+            [
+                SysUser(username="alice", password=hashed, nickname=None, status=1, role="user"),
+                SysUser(username="mallory", password=hashed, nickname=None, status=1, role="user"),
+            ]
+        )
         trip = ItineraryMain(
-            user_id=1, title="杭州3日游", city="杭州", start_date=date(2026, 4, 1),
-            end_date=date(2026, 4, 3), days=3, persons=2, budget=Decimal("3000.00"),
-            status=2, trip_theme="西湖慢行", stay_nights=0, suggestions_json='[{"x": 1}]',
+            user_id=1,
+            title="杭州3日游",
+            city="杭州",
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 4, 3),
+            days=3,
+            persons=2,
+            budget=Decimal("3000.00"),
+            status=2,
+            trip_theme="西湖慢行",
+            stay_nights=0,
+            suggestions_json='[{"x": 1}]',
         )
         other = ItineraryMain(user_id=2, title="别人的行程", city="北京", days=1, persons=1, status=2)
         gone = ItineraryMain(user_id=1, title="已删除", city="杭州", days=1, persons=1, status=2, deleted=1)
@@ -70,32 +81,59 @@ def _seed() -> None:
         session.flush()
 
         day = ItineraryDay(
-            itinerary_id=trip.id, day_no=1, travel_date=date(2026, 4, 1), note="到达",
+            itinerary_id=trip.id,
+            day_no=1,
+            travel_date=date(2026, 4, 1),
+            note="到达",
             generation_status="SUCCEEDED",
             metadata_json='{"theme":"湖畔","miniRoute":{"a":1},"photoSpots":[{"name":"断桥"}],'
-                          '"practicalNotes":["早去"],"dayOptions":[{"label":"A","summary":"s","tradeoff":"t"}]}',
+            '"practicalNotes":["早去"],"dayOptions":[{"label":"A","summary":"s","tradeoff":"t"}]}',
         )
         session.add(day)
         session.flush()
-        session.add_all([
-            ItineraryItem(
-                day_id=day.id, itinerary_id=trip.id, item_type="attraction", poi_name="西湖",
-                latitude=Decimal("30.220000"), longitude=Decimal("120.120000"),
-                start_time=time(9, 30), end_time=time(11, 0), duration_min=120,
-                cost=Decimal("0.00"), source="mysql.poi_knowledge", source_updated_at=datetime(2026, 3, 1, 8, 0),
-                verification_status="verified", value_kind="observed", freshness_status="fresh",
-                review_requirement="none", why_note="离酒店步行可达", intro="三潭印月所在", sort_no=0,
-            ),
-            ItineraryItem(
-                day_id=day.id, itinerary_id=trip.id, item_type="food", poi_name="楼外楼",
-                start_time=time(12, 0, 30), cost=Decimal("88.50"), source="llm.open_day",
-                review_requirement="before_departure", freshness_status="stale", sort_no=1,
-            ),
-        ])
-        session.add_all([
-            BudgetDetail(itinerary_id=trip.id, category="门票", amount=Decimal("0.00"), item_count=1),
-            BudgetDetail(itinerary_id=trip.id, category="餐饮", amount=Decimal("88.50"), item_count=1),
-        ])
+        session.add_all(
+            [
+                ItineraryItem(
+                    day_id=day.id,
+                    itinerary_id=trip.id,
+                    item_type="attraction",
+                    poi_name="西湖",
+                    latitude=Decimal("30.220000"),
+                    longitude=Decimal("120.120000"),
+                    start_time=time(9, 30),
+                    end_time=time(11, 0),
+                    duration_min=120,
+                    cost=Decimal("0.00"),
+                    source="mysql.poi_knowledge",
+                    source_updated_at=datetime(2026, 3, 1, 8, 0),
+                    verification_status="verified",
+                    value_kind="observed",
+                    freshness_status="fresh",
+                    review_requirement="none",
+                    why_note="离酒店步行可达",
+                    intro="三潭印月所在",
+                    sort_no=0,
+                ),
+                ItineraryItem(
+                    day_id=day.id,
+                    itinerary_id=trip.id,
+                    item_type="food",
+                    poi_name="楼外楼",
+                    start_time=time(12, 0, 30),
+                    cost=Decimal("88.50"),
+                    source="llm.open_day",
+                    review_requirement="before_departure",
+                    freshness_status="stale",
+                    sort_no=1,
+                ),
+            ]
+        )
+        session.add_all(
+            [
+                BudgetDetail(itinerary_id=trip.id, category="门票", amount=Decimal("0.00"), item_count=1),
+                BudgetDetail(itinerary_id=trip.id, category="餐饮", amount=Decimal("88.50"), item_count=1),
+            ]
+        )
         session.add(PoiKnowledge(city="杭州", name="西湖", category="attraction", description="江南名湖"))
 
 
@@ -112,16 +150,32 @@ def client() -> TestClient:
 
 # ---------- 列表 ----------
 
+
 def test_list_summary_shape_order_and_totals(client: TestClient) -> None:
     data = client.get("/api/itinerary").json()["data"]
     # 软删行程不可见；按 id 倒序（与 Java orderByDesc(id) 一致）
     assert [row["title"] for row in data] == ["杭州3日游"]
     row = data[0]
     assert set(row) == {
-        "id", "title", "city", "startDate", "endDate", "days", "persons",
-        "budget", "totalAmount", "status", "tripTheme", "createdAt",
+        "id",
+        "title",
+        "city",
+        "startDate",
+        "endDate",
+        "days",
+        "persons",
+        "budget",
+        "totalAmount",
+        "status",
+        "tripTheme",
+        "createdAt",
         # S1 新增：封面/收藏/归档/分享态（hasShare 只回布尔，token 不下发列表）
-        "coverUrl", "coverSource", "coverCredit", "favorite", "archived", "hasShare",
+        "coverUrl",
+        "coverSource",
+        "coverCredit",
+        "favorite",
+        "archived",
+        "hasShare",
     }
     assert row["startDate"] == "2026-04-01" and row["budget"] == 3000.0
     assert row["totalAmount"] == 88.5  # 一次 IN 查询聚合，不是逐行程查
@@ -130,6 +184,7 @@ def test_list_summary_shape_order_and_totals(client: TestClient) -> None:
 
 
 # ---------- 详情形状 ----------
+
 
 def test_detail_top_level_shape(client: TestClient) -> None:
     trip_id = client.get("/api/itinerary").json()["data"][0]["id"]
@@ -211,6 +266,7 @@ def test_corrupt_optional_json_does_not_break_detail(client: TestClient) -> None
 
 # ---------- 归属与缓存 ----------
 
+
 def test_other_users_itinerary_is_404_not_403(client: TestClient) -> None:
     assert client.get("/api/itinerary/2").status_code == 404  # 属于 mallory
     assert client.get("/api/itinerary/999").status_code == 404
@@ -237,6 +293,7 @@ def test_detail_is_cached_and_evicted_per_itinerary(client: TestClient) -> None:
 
 # ---------- 路由顺序与偏好 ----------
 
+
 def test_literal_preference_routes_are_not_swallowed_by_id(client: TestClient) -> None:
     """/preferences 若声明在 /{id} 之后会被当成 id=preferences → 422，Java 无此坑。"""
     response = client.get("/api/itinerary/preferences")
@@ -253,7 +310,9 @@ def test_preference_signals_upsert_and_visibility(client: TestClient) -> None:
         "confidence": 0.8,
     }
     assert client.post("/api/itinerary/preferences/signals", json=body).json()["code"] == 200
-    assert client.post("/api/itinerary/preferences/signals", json={"explicitPreferences": ["美食"]}).json()["code"] == 200
+    assert (
+        client.post("/api/itinerary/preferences/signals", json={"explicitPreferences": ["美食"]}).json()["code"] == 200
+    )
 
     signals = client.get("/api/itinerary/preferences/signals").json()["data"]
     by_label = {row["label"]: row for row in signals}

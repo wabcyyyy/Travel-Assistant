@@ -50,16 +50,15 @@ def stats() -> dict[str, Any]:
             "totalItineraries": _count(session, select(ItineraryMain)),
             "todayNewUsers": _count(session, select(SysUser).where(SysUser.created_at >= today_start)),
             "todayNewItineraries": _count(
-                session, select(ItineraryMain).where(ItineraryMain.created_at >= today_start)),
+                session, select(ItineraryMain).where(ItineraryMain.created_at >= today_start)
+            ),
             "generatingItineraries": _count(session, select(ItineraryMain).where(ItineraryMain.status == 1)),
         }
 
 
 def _count(session, statement) -> int:
     """把已带作用域的 SELECT 包成计数：软删过滤留在内层，不在此处重写条件。"""
-    return int(session.execute(
-        select(func.count()).select_from(statement.subquery())
-    ).scalar_one())
+    return int(session.execute(select(func.count()).select_from(statement.subquery())).scalar_one())
 
 
 def page_users(page: int, size: int, keyword: str | None) -> dict[str, Any]:
@@ -67,23 +66,31 @@ def page_users(page: int, size: int, keyword: str | None) -> dict[str, Any]:
         statement = select(SysUser)
         if keyword and keyword.strip():
             # 与 MyBatis-Plus 的 like 同形：'%kw%'，不做通配符转义
-            statement = statement.where(or_(SysUser.username.like(f"%{keyword}%"),
-                                            SysUser.nickname.like(f"%{keyword}%")))
+            statement = statement.where(
+                or_(SysUser.username.like(f"%{keyword}%"), SysUser.nickname.like(f"%{keyword}%"))
+            )
         total = _count(session, statement)
-        rows = session.execute(
-            statement.order_by(SysUser.created_at.desc()).limit(size).offset((page - 1) * size)
-        ).scalars().all()
+        rows = (
+            session.execute(statement.order_by(SysUser.created_at.desc()).limit(size).offset((page - 1) * size))
+            .scalars()
+            .all()
+        )
         counts = _itinerary_counts(session, [user.id for user in rows])
-        records = [{
-            "id": user.id, "username": user.username, "nickname": user.nickname,
-            "phone": user.phone,
-            # 本仓把 status 映射成 Boolean、Java 侧是 Integer，仪表盘要的是 1/0；
-            # 历史行允许 NULL（登录侧同样把 NULL 当正常），int() 前先判空
-            "status": None if user.status is None else int(user.status),
-            "role": user.role,
-            "itineraryCount": counts.get(user.id, 0),
-            "createdAt": iso_datetime(user.created_at),
-        } for user in rows]
+        records = [
+            {
+                "id": user.id,
+                "username": user.username,
+                "nickname": user.nickname,
+                "phone": user.phone,
+                # 本仓把 status 映射成 Boolean、Java 侧是 Integer，仪表盘要的是 1/0；
+                # 历史行允许 NULL（登录侧同样把 NULL 当正常），int() 前先判空
+                "status": None if user.status is None else int(user.status),
+                "role": user.role,
+                "itineraryCount": counts.get(user.id, 0),
+                "createdAt": iso_datetime(user.created_at),
+            }
+            for user in rows
+        ]
     return _page(total, page, size, records)
 
 
@@ -124,25 +131,41 @@ def _require_user(session, target_user_id: int) -> SysUser:
     return user
 
 
-def page_itineraries(page: int, size: int, keyword: str | None,
-                     status: int | None, user_id: int | None) -> dict[str, Any]:
+def page_itineraries(
+    page: int, size: int, keyword: str | None, status: int | None, user_id: int | None
+) -> dict[str, Any]:
     with session_scope() as session:
         statement = select(ItineraryMain)
         if user_id is not None:
             statement = statement.where(ItineraryMain.user_id == user_id)
         if keyword and keyword.strip():
-            statement = statement.where(or_(ItineraryMain.title.like(f"%{keyword}%"),
-                                            ItineraryMain.city.like(f"%{keyword}%")))
+            statement = statement.where(
+                or_(ItineraryMain.title.like(f"%{keyword}%"), ItineraryMain.city.like(f"%{keyword}%"))
+            )
         if status is not None:
             statement = statement.where(ItineraryMain.status == status)
         total = _count(session, statement)
-        rows = session.execute(
-            statement.order_by(ItineraryMain.created_at.desc()).limit(size).offset((page - 1) * size)
-        ).scalars().all()
-        records = [{"id": row.id, "userId": row.user_id, "title": row.title, "city": row.city,
-                    "startDate": iso_date(row.start_date), "endDate": iso_date(row.end_date),
-                    "days": row.days, "persons": row.persons, "budget": number(row.budget),
-                    "status": row.status, "createdAt": iso_datetime(row.created_at)} for row in rows]
+        rows = (
+            session.execute(statement.order_by(ItineraryMain.created_at.desc()).limit(size).offset((page - 1) * size))
+            .scalars()
+            .all()
+        )
+        records = [
+            {
+                "id": row.id,
+                "userId": row.user_id,
+                "title": row.title,
+                "city": row.city,
+                "startDate": iso_date(row.start_date),
+                "endDate": iso_date(row.end_date),
+                "days": row.days,
+                "persons": row.persons,
+                "budget": number(row.budget),
+                "status": row.status,
+                "createdAt": iso_datetime(row.created_at),
+            }
+            for row in rows
+        ]
     return _page(total, page, size, records)
 
 
@@ -168,14 +191,23 @@ def agent_metrics() -> dict[str, Any]:
         data = dict(metrics.snapshot())
         data["agentAvailable"] = True
         return data
-    except Exception as exc:  # noqa: BLE001 - 仪表盘降级不影响后台其余面板
+    except Exception as exc:
         logger.warning("fetch agent metrics failed: %s", exc)
         return {
-            "agentAvailable": False, "runs": 0, "successes": 0, "failures": 0,
-            "degraded_runs": 0, "llm_calls": 0, "tool_calls": 0,
-            "prompt_tokens": 0, "completion_tokens": 0,
-            "success_rate": 0.0, "failure_rate": 0.0, "degraded_rate": 0.0,
-            "avg_event_latency_ms": 0.0, "recent_failures": [],
+            "agentAvailable": False,
+            "runs": 0,
+            "successes": 0,
+            "failures": 0,
+            "degraded_runs": 0,
+            "llm_calls": 0,
+            "tool_calls": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "success_rate": 0.0,
+            "failure_rate": 0.0,
+            "degraded_rate": 0.0,
+            "avg_event_latency_ms": 0.0,
+            "recent_failures": [],
         }
 
 
@@ -184,15 +216,26 @@ def llm_usage(range_key: str, limit: int, offset: int) -> dict[str, Any]:
         payload = usage_store.report(range_key, limit, offset)
         payload["agentAvailable"] = True
         return payload
-    except Exception as exc:  # noqa: BLE001 - 同上：SQLite 读失败只降级这一张表
+    except Exception as exc:
         logger.warning("fetch llm usage failed: %s", exc)
         # 兜底里 range 原样回显入参（成功路径才是归一化后的键），bucket 恒为 3600：
         # 这两条是 Java 的既有形状，前端只按 agentAvailable 判降级，别顺手"修好"它
         return {
-            "agentAvailable": False, "range": range_key or "24h", "bucket": 3600,
-            "summary": {"calls": 0, "successes": 0, "failures": 0, "success_rate": 0.0,
-                        "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
-                        "avg_duration_ms": 0.0},
-            "by_scene": [], "by_model": [], "timeline": [],
+            "agentAvailable": False,
+            "range": range_key or "24h",
+            "bucket": 3600,
+            "summary": {
+                "calls": 0,
+                "successes": 0,
+                "failures": 0,
+                "success_rate": 0.0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "avg_duration_ms": 0.0,
+            },
+            "by_scene": [],
+            "by_model": [],
+            "timeline": [],
             "calls": {"total": 0, "records": []},
         }

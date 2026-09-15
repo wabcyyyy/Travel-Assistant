@@ -13,13 +13,16 @@ from app.common.config import settings
 def route_matrix_for_plans(plans: list[dict]) -> dict:
     matrix: dict = {}
     for plan in plans:
-        active = [
-            item for item in plan.get("items") or []
-            if item.get("item_type") in ("attraction", "food")
-        ]
+        active = [item for item in plan.get("items") or [] if item.get("item_type") in ("attraction", "food")]
         if len(active) < 2:
             continue
-        matrix.update(registry.invoke("get_route_matrix", {
-            "items": active, "mode": settings.route_mode,
-        }))
+        matrix.update(
+            registry.invoke(
+                "get_route_matrix",
+                {
+                    "items": active,
+                    "mode": settings.route_mode,
+                },
+            )
+        )
     return matrix

@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import contextvars
 import uuid
-from dataclasses import dataclass
-from typing import Any, Callable
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from typing import Any
 
-from app.agent.trace import registry_tool_call, record_event, trace_span
 from app.agent.run_limits import current_limits
+from app.agent.trace import record_event, registry_tool_call, trace_span
 from app.common.config import settings
 from app.schemas.trip import MAX_TRIP_DAYS
 
@@ -39,16 +40,17 @@ class ToolSpec:
     handler: Callable[..., Any]
 
     def function_schema(self) -> dict[str, Any]:
-        return {"type": "function", "function": {
-            "name": self.name,
-            "description": self.description,
-            "parameters": self.parameters,
-        }}
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.parameters,
+            },
+        }
 
 
-_budget: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
-    "agent_tool_budget", default=None
-)
+_budget: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar("agent_tool_budget", default=None)
 
 
 def begin_tool_budget() -> contextvars.Token:
@@ -61,8 +63,7 @@ def end_tool_budget(token: contextvars.Token) -> None:
 
 def tool_budget_snapshot() -> dict[str, Any]:
     current = _budget.get() or {"total": 0, "by_tool": {}}
-    return {"total": int(current.get("total", 0)),
-            "by_tool": dict(current.get("by_tool", {}))}
+    return {"total": int(current.get("total", 0)), "by_tool": dict(current.get("by_tool", {}))}
 
 
 def _type_matches(value: Any, expected: str) -> bool:
@@ -119,18 +120,26 @@ class ToolRegistry:
 
     def public_specs(self) -> list[dict[str, Any]]:
         """供内部审计/调试使用，不暴露 Python handler。"""
-        return [{
-            "name": spec.name, "version": spec.version,
-            "description": spec.description, "parameters": spec.parameters,
-            "read_only": spec.read_only, "risk_level": spec.risk_level,
-            "timeout_seconds": spec.timeout_seconds, "max_calls": spec.max_calls,
-            "retry_policy": spec.retry_policy,
-            "requires_confirmation": spec.requires_confirmation,
-            "idempotent": spec.idempotent,
-        } for spec in self._specs.values()]
+        return [
+            {
+                "name": spec.name,
+                "version": spec.version,
+                "description": spec.description,
+                "parameters": spec.parameters,
+                "read_only": spec.read_only,
+                "risk_level": spec.risk_level,
+                "timeout_seconds": spec.timeout_seconds,
+                "max_calls": spec.max_calls,
+                "retry_policy": spec.retry_policy,
+                "requires_confirmation": spec.requires_confirmation,
+                "idempotent": spec.idempotent,
+            }
+            for spec in self._specs.values()
+        ]
 
-    def invoke(self, name: str, params: dict[str, Any] | None = None, *,
-               confirmed: bool = False, action_id: str | None = None) -> Any:
+    def invoke(
+        self, name: str, params: dict[str, Any] | None = None, *, confirmed: bool = False, action_id: str | None = None
+    ) -> Any:
         spec = self.get(name)
         params = params or {}
         _validate_parameters(spec, params)
@@ -151,24 +160,36 @@ class ToolRegistry:
             total = int(state["total"])
             per_tool = int(state["by_tool"].get(name, 0))
             if total >= settings.tool_max_calls or per_tool >= spec.max_calls:
-                record_event("tool", name, status="error", tool_call_id=tool_call_id,
-                             action_id=action_id, metadata={
-                                 "version": spec.version, "budget_exhausted": True,
-                                 "total_calls": total, "tool_calls": per_tool,
-                             }, error="tool_call_budget_exhausted")
+                record_event(
+                    "tool",
+                    name,
+                    status="error",
+                    tool_call_id=tool_call_id,
+                    action_id=action_id,
+                    metadata={
+                        "version": spec.version,
+                        "budget_exhausted": True,
+                        "total_calls": total,
+                        "tool_calls": per_tool,
+                    },
+                    error="tool_call_budget_exhausted",
+                )
                 raise ToolInvocationError(f"工具调用预算已耗尽：{name}")
             state["total"] = total + 1
             state["by_tool"][name] = per_tool + 1
             metadata = {
-                "version": spec.version, "risk_level": spec.risk_level,
-                "read_only": spec.read_only, "idempotent": spec.idempotent,
+                "version": spec.version,
+                "risk_level": spec.risk_level,
+                "read_only": spec.read_only,
+                "idempotent": spec.idempotent,
                 "timeout_seconds": spec.timeout_seconds,
                 "parameters": params,
             }
-            with trace_span("tool", name, metadata=metadata,
-                            tool_call_id=tool_call_id, action_id=action_id):
-                with registry_tool_call(tool_call_id):
-                    return spec.handler(**params)
+            with (
+                trace_span("tool", name, metadata=metadata, tool_call_id=tool_call_id, action_id=action_id),
+                registry_tool_call(tool_call_id),
+            ):
+                return spec.handler(**params)
         finally:
             if token is not None:
                 _budget.reset(token)
@@ -177,12 +198,14 @@ class ToolRegistry:
 def _search_pois(**params: Any) -> dict[str, Any]:
     # 运行时导入，确保测试 monkeypatch 和应用热更新仍作用于真实工具函数。
     from app.agent import tools
+
     city = params["city"]
     # 景点和餐饮检索彼此独立；并行执行可把高德/RAG 的等待从串行叠加
     # 降为单次最长等待。两者仍由同一个只读 Registry 工具统一审计。
     with ThreadPoolExecutor(max_workers=3, thread_name_prefix="poi-search") as pool:
         attractions_future = pool.submit(
-            tools.search_attractions, city, params.get("preferences", []), params.get("limit", 30))
+            tools.search_attractions, city, params.get("preferences", []), params.get("limit", 30)
+        )
         foods_future = pool.submit(tools.search_foods, city, params.get("food_limit", 10))
         consumption_future = pool.submit(tools.get_consumption, city)
         return {
@@ -194,62 +217,129 @@ def _search_pois(**params: Any) -> dict[str, Any]:
 
 def _search_hotel_options(**params: Any) -> list[dict]:
     from app.agent import tools
+
     return tools.search_hotels(params["city"], params.get("limit", 6))
 
 
 def _get_route_matrix(**params: Any) -> dict:
     from app.agent.route_service import get_route_matrix
+
     return get_route_matrix(params["items"], mode=params.get("mode", settings.route_mode))
 
 
 def _find_nearby_pois(**params: Any) -> list[dict]:
     from app.agent.tools import find_nearby_pois
+
     return find_nearby_pois(
-        params["city"], name=params.get("name"),
-        latitude=params.get("latitude"), longitude=params.get("longitude"),
-        limit=params.get("limit", 5), radius_m=params.get("radius_m"),
+        params["city"],
+        name=params.get("name"),
+        latitude=params.get("latitude"),
+        longitude=params.get("longitude"),
+        limit=params.get("limit", 5),
+        radius_m=params.get("radius_m"),
         category=params.get("category"),
     )
 
 
 registry = ToolRegistry()
-registry.register(ToolSpec(
-    name="search_pois", version="1.0", description="检索目的地景点、餐饮、酒店和消费信息",
-    parameters={"type": "object", "properties": {
-        "city": {"type": "string"}, "preferences": {"type": "array"},
-        "limit": {"type": "integer"}, "food_limit": {"type": "integer"},
-        "hotel_limit": {"type": "integer"}}, "required": ["city"],
-        "additionalProperties": False}, read_only=True, risk_level="low",
-    timeout_seconds=15, max_calls=2, retry_policy={"max_retries": 1},
-    requires_confirmation=False, idempotent=True, handler=_search_pois))
-registry.register(ToolSpec(
-    name="search_hotel_options", version="1.0", description="检索可枚举的酒店候选",
-    parameters={"type": "object", "properties": {
-        "city": {"type": "string"}, "limit": {"type": "integer"}},
-        "required": ["city"], "additionalProperties": False}, read_only=True,
-    risk_level="low", timeout_seconds=10, max_calls=3,
-    retry_policy={"max_retries": 1}, requires_confirmation=False, idempotent=True,
-    handler=_search_hotel_options))
-registry.register(ToolSpec(
-    name="get_route_matrix", version="1.0", description="获取同日地点之间的交通时间矩阵",
-    parameters={"type": "object", "properties": {
-        "items": {"type": "array"}, "mode": {"type": "string"}},
-        "required": ["items"], "additionalProperties": False}, read_only=True,
-    # 逐日构建矩阵：最长行程（MAX_TRIP_DAYS 天）在"校验→修复"循环下最多
-    # 被调用 4 轮（多日：reflect 2 次 + format 1 次；单日：3 次 + format 1 次），
-    # 预算必须覆盖该最坏情况，否则开启路线服务后 4 天以上行程必然超预算报错。
-    risk_level="low", timeout_seconds=8, max_calls=4 * MAX_TRIP_DAYS,
-    retry_policy={"max_retries": 0}, requires_confirmation=False, idempotent=True,
-    handler=_get_route_matrix))
-registry.register(ToolSpec(
-    name="find_nearby_pois", version="1.0",
-    description="在权威知识库中查找给定坐标或地点名称附近（同城）的真实 POI 近邻",
-    parameters={"type": "object", "properties": {
-        "city": {"type": "string"}, "name": {"type": "string"},
-        "latitude": {"type": "number"}, "longitude": {"type": "number"},
-        "limit": {"type": "integer"}, "radius_m": {"type": "integer"},
-        "category": {"type": "string"}},
-        "required": ["city"], "additionalProperties": False}, read_only=True,
-    risk_level="low", timeout_seconds=5, max_calls=8,
-    retry_policy={"max_retries": 0}, requires_confirmation=False, idempotent=True,
-    handler=_find_nearby_pois))
+registry.register(
+    ToolSpec(
+        name="search_pois",
+        version="1.0",
+        description="检索目的地景点、餐饮、酒店和消费信息",
+        parameters={
+            "type": "object",
+            "properties": {
+                "city": {"type": "string"},
+                "preferences": {"type": "array"},
+                "limit": {"type": "integer"},
+                "food_limit": {"type": "integer"},
+                "hotel_limit": {"type": "integer"},
+            },
+            "required": ["city"],
+            "additionalProperties": False,
+        },
+        read_only=True,
+        risk_level="low",
+        timeout_seconds=15,
+        max_calls=2,
+        retry_policy={"max_retries": 1},
+        requires_confirmation=False,
+        idempotent=True,
+        handler=_search_pois,
+    )
+)
+registry.register(
+    ToolSpec(
+        name="search_hotel_options",
+        version="1.0",
+        description="检索可枚举的酒店候选",
+        parameters={
+            "type": "object",
+            "properties": {"city": {"type": "string"}, "limit": {"type": "integer"}},
+            "required": ["city"],
+            "additionalProperties": False,
+        },
+        read_only=True,
+        risk_level="low",
+        timeout_seconds=10,
+        max_calls=3,
+        retry_policy={"max_retries": 1},
+        requires_confirmation=False,
+        idempotent=True,
+        handler=_search_hotel_options,
+    )
+)
+registry.register(
+    ToolSpec(
+        name="get_route_matrix",
+        version="1.0",
+        description="获取同日地点之间的交通时间矩阵",
+        parameters={
+            "type": "object",
+            "properties": {"items": {"type": "array"}, "mode": {"type": "string"}},
+            "required": ["items"],
+            "additionalProperties": False,
+        },
+        read_only=True,
+        # 逐日构建矩阵：最长行程（MAX_TRIP_DAYS 天）在"校验→修复"循环下最多
+        # 被调用 4 轮（多日：reflect 2 次 + format 1 次；单日：3 次 + format 1 次），
+        # 预算必须覆盖该最坏情况，否则开启路线服务后 4 天以上行程必然超预算报错。
+        risk_level="low",
+        timeout_seconds=8,
+        max_calls=4 * MAX_TRIP_DAYS,
+        retry_policy={"max_retries": 0},
+        requires_confirmation=False,
+        idempotent=True,
+        handler=_get_route_matrix,
+    )
+)
+registry.register(
+    ToolSpec(
+        name="find_nearby_pois",
+        version="1.0",
+        description="在权威知识库中查找给定坐标或地点名称附近（同城）的真实 POI 近邻",
+        parameters={
+            "type": "object",
+            "properties": {
+                "city": {"type": "string"},
+                "name": {"type": "string"},
+                "latitude": {"type": "number"},
+                "longitude": {"type": "number"},
+                "limit": {"type": "integer"},
+                "radius_m": {"type": "integer"},
+                "category": {"type": "string"},
+            },
+            "required": ["city"],
+            "additionalProperties": False,
+        },
+        read_only=True,
+        risk_level="low",
+        timeout_seconds=5,
+        max_calls=8,
+        retry_policy={"max_retries": 0},
+        requires_confirmation=False,
+        idempotent=True,
+        handler=_find_nearby_pois,
+    )
+)

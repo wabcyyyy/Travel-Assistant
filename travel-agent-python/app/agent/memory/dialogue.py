@@ -47,4 +47,4 @@ def dialogue_fence_block(history: list[dict] | None, **kwargs: Any) -> str:
     if not turns:
         return ""
     lines = [f"{t['role']}: {t['content']}" for t in turns]
-    return f"{FENCE}\"\"\"{chr(10).join(lines)}\"\"\""
+    return f'{FENCE}"""{chr(10).join(lines)}"""'

@@ -28,7 +28,6 @@ from app.schemas.trip import GenerateRequest
 from tests.agent_eval import mock_llm
 from tests.agent_eval.metrics import evaluate_response
 
-
 CASES_PATH = Path(__file__).with_name("cases.json")
 REPORT_DIR = Path(__file__).with_name("report")
 
@@ -55,18 +54,20 @@ def run_case(case: dict) -> dict:
     fixture = mock_llm.catalog(case["city"])
     # LLM-only 口径下的离线评测：mock 开放模式的模型输出（而非旧的
     # 确定性 fallback），走真实的编排/引用落地/反思/格式化链路。
-    with patch.object(workflow.settings, "llm_api_key", "fixture"), \
-            patch.object(tools, "search_attractions", mock_llm.search_attractions), \
-            patch.object(tools, "search_foods", mock_llm.search_foods), \
-            patch.object(tools, "get_consumption", mock_llm.get_consumption), \
-            patch.object(tools, "search_hotels", mock_llm.search_hotels), \
-            patch.object(reasoning, "plan_research", mock_llm.plan_research), \
-            patch.object(reasoning, "evaluate_research", mock_llm.evaluate_research), \
-            patch.object(tools, "attach_poi_images", mock_llm.attach_poi_images), \
-            patch.object(tools, "search_local_poi", mock_llm.search_local_poi), \
-            patch.object(workflow, "_llm_open_day", mock_llm.fixture_open_day), \
-            patch.object(workflow, "_llm_open_trip", mock_llm.fixture_open_trip), \
-            trace_run(f"fixture-{case['city']}-{case['days']}") as recorder:
+    with (
+        patch.object(workflow.settings, "llm_api_key", "fixture"),
+        patch.object(tools, "search_attractions", mock_llm.search_attractions),
+        patch.object(tools, "search_foods", mock_llm.search_foods),
+        patch.object(tools, "get_consumption", mock_llm.get_consumption),
+        patch.object(tools, "search_hotels", mock_llm.search_hotels),
+        patch.object(reasoning, "plan_research", mock_llm.plan_research),
+        patch.object(reasoning, "evaluate_research", mock_llm.evaluate_research),
+        patch.object(tools, "attach_poi_images", mock_llm.attach_poi_images),
+        patch.object(tools, "search_local_poi", mock_llm.search_local_poi),
+        patch.object(workflow, "_llm_open_day", mock_llm.fixture_open_day),
+        patch.object(workflow, "_llm_open_trip", mock_llm.fixture_open_trip),
+        trace_run(f"fixture-{case['city']}-{case['days']}") as recorder,
+    ):
         response = workflow.run_generate(build_generate_request(case))
     return evaluate_response(response, case, fixture, recorder.to_dict())
 
@@ -91,10 +92,15 @@ def build_report(cases: list[dict]) -> dict:
             "degraded_status_rate": round(sum(r["status"] == "degraded" for r in results) / max(len(results), 1), 4),
             "failed_status_rate": round(sum(r["status"] == "failed" for r in results) / max(len(results), 1), 4),
             "fallback_success_rate": round(sum(r["fallback_success"] for r in results) / max(len(results), 1), 4),
-            "trace_complete_rate": round(sum(
-                set(r["trace"]["nodes"]) >= {"parse", "research", "generate", "reflect", "format"}
-                and r["trace"]["tool_count"] >= 2 for r in results
-            ) / max(len(results), 1), 4),
+            "trace_complete_rate": round(
+                sum(
+                    set(r["trace"]["nodes"]) >= {"parse", "research", "generate", "reflect", "format"}
+                    and r["trace"]["tool_count"] >= 2
+                    for r in results
+                )
+                / max(len(results), 1),
+                4,
+            ),
             "research_rounds_avg": _average(results, "research_rounds"),
             "research_pack_avg": _average(results, "research_pack"),
         },
@@ -107,14 +113,21 @@ def write_report(report: dict) -> None:
     (REPORT_DIR / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     metrics = report["metrics"]
     lines = [
-        "# Agent 离线评测报告", "",
+        "# Agent 离线评测报告",
+        "",
         "- 数据模式：固定权威 fixture + fallback 生成器（不依赖外部服务）",
         f"- 用例数：{report['case_count']}",
-        "", "| 指标 | 结果 |", "| --- | ---: |",
+        "",
+        "| 指标 | 结果 |",
+        "| --- | ---: |",
     ]
     for key, value in metrics.items():
         lines.append(f"| {key} | {value:.2%} |")
-    lines += ["", "| 城市 | 天数 | 权威 POI | 字段引用 | 冲突率 | 路线违规 | 重复率 | 预算偏差 | 轨迹工具数 |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
+    lines += [
+        "",
+        "| 城市 | 天数 | 权威 POI | 字段引用 | 冲突率 | 路线违规 | 重复率 | 预算偏差 | 轨迹工具数 |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
     for result in report["details"]:
         case = result["case"]
         lines.append(
@@ -130,11 +143,12 @@ def write_report(report: dict) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=0, help="只运行前 N 个用例")
-    parser.add_argument("--cases", default=str(CASES_PATH),
-                        help="用例文件：默认 cases.json；主题化同题评测传 themed_cases.json")
+    parser.add_argument(
+        "--cases", default=str(CASES_PATH), help="用例文件：默认 cases.json；主题化同题评测传 themed_cases.json"
+    )
     args = parser.parse_args()
     cases = json.loads(Path(args.cases).read_text(encoding="utf-8"))
-    report = build_report(cases[:args.limit] if args.limit else cases)
+    report = build_report(cases[: args.limit] if args.limit else cases)
     write_report(report)
     print(json.dumps(report["metrics"], ensure_ascii=False, indent=2))
     print(f"报告已生成：{REPORT_DIR}")

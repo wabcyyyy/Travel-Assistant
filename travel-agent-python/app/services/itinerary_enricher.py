@@ -37,16 +37,17 @@ def persist_suggestions(itinerary_id: int, suggestions: list[Suggestion] | list[
     """落库行程级备选池（「发现更多」）；失败只记日志。"""
     if not suggestions:
         return
-    rows = [suggestion.model_dump(mode="json", by_alias=True) if hasattr(suggestion, "model_dump")
-            else dict(suggestion) for suggestion in suggestions]
+    rows = [
+        suggestion.model_dump(mode="json", by_alias=True) if hasattr(suggestion, "model_dump") else dict(suggestion)
+        for suggestion in suggestions
+    ]
     try:
         payload = json.dumps(rows, ensure_ascii=False)
     except (TypeError, ValueError) as exc:
         logger.warning("persist suggestions failed for %s: %s", itinerary_id, exc)
         return
     with session_scope() as session:
-        session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id)
-                        .values(suggestions_json=payload))
+        session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(suggestions_json=payload))
 
 
 def enrich_itinerary(user_id: int, itinerary_id: int, request: Any) -> None:
@@ -59,7 +60,7 @@ def enrich_itinerary(user_id: int, itinerary_id: int, request: Any) -> None:
     _fill_item_intros(user_id, main, request, itinerary_id)
     try:
         _enrich_suggestion_intros(main, request, itinerary_id)
-    except Exception as exc:  # noqa: BLE001 - 备选池富化连 degraded 事件都不发（同 Java）
+    except Exception as exc:
         logger.warning("suggestion intros failed for %s: %s", itinerary_id, exc)
     itinerary_query.evict_detail(user_id, itinerary_id)
 
@@ -67,16 +68,24 @@ def enrich_itinerary(user_id: int, itinerary_id: int, request: Any) -> None:
 def _plans_for_butler(itinerary_id: int) -> list[dict[str, Any]]:
     """管家讲解的行程摘要：每天 {day_no, items:[点位名]}（键是 snake_case，Python 契约）。"""
     with session_scope() as session:
-        days = session.execute(
-            select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id)
-            .order_by(ItineraryDay.day_no)
-        ).scalars().all()
+        days = (
+            session.execute(
+                select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id).order_by(ItineraryDay.day_no)
+            )
+            .scalars()
+            .all()
+        )
         plans: list[dict[str, Any]] = []
         for day in days:
-            names = [name for name in session.execute(
-                select(ItineraryItem.poi_name).where(ItineraryItem.day_id == day.id)
-                .order_by(ItineraryItem.sort_no)
-            ).scalars().all() if name and name.strip()]
+            names = [
+                name
+                for name in session.execute(
+                    select(ItineraryItem.poi_name).where(ItineraryItem.day_id == day.id).order_by(ItineraryItem.sort_no)
+                )
+                .scalars()
+                .all()
+                if name and name.strip()
+            ]
             if names:
                 plans.append({"day_no": day.day_no, "items": names})
     return plans
@@ -107,46 +116,52 @@ def _write_butler_note(user_id: int, main: ItineraryMain, request: Any, itinerar
         if not note.strip():
             return
         with session_scope() as session:
-            session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id)
-                            .values(plan_note=note))
+            session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(plan_note=note))
         from app.services import generation_events
+
         generation_events.butler_note(itinerary_id, len(note), note[:BUTLER_PREVIEW])
-    except Exception as exc:  # noqa: BLE001 - 富化失败只降级
+    except Exception as exc:
         logger.warning("butler note failed for %s: %s", itinerary_id, exc)
         _publish_degraded(itinerary_id, "butler", str(exc), "跳过讲解")
 
 
 def _fill_item_intros(user_id: int, main: ItineraryMain, request: Any, itinerary_id: int) -> None:
     with session_scope() as session:
-        names = list(dict.fromkeys(
-            name for name in session.execute(
-                select(ItineraryItem.poi_name).where(ItineraryItem.itinerary_id == itinerary_id)
-            ).scalars().all() if name and name.strip()
-        ))
+        names = list(
+            dict.fromkeys(
+                name
+                for name in session.execute(
+                    select(ItineraryItem.poi_name).where(ItineraryItem.itinerary_id == itinerary_id)
+                )
+                .scalars()
+                .all()
+                if name and name.strip()
+            )
+        )
     intros: dict[str, str] = {}
     try:
         for start in range(0, len(names), INTRO_BATCH_SIZE):
-            chunk = names[start:start + INTRO_BATCH_SIZE]
+            chunk = names[start : start + INTRO_BATCH_SIZE]
             try:
                 intros.update(run_poi_intros(main.city, chunk, resolve_intent(request)) or {})
-            except Exception as exc:  # noqa: BLE001 - 单批失败不影响后续批
+            except Exception as exc:
                 logger.warning("poi intros batch failed for %s: %s", itinerary_id, exc)
         with session_scope() as session:
             for name, intro in intros.items():
                 if intro and intro.strip():
                     session.execute(
-                        update(ItineraryItem).where(ItineraryItem.itinerary_id == itinerary_id,
-                                                   ItineraryItem.poi_name == name)
+                        update(ItineraryItem)
+                        .where(ItineraryItem.itinerary_id == itinerary_id, ItineraryItem.poi_name == name)
                         .values(intro=intro)
                     )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("poi intros failed for %s: %s", itinerary_id, exc)
         _publish_degraded(itinerary_id, "poi_intros", str(exc), "跳过景点介绍")
 
 
 def _enrich_suggestion_intros(main: ItineraryMain, request: Any, itinerary_id: int) -> None:
     with session_scope() as session:
-        fresh = session.get(ItineraryMain, itinerary_id)   # 用最新行，避免拿 finish 时的陈旧快照
+        fresh = session.get(ItineraryMain, itinerary_id)  # 用最新行，避免拿 finish 时的陈旧快照
         raw = fresh.suggestions_json if fresh is not None else None
     if not raw or not raw.strip():
         return
@@ -163,19 +178,25 @@ def _enrich_suggestion_intros(main: ItineraryMain, request: Any, itinerary_id: i
         return intro is None or not str(intro).strip() or len(str(intro)) < MIN_SUGGESTION_INTRO
 
     # 只补「没有有效介绍」的行：模型单次生成的 60-100 字亮点遵循度不足，短于 50 字视为无介绍
-    names = list(dict.fromkeys(
-        str(row.get("name")) for row in rows
-        if isinstance(row, dict) and needs_intro(row)
-        and row.get("name") is not None and str(row.get("name")).strip()
-        and str(row.get("name")) != "null"
-    ))
+    names = list(
+        dict.fromkeys(
+            str(row.get("name"))
+            for row in rows
+            if isinstance(row, dict)
+            and needs_intro(row)
+            and row.get("name") is not None
+            and str(row.get("name")).strip()
+            and str(row.get("name")) != "null"
+        )
+    )
 
     intros: dict[str, str] = {}
     for start in range(0, len(names), INTRO_BATCH_SIZE):
         try:
-            intros.update(run_poi_intros(main.city, names[start:start + INTRO_BATCH_SIZE],
-                                         resolve_intent(request)) or {})
-        except Exception as exc:  # noqa: BLE001 - 单批失败继续
+            intros.update(
+                run_poi_intros(main.city, names[start : start + INTRO_BATCH_SIZE], resolve_intent(request)) or {}
+            )
+        except Exception as exc:
             logger.warning("suggestion intros batch failed for %s: %s", itinerary_id, exc)
     if not intros:
         return
@@ -193,8 +214,11 @@ def _enrich_suggestion_intros(main: ItineraryMain, request: Any, itinerary_id: i
         return
     try:
         with session_scope() as session:
-            session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id)
-                            .values(suggestions_json=json.dumps(rows, ensure_ascii=False)))
+            session.execute(
+                update(ItineraryMain)
+                .where(ItineraryMain.id == itinerary_id)
+                .values(suggestions_json=json.dumps(rows, ensure_ascii=False))
+            )
     except (TypeError, ValueError) as exc:
         logger.warning("suggestions json write failed for %s: %s", itinerary_id, exc)
 
@@ -212,4 +236,5 @@ def resolve_intent(request: Any) -> str:
 def _publish_degraded(itinerary_id: int, scope: str, reason: str, fallback: str) -> None:
     # 延迟导入：富化 → 事件 → trace，避免模块级环依赖
     from app.services import generation_events
+
     generation_events.degraded(itinerary_id, scope, reason, fallback)

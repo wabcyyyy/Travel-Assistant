@@ -33,7 +33,7 @@ EXPECTED_REMAINING: dict[tuple[str, str], str] = {}
 
 def _normalize(prefix: str, path: str) -> str:
     """`{id}`/`{itemId}` 等占位符统一成 `{}`：两端参数命名不同，但路径形状必须可比。"""
-    joined = (prefix + (path or ""))
+    joined = prefix + (path or "")
     joined = re.sub(r"/{2,}", "/", joined)
     return _PARAM_RE.sub("{}", joined)
 
@@ -52,7 +52,7 @@ def java_endpoints() -> set[tuple[str, str]]:
 
 def python_endpoints() -> set[tuple[str, str]]:
     sys.path.insert(0, str(BASE_DIR))
-    import main  # noqa: PLC0415  只有装配后的 app 才是真相：include_router 会合并前缀与守卫
+    import main
 
     endpoints: set[tuple[str, str]] = set()
     for route in main.app.routes:
@@ -71,8 +71,10 @@ def main() -> int:
         # Java 模块已归档 = 迁移收尾。此时唯一正确的状态是"残留清单已清空"：
         # 否则说明归档动作跑在清单清空之前（或 checkouts 里少了 Java 目录），必须报出来。
         if EXPECTED_REMAINING:
-            print("FAIL: Java 控制器目录不存在，但 EXPECTED_REMAINING 仍有登记："
-                  + ", ".join(f"{verb} {path}" for verb, path in sorted(EXPECTED_REMAINING)))
+            print(
+                "FAIL: Java 控制器目录不存在，但 EXPECTED_REMAINING 仍有登记："
+                + ", ".join(f"{verb} {path}" for verb, path in sorted(EXPECTED_REMAINING))
+            )
             return 1
         print(f"OK: Java 模块已删除（{JAVA_CONTROLLERS} 不存在），端点对照不再适用且无残留登记")
         return 0
@@ -82,8 +84,10 @@ def main() -> int:
     unexpected = [(verb, path) for verb, path in missing if (verb, path) not in EXPECTED_REMAINING]
     retired = sorted(set(EXPECTED_REMAINING) - set(missing))
 
-    print(f"Java 业务端点 {len(java_set)} · Python 已挂载 {len(python_set)} · "
-          f"残留 {len(missing)}（预期 {len(EXPECTED_REMAINING)}）")
+    print(
+        f"Java 业务端点 {len(java_set)} · Python 已挂载 {len(python_set)} · "
+        f"残留 {len(missing)}（预期 {len(EXPECTED_REMAINING)}）"
+    )
     for verb, path in missing:
         reason = EXPECTED_REMAINING.get((verb, path))
         print(f"  残留  {verb:6} {path}" + (f"  ← {reason}" if reason else "  ← 未登记！"))

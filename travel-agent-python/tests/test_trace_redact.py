@@ -9,8 +9,12 @@ from app.agent.trace import record_event, trace_run
 
 def test_error_field_redacts_url_api_key():
     with trace_run("run", "req") as trace:
-        record_event("mcp", "amap.search_poi", status="error",
-                     error="ConnectError: https://mcp.amap.com/mcp?key=SECRET123&city=hz failed")
+        record_event(
+            "mcp",
+            "amap.search_poi",
+            status="error",
+            error="ConnectError: https://mcp.amap.com/mcp?key=SECRET123&city=hz failed",
+        )
     event = trace.to_dict()["events"][0]
     assert "SECRET123" not in event["error"]
     assert "key=***" in event["error"]
@@ -19,8 +23,12 @@ def test_error_field_redacts_url_api_key():
 
 def test_error_field_redacts_bearer_token():
     with trace_run("run", "req") as trace:
-        record_event("llm", "llm.request", status="error",
-                     error="401 Unauthorized, header Authorization: Bearer sk-abcdef.123456")
+        record_event(
+            "llm",
+            "llm.request",
+            status="error",
+            error="401 Unauthorized, header Authorization: Bearer sk-abcdef.123456",
+        )
     event = trace.to_dict()["events"][0]
     assert "sk-abcdef" not in event["error"]
     assert "Bearer ***" in event["error"]
@@ -28,8 +36,9 @@ def test_error_field_redacts_bearer_token():
 
 def test_metadata_string_values_are_redacted():
     with trace_run("run", "req") as trace:
-        record_event("tool", "amap.rest", metadata={
-            "url": "https://restapi.amap.com/v3/place/text?key=TOPSECRET&keywords=x"})
+        record_event(
+            "tool", "amap.rest", metadata={"url": "https://restapi.amap.com/v3/place/text?key=TOPSECRET&keywords=x"}
+        )
     event = trace.to_dict()["events"][0]
     assert "TOPSECRET" not in event["metadata"]["url"]
     assert "key=***" in event["metadata"]["url"]
@@ -44,6 +53,6 @@ def test_trace_span_error_redacted_on_exception():
                 raise RuntimeError("failed calling https://api.x/p?api_key=HIDDENKEY")
         except RuntimeError:
             pass
-    event = [e for e in trace.to_dict()["events"] if e["status"] == "error"][0]
+    event = next(e for e in trace.to_dict()["events"] if e["status"] == "error")
     assert "HIDDENKEY" not in event["error"]
     assert "api_key=***" in event["error"]

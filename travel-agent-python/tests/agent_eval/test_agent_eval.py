@@ -1,5 +1,4 @@
 from tests.agent_eval.eval_agent import build_report
-from tests.agent_eval import mock_llm
 
 
 def test_offline_agent_evaluation_covers_workflow_and_authority():

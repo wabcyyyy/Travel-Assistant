@@ -20,28 +20,41 @@ class FakeLlm:
         self.chat_calls.append({"messages": messages, "kwargs": kwargs})
         if self.mode == "fc_tool":
             if len(self.chat_calls) == 1:
-                return {"message": {
+                return {
+                    "message": {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": "c1",
+                                "type": "function",
+                                "function": {
+                                    "name": "search_pois",
+                                    "arguments": json.dumps({"city": "杭州", "preferences": ["西湖"]}),
+                                },
+                            }
+                        ],
+                    }
+                }
+            return {
+                "message": {
                     "role": "assistant",
-                    "tool_calls": [{
-                        "id": "c1", "type": "function",
-                        "function": {"name": "search_pois",
-                                     "arguments": json.dumps({"city": "杭州", "preferences": ["西湖"]})},
-                    }],
-                }}
-            return {"message": {"role": "assistant",
-                                "content": json.dumps({"intros": {"西湖": LONG_INTRO}},
-                                                       ensure_ascii=False)}}
+                    "content": json.dumps({"intros": {"西湖": LONG_INTRO}}, ensure_ascii=False),
+                }
+            }
         if self.mode == "fc_fail":
             raise FunctionCallingError("达到最大轮数")
         # 直接出答案
-        return {"message": {"role": "assistant",
-                            "content": json.dumps({"intros": {"雷峰塔": "登塔俯瞰西湖。"}}, ensure_ascii=False)}}
+        return {
+            "message": {
+                "role": "assistant",
+                "content": json.dumps({"intros": {"雷峰塔": "登塔俯瞰西湖。"}}, ensure_ascii=False),
+            }
+        }
 
     def complete(self, user_prompt, **kwargs):
         self.complete_calls.append(user_prompt)
         if self.mode == "fc_tool":
-            return json.dumps({"intros": {"西湖": "西湖（扩写后）" + "湖光山色" * 60}},
-                              ensure_ascii=False)
+            return json.dumps({"intros": {"西湖": "西湖（扩写后）" + "湖光山色" * 60}}, ensure_ascii=False)
         return json.dumps({"intros": {"雷峰塔": "单轮兜底介绍。"}}, ensure_ascii=False)
 
 
@@ -85,8 +98,7 @@ def test_poi_intros_rewrites_short_intro(monkeypatch):
             # 兜底轮：介绍过短
             return json.dumps({"intros": {"西湖": "杭州名片。"}}, ensure_ascii=False)
         # 扩写轮：达标长介绍
-        return json.dumps({"intros": {"西湖": "西湖扩写版。" + "三面云山一面城，" * 40}},
-                          ensure_ascii=False)
+        return json.dumps({"intros": {"西湖": "西湖扩写版。" + "三面云山一面城，" * 40}}, ensure_ascii=False)
 
     fake.complete = complete
     intros = butler.run_poi_intros("杭州", ["西湖"])

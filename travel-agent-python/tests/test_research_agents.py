@@ -5,10 +5,10 @@ from unittest.mock import patch
 import pytest
 
 from app.agent import tools, workflow
-from app.agent.research import reasoning
 from app.agent.research import (
     ResearchTask,
     decompose,
+    reasoning,
     run_refill,
     run_research,
     run_research_context,
@@ -157,11 +157,11 @@ def test_research_planner_expands_attraction_preferences(monkeypatch):
         return [{"name": f"{city}景1", "latitude": 30.0, "longitude": 120.0}]
 
     monkeypatch.setattr(tools, "search_attractions", fake_search)
-    monkeypatch.setattr(reasoning, "plan_research", lambda task: {
-        "preferences": ["亲子"], "extra_keywords": [], "limit": 40})
+    monkeypatch.setattr(
+        reasoning, "plan_research", lambda task: {"preferences": ["亲子"], "extra_keywords": [], "limit": 40}
+    )
 
-    pack = run_research(ResearchTask(domain="attraction", city="杭州",
-                                     preferences=["自然风光"], limit=30))
+    pack = run_research(ResearchTask(domain="attraction", city="杭州", preferences=["自然风光"], limit=30))
     assert captured["preferences"] == ["自然风光", "亲子"]
     assert captured["limit"] == 40
     assert len(pack.items) == 1
@@ -182,8 +182,11 @@ def test_research_evaluate_insufficient_triggers_refine_round(monkeypatch):
     monkeypatch.setattr(tools, "search_attractions", fake_search)
     monkeypatch.setattr(tools, "search_local_poi", fake_amap)
     monkeypatch.setattr(reasoning, "plan_research", lambda task: {})
-    monkeypatch.setattr(reasoning, "evaluate_research", lambda task, items, round_no:
-                        {"sufficient": False, "extra_keywords": ["杭州 西湖"]})
+    monkeypatch.setattr(
+        reasoning,
+        "evaluate_research",
+        lambda task, items, round_no: {"sufficient": False, "extra_keywords": ["杭州 西湖"]},
+    )
 
     pack = run_research(ResearchTask(domain="attraction", city="杭州"))
     assert pack.rounds == 2
@@ -217,9 +220,18 @@ def test_supervisor_refill_merges_evidence_and_regenerates(monkeypatch):
         state["calls"] += 1
         if state["calls"] == 1:
             return []  # 首轮无景点证据 → 生成只有酒店 → 触发补查
-        return [{"id": 1, "name": "补查景点", "category": "attraction",
-                 "latitude": 30.0, "longitude": 120.0, "ticket_price": 40,
-                 "duration_min": 120, "open_time": "08:00-18:00"}]
+        return [
+            {
+                "id": 1,
+                "name": "补查景点",
+                "category": "attraction",
+                "latitude": 30.0,
+                "longitude": 120.0,
+                "ticket_price": 40,
+                "duration_min": 120,
+                "open_time": "08:00-18:00",
+            }
+        ]
 
     monkeypatch.setattr(tools, "search_attractions", search_attractions)
 
@@ -227,27 +239,68 @@ def test_supervisor_refill_merges_evidence_and_regenerates(monkeypatch):
         candidates = (req.context or {}).get("candidates") or []
         if not candidates:
             # 首轮仅酒店 → 校验「未安排任何景点」→ 触发补查
-            return {"note": "杭州行程", "items": [
-                {"item_type": "hotel", "poi_name": "杭州舒适酒店", "cost": 350,
-                 "start_time": "18:00", "end_time": "18:30", "duration_min": 30,
-                 "latitude": 30.05, "longitude": 120.05},
-            ]}
+            return {
+                "note": "杭州行程",
+                "items": [
+                    {
+                        "item_type": "hotel",
+                        "poi_name": "杭州舒适酒店",
+                        "cost": 350,
+                        "start_time": "18:00",
+                        "end_time": "18:30",
+                        "duration_min": 30,
+                        "latitude": 30.05,
+                        "longitude": 120.05,
+                    },
+                ],
+            }
         name = candidates[0]["name"]
         # 补查后：含景点+餐饮且时长达标，避免 quality BLOCKED
-        return {"note": "杭州行程", "items": [
-            {"item_type": "attraction", "poi_name": name,
-             "start_time": "09:00", "end_time": "12:00", "duration_min": 180,
-             "latitude": 30.0, "longitude": 120.0, "cost": 0},
-            {"item_type": "food", "poi_name": "杭州餐厅",
-             "start_time": "12:40", "end_time": "13:40", "duration_min": 60,
-             "latitude": 30.01, "longitude": 120.01, "cost": 70},
-            {"item_type": "attraction", "poi_name": "杭州公园",
-             "start_time": "14:10", "end_time": "16:10", "duration_min": 120,
-             "latitude": 30.02, "longitude": 120.02, "cost": 0},
-            {"item_type": "hotel", "poi_name": "杭州舒适酒店", "cost": 350,
-             "start_time": "18:00", "end_time": "18:30", "duration_min": 30,
-             "latitude": 30.05, "longitude": 120.05},
-        ]}
+        return {
+            "note": "杭州行程",
+            "items": [
+                {
+                    "item_type": "attraction",
+                    "poi_name": name,
+                    "start_time": "09:00",
+                    "end_time": "12:00",
+                    "duration_min": 180,
+                    "latitude": 30.0,
+                    "longitude": 120.0,
+                    "cost": 0,
+                },
+                {
+                    "item_type": "food",
+                    "poi_name": "杭州餐厅",
+                    "start_time": "12:40",
+                    "end_time": "13:40",
+                    "duration_min": 60,
+                    "latitude": 30.01,
+                    "longitude": 120.01,
+                    "cost": 70,
+                },
+                {
+                    "item_type": "attraction",
+                    "poi_name": "杭州公园",
+                    "start_time": "14:10",
+                    "end_time": "16:10",
+                    "duration_min": 120,
+                    "latitude": 30.02,
+                    "longitude": 120.02,
+                    "cost": 0,
+                },
+                {
+                    "item_type": "hotel",
+                    "poi_name": "杭州舒适酒店",
+                    "cost": 350,
+                    "start_time": "18:00",
+                    "end_time": "18:30",
+                    "duration_min": 30,
+                    "latitude": 30.05,
+                    "longitude": 120.05,
+                },
+            ],
+        }
 
     monkeypatch.setattr(workflow, "_llm_open_day", open_day)
 
@@ -272,14 +325,31 @@ def test_refill_not_triggered_for_non_evidence_gap(monkeypatch):
 
     def open_day(req, _used):
         # 两个景点时间重叠 → 时间冲突（非证据缺口）
-        return {"note": "杭州行程", "items": [
-            {"item_type": "attraction", "poi_name": "杭州景点1",
-             "start_time": "09:00", "end_time": "11:00", "duration_min": 120,
-             "latitude": 30.0, "longitude": 120.0, "cost": 20},
-            {"item_type": "attraction", "poi_name": "杭州景点2",
-             "start_time": "10:00", "end_time": "12:00", "duration_min": 120,
-             "latitude": 30.1, "longitude": 120.1, "cost": 30},
-        ]}
+        return {
+            "note": "杭州行程",
+            "items": [
+                {
+                    "item_type": "attraction",
+                    "poi_name": "杭州景点1",
+                    "start_time": "09:00",
+                    "end_time": "11:00",
+                    "duration_min": 120,
+                    "latitude": 30.0,
+                    "longitude": 120.0,
+                    "cost": 20,
+                },
+                {
+                    "item_type": "attraction",
+                    "poi_name": "杭州景点2",
+                    "start_time": "10:00",
+                    "end_time": "12:00",
+                    "duration_min": 120,
+                    "latitude": 30.1,
+                    "longitude": 120.1,
+                    "cost": 30,
+                },
+            ],
+        }
 
     monkeypatch.setattr(workflow, "_llm_open_day", open_day)
 

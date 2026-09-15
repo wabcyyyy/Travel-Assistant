@@ -35,8 +35,11 @@ def client(tmp_path, monkeypatch) -> TestClient:
 
     monkeypatch.setattr(deps.settings, "jwt_secret", SIGNING_MATERIAL)
     monkeypatch.setattr(deps.token_revocation, "is_revoked", lambda _t: False)
-    monkeypatch.setattr(deps.user_repository, "find_by_username",
-                        lambda _u: {"id": 42, "username": "alice", "role": "user", "status": 1})
+    monkeypatch.setattr(
+        deps.user_repository,
+        "find_by_username",
+        lambda _u: {"id": 42, "username": "alice", "role": "user", "status": 1},
+    )
 
     app = FastAPI()
     install_exception_handlers(app)
@@ -49,14 +52,22 @@ def _headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {encode_token('alice', SIGNING_MATERIAL, 3600)}"}
 
 
-def _add_trip(city: str, end_offset: int, gen_state: str = "COMPLETED",
-              coords: tuple = (), *, archived: int = 0, deleted: int = 0) -> int:
+def _add_trip(
+    city: str, end_offset: int, gen_state: str = "COMPLETED", coords: tuple = (), *, archived: int = 0, deleted: int = 0
+) -> int:
     with db_session.session_scope() as session:
         main = ItineraryMain(
-            user_id=42, title=f"{city}行程", city=city, days=1, persons=1,
+            user_id=42,
+            title=f"{city}行程",
+            city=city,
+            days=1,
+            persons=1,
             start_date=date.today() - timedelta(days=abs(end_offset) + 3),
             end_date=date.today() + timedelta(days=end_offset),
-            status=2, gen_state=gen_state, archived=archived, deleted=deleted,
+            status=2,
+            gen_state=gen_state,
+            archived=archived,
+            deleted=deleted,
         )
         session.add(main)
         session.flush()
@@ -65,29 +76,50 @@ def _add_trip(city: str, end_offset: int, gen_state: str = "COMPLETED",
         session.flush()
         for index, coord in enumerate(coords):
             lat, lng = (Decimal(coord[0]), Decimal(coord[1])) if coord else (None, None)
-            session.add(ItineraryItem(
-                day_id=day.id, itinerary_id=main.id, item_type="attraction",
-                poi_name=f"{city}点位{index}", latitude=lat, longitude=lng, sort_no=index,
-            ))
+            session.add(
+                ItineraryItem(
+                    day_id=day.id,
+                    itinerary_id=main.id,
+                    item_type="attraction",
+                    poi_name=f"{city}点位{index}",
+                    latitude=lat,
+                    longitude=lng,
+                    sort_no=index,
+                )
+            )
         return main.id
 
 
 def _seed() -> None:
     # 城市字典：与 V2 种子的口径一致（巴黎显式无坐标 → 只支撑归国不支撑兜底）
     with db_session.session_scope() as session:
-        session.add_all([
-            CityGeo(city_name="杭州", country="中国", country_code="CN", is_domestic=1),
-            CityGeo(city_name="上海", country="中国", country_code="CN", is_domestic=1),
-            CityGeo(city_name="大阪", country="日本", country_code="JP",
-                    lat=Decimal("34.690000"), lng=Decimal("135.500000"), is_domestic=0),
-            CityGeo(city_name="巴黎", country="法国", country_code="FR", is_domestic=0),
-        ])
+        session.add_all(
+            [
+                CityGeo(city_name="杭州", country="中国", country_code="CN", is_domestic=1),
+                CityGeo(city_name="上海", country="中国", country_code="CN", is_domestic=1),
+                CityGeo(
+                    city_name="大阪",
+                    country="日本",
+                    country_code="JP",
+                    lat=Decimal("34.690000"),
+                    lng=Decimal("135.500000"),
+                    is_domestic=0,
+                ),
+                CityGeo(city_name="巴黎", country="法国", country_code="FR", is_domestic=0),
+            ]
+        )
     # 杭州：一趟已结束 + 一趟未来（验证跨行程质心与 per-pin tripCount）；
     # 混入一条 0/0 占位坐标——按口径必须被剔除（也算缺坐标）
-    _add_trip("杭州", -30, coords=(
-        ("30.220000", "120.120000"), ("30.240000", "120.160000"),
-        ("0.000000", "0.000000"), None,
-    ))
+    _add_trip(
+        "杭州",
+        -30,
+        coords=(
+            ("30.220000", "120.120000"),
+            ("30.240000", "120.160000"),
+            ("0.000000", "0.000000"),
+            None,
+        ),
+    )
     _add_trip("杭州", +10, coords=(("30.300000", "120.200000"),))
     _add_trip("上海", +30, coords=(("31.230000", "121.470000"),))
     # 大阪：无点位坐标，字典有坐标 → geo_fallback
@@ -149,14 +181,14 @@ def test_coverage_axes_and_unknown_cities(client: TestClient) -> None:
     assert atlas["coverage"] == {
         "tripsTotal": 6,
         "pinsRendered": 4,
-        "itemsWithoutCoord": 4,   # 杭州 2（含 0/0）+ 大阪 1 + 巴黎 1
-        "dictMiss": 1,            # 只算未命中的雷克雅未克
+        "itemsWithoutCoord": 4,  # 杭州 2（含 0/0）+ 大阪 1 + 巴黎 1
+        "dictMiss": 1,  # 只算未命中的雷克雅未克
     }
     assert atlas["stats"] == {
         "cityCount": 4,
         "countryCount": 2,
         "tripCount": 6,
-        "plannedTripCount": 2,    # 杭州（未来）+ 上海
+        "plannedTripCount": 2,  # 杭州（未来）+ 上海
         "visitedTripCount": 4,
     }
     assert atlas["highlightCountryCodes"] == ["CN", "JP"]

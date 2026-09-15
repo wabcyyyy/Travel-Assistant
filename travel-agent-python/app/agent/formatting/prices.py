@@ -36,7 +36,7 @@ class PriceStage:
     food_live_budget: int = 0
 
     @classmethod
-    def create(cls, req: GenerateRequest) -> "PriceStage":
+    def create(cls, req: GenerateRequest) -> PriceStage:
         trip_date: date | None = None
         if req.start_date:
             try:
@@ -61,8 +61,7 @@ class PriceStage:
         if name not in self.live_cache:
             if self.live_budget > 0 and settings.llm_api_key:
                 self.live_budget -= 1
-                self.live_cache[name] = query_live_price(
-                    self.req.city, name, self.req.start_date)
+                self.live_cache[name] = query_live_price(self.req.city, name, self.req.start_date)
             else:
                 self.live_cache[name] = None
         live = self.live_cache.get(name)
@@ -82,8 +81,7 @@ class PriceStage:
             _append_remark(item, remark)
         elif base is not None and self.factor != 1.0:
             item["cost"] = round(base * self.factor, 2)
-            _append_remark(
-                item, f"{self.label}估算：系数×{self.factor}（知识库基准价￥{base:g}）")
+            _append_remark(item, f"{self.label}估算：系数×{self.factor}（知识库基准价￥{base:g}）")
         elif base is None and item.get("cost") is None:
             # 无实时价且无基准价：保持缺省，由预算引擎/知识库回落
             return
@@ -94,17 +92,16 @@ class PriceStage:
             if food_name not in self.food_live_cache:
                 if self.food_live_budget > 0:
                     self.food_live_budget -= 1
-                    self.food_live_cache[food_name] = query_live_food_price(
-                        self.req.city, food_name)
+                    self.food_live_cache[food_name] = query_live_food_price(self.req.city, food_name)
                 else:
                     self.food_live_cache[food_name] = None
             live_food = self.food_live_cache.get(food_name)
             if live_food and live_food.get("price"):
                 item["cost"] = float(live_food["price"])
-                _append_remark(item, f"联网实时价￥{live_food['price']:g}："
-                                     f"{live_food.get('note') or ''}".rstrip("："))
+                _append_remark(item, f"联网实时价￥{live_food['price']:g}：{live_food.get('note') or ''}".rstrip("："))
         new_cost, clamp_note = clamp_meal_cost(
-            item.get("cost"), meal_price,
+            item.get("cost"),
+            meal_price,
             hard_ratio=settings.meal_price_hard_cap_ratio,
             soft_ratio=settings.meal_price_soft_cap_ratio,
         )
@@ -112,9 +109,14 @@ class PriceStage:
             item["cost"] = new_cost
             _append_remark(item, clamp_note)
 
-    def recompute_budget(self, budget_source: dict | None, daily_plans: list,
-                         hotel_total: float, attraction_total: float,
-                         consumption: dict) -> dict:
+    def recompute_budget(
+        self,
+        budget_source: dict | None,
+        daily_plans: list,
+        hotel_total: float,
+        attraction_total: float,
+        consumption: dict,
+    ) -> dict:
         """预算只把 LLM/候选池预算当作初始估计，最终按本次实际选中的 POI 重算，
         避免"候选平均票价"与用户看到的具体景点不一致。
         """
@@ -128,14 +130,14 @@ class PriceStage:
         meal_total = 0.0
         priced_days = 0
         for plan in daily_plans:
-            day_meal = max((float(i.cost or 0) for i in plan.items
-                            if i.item_type == "food" and i.cost is not None), default=0.0)
+            day_meal = max(
+                (float(i.cost or 0) for i in plan.items if i.item_type == "food" and i.cost is not None), default=0.0
+            )
             if day_meal > 0:
                 meal_total += day_meal * 2
                 priced_days += 1
         unpriced_days = max(len(daily_plans) - priced_days, 0)
-        budget_estimate["餐饮"] = round(
-            meal_total * req.persons + meal_price * 2 * unpriced_days * req.persons, 2)
+        budget_estimate["餐饮"] = round(meal_total * req.persons + meal_price * 2 * unpriced_days * req.persons, 2)
         budget_estimate["交通"] = round(transport_price * len(daily_plans) * req.persons, 2)
         rooms = ceil(max(req.persons, 1) / 2)
         if hotel_total > 0:

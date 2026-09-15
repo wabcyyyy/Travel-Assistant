@@ -10,12 +10,11 @@ import json
 import sqlite3
 import threading
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
 
 from app.common.config import settings
-
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS llm_calls (
@@ -70,17 +69,31 @@ class UsageStore:
             finally:
                 cur.close()
 
-    def record(self, scene: str, model: str, prompt_tokens: int, completion_tokens: int,
-               duration_ms: int, success: bool, error: str | None = None) -> None:
+    def record(
+        self,
+        scene: str,
+        model: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        duration_ms: int,
+        success: bool,
+        error: str | None = None,
+    ) -> None:
         """登记一次 LLM 调用明细（失败调用 token 记 0，用于错误率统计）。"""
         with self._cursor() as cur:
             cur.execute(
                 "INSERT INTO llm_calls (ts, scene, model, prompt_tokens, completion_tokens,"
                 " duration_ms, success, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (int(time.time()), scene or "other", model or "",
-                 max(int(prompt_tokens or 0), 0), max(int(completion_tokens or 0), 0),
-                 max(int(duration_ms or 0), 0), 1 if success else 0,
-                 (error or None) if success else (error or "unknown")),
+                (
+                    int(time.time()),
+                    scene or "other",
+                    model or "",
+                    max(int(prompt_tokens or 0), 0),
+                    max(int(completion_tokens or 0), 0),
+                    max(int(duration_ms or 0), 0),
+                    1 if success else 0,
+                    (error or None) if success else (error or "unknown"),
+                ),
             )
 
     def summary(self, start_ts: int, end_ts: int) -> dict:
@@ -144,8 +157,11 @@ class UsageStore:
                 (bucket_seconds, bucket_seconds, start_ts, end_ts),
             ).fetchall()
         by_bucket = {
-            int(row[0]): {"calls": int(row[1] or 0), "prompt_tokens": int(row[2] or 0),
-                          "completion_tokens": int(row[3] or 0)}
+            int(row[0]): {
+                "calls": int(row[1] or 0),
+                "prompt_tokens": int(row[2] or 0),
+                "completion_tokens": int(row[3] or 0),
+            }
             for row in rows
         }
         result = []
@@ -158,8 +174,8 @@ class UsageStore:
         """时间范围内的调用明细（时间倒序分页）。"""
         with self._cursor() as cur:
             total = cur.execute(
-                "SELECT COUNT(*) FROM llm_calls WHERE ts >= ? AND ts < ?",
-                (start_ts, end_ts)).fetchone()[0]
+                "SELECT COUNT(*) FROM llm_calls WHERE ts >= ? AND ts < ?", (start_ts, end_ts)
+            ).fetchone()[0]
             rows = cur.execute(
                 "SELECT ts, scene, model, prompt_tokens, completion_tokens, duration_ms,"
                 " success, error FROM llm_calls WHERE ts >= ? AND ts < ?"
@@ -170,9 +186,13 @@ class UsageStore:
             "total": int(total),
             "records": [
                 {
-                    "ts": row[0], "scene": row[1], "model": row[2],
-                    "prompt_tokens": int(row[3] or 0), "completion_tokens": int(row[4] or 0),
-                    "duration_ms": int(row[5] or 0), "success": bool(row[6]),
+                    "ts": row[0],
+                    "scene": row[1],
+                    "model": row[2],
+                    "prompt_tokens": int(row[3] or 0),
+                    "completion_tokens": int(row[4] or 0),
+                    "duration_ms": int(row[5] or 0),
+                    "success": bool(row[6]),
                     "error": row[7],
                 }
                 for row in rows

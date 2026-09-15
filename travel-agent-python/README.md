@@ -74,7 +74,7 @@ uv run python scripts/fetch_rag_model.py  # 首次：预置 RAG 语义模型（�
 uv run python main.py  # 127.0.0.1:8000，默认不开启 reload
 ```
 
-环境变量（`.env`）：`LLM_BASE_URL`（默认 dashscope 兼容模式）、`LLM_API_KEY`、`LLM_MODEL`（默认 qwen-plus）、`LLM_FAST_MODEL`（内容生成统一模型：行程/景点介绍/研究/对话决策；qwen-turbo 省钱但对篇幅类软约束遵循差，推荐 qwen-plus，留空复用 `LLM_MODEL`）、`LLM_TIMEOUT`（批量生成 200-300 字介绍时输出可达 4000+ token，建议 ≥240）、`DEFAULT_BUDGET`、`DB_*`、`AGENT_INTERNAL_TOKEN`（配置后保护生成/编辑接口；`AGENT_HOST` 绑定非回环地址且未配置 token 时启动直接报错，留空仅适合本机回环开发）、`AGENT_RELOAD`（开发环境可设为 `true`）。向量库（Qdrant）：`QDRANT_URL` 为空默认走本地嵌入式持久化（`QDRANT_PATH`，启动自动从 MySQL 全量重建），配置后（如 `http://localhost:6333`，`docker compose up -d qdrant`）切独立服务；`QDRANT_COLLECTION`、`QDRANT_TIMEOUT` 控制集合名与超时。选型依据与升级触发条件见 `../docs/ADR-0001-向量库选型-Qdrant.md`。RAG 默认使用 `RAG_EMBEDDING_PROVIDER=semantic` 的本地 bge-small-zh-v1.5 语义向量（首次需执行 `uv run python scripts/fetch_rag_model.py` 把模型预置到 `RAG_MODEL_CACHE_DIR`，服务运行期不联网下载；国内可设 `HF_ENDPOINT=https://hf-mirror.com`）；依赖或模型不可用时自动降级为 `hashed` 哈希/词法特征，启动日志有显式告警、索引遥测带 `fallback` 标记。`RAG_EMBEDDING_MODEL`、`RAG_MODEL_CACHE_DIR` 控制模型与缓存目录；精排默认关闭（`RAG_RERANK_PROVIDER=none`），需要时下载对应模型（`--rerank`）并开启。`RAG_TOP_K`、`RAG_RRF_K` 控制候选数量和 RRF 常数，`RAG_DOCUMENT_VERSION` 变化会触发全量重建，`RAG_REFRESH_SECONDS`（默认 60）控制索引惰性增量刷新周期——数据管线跑完后服务自动感知，无需重启。表结构由本服务启动时自动迁移（`app/db/migrate.py`：空库按版本序执行 `db/migration/V*.sql` 全量建表，已有表的库只打版本点、绝不重跑 DDL），无需手工执行建表/增量 SQL；SQL 真相源在 `app/db/migrations/sql/V*.sql`（随 Java 退役从旧模块搬入本仓，全仓只留这一份）；`app/db/schema_source.py` 的解析顺序是"旧位置有 SQL 就用旧位置、否则用本仓副本"，所以回滚旧布局也不需要改代码。Flyway 之前的历史增量脚本留档于 `../sql/archive/`。若配置 `ROUTE_SERVICE_ENABLED=true`，反思与质检阶段会用确定性路线矩阵校验 POI 间可达性——纯坐标估算（haversine × 道路系数 + 缓冲），无任何外部路线 API，结果自带 `degraded` 标记。`SCHEDULE_OPTIMIZER_ENABLED=true` 控制确定性时间窗优化器。`TOOL_MAX_CALLS` 控制单次 Agent 请求的工具调用总预算，单工具风险、版本、Schema、超时和调用上限由 Tool Registry 管理；`AGENT_DEADLINE_SECONDS`、`MAX_LLM_CALLS`、`MAX_TOKEN_BUDGET` 和 `MAX_REPLANS` 控制单次运行边界，`TRACE_STORAGE_PATH` 控制 JSONL Trace 持久化位置（错误文本中的 API key/Bearer 令牌会集中脱敏）。
+环境变量（`.env`）：`LLM_BASE_URL`（默认 dashscope 兼容模式）、`LLM_API_KEY`、`LLM_MODEL`（默认 qwen-plus）、`LLM_FAST_MODEL`（内容生成统一模型：行程/景点介绍/研究/对话决策；qwen-turbo 省钱但对篇幅类软约束遵循差，推荐 qwen-plus，留空复用 `LLM_MODEL`）、`LLM_TIMEOUT`（批量生成 200-300 字介绍时输出可达 4000+ token，建议 ≥240）、`DEFAULT_BUDGET`、`DB_*`、`AGENT_INTERNAL_TOKEN`（配置后保护生成/编辑接口；`AGENT_HOST` 绑定非回环地址且未配置 token 时启动直接报错，留空仅适合本机回环开发）、`AGENT_RELOAD`（开发环境可设为 `true`）。向量库（Qdrant）：`QDRANT_URL` 为空默认走本地嵌入式持久化（`QDRANT_PATH`，启动自动从 MySQL 全量重建），配置后（如 `http://localhost:6333`，`docker compose up -d qdrant`）切独立服务；`QDRANT_COLLECTION`、`QDRANT_TIMEOUT` 控制集合名与超时。选型依据与升级触发条件见 `../docs/ADR-0001-向量库选型-Qdrant.md`。RAG 默认使用 `RAG_EMBEDDING_PROVIDER=semantic` 的本地 bge-small-zh-v1.5 语义向量（首次需执行 `uv run python scripts/fetch_rag_model.py` 把模型预置到 `RAG_MODEL_CACHE_DIR`，服务运行期不联网下载；国内可设 `HF_ENDPOINT=https://hf-mirror.com`）；依赖或模型不可用时自动降级为 `hashed` 哈希/词法特征，启动日志有显式告警、索引遥测带 `fallback` 标记。`RAG_EMBEDDING_MODEL`、`RAG_MODEL_CACHE_DIR` 控制模型与缓存目录；精排默认关闭（`RAG_RERANK_PROVIDER=none`），需要时下载对应模型（`--rerank`）并开启。`RAG_TOP_K`、`RAG_RRF_K` 控制候选数量和 RRF 常数，`RAG_DOCUMENT_VERSION` 变化会触发全量重建，`RAG_REFRESH_SECONDS`（默认 60）控制索引惰性增量刷新周期——数据管线跑完后服务自动感知，无需重启。表结构由本服务启动时自动迁移（`app/db/migrate.py`：空库按版本序执行 `app/db/migrations/sql/V*.sql` 全量建表，已有表的库只打版本点、绝不重跑 DDL），无需手工执行建表/增量 SQL；SQL 真相源在 `app/db/migrations/sql/V*.sql`（随 Java 退役从旧模块搬入本仓，全仓只留这一份）；`app/db/schema_source.py` 的解析顺序是"旧位置有 SQL 就用旧位置、否则用本仓副本"，所以回滚旧布局也不需要改代码。Flyway 之前的历史增量脚本留档于 `../sql/archive/`。若配置 `ROUTE_SERVICE_ENABLED=true`，反思与质检阶段会用确定性路线矩阵校验 POI 间可达性——纯坐标估算（haversine × 道路系数 + 缓冲），无任何外部路线 API，结果自带 `degraded` 标记。`SCHEDULE_OPTIMIZER_ENABLED=true` 控制确定性时间窗优化器。`TOOL_MAX_CALLS` 控制单次 Agent 请求的工具调用总预算，单工具风险、版本、Schema、超时和调用上限由 Tool Registry 管理；`AGENT_DEADLINE_SECONDS`、`MAX_LLM_CALLS`、`MAX_TOKEN_BUDGET` 和 `MAX_REPLANS` 控制单次运行边界，`TRACE_STORAGE_PATH` 控制 JSONL Trace 持久化位置（错误文本中的 API key/Bearer 令牌会集中脱敏）。
 
 ## 接口
 
@@ -112,7 +112,7 @@ uv run python main.py  # 127.0.0.1:8000，默认不开启 reload
 | 后台管理 | `GET /api/admin/{stats,users,itineraries,agent-metrics,llm-usage}`（+ `PUT /users/{id}/status/{status}`、两处 `DELETE`） | 需 admin 角色，非管理员 403 / 匿名 401 |
 | 连通性 | `GET /api/test/hello`、`GET /api/agent/health` | 一键启动脚本与 CI 流水线的探活目标 |
 
-完整清单以启动时导出的 `openapi.json` 与 `scripts/check_endpoint_coverage.py` 的输出为准（Java 退役后后者报告「已归档且无残留登记」，是无残留端点的机器证据）。
+完整清单以启动时导出的 `openapi.json` 与 `scripts/check_endpoint_coverage.py` 的输出为准（Java 退役后后者报告「端点对照不再适用且无残留登记」，是无残留端点的机器证据）。
 
 启动时自动导出 `openapi.json` 到项目根目录。
 
@@ -137,7 +137,7 @@ uv run pytest tests/api -q
 uv run python tests/perf/load_test.py --endpoint all --duration 10 --workers 20
 # 报告输出：tests/perf/report/load_report.json / load_report.md
 
-# 端点覆盖门禁（Java 退役后报告「已归档且无残留登记」，CI 内自动执行）
+# 端点覆盖门禁（Java 退役后报告「端点对照不再适用且无残留登记」，CI 内自动执行）
 uv run python scripts/check_endpoint_coverage.py
 
 # 切流量契约门禁（前端调用点 + 活栈测试路径 vs 装配后路由；离线套件里自动执行）

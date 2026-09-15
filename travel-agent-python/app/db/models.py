@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 from decimal import Decimal
-from typing import Optional
 
 from sqlalchemy import (
     BigInteger,
@@ -63,8 +62,8 @@ class SysUser(Base, SoftDelete):
     id: Mapped[int] = mapped_column(PkBigInt, primary_key=True, autoincrement=True)
     username: Mapped[str] = mapped_column(String(64), nullable=False)
     password: Mapped[str] = mapped_column(String(128), nullable=False, comment="BCrypt 加密密码")
-    nickname: Mapped[Optional[str]] = mapped_column(String(64))
-    phone: Mapped[Optional[str]] = mapped_column(String(20))
+    nickname: Mapped[str | None] = mapped_column(String(64))
+    phone: Mapped[str | None] = mapped_column(String(20))
     status: Mapped[int] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="user", server_default="user")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
@@ -101,15 +100,13 @@ class ItineraryVersion(Base):
     id: Mapped[int] = mapped_column(PkBigInt, primary_key=True, autoincrement=True)
     itinerary_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    parent_version_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    parent_version_id: Mapped[int | None] = mapped_column(BigInteger)
     version_no: Mapped[int] = mapped_column(Integer, nullable=False)
     # 实际取值 13 种（见 V2 的 MODIFY COMMENT 与 SPEC §7.4）：create/generate/add_item/
     # update_item/move_item/delete_item/reorder/nl_edit/delete/apply_plans/apply_hotel/
     # snapshot/restore；V1 的 DDL 注释 'snapshot/apply/restore' 已过时
-    operation: Mapped[str] = mapped_column(
-        String(24), nullable=False, default="snapshot", server_default="snapshot"
-    )
-    summary: Mapped[Optional[str]] = mapped_column(String(255))
+    operation: Mapped[str] = mapped_column(String(24), nullable=False, default="snapshot", server_default="snapshot")
+    summary: Mapped[str | None] = mapped_column(String(255))
     snapshot_json: Mapped[str] = mapped_column(LongText, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
@@ -122,33 +119,33 @@ class ItineraryMain(Base, SoftDelete):
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     title: Mapped[str] = mapped_column(String(128), nullable=False)
     city: Mapped[str] = mapped_column(String(64), nullable=False)
-    start_date: Mapped[Optional[date]] = mapped_column(Date)
-    end_date: Mapped[Optional[date]] = mapped_column(Date)
+    start_date: Mapped[date | None] = mapped_column(Date)
+    end_date: Mapped[date | None] = mapped_column(Date)
     days: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     persons: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
-    budget: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
-    preferences: Mapped[Optional[str]] = mapped_column(String(512))
-    hotel_tier: Mapped[Optional[str]] = mapped_column(String(16))
+    budget: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    preferences: Mapped[str | None] = mapped_column(String(512))
+    hotel_tier: Mapped[str | None] = mapped_column(String(16))
     stay_nights: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     # 面向用户的状态：1=草稿(生成中) 2=已生成 3=已取消
     status: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
-    plan_note: Mapped[Optional[str]] = mapped_column(Text)
-    suggestions_json: Mapped[Optional[str]] = mapped_column(Text)
-    trip_theme: Mapped[Optional[str]] = mapped_column(String(64))
+    plan_note: Mapped[str | None] = mapped_column(Text)
+    suggestions_json: Mapped[str | None] = mapped_column(Text)
+    trip_theme: Mapped[str | None] = mapped_column(String(64))
     # 运维态生成状态机；NULL = 迁移前存量（列表筛选 active 必须含 IS NULL 分支）
-    gen_state: Mapped[Optional[str]] = mapped_column(String(16))
-    gen_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    gen_finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    gen_state: Mapped[str | None] = mapped_column(String(16))
+    gen_started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    gen_finished_at: Mapped[datetime | None] = mapped_column(DateTime)
     gen_resumed: Mapped[int] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     # V2（atlas_share_covers）：封面快照三列 + 署名 + 收藏/归档 + 公开分享
-    cover_url: Mapped[Optional[str]] = mapped_column(String(512))
-    cover_source: Mapped[Optional[str]] = mapped_column(String(16))
-    cover_ref: Mapped[Optional[str]] = mapped_column(String(64))
-    cover_credit: Mapped[Optional[str]] = mapped_column(Text)
+    cover_url: Mapped[str | None] = mapped_column(String(512))
+    cover_source: Mapped[str | None] = mapped_column(String(16))
+    cover_ref: Mapped[str | None] = mapped_column(String(64))
+    cover_credit: Mapped[str | None] = mapped_column(Text)
     favorite: Mapped[int] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     archived: Mapped[int] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
-    share_token: Mapped[Optional[str]] = mapped_column(String(48))
-    share_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    share_token: Mapped[str | None] = mapped_column(String(48))
+    share_expires_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
@@ -163,8 +160,8 @@ class ItineraryChatMessage(Base):
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     role: Mapped[str] = mapped_column(String(16), nullable=False, comment="user/ai")
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    plans_json: Mapped[Optional[str]] = mapped_column(LongText)
-    hotel_options_json: Mapped[Optional[str]] = mapped_column(LongText)
+    plans_json: Mapped[str | None] = mapped_column(LongText)
+    hotel_options_json: Mapped[str | None] = mapped_column(LongText)
     changed: Mapped[int] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
@@ -179,16 +176,16 @@ class ItineraryDay(Base, SoftDelete):
     id: Mapped[int] = mapped_column(PkBigInt, primary_key=True, autoincrement=True)
     itinerary_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     day_no: Mapped[int] = mapped_column(Integer, nullable=False)
-    travel_date: Mapped[Optional[date]] = mapped_column(Date)
-    city: Mapped[Optional[str]] = mapped_column(String(64))
-    note: Mapped[Optional[str]] = mapped_column(String(512))
-    metadata_json: Mapped[Optional[str]] = mapped_column(LongText)
-    generation_action_id: Mapped[Optional[str]] = mapped_column(String(96))
-    generation_fingerprint: Mapped[Optional[str]] = mapped_column(String(64))
+    travel_date: Mapped[date | None] = mapped_column(Date)
+    city: Mapped[str | None] = mapped_column(String(64))
+    note: Mapped[str | None] = mapped_column(String(512))
+    metadata_json: Mapped[str | None] = mapped_column(LongText)
+    generation_action_id: Mapped[str | None] = mapped_column(String(96))
+    generation_fingerprint: Mapped[str | None] = mapped_column(String(64))
     generation_status: Mapped[str] = mapped_column(
         String(24), nullable=False, default="PENDING", server_default="PENDING"
     )
-    generation_error: Mapped[Optional[str]] = mapped_column(String(512))
+    generation_error: Mapped[str | None] = mapped_column(String(512))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
@@ -203,35 +200,33 @@ class ItineraryItem(Base, SoftDelete):
     itinerary_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     item_type: Mapped[str] = mapped_column(String(16), nullable=False)
     poi_name: Mapped[str] = mapped_column(String(128), nullable=False)
-    poi_id: Mapped[Optional[str]] = mapped_column(String(64))
-    address: Mapped[Optional[str]] = mapped_column(String(255))
-    latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 6))
-    longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 6))
-    start_time: Mapped[Optional[time]] = mapped_column(Time)
-    end_time: Mapped[Optional[time]] = mapped_column(Time)
-    duration_min: Mapped[Optional[int]] = mapped_column(Integer)
-    cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
-    tag: Mapped[Optional[str]] = mapped_column(String(32))
-    remark: Mapped[Optional[str]] = mapped_column(String(255))
-    open_time: Mapped[Optional[str]] = mapped_column(String(64))
-    image_url: Mapped[Optional[str]] = mapped_column(String(1024))
-    source: Mapped[Optional[str]] = mapped_column(String(128))
-    source_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    poi_id: Mapped[str | None] = mapped_column(String(64))
+    address: Mapped[str | None] = mapped_column(String(255))
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 6))
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 6))
+    start_time: Mapped[time | None] = mapped_column(Time)
+    end_time: Mapped[time | None] = mapped_column(Time)
+    duration_min: Mapped[int | None] = mapped_column(Integer)
+    cost: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    tag: Mapped[str | None] = mapped_column(String(32))
+    remark: Mapped[str | None] = mapped_column(String(255))
+    open_time: Mapped[str | None] = mapped_column(String(64))
+    image_url: Mapped[str | None] = mapped_column(String(1024))
+    source: Mapped[str | None] = mapped_column(String(128))
+    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
     verification_status: Mapped[str] = mapped_column(
         String(24), nullable=False, default="unverified", server_default="unverified"
     )
-    value_kind: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="generated", server_default="generated"
-    )
+    value_kind: Mapped[str] = mapped_column(String(16), nullable=False, default="generated", server_default="generated")
     freshness_status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="unknown", server_default="unknown"
     )
     review_requirement: Mapped[str] = mapped_column(
         String(24), nullable=False, default="before_departure", server_default="before_departure"
     )
-    fact_evidence_json: Mapped[Optional[str]] = mapped_column(LongText)
-    intro: Mapped[Optional[str]] = mapped_column(String(600))
-    why_note: Mapped[Optional[str]] = mapped_column(String(255))
+    fact_evidence_json: Mapped[str | None] = mapped_column(LongText)
+    intro: Mapped[str | None] = mapped_column(String(600))
+    why_note: Mapped[str | None] = mapped_column(String(255))
     sort_no: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -244,11 +239,11 @@ class BudgetDetail(Base, SoftDelete):
 
     id: Mapped[int] = mapped_column(PkBigInt, primary_key=True, autoincrement=True)
     itinerary_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    day_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    day_id: Mapped[int | None] = mapped_column(BigInteger)
     category: Mapped[str] = mapped_column(String(16), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     item_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    remark: Mapped[Optional[str]] = mapped_column(String(255))
+    remark: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
@@ -262,23 +257,21 @@ class PoiKnowledge(Base):
     id: Mapped[int] = mapped_column(PkBigInt, primary_key=True, autoincrement=True)
     city: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
-    category: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="attraction", server_default="attraction"
-    )
-    address: Mapped[Optional[str]] = mapped_column(String(255))
-    latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 6))
-    longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 6))
-    ticket_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
-    avg_cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
-    duration_min: Mapped[Optional[int]] = mapped_column(Integer)
-    open_time: Mapped[Optional[str]] = mapped_column(String(64))
-    tags: Mapped[Optional[str]] = mapped_column(String(128))
-    rating: Mapped[Optional[Decimal]] = mapped_column(Numeric(2, 1))
-    description: Mapped[Optional[str]] = mapped_column(String(512))
+    category: Mapped[str] = mapped_column(String(16), nullable=False, default="attraction", server_default="attraction")
+    address: Mapped[str | None] = mapped_column(String(255))
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 6))
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 6))
+    ticket_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    avg_cost: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    duration_min: Mapped[int | None] = mapped_column(Integer)
+    open_time: Mapped[str | None] = mapped_column(String(64))
+    tags: Mapped[str | None] = mapped_column(String(128))
+    rating: Mapped[Decimal | None] = mapped_column(Numeric(2, 1))
+    description: Mapped[str | None] = mapped_column(String(512))
     source: Mapped[str] = mapped_column(
         String(128), nullable=False, default="mysql.poi_knowledge", server_default="mysql.poi_knowledge"
     )
-    source_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class HotelRoomType(Base):
@@ -290,9 +283,9 @@ class HotelRoomType(Base):
     room_name: Mapped[str] = mapped_column(String(128), nullable=False)
     base_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=2, server_default="2")
-    bed_type: Mapped[Optional[str]] = mapped_column(String(64))
-    breakfast: Mapped[Optional[str]] = mapped_column(String(64))
-    description: Mapped[Optional[str]] = mapped_column(String(512))
+    bed_type: Mapped[str | None] = mapped_column(String(64))
+    breakfast: Mapped[str | None] = mapped_column(String(64))
+    description: Mapped[str | None] = mapped_column(String(512))
     is_default: Mapped[int] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
 
 
@@ -302,9 +295,7 @@ class CityConsumption(Base):
 
     id: Mapped[int] = mapped_column(PkBigInt, primary_key=True, autoincrement=True)
     city: Mapped[str] = mapped_column(String(64), nullable=False)
-    level: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="standard", server_default="standard"
-    )
+    level: Mapped[str] = mapped_column(String(16), nullable=False, default="standard", server_default="standard")
     meal_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     transport_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     hotel_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
@@ -323,8 +314,8 @@ class CityGeo(Base):
     city_name: Mapped[str] = mapped_column(String(64), primary_key=True)
     country: Mapped[str] = mapped_column(String(64), nullable=False)
     country_code: Mapped[str] = mapped_column(String(2), nullable=False)
-    lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7))
-    lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7))
+    lat: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    lng: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     is_domestic: Mapped[int] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
 
 
@@ -335,10 +326,8 @@ class ExportTask(Base, SoftDelete):
     itinerary_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     task_type: Mapped[str] = mapped_column(String(16), nullable=False, default="PDF", server_default="PDF")
-    status: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="RUNNING", server_default="RUNNING"
-    )
-    file_path: Mapped[Optional[str]] = mapped_column(String(512))
-    error_msg: Mapped[Optional[str]] = mapped_column(String(512))
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="RUNNING", server_default="RUNNING")
+    file_path: Mapped[str | None] = mapped_column(String(512))
+    error_msg: Mapped[str | None] = mapped_column(String(512))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
-    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)

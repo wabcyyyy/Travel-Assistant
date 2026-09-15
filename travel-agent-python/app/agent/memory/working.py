@@ -22,7 +22,7 @@ class WorkingMemory:
     feedback: str = ""
 
     @classmethod
-    def from_iterable(cls, names: list[str] | set[str] | None) -> "WorkingMemory":
+    def from_iterable(cls, names: list[str] | set[str] | None) -> WorkingMemory:
         return cls(used_names={str(n).strip() for n in (names or []) if str(n).strip()})
 
     def as_sorted_list(self) -> list[str]:

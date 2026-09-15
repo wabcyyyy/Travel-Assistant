@@ -246,8 +246,7 @@ def test_distill_intent_client_error_returns_none(monkeypatch):
 
 
 def _ref_context():
-    return {"candidates": [{"name": "西湖", "category": "attraction"}],
-            "foods": [], "hotels": []}
+    return {"candidates": [{"name": "西湖", "category": "attraction"}], "foods": [], "hotels": []}
 
 
 def test_llm_open_day_injects_intent_before_reference_block(monkeypatch):
@@ -256,15 +255,16 @@ def test_llm_open_day_injects_intent_before_reference_block(monkeypatch):
     class DayClient:
         def complete(self, user_prompt, system_prompt="", **_kwargs):
             captured["system"] = system_prompt
-            return json.dumps({"note": "第1天", "items": [], "suggestions": []},
-                              ensure_ascii=False)
+            return json.dumps({"note": "第1天", "items": [], "suggestions": []}, ensure_ascii=False)
 
     monkeypatch.setattr(day_stream, "get_llm_client", lambda: DayClient())
     fake = FakeDistillClient(reply=json.dumps(_FAKE_DISTILL, ensure_ascii=False))
     monkeypatch.setattr(intent_module, "get_llm_client", lambda: fake)
 
     req = GenerateDayRequest(
-        city="杭州", day_no=1, days=2,
+        city="杭州",
+        day_no=1,
+        days=2,
         intent="带着孩子看西湖，避开爬山类景点",
         context=_ref_context(),
     )
@@ -283,8 +283,7 @@ def test_llm_open_day_without_intent_keeps_prompt_unchanged(monkeypatch):
     class DayClient:
         def complete(self, user_prompt, system_prompt="", **_kwargs):
             captured["system"] = system_prompt
-            return json.dumps({"note": "第1天", "items": [], "suggestions": []},
-                              ensure_ascii=False)
+            return json.dumps({"note": "第1天", "items": [], "suggestions": []}, ensure_ascii=False)
 
     monkeypatch.setattr(day_stream, "get_llm_client", lambda: DayClient())
     fake = FakeDistillClient(reply=json.dumps(_FAKE_DISTILL, ensure_ascii=False))
@@ -305,15 +304,16 @@ def test_llm_open_trip_injects_intent_before_reference_block(monkeypatch):
     class TripClient:
         def complete(self, user_prompt, system_prompt="", **_kwargs):
             captured["system"] = system_prompt
-            return json.dumps({"daily_plans": [{"day_no": 1, "items": []}],
-                               "suggestions": []}, ensure_ascii=False)
+            return json.dumps({"daily_plans": [{"day_no": 1, "items": []}], "suggestions": []}, ensure_ascii=False)
 
     monkeypatch.setattr(day_stream, "get_llm_client", lambda: TripClient())
     fake = FakeDistillClient(reply=json.dumps(_FAKE_DISTILL, ensure_ascii=False))
     monkeypatch.setattr(intent_module, "get_llm_client", lambda: fake)
 
     req = GenerateDayRequest(
-        city="杭州", day_no=1, days=2,
+        city="杭州",
+        day_no=1,
+        days=2,
         intent="两日深度慢游，只逛不赶",
         context=_ref_context(),
     )
@@ -329,8 +329,7 @@ def test_llm_open_trip_injects_intent_before_reference_block(monkeypatch):
 
 
 def test_research_task_has_intent_fields():
-    task = ResearchTask(domain="attraction", city="杭州",
-                        intent="带着父母慢游", intent_keywords=["父母", "慢游"])
+    task = ResearchTask(domain="attraction", city="杭州", intent="带着父母慢游", intent_keywords=["父母", "慢游"])
     assert task.intent == "带着父母慢游"
     assert task.intent_keywords == ["父母", "慢游"]
     default = ResearchTask(domain="food", city="杭州")

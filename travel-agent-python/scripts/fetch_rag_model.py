@@ -18,7 +18,7 @@ from pathlib import Path
 # 允许脚本独立运行（sys.path[0] 是 scripts/，需补模块根）
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.common.config import settings  # noqa: E402
+from app.common.config import settings
 
 
 def _download(repo_id: str, cache_dir: str | None) -> None:
@@ -29,9 +29,7 @@ def _download(repo_id: str, cache_dir: str | None) -> None:
     try:
         from huggingface_hub import snapshot_download
     except ImportError as exc:
-        raise SystemExit(
-            "缺少 huggingface_hub：先执行 `uv sync`（sentence-transformers 会带入该依赖）"
-        ) from exc
+        raise SystemExit("缺少 huggingface_hub：先执行 `uv sync`（sentence-transformers 会带入该依赖）") from exc
     target = cache_dir or "默认 HF 缓存"
     print(f"downloading {repo_id} -> {target}")
     kwargs = {"repo_id": repo_id}
@@ -50,16 +48,17 @@ def _verify_embedding() -> None:
     if getattr(provider, "fallback", False):
         raise SystemExit(
             "模型已下载但 provider 仍降级为 hashed：请检查 sentence-transformers 依赖是否安装"
-            f"（cache_dir={settings.rag_model_cache_dir}）")
+            f"（cache_dir={settings.rag_model_cache_dir}）"
+        )
     print(f"ok: provider={provider.identity} dim={dim}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="预置 RAG 语义模型到本地缓存")
-    parser.add_argument("--model", default=settings.rag_embedding_model,
-                        help="embedding 模型 repo id（默认取 RAG_EMBEDDING_MODEL）")
-    parser.add_argument("--rerank", action="store_true",
-                        help="同时下载精排模型（启用 RAG_RERANK_PROVIDER 时需要）")
+    parser.add_argument(
+        "--model", default=settings.rag_embedding_model, help="embedding 模型 repo id（默认取 RAG_EMBEDDING_MODEL）"
+    )
+    parser.add_argument("--rerank", action="store_true", help="同时下载精排模型（启用 RAG_RERANK_PROVIDER 时需要）")
     parser.add_argument("--rerank-model", default=settings.rag_rerank_model)
     args = parser.parse_args()
 

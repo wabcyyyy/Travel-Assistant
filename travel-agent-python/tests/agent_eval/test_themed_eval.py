@@ -19,19 +19,33 @@ from tests.agent_eval.metrics import evaluate_narrative
 THEMED_CASES_PATH = Path(__file__).with_name("themed_cases.json")
 
 
-def _item(poi_name: str, *, item_type: str = "attraction", why_this: str | None = None,
-          remark: str | None = None, lat: float | None = 30.1, lon: float | None = 120.2,
-          verification: str = "verified") -> TripItem:
-    return TripItem(item_type=item_type, poi_name=poi_name,
-                    start_time="09:00", end_time="10:00",
-                    why_this=why_this, remark=remark,
-                    latitude=lat, longitude=lon,
-                    verification_status=verification)
+def _item(
+    poi_name: str,
+    *,
+    item_type: str = "attraction",
+    why_this: str | None = None,
+    remark: str | None = None,
+    lat: float | None = 30.1,
+    lon: float | None = 120.2,
+    verification: str = "verified",
+) -> TripItem:
+    return TripItem(
+        item_type=item_type,
+        poi_name=poi_name,
+        start_time="09:00",
+        end_time="10:00",
+        why_this=why_this,
+        remark=remark,
+        latitude=lat,
+        longitude=lon,
+        verification_status=verification,
+    )
 
 
 def _response(plans: list[DailyPlan], trip_theme: str | None = None) -> GenerateResponse:
-    return GenerateResponse(city="京都", days=len(plans), title="测试行程",
-                            trip_theme=trip_theme, daily_plans=plans, budget_estimate={})
+    return GenerateResponse(
+        city="京都", days=len(plans), title="测试行程", trip_theme=trip_theme, daily_plans=plans, budget_estimate={}
+    )
 
 
 def test_full_narrative_scores_one():
@@ -46,10 +60,13 @@ def test_full_narrative_scores_one():
         practical_notes=["穿好走的鞋"],
     )
     response = _response([plan], trip_theme="《千恋万花》京都圣地巡礼")
-    metrics = evaluate_narrative(response, {
-        "city": "京都",
-        "intent": "京都 3 日《千恋万花》圣地巡礼，住柏悦，节奏松弛",
-    })
+    metrics = evaluate_narrative(
+        response,
+        {
+            "city": "京都",
+            "intent": "京都 3 日《千恋万花》圣地巡礼，住柏悦，节奏松弛",
+        },
+    )
     assert metrics["theme_sentence_rate"] == 1.0
     assert metrics["why_coverage"] == 1.0
     assert metrics["practical_notes_rate"] == 1.0
@@ -64,10 +81,13 @@ def test_full_narrative_scores_one():
 def test_path_string_and_missing_fields_do_not_count():
     """「A→B→C」路径串与空/None theme 不计入叙事句；缺失字段按 0 计。"""
     plans = [
-        DailyPlan(day_no=1, items=[_item("清水寺", why_this="巡礼起点")],
-                  theme="清水寺→伏见稻荷→二年坂", practical_notes=["带伞"]),
-        DailyPlan(day_no=2, items=[_item("岚山", why_this=None, lat=0.0, lon=None)],
-                  theme=None, practical_notes=[]),
+        DailyPlan(
+            day_no=1,
+            items=[_item("清水寺", why_this="巡礼起点")],
+            theme="清水寺→伏见稻荷→二年坂",
+            practical_notes=["带伞"],
+        ),
+        DailyPlan(day_no=2, items=[_item("岚山", why_this=None, lat=0.0, lon=None)], theme=None, practical_notes=[]),
     ]
     metrics = evaluate_narrative(_response(plans), {"city": "京都"})
     assert metrics["theme_sentence_rate"] == 0.0
@@ -106,7 +126,7 @@ def test_themed_cases_structure():
     cases = json.loads(THEMED_CASES_PATH.read_text(encoding="utf-8"))
     assert len(cases) == 6
     expected = [("京都", "kyoto"), ("杭州", "hangzhou"), ("成都", "chengdu")]
-    for (city, prefix), index in zip(expected, range(0, 6, 2)):
+    for (city, prefix), index in zip(expected, range(0, 6, 2), strict=False):
         baseline, themed = cases[index], cases[index + 1]
         assert baseline["city"] == city and themed["city"] == city
         assert baseline["name"] == f"{prefix}-baseline"
@@ -122,26 +142,47 @@ def test_themed_cases_structure():
 
 def test_case_to_request_filters_meta_and_passes_intent():
     """case → 请求：name/prompt_version 被过滤，intent 透传（eval_agent mock 路径）。"""
-    themed = {"name": "kyoto-themed", "prompt_version": "v1.1.narrative",
-              "city": "京都", "days": 3, "persons": 2, "budget": 50000,
-              "preferences": ["二次元", "文化"],
-              "intent": "京都 3 日《千恋万花》圣地巡礼，住柏悦，节奏松弛"}
+    themed = {
+        "name": "kyoto-themed",
+        "prompt_version": "v1.1.narrative",
+        "city": "京都",
+        "days": 3,
+        "persons": 2,
+        "budget": 50000,
+        "preferences": ["二次元", "文化"],
+        "intent": "京都 3 日《千恋万花》圣地巡礼，住柏悦，节奏松弛",
+    }
     request = build_generate_request(themed)
     assert request.intent == themed["intent"]
     dumped = request.model_dump()
     assert "name" not in dumped and "prompt_version" not in dumped
     # 基线（无 intent）也构造成功，intent 保持 None（llm_eval 真跑路径同实现）
-    baseline = {"name": "kyoto-baseline", "prompt_version": "", "city": "京都",
-                "days": 3, "persons": 2, "budget": 50000, "preferences": ["二次元", "文化"]}
+    baseline = {
+        "name": "kyoto-baseline",
+        "prompt_version": "",
+        "city": "京都",
+        "days": 3,
+        "persons": 2,
+        "budget": 50000,
+        "preferences": ["二次元", "文化"],
+    }
     assert build_llm_request(baseline).intent is None
 
 
 def test_run_case_accepts_themed_case():
     """带 name/prompt_version/intent 的主题 case 可走完整 mock 评测链路。"""
-    result = run_case({"name": "kyoto-themed", "prompt_version": "", "city": "京都",
-                       "days": 2, "persons": 2, "budget": 50000,
-                       "preferences": ["二次元", "文化"],
-                       "intent": "京都 2 日《千恋万花》圣地巡礼"})
+    result = run_case(
+        {
+            "name": "kyoto-themed",
+            "prompt_version": "",
+            "city": "京都",
+            "days": 2,
+            "persons": 2,
+            "budget": 50000,
+            "preferences": ["二次元", "文化"],
+            "intent": "京都 2 日《千恋万花》圣地巡礼",
+        }
+    )
     # prompt_version 占位在运行时填充实际契约版本
     assert result["case"]["prompt_version"] == f"{OPEN_DAY_PROMPT_VERSION}/{OPEN_TRIP_PROMPT_VERSION}"
     assert result["fallback_success"] is True

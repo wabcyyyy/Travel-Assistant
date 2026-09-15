@@ -60,11 +60,15 @@ def create_snapshot(user_id: int, itinerary_id: int, operation: str | None, summ
 def list_versions(user_id: int, itinerary_id: int) -> list[dict[str, Any]]:
     with session_scope() as session:
         _require_main(session, user_id, itinerary_id)
-        rows = session.execute(
-            select(ItineraryVersion)
-            .where(ItineraryVersion.itinerary_id == itinerary_id)
-            .order_by(ItineraryVersion.version_no.desc())
-        ).scalars().all()
+        rows = (
+            session.execute(
+                select(ItineraryVersion)
+                .where(ItineraryVersion.itinerary_id == itinerary_id)
+                .order_by(ItineraryVersion.version_no.desc())
+            )
+            .scalars()
+            .all()
+        )
     return [
         {
             "id": row.id,
@@ -117,12 +121,8 @@ def restore(user_id: int, itinerary_id: int, version_id: int) -> dict[str, Any]:
         version_no = version.version_no
 
         # 物理删除（见模块 docstring 的例外说明）：软删会让 uk_itinerary_day_no 被旧行占住
-        session.execute(
-            delete(ItineraryItem).where(ItineraryItem.itinerary_id == itinerary_id)
-        )
-        session.execute(
-            delete(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id)
-        )
+        session.execute(delete(ItineraryItem).where(ItineraryItem.itinerary_id == itinerary_id))
+        session.execute(delete(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id))
 
         main.title = snapshot.get("title")
         main.city = snapshot.get("city")

@@ -22,9 +22,7 @@ from math import ceil
 from app.agent import tools
 from app.agent.geo import nearest_neighbor_order
 from app.agent.intent import IntentBrief, distill_intent
-from app.agent.trace import record_event, traced
-from app.common.config import settings
-from app.common.llm_client import get_llm_client
+from app.agent.trace import record_event
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +42,12 @@ _NAME_NORMALIZE_RE = re.compile(r"[\s（）()【】\[\]·]")
 # source，删掉它们会让老行程的事实被降级为不可信；新写入只会有
 # mysql.poi_knowledge / wikivoyage（本地采集管线）。
 AUTHORITATIVE_SOURCE_PREFIXES = (
-    "mysql.poi_knowledge", "amap.poi", "amap", "wikivoyage", "llm", "nominatim",
+    "mysql.poi_knowledge",
+    "amap.poi",
+    "amap",
+    "wikivoyage",
+    "llm",
+    "nominatim",
 )
 # 非权威来源统一改写为该标记，并降级为 unverified/estimated。
 UNTRUSTED_SOURCE = "client-context"
@@ -76,6 +79,7 @@ def _json_default(o):
         return float(o)
     return str(o)
 
+
 TIME_SLOTS = [
     ("09:00", "11:30"),
     ("13:30", "16:00"),
@@ -89,8 +93,23 @@ THREE_ATTRACTION_SLOTS = [
 
 # 低质/与旅行体验无关的场所：在 prompt 层约束模型不要选入行程与备选池
 LOW_QUALITY_KEYWORDS = (
-    "舞厅", "歌厅", "夜总会", "网吧", "棋牌", "麻将", "农贸", "菜市场", "菜场",
-    "批发", "招待所", "五金", "建材", "汽配", "维修", "废品", "殡葬",
+    "舞厅",
+    "歌厅",
+    "夜总会",
+    "网吧",
+    "棋牌",
+    "麻将",
+    "农贸",
+    "菜市场",
+    "菜场",
+    "批发",
+    "招待所",
+    "五金",
+    "建材",
+    "汽配",
+    "维修",
+    "废品",
+    "殡葬",
 )
 
 # 生成阶段的质量约束：从源头让模型避开低质点位，而不是事后强制屏蔽
@@ -149,10 +168,14 @@ def _budget_tier(budget: float | None, persons: int, days: int) -> tuple[str, st
         return "", "", 0.0
     ppd = float(budget) / persons / days
     if ppd >= 1500:
-        return "奢华档", (
-            "预算非常充裕：优先选择候选中档次最高、价格最高的酒店（五星/地标级），"
-            "餐饮安排高客单的名店，可纳入高价值付费体验项目，不要为了省钱降低标准。"
-        ), ppd
+        return (
+            "奢华档",
+            (
+                "预算非常充裕：优先选择候选中档次最高、价格最高的酒店（五星/地标级），"
+                "餐饮安排高客单的名店，可纳入高价值付费体验项目，不要为了省钱降低标准。"
+            ),
+            ppd,
+        )
     if ppd >= 800:
         return "高档", "预算充裕：优先选择高档酒店与品质餐饮，可适当安排付费体验项目。", ppd
     if ppd >= 400:
@@ -225,7 +248,7 @@ def _distill_cached(intent: str) -> str:
     """
     try:
         brief = distill_intent(intent)
-    except Exception:  # noqa: BLE001 - 提炼失败绝不阻断生成
+    except Exception:
         return ""
     if brief is None:
         return ""
@@ -267,12 +290,8 @@ def _pick_hotels(hotels: list[dict] | None, tier: str | None, count: int) -> lis
     for part in (tier or "").replace("，", "、").split("、"):
         if not part:
             continue
-        if part in _TIER_KEYWORDS:
-            keywords = keywords + _TIER_KEYWORDS[part]
-        else:
-            keywords = keywords + (part,)
-    matched = [h for h in hotels
-               if any(k in (h.get("description") or "") + (h.get("tags") or "") for k in keywords)]
+        keywords = keywords + _TIER_KEYWORDS.get(part, (part,))
+    matched = [h for h in hotels if any(k in (h.get("description") or "") + (h.get("tags") or "") for k in keywords)]
     picked = matched + [h for h in hotels if h not in matched]
     return picked[:count]
 
@@ -315,9 +334,11 @@ class ReferencePool:
         excluded = exclude_names or set()
         collected: list[dict] = []
         seen: set[str] = set()
-        for key, limit in (("candidates", REFERENCE_ATTRACTION_LIMIT),
-                           ("foods", REFERENCE_FOOD_LIMIT),
-                           ("hotels", REFERENCE_HOTEL_LIMIT)):
+        for key, limit in (
+            ("candidates", REFERENCE_ATTRACTION_LIMIT),
+            ("foods", REFERENCE_FOOD_LIMIT),
+            ("hotels", REFERENCE_HOTEL_LIMIT),
+        ):
             rows = ctx.get(key)
             if not isinstance(rows, list):
                 continue
@@ -355,8 +376,7 @@ class ReferencePool:
         return (
             "权威参考资料（本地知识库，事实可信；行程与备选点优先从这里选，"
             "选中时必须在 item 中输出 refs:[对应编号，如 3]；"
-            "资料中没有合适点位时才可用你的知识补充真实存在的地点，无需 refs，禁止编造）：\n"
-            + "\n".join(lines)
+            "资料中没有合适点位时才可用你的知识补充真实存在的地点，无需 refs，禁止编造）：\n" + "\n".join(lines)
         )
 
     def match(self, item: dict) -> dict | None:
@@ -374,8 +394,9 @@ class ReferencePool:
 
     def _count_refs(self, item: dict) -> None:
         refs = item.get("refs") or []
-        valid_ints = [r for r in refs if isinstance(r, int) and not isinstance(r, bool)
-                      and 1 <= r <= len(self.references)]
+        valid_ints = [
+            r for r in refs if isinstance(r, int) and not isinstance(r, bool) and 1 <= r <= len(self.references)
+        ]
         if refs:
             self.stats["refs_cited"] += 1
             if valid_ints:
@@ -448,15 +469,20 @@ class ReferencePool:
         return True
 
 
-def fallback_generate(city: str, days: int, persons: int, preferences: list[str],
-                      hotels: list[dict] | None = None,
-                      hotel_tier: str | None = None,
-                      attractions: list[dict] | None = None,
-                      foods: list[dict] | None = None,
-                      consumption: dict | None = None,
-                      pace_days: int | None = None,
-                      budget_limit: float | None = None,
-                      report_sink: dict | None = None) -> tuple[list[dict], dict]:
+def fallback_generate(
+    city: str,
+    days: int,
+    persons: int,
+    preferences: list[str],
+    hotels: list[dict] | None = None,
+    hotel_tier: str | None = None,
+    attractions: list[dict] | None = None,
+    foods: list[dict] | None = None,
+    consumption: dict | None = None,
+    pace_days: int | None = None,
+    budget_limit: float | None = None,
+    report_sink: dict | None = None,
+) -> tuple[list[dict], dict]:
     """确定性排布（仅供离线消融评测使用，非生产路径）。
 
     直接用知识库候选按时间槽 + 最近邻顺序拼装行程。生产链路遵循 LLM-only
@@ -511,11 +537,15 @@ def fallback_generate(city: str, days: int, persons: int, preferences: list[str]
     return daily_plans, budget
 
 
-def build_suggestions(plans: list[dict], candidates: list[dict] | None,
-                      foods: list[dict] | None, hotels: list[dict] | None,
-                      raw_suggestions: list[dict] | None = None,
-                      limit: int = SUGGESTION_LIMIT,
-                      allow_external: bool = False) -> list[dict]:
+def build_suggestions(
+    plans: list[dict],
+    candidates: list[dict] | None,
+    foods: list[dict] | None,
+    hotels: list[dict] | None,
+    raw_suggestions: list[dict] | None = None,
+    limit: int = SUGGESTION_LIMIT,
+    allow_external: bool = False,
+) -> list[dict]:
     """构建「发现更多」备选池：当初提供给模型的候选中、未排入行程的优质点位。
 
     优先采用模型给出的建议（含一句话介绍与预约提示），但会过滤掉已排入
@@ -561,8 +591,7 @@ def build_suggestions(plans: list[dict], candidates: list[dict] | None,
         category = _category_of(poi, raw.get("category"))
         # 购物类不估价：花多少取决于用户自己买什么，固定「人均 ¥5000」
         # 只会削弱可信度（前端对应展示「按店内消费为准」）。
-        estimated = float(cost) if isinstance(cost, (int, float)) else (
-            float(price) if price is not None else None)
+        estimated = float(cost) if isinstance(cost, (int, float)) else (float(price) if price is not None else None)
         if category == "shopping":
             estimated = None
         return {
@@ -662,9 +691,13 @@ def build_suggestions(plans: list[dict], candidates: list[dict] | None,
     return results[:limit]
 
 
-def fill_suggestion_gaps(suggestions: list[dict], city: str, *,
-                         budget_tier: str | None = None,
-                         min_per_category: int = SUGGESTION_MIN_PER_CATEGORY) -> list[dict]:
+def fill_suggestion_gaps(
+    suggestions: list[dict],
+    city: str,
+    *,
+    budget_tier: str | None = None,
+    min_per_category: int = SUGGESTION_MIN_PER_CATEGORY,
+) -> list[dict]:
     """类目不足时用联网搜索补齐「发现更多」地板（酒店/体验/美食优先）。
 
     候选池为空时原先的地板补齐会静默失败；本函数在池外再补一轮真实地点名，
@@ -700,31 +733,38 @@ def fill_suggestion_gaps(suggestions: list[dict], city: str, *,
             if not name or name in seen:
                 continue
             seen.add(name)
-            filled.append({
-                "poi_id": None,
-                "name": name,
-                "category": cat,
-                "address": None,
-                "latitude": None,
-                "longitude": None,
-                "intro": row.get("intro"),
-                "need_reservation": cat in ("hotel", "activity"),
-                "estimated_cost": row.get("estimated_cost"),
-                "used": False,
-            })
+            filled.append(
+                {
+                    "poi_id": None,
+                    "name": name,
+                    "category": cat,
+                    "address": None,
+                    "latitude": None,
+                    "longitude": None,
+                    "intro": row.get("intro"),
+                    "need_reservation": cat in ("hotel", "activity"),
+                    "estimated_cost": row.get("estimated_cost"),
+                    "used": False,
+                }
+            )
             counts[cat] = counts.get(cat, 0) + 1
     if filled != (suggestions or []):
-        record_event("decision", "suggestion_web_fill", metadata={
-            "city": city,
-            "before": len(suggestions or []),
-            "after": len(filled),
-            "counts": counts,
-        })
+        record_event(
+            "decision",
+            "suggestion_web_fill",
+            metadata={
+                "city": city,
+                "before": len(suggestions or []),
+                "after": len(filled),
+                "counts": counts,
+            },
+        )
     return filled
 
 
-def clamp_meal_cost(cost: float | None, meal_price: float | None, *,
-                    hard_ratio: float = 8.0, soft_ratio: float = 4.0) -> tuple[float | None, str | None]:
+def clamp_meal_cost(
+    cost: float | None, meal_price: float | None, *, hard_ratio: float = 8.0, soft_ratio: float = 4.0
+) -> tuple[float | None, str | None]:
     """餐饮单价相对城市人均餐价钳制，抑制「一兰 1200」这类离谱估值。
 
     - cost 非正：原样返回（由上层回落）
@@ -756,14 +796,23 @@ def clamp_meal_cost(cost: float | None, meal_price: float | None, *,
 def _prompt_poi(poi: dict) -> dict:
     """为模型保留规划所需字段，避免来源/描述等大字段重复进入 Prompt。"""
     fields = (
-        "id", "name", "category", "address", "latitude", "longitude",
-        "ticket_price", "duration_min", "open_time", "tags",
+        "id",
+        "name",
+        "category",
+        "address",
+        "latitude",
+        "longitude",
+        "ticket_price",
+        "duration_min",
+        "open_time",
+        "tags",
     )
     return {key: poi.get(key) for key in fields if poi.get(key) not in (None, "")}
 
 
-def dedupe_daily_plans(plans: list[dict], candidates: list[dict] | None = None,
-                       foods: list[dict] | None = None) -> list[dict]:
+def dedupe_daily_plans(
+    plans: list[dict], candidates: list[dict] | None = None, foods: list[dict] | None = None
+) -> list[dict]:
     """去除整个行程中跨天重复的景点/餐饮。
 
     重复项优先用候选池里尚未使用的同名类型 POI 替换，保持每日密度；候选用尽时直接丢弃。
@@ -836,8 +885,7 @@ def _to_item(poi: dict, start: str, end: str) -> dict:
     }
 
 
-def _hotel_item(city: str, consumption: dict | None, hotels: list[dict] | None = None,
-                day_no: int = 1) -> dict:
+def _hotel_item(city: str, consumption: dict | None, hotels: list[dict] | None = None, day_no: int = 1) -> dict:
     if hotels:
         poi = hotels[(day_no - 1) % len(hotels)]
         return {
@@ -871,8 +919,9 @@ def _hotel_item(city: str, consumption: dict | None, hotels: list[dict] | None =
     }
 
 
-def _estimate_budget(attractions: list[dict], foods: list[dict], consumption: dict | None,
-                     days: int, persons: int) -> dict:
+def _estimate_budget(
+    attractions: list[dict], foods: list[dict], consumption: dict | None, days: int, persons: int
+) -> dict:
     ticket = sum(float(a.get("ticket_price") or 0) for a in attractions) / max(len(attractions), 1) * 3
     meal = float(consumption.get("meal_price", 60.0) if consumption else 60.0) * 2
     transport = float(consumption.get("transport_price", 35.0) if consumption else 35.0)

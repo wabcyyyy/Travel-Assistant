@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from app.common.config import BASE_DIR
 
@@ -125,7 +124,7 @@ def _frontend_call_sites() -> list[tuple[str, str, str]]:
             literal = _literal_path(_first_argument(text, match.end()))
             if literal is None or not literal.startswith("/api"):
                 continue
-            window = text[match.end():match.end() + _FETCH_OPTIONS_WINDOW]
+            window = text[match.end() : match.end() + _FETCH_OPTIONS_WINDOW]
             declared = _FETCH_METHOD_RE.search(window)
             method = declared.group(1).upper() if declared else "GET"
             sites.append((file.name, method, _normalize(literal)))

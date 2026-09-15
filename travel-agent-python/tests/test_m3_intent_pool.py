@@ -22,7 +22,6 @@ from app.agent.research.factory import run_research
 from app.agent.research.supervisor import decompose
 from app.schemas.trip import GenerateRequest
 
-
 # ---------- 1. build_intent_keywords：纯规则抽词 ----------
 
 
@@ -80,10 +79,8 @@ def test_decompose_without_intent_keeps_empty_keywords():
 def test_evaluate_intent_uncovered_forces_insufficient(monkeypatch):
     """第 1 轮证据完全未命中意图词 → 确定性判定不足，补充词含意图关键词。"""
     monkeypatch.setattr(reasoning.settings, "llm_api_key", "configured")
-    task = ResearchTask(domain="attraction", city="杭州",
-                        intent_keywords=["千恋万花", "圣地巡礼"])
-    verdict = reasoning.evaluate_research(
-        task, [{"name": "西湖", "remark": "湖光山色"}], 1)
+    task = ResearchTask(domain="attraction", city="杭州", intent_keywords=["千恋万花", "圣地巡礼"])
+    verdict = reasoning.evaluate_research(task, [{"name": "西湖", "remark": "湖光山色"}], 1)
     assert verdict["sufficient"] is False
     assert "千恋万花" in verdict["extra_keywords"]
     assert "圣地巡礼" in verdict["extra_keywords"]
@@ -94,14 +91,12 @@ def test_evaluate_intent_hit_via_tags_keeps_llm_verdict(monkeypatch):
 
     class FakeEvalClient:
         def complete(self, *_args, **_kwargs):
-            return json.dumps({"sufficient": True, "reason": "ok",
-                               "extra_keywords": []}, ensure_ascii=False)
+            return json.dumps({"sufficient": True, "reason": "ok", "extra_keywords": []}, ensure_ascii=False)
 
     monkeypatch.setattr(reasoning.settings, "llm_api_key", "configured")
     monkeypatch.setattr(reasoning, "get_llm_client", lambda: FakeEvalClient())
     task = ResearchTask(domain="attraction", city="杭州", intent_keywords=["千恋万花"])
-    verdict = reasoning.evaluate_research(
-        task, [{"name": "动漫画馆", "tags": ["千恋万花 联动展览"]}], 1)
+    verdict = reasoning.evaluate_research(task, [{"name": "动漫画馆", "tags": ["千恋万花 联动展览"]}], 1)
     assert verdict["sufficient"] is True
     assert verdict["extra_keywords"] == []
 
@@ -131,8 +126,7 @@ def test_run_search_merges_task_intent_keywords_into_extras(monkeypatch):
 
     def fake_search(city, preferences=None, limit=30):
         # ≥3 条避免触发联网补池分支
-        return [{"name": f"{city}景点{i}", "latitude": 30.0, "longitude": 120.0}
-                for i in range(4)]
+        return [{"name": f"{city}景点{i}", "latitude": 30.0, "longitude": 120.0} for i in range(4)]
 
     def fake_amap(city, keyword, *, category=None):
         captured["keywords"].append(keyword)
@@ -140,13 +134,11 @@ def test_run_search_merges_task_intent_keywords_into_extras(monkeypatch):
 
     monkeypatch.setattr(tools, "search_attractions", fake_search)
     monkeypatch.setattr(tools, "search_local_poi", fake_amap)
-    monkeypatch.setattr(reasoning, "plan_research",
-                        lambda task: {"extra_keywords": ["杭州 西湖"]})
-    monkeypatch.setattr(reasoning, "evaluate_research",
-                        lambda task, items, round_no:
-                        {"sufficient": True, "extra_keywords": []})
-    task = ResearchTask(domain="attraction", city="杭州",
-                        intent_keywords=["杭州 千恋万花", "杭州 西湖"])
+    monkeypatch.setattr(reasoning, "plan_research", lambda task: {"extra_keywords": ["杭州 西湖"]})
+    monkeypatch.setattr(
+        reasoning, "evaluate_research", lambda task, items, round_no: {"sufficient": True, "extra_keywords": []}
+    )
+    task = ResearchTask(domain="attraction", city="杭州", intent_keywords=["杭州 千恋万花", "杭州 西湖"])
     pack = run_research(task)
     assert captured["keywords"][0] == "杭州 西湖"  # plan 补充词顺序不变
     assert "杭州 千恋万花" in captured["keywords"]  # 意图关键词并入补池
@@ -169,9 +161,9 @@ def test_run_search_passes_intent_keywords_to_web_refill(monkeypatch):
     monkeypatch.setattr(web_search, "web_search_enabled", lambda: True)
     monkeypatch.setattr(web_search, "search_places_via_web", fake_web)
     monkeypatch.setattr(reasoning, "plan_research", lambda task: {})
-    monkeypatch.setattr(reasoning, "evaluate_research",
-                        lambda task, items, round_no:
-                        {"sufficient": True, "extra_keywords": []})
+    monkeypatch.setattr(
+        reasoning, "evaluate_research", lambda task, items, round_no: {"sufficient": True, "extra_keywords": []}
+    )
     task = ResearchTask(domain="attraction", city="杭州", intent_keywords=["千恋万花"])
     run_research(task)
     assert captured["city"] == "杭州"
@@ -190,8 +182,7 @@ def test_search_places_via_web_appends_intent_keywords(monkeypatch):
 
     monkeypatch.setattr(web_search, "web_search_enabled", lambda: True)
     monkeypatch.setattr(web_search, "web_search_json", fake_json)
-    rows = web_search.search_places_via_web(
-        "杭州", "attraction", intent_keywords=["千恋万花", "圣地巡礼"])
+    rows = web_search.search_places_via_web("杭州", "attraction", intent_keywords=["千恋万花", "圣地巡礼"])
     assert rows and rows[0]["name"] == "千恋万花主题馆"
     question = captured["question"]
     assert "杭州 千恋万花" in question and "杭州 圣地巡礼" in question  # city+keyword 逐词
@@ -230,11 +221,16 @@ def test_butler_note_prompt_four_paragraph_contract(monkeypatch):
     """管家讲解：400~600 字四段结构 + intent/plans 注入 + max_tokens 1200。"""
     fake = CaptureClient()
     monkeypatch.setattr(butler, "get_llm_client", lambda: fake)
-    butler.run_butler_note({
-        "city": "杭州", "days": 2, "persons": 2, "preferences": ["亲子"],
-        "intent": "《千恋万花》圣地巡礼",
-        "plans": [{"day_no": 1, "items": ["西湖"]}],
-    })
+    butler.run_butler_note(
+        {
+            "city": "杭州",
+            "days": 2,
+            "persons": 2,
+            "preferences": ["亲子"],
+            "intent": "《千恋万花》圣地巡礼",
+            "plans": [{"day_no": 1, "items": ["西湖"]}],
+        }
+    )
     call = fake.calls[0]
     assert call["max_tokens"] == 1200
     assert "400" in call["system"] and "600" in call["system"]
@@ -247,8 +243,7 @@ def test_butler_note_prompt_four_paragraph_contract(monkeypatch):
 
 def test_poi_intros_prompt_length_and_intent_link(monkeypatch):
     """点位介绍：200~300 字三段式 + 意图连接句要求 + max_tokens 按量上调。"""
-    fake = CaptureClient(reply=json.dumps({"intros": {"西湖": "介绍"}},
-                                          ensure_ascii=False))
+    fake = CaptureClient(reply=json.dumps({"intros": {"西湖": "介绍"}}, ensure_ascii=False))
 
     def _fc_fail(*_args, **_kwargs):
         raise FunctionCallingError("测试强制降级")
@@ -266,8 +261,7 @@ def test_poi_intros_prompt_length_and_intent_link(monkeypatch):
 
 def test_poi_intros_prompt_without_intent_uses_reputation_link(monkeypatch):
     """intent 为空时连接句降级为口碑/地理理由。"""
-    fake = CaptureClient(reply=json.dumps({"intros": {"西湖": "介绍"}},
-                                          ensure_ascii=False))
+    fake = CaptureClient(reply=json.dumps({"intros": {"西湖": "介绍"}}, ensure_ascii=False))
 
     def _fc_fail(*_args, **_kwargs):
         raise FunctionCallingError("测试强制降级")

@@ -41,33 +41,34 @@ def build_atlas(user_id: int, scope: str | None = None) -> dict[str, Any]:
 
     today = date.today()
     with session_scope() as session:
-        mains = session.execute(
-            select(ItineraryMain)
-            .where(ItineraryMain.user_id == user_id, ItineraryMain.archived.is_(False))
-            .order_by(ItineraryMain.id.desc())
-        ).scalars().all()
+        mains = (
+            session.execute(
+                select(ItineraryMain)
+                .where(ItineraryMain.user_id == user_id, ItineraryMain.archived.is_(False))
+                .order_by(ItineraryMain.id.desc())
+            )
+            .scalars()
+            .all()
+        )
         trip_scopes = {main.id: _trip_scope(main, today) for main in mains}
         if normalized != "all":
             mains = [main for main in mains if trip_scopes[main.id] == normalized]
 
         items: list[ItineraryItem] = []
         if mains:
-            items = session.execute(
-                select(ItineraryItem).where(
-                    ItineraryItem.itinerary_id.in_([main.id for main in mains])
+            items = (
+                session.execute(
+                    select(ItineraryItem).where(ItineraryItem.itinerary_id.in_([main.id for main in mains]))
                 )
-            ).scalars().all()
-        city_rows = {
-            row.city_name: row
-            for row in session.execute(select(CityGeo)).scalars().all()
-        }
+                .scalars()
+                .all()
+            )
+        city_rows = {row.city_name: row for row in session.execute(select(CityGeo)).scalars().all()}
 
     items_by_trip: dict[int, list[ItineraryItem]] = {}
     for item in items:
         items_by_trip.setdefault(item.itinerary_id, []).append(item)
-    items_without_coord = sum(
-        1 for item in items if not _valid_coord(item.latitude, item.longitude)
-    )
+    items_without_coord = sum(1 for item in items if not _valid_coord(item.latitude, item.longitude))
 
     cities: dict[str, dict[str, Any]] = {}
     for main in mains:
@@ -103,22 +104,22 @@ def build_atlas(user_id: int, scope: str | None = None) -> dict[str, Any]:
         if geo is None:
             unknown_cities.append({"city": city, "reason": "dict_miss"})
 
-        pins.append({
-            "city": city,
-            "country": None if geo is None else geo.country,
-            "countryCode": None if geo is None else geo.country_code,
-            "lat": lat,
-            "lng": lng,
-            "coordSource": coord_source,
-            "tripCount": len(entry["trips"]),
-            "trips": [_trip_row(main, trip_scopes[main.id]) for main in entry["trips"]],
-        })
+        pins.append(
+            {
+                "city": city,
+                "country": None if geo is None else geo.country,
+                "countryCode": None if geo is None else geo.country_code,
+                "lat": lat,
+                "lng": lng,
+                "coordSource": coord_source,
+                "tripCount": len(entry["trips"]),
+                "trips": [_trip_row(main, trip_scopes[main.id]) for main in entry["trips"]],
+            }
+        )
 
     pins.sort(key=lambda pin: (-pin["tripCount"], pin["city"]))
     unknown_cities.sort(key=lambda entry: entry["city"])
-    highlight_country_codes = sorted(
-        {pin["countryCode"] for pin in pins if pin["countryCode"]}
-    )
+    highlight_country_codes = sorted({pin["countryCode"] for pin in pins if pin["countryCode"]})
     return {
         "scope": normalized,
         "stats": {

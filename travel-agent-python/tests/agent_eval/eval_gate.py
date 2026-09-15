@@ -55,9 +55,7 @@ def check(report: dict) -> list[str]:
     for field, expected in expected_versions.items():
         actual = report.get(field)
         if actual != expected:
-            problems.append(
-                f"{field} 漂移：期望 {expected!r}，报告 {actual!r}（改 Prompt 请同步门禁常量）"
-            )
+            problems.append(f"{field} 漂移：期望 {expected!r}，报告 {actual!r}（改 Prompt 请同步门禁常量）")
 
     rate = report.get("consistency_rate")
     if not isinstance(rate, (int, float)):

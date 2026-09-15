@@ -75,8 +75,9 @@ def _next_seq(itinerary_id: int) -> int:
         return next(_fallback_seq)
 
 
-def build_envelope(itinerary_id: int, event_type: str, data: dict | None, *,
-                   seq: int | None = None, run_id: str | None = None) -> str:
+def build_envelope(
+    itinerary_id: int, event_type: str, data: dict | None, *, seq: int | None = None, run_id: str | None = None
+) -> str:
     """组协议信封 JSON：`{type, itineraryId, seq, ts, data}`，键序与 Java 一致。
 
     `runId` 属于 data 自定义区（信封五键不变），因此拷贝后再合并，不污染调用方的 dict。
@@ -114,21 +115,24 @@ def heartbeat_envelope(itinerary_id: int) -> str:
 
 def too_many_connections_envelope(itinerary_id: int) -> str:
     """连接数超限提示：与 Java 网关同文案同 code；retryable=false，前端不该重连。"""
-    return build_envelope(itinerary_id, "error", {
-        "code": "TOO_MANY_CONNECTIONS",
-        "message": "该行程的实时连接数已达上限，请关闭多余页面后重试",
-        "retryable": False,
-    }, seq=0)
+    return build_envelope(
+        itinerary_id,
+        "error",
+        {
+            "code": "TOO_MANY_CONNECTIONS",
+            "message": "该行程的实时连接数已达上限，请关闭多余页面后重试",
+            "retryable": False,
+        },
+        seq=0,
+    )
 
 
 def error_envelope(itinerary_id: int, code: str, message: str, retryable: bool = True) -> str:
     """SSE 侧的错误帧（AGENT_ERROR / AGENT_BUSY）：HTTP 已经是 200，错误只能走事件。"""
-    return build_envelope(itinerary_id, "error",
-                          {"code": code, "message": message, "retryable": retryable})
+    return build_envelope(itinerary_id, "error", {"code": code, "message": message, "retryable": retryable})
 
 
-def publish_event(itinerary_id: int | None, event_type: str, data: dict,
-                  run_id: str | None = None) -> None:
+def publish_event(itinerary_id: int | None, event_type: str, data: dict, run_id: str | None = None) -> None:
     """按协议信封发布一条事件；任何失败都静默降级为日志。
 
     尽力而为语义的原因：进度事件只影响前端观感，行程真相在 DB，
@@ -149,18 +153,17 @@ def publish_event(itinerary_id: int | None, event_type: str, data: dict,
     event_hub.broadcast(int(itinerary_id), envelope)
     try:
         _get_client().publish(f"gen:events:{int(itinerary_id)}", envelope)
-    except Exception as exc:  # noqa: BLE001 - 通知失败不影响主流程
+    except Exception as exc:
         # 这里也要喂熔断：本模块曾是唯一不报故障的 Redis 使用方，Redis 宕时每发一条事件
         # 都要重付一次连接超时；逐日编排下成本是 `天数 × 3 × 0.5s`。
         redis_client.note_failure(exc)
-        logger.warning("publish %s event for itinerary %s failed: %s",
-                       event_type, itinerary_id, exc)
+        logger.warning("publish %s event for itinerary %s failed: %s", event_type, itinerary_id, exc)
     if run_id:
         # trace 落账与 Redis 发布成败解耦：即使发布失败，轨迹里也留痕。
         # 同样遵守尽力而为契约：落账自身失败只记日志，绝不向上抛。
         try:
             _record_stream_trace(event_type, itinerary_id, run_id)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.debug("record %s stream event to trace failed: %s", event_type, exc)
 
 
@@ -173,15 +176,18 @@ def _record_stream_trace(event_type: str, itinerary_id: int, run_id: str) -> Non
     """
     from app.agent.trace import record_event
 
-    record_event("stream", str(event_type), metadata={
-        "event": event_type,
-        "itinerary_id": int(itinerary_id),
-        "run_id": str(run_id),
-    })
+    record_event(
+        "stream",
+        str(event_type),
+        metadata={
+            "event": event_type,
+            "itinerary_id": int(itinerary_id),
+            "run_id": str(run_id),
+        },
+    )
 
 
-def _forward_event(itinerary_id: int | None, event_type: str, data: dict,
-                   run_id: str | None) -> None:
+def _forward_event(itinerary_id: int | None, event_type: str, data: dict, run_id: str | None) -> None:
     """便捷函数统一转发：run_id 为空时保持旧三参调用形态（兼容既有调用方/测试桩）。"""
     if run_id:
         publish_event(itinerary_id, event_type, data, run_id=run_id)
@@ -189,29 +195,38 @@ def _forward_event(itinerary_id: int | None, event_type: str, data: dict,
         publish_event(itinerary_id, event_type, data)
 
 
-def publish_research_start(itinerary_id: int | None, domains: list[str],
-                           run_id: str | None = None) -> None:
+def publish_research_start(itinerary_id: int | None, domains: list[str], run_id: str | None = None) -> None:
     """研究阶段开始：告知前端本次研究覆盖的领域清单。"""
     _forward_event(itinerary_id, "research_start", {"domains": list(domains)}, run_id)
 
 
-def publish_research_done(itinerary_id: int | None, evidence_count: int,
-                          degraded: bool, domains: list[dict],
-                          run_id: str | None = None) -> None:
+def publish_research_done(
+    itinerary_id: int | None, evidence_count: int, degraded: bool, domains: list[dict], run_id: str | None = None
+) -> None:
     """研究阶段完成：汇报证据总量、是否降级与各域计数（camelCase 契约）。"""
-    _forward_event(itinerary_id, "research_done", {
-        "evidenceCount": int(evidence_count),
-        "degraded": bool(degraded),
-        "domains": [{"domain": str(row["domain"]), "count": int(row["count"])}
-                    for row in domains],
-    }, run_id)
+    _forward_event(
+        itinerary_id,
+        "research_done",
+        {
+            "evidenceCount": int(evidence_count),
+            "degraded": bool(degraded),
+            "domains": [{"domain": str(row["domain"]), "count": int(row["count"])} for row in domains],
+        },
+        run_id,
+    )
 
 
-def publish_degraded(itinerary_id: int | None, scope: str, reason: str, fallback: str,
-                     run_id: str | None = None) -> None:
+def publish_degraded(
+    itinerary_id: int | None, scope: str, reason: str, fallback: str, run_id: str | None = None
+) -> None:
     """降级通知：说明哪个环节（scope）、为什么（reason）、兜底成什么样（fallback）。"""
-    _forward_event(itinerary_id, "degraded", {
-        "scope": scope,
-        "reason": reason,
-        "fallback": fallback,
-    }, run_id)
+    _forward_event(
+        itinerary_id,
+        "degraded",
+        {
+            "scope": scope,
+            "reason": reason,
+            "fallback": fallback,
+        },
+        run_id,
+    )

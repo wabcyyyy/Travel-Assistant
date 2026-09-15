@@ -21,7 +21,7 @@ from sqlalchemy import and_, or_, select, update
 
 from app.db.models import ItineraryDay, ItineraryItem, ItineraryMain
 from app.db.session import session_scope
-from app.services import generation_gate, itinerary_query, itinerary_generation
+from app.services import generation_gate, itinerary_generation, itinerary_query
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +34,11 @@ STARTUP_DELAY_SECONDS = 5
 
 def rebuild_request(main: ItineraryMain) -> itinerary_generation.GenerateCommand:
     """从行程主表反推生成参数（与 Java `rebuildRequest` 同口径）。"""
-    preferences = [] if not main.preferences or not main.preferences.strip() \
+    preferences = (
+        []
+        if not main.preferences or not main.preferences.strip()
         else [part for part in main.preferences.split(",") if part.strip()]
+    )
     return itinerary_generation.GenerateCommand(
         city=main.city,
         days=main.days,
@@ -58,22 +61,29 @@ def recover() -> int:
     """
     active_after = datetime.now() - timedelta(seconds=IDLE_SECONDS)
     stale = ItineraryMain.updated_at < active_after
-    idle_generating = and_(stale, or_(ItineraryMain.gen_state == "GENERATING",
-                                      and_(ItineraryMain.gen_state.is_(None), ItineraryMain.status == 1)))
-    failed_resumable = and_(stale, or_(ItineraryMain.gen_state == "FAILED",
-                                        and_(ItineraryMain.gen_state.is_(None), ItineraryMain.status == 3)))
+    idle_generating = and_(
+        stale,
+        or_(
+            ItineraryMain.gen_state == "GENERATING", and_(ItineraryMain.gen_state.is_(None), ItineraryMain.status == 1)
+        ),
+    )
+    failed_resumable = and_(
+        stale,
+        or_(ItineraryMain.gen_state == "FAILED", and_(ItineraryMain.gen_state.is_(None), ItineraryMain.status == 3)),
+    )
     changed = 0
     with session_scope() as session:
         generating = session.execute(select(ItineraryMain).where(idle_generating)).scalars().all()
         failed = session.execute(select(ItineraryMain).where(failed_resumable)).scalars().all()
-        targets = [(main.id, main.user_id, False) for main in generating] \
-            + [(main.id, main.user_id, True) for main in failed]
+        targets = [(main.id, main.user_id, False) for main in generating] + [
+            (main.id, main.user_id, True) for main in failed
+        ]
     for itinerary_id, user_id, failed_resume in targets:
         try:
             if recover_one(itinerary_id, failed_resume, active_after):
                 changed += 1
                 itinerary_query.evict_detail(user_id, itinerary_id)
-        except Exception as exc:  # noqa: BLE001 - 单个行程的恢复失败不影响其它行程
+        except Exception as exc:
             logger.warning("could not resume itinerary %s: %s", itinerary_id, exc)
     return changed
 
@@ -85,20 +95,35 @@ def recover_one(itinerary_id: int, failed_resume: bool, active_after: datetime |
         main = session.get(ItineraryMain, itinerary_id)
         if main is None:
             return False
-        days = session.execute(
-            select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id).order_by(ItineraryDay.day_no)
-        ).scalars().all()
-        day_ids_with_items = {row for row in session.execute(
-            select(ItineraryItem.day_id).where(ItineraryItem.itinerary_id == itinerary_id).distinct()
-        ).scalars().all()}
-        completed_days = sum(1 for day in days
-                             if day.generation_status == "SUCCEEDED"
-                             or (day.generation_status is None and day.id in day_ids_with_items))
+        days = (
+            session.execute(
+                select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id).order_by(ItineraryDay.day_no)
+            )
+            .scalars()
+            .all()
+        )
+        day_ids_with_items = {
+            row
+            for row in session.execute(
+                select(ItineraryItem.day_id).where(ItineraryItem.itinerary_id == itinerary_id).distinct()
+            )
+            .scalars()
+            .all()
+        }
+        completed_days = sum(
+            1
+            for day in days
+            if day.generation_status == "SUCCEEDED" or (day.generation_status is None and day.id in day_ids_with_items)
+        )
         if days and completed_days == len(days) and len(days) == main.days:
             # 数据其实齐了，只是终态没写上：补终态，不重跑
-            session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(
-                status=2, gen_state="COMPLETED", gen_finished_at=datetime.now(),
-                title=f"{main.city}{main.days}日游"))
+            session.execute(
+                update(ItineraryMain)
+                .where(ItineraryMain.id == itinerary_id)
+                .values(
+                    status=2, gen_state="COMPLETED", gen_finished_at=datetime.now(), title=f"{main.city}{main.days}日游"
+                )
+            )
             logger.info("recovered completed itinerary %s", itinerary_id)
             return True
 
@@ -109,8 +134,11 @@ def recover_one(itinerary_id: int, failed_resume: bool, active_after: datetime |
         if not generation_gate.try_resume_lock(itinerary_id):
             return False
         if failed_resume:
-            session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(
-                gen_resumed=True, gen_state="GENERATING", status=1))
+            session.execute(
+                update(ItineraryMain)
+                .where(ItineraryMain.id == itinerary_id)
+                .values(gen_resumed=True, gen_state="GENERATING", status=1)
+            )
         command = rebuild_request(main)
         user_id = main.user_id
 
@@ -126,8 +154,9 @@ def recover_one(itinerary_id: int, failed_resume: bool, active_after: datetime |
 
 def _resumable_failed_trip(days: list[ItineraryDay]) -> bool:
     """可续跑的失败行程：每一天都已终态且失败原因非空（否则交给生成中分支处理）。"""
-    return bool(days) and all(day.generation_status == "FAILED"
-                              and day.generation_error and day.generation_error.strip() for day in days)
+    return bool(days) and all(
+        day.generation_status == "FAILED" and day.generation_error and day.generation_error.strip() for day in days
+    )
 
 
 _stop = threading.Event()
@@ -138,14 +167,17 @@ def _loop() -> None:
 
     单次扫描失败不能退出循环：一次数据库抖动会让僵尸行程永远没人续跑。
     """
-    logger.info("generation recovery loop starting (startup sweep in %ss, then every %ss)",
-                STARTUP_DELAY_SECONDS, SCAN_INTERVAL_SECONDS)
+    logger.info(
+        "generation recovery loop starting (startup sweep in %ss, then every %ss)",
+        STARTUP_DELAY_SECONDS,
+        SCAN_INTERVAL_SECONDS,
+    )
     deadline = STARTUP_DELAY_SECONDS
     while not _stop.wait(deadline):
         deadline = SCAN_INTERVAL_SECONDS
         try:
             recover()
-        except Exception as exc:  # noqa: BLE001 - 调度循环不许因单次异常退出
+        except Exception as exc:
             logger.warning("generation recovery scan failed: %s", exc)
 
 

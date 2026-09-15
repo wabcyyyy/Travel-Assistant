@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import select
 
@@ -22,16 +22,14 @@ from app.db.session import session_scope
 logger = logging.getLogger(__name__)
 
 
-def find_by_username(username: str) -> Optional[dict[str, Any]]:
+def find_by_username(username: str) -> dict[str, Any] | None:
     """按用户名取**未软删**用户；不存在或查询异常一律返回 None。
 
     软删条件由 `app.db.session` 的全局作用域追加（等价 Java @TableLogic）。
     """
     try:
         with session_scope() as session:
-            user = session.execute(
-                select(SysUser).where(SysUser.username == username)
-            ).scalar_one_or_none()
+            user = session.execute(select(SysUser).where(SysUser.username == username)).scalar_one_or_none()
             if user is None:
                 return None
             return {

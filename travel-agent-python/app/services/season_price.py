@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from datetime import date, time
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 PEAK_FACTOR = Decimal("1.8")
 SUMMER_FACTOR = Decimal("1.5")

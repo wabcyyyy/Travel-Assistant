@@ -39,13 +39,19 @@ FALLBACK_DAY_ERROR = "每日生成失败"
 def find_day(itinerary_id: int, day_no: int) -> ItineraryDay | None:
     with session_scope() as session:
         return session.execute(
-            select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id,
-                                       ItineraryDay.day_no == day_no)
+            select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id, ItineraryDay.day_no == day_no)
         ).scalar_one_or_none()
 
 
-def persist(itinerary_id: int, request: Any, day_no: int, plan: DailyPlan,
-            action_id: str, fingerprint: str, allow_overwrite: bool = False) -> None:
+def persist(
+    itinerary_id: int,
+    request: Any,
+    day_no: int,
+    plan: DailyPlan,
+    action_id: str,
+    fingerprint: str,
+    allow_overwrite: bool = False,
+) -> None:
     """把一天的完整结果写库：清旧 item → 写新 item → 置 SUCCEEDED。"""
     with session_scope() as session:
         day = _require_day(session, itinerary_id, day_no)
@@ -63,9 +69,7 @@ def persist(itinerary_id: int, request: Any, day_no: int, plan: DailyPlan,
 
         # 清掉上一次失败/续跑留下的半成品
         session.execute(
-            update(ItineraryItem)
-            .where(ItineraryItem.day_id == day.id, ItineraryItem.deleted == 0)
-            .values(deleted=1)
+            update(ItineraryItem).where(ItineraryItem.day_id == day.id, ItineraryItem.deleted == 0).values(deleted=1)
         )
 
         stay_nights = _stay_nights(request)
@@ -96,9 +100,9 @@ def _build_item(itinerary_id: int, day_id: int, item: Any, sort_no: int) -> Itin
         cost=_decimal(item.cost),
         tag=item.tag,
         remark=item.remark,
-        why_note=item.why_this,          # 契约 why_this → 列 why_note（PDF/VO 直接读列）
+        why_note=item.why_this,  # 契约 why_this → 列 why_note（PDF/VO 直接读列）
         open_time=item.open_time,
-        image_url=item.image,            # 契约 image → 列 image_url
+        image_url=item.image,  # 契约 image → 列 image_url
         source=item.source,
         source_updated_at=_parse_datetime_safe(item.source_updated_at),
         verification_status=_default_str(item.verification_status, "unverified"),
@@ -132,19 +136,25 @@ def mark_failed(day_id: int, action_id: str, fingerprint: str, error: str | None
 def append_existing_items(day_id: int, used_names: list[str]) -> None:
     """把某天已有的点名字就地登记进跨天去重表（按 sort_no 升序）。"""
     with session_scope() as session:
-        rows = session.execute(
-            select(ItineraryItem.poi_name).where(ItineraryItem.day_id == day_id)
-            .order_by(ItineraryItem.sort_no)
-        ).scalars().all()
+        rows = (
+            session.execute(
+                select(ItineraryItem.poi_name).where(ItineraryItem.day_id == day_id).order_by(ItineraryItem.sort_no)
+            )
+            .scalars()
+            .all()
+        )
     used_names.extend(name for name in rows if name and name.strip())
 
 
 def existing_hotel(day_id: int) -> str | None:
     with session_scope() as session:
-        return session.execute(
-            select(ItineraryItem.poi_name).where(ItineraryItem.day_id == day_id,
-                                                 ItineraryItem.item_type == "hotel")
-        ).scalars().first()
+        return (
+            session.execute(
+                select(ItineraryItem.poi_name).where(ItineraryItem.day_id == day_id, ItineraryItem.item_type == "hotel")
+            )
+            .scalars()
+            .first()
+        )
 
 
 def complete_trip(itinerary_id: int, all_succeeded: bool) -> None:
@@ -157,7 +167,9 @@ def complete_trip(itinerary_id: int, all_succeeded: bool) -> None:
         if plan_note and LEGACY_RESUME_MARKER in plan_note:
             plan_note = plan_note.replace(LEGACY_RESUME_MARKER, "").strip()
         session.execute(
-            update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(
+            update(ItineraryMain)
+            .where(ItineraryMain.id == itinerary_id)
+            .values(
                 status=2,
                 gen_state="COMPLETED" if all_succeeded else "PARTIAL",
                 gen_finished_at=datetime.now(),
@@ -173,9 +185,9 @@ def fail_trip(itinerary_id: int, message: str | None) -> None:
     note = None if not message or not message.strip() else f"生成失败：{message}"
     with session_scope() as session:
         session.execute(
-            update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(
-                status=3, gen_state="FAILED", gen_finished_at=datetime.now(), plan_note=note
-            )
+            update(ItineraryMain)
+            .where(ItineraryMain.id == itinerary_id)
+            .values(status=3, gen_state="FAILED", gen_finished_at=datetime.now(), plan_note=note)
         )
 
 
@@ -184,34 +196,32 @@ def set_trip_theme(itinerary_id: int, theme: str | None) -> None:
     if not theme or not theme.strip():
         return
     with session_scope() as session:
-        session.execute(
-            update(ItineraryMain).where(ItineraryMain.id == itinerary_id)
-            .values(trip_theme=theme.strip())
-        )
+        session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(trip_theme=theme.strip()))
 
 
 def mark_generating(itinerary_id: int) -> None:
     with session_scope() as session:
         session.execute(
-            update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(
-                gen_state="GENERATING", gen_started_at=datetime.now()
-            )
+            update(ItineraryMain)
+            .where(ItineraryMain.id == itinerary_id)
+            .values(gen_state="GENERATING", gen_started_at=datetime.now())
         )
 
 
 def all_days_succeeded(itinerary_id: int) -> bool:
     with session_scope() as session:
-        statuses = session.execute(
-            select(ItineraryDay.generation_status).where(ItineraryDay.itinerary_id == itinerary_id)
-        ).scalars().all()
+        statuses = (
+            session.execute(select(ItineraryDay.generation_status).where(ItineraryDay.itinerary_id == itinerary_id))
+            .scalars()
+            .all()
+        )
     return all(status == "SUCCEEDED" for status in statuses)
 
 
 def unfinished_day_nos(itinerary_id: int) -> list[int]:
     with session_scope() as session:
         rows = session.execute(
-            select(ItineraryDay.day_no, ItineraryDay.generation_status)
-            .where(ItineraryDay.itinerary_id == itinerary_id)
+            select(ItineraryDay.day_no, ItineraryDay.generation_status).where(ItineraryDay.itinerary_id == itinerary_id)
         ).all()
     return sorted(day_no for day_no, status in rows if status != "SUCCEEDED")
 
@@ -219,18 +229,21 @@ def unfinished_day_nos(itinerary_id: int) -> list[int]:
 def day_statuses(itinerary_id: int) -> list[tuple[int, str | None, datetime | None]]:
     """恢复任务需要 (dayNo, generation_status, updated_at) 三元组做活跃/可续跑判定。"""
     with session_scope() as session:
-        return list(session.execute(
-            select(ItineraryDay.day_no, ItineraryDay.generation_status, ItineraryDay.updated_at)
-            .where(ItineraryDay.itinerary_id == itinerary_id).order_by(ItineraryDay.day_no)
-        ).all())
+        return list(
+            session.execute(
+                select(ItineraryDay.day_no, ItineraryDay.generation_status, ItineraryDay.updated_at)
+                .where(ItineraryDay.itinerary_id == itinerary_id)
+                .order_by(ItineraryDay.day_no)
+            ).all()
+        )
 
 
 # ---------- 内部工具 ----------
 
+
 def _require_day(session, itinerary_id: int, day_no: int) -> ItineraryDay:
     day = session.execute(
-        select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id,
-                                   ItineraryDay.day_no == day_no)
+        select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id, ItineraryDay.day_no == day_no)
     ).scalar_one_or_none()
     if day is None:
         raise ApiError(500, "行程日不存在")
@@ -270,7 +283,7 @@ def _day_metadata_json(plan: DailyPlan) -> str | None:
         if value is None:
             continue
         if output_key and isinstance(value, (list, dict)) and not value:
-            continue          # 空集合不落库（Java 判 isEmpty）
+            continue  # 空集合不落库（Java 判 isEmpty）
         metadata[key] = _plain(value)
     if not metadata:
         return None

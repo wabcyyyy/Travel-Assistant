@@ -5,8 +5,7 @@ from app.rag.retriever import HashedEmbeddingProvider
 
 
 def _key(query, city="杭州", category="attraction", top_k=2, preferences=None, budget=None):
-    return make_cache_key(query, city=city, category=category, top_k=top_k,
-                          preferences=preferences, budget=budget)
+    return make_cache_key(query, city=city, category=category, top_k=top_k, preferences=preferences, budget=budget)
 
 
 def _provider():
@@ -100,11 +99,21 @@ def test_store_with_failing_embedding_is_skipped():
 
 def _poi(pid=1, name="西湖", lat=30.24, lng=120.15):
     return {
-        "id": pid, "city": "杭州", "name": name, "category": "attraction",
-        "address": "西湖区", "latitude": lat, "longitude": lng,
-        "ticket_price": 0, "duration_min": 120, "open_time": "08:00-18:00",
-        "tags": "自然", "rating": 4.9, "description": "适合休闲游览",
-        "source": "mysql.poi_knowledge", "source_updated_at": "2026-09-01 10:00:00",
+        "id": pid,
+        "city": "杭州",
+        "name": name,
+        "category": "attraction",
+        "address": "西湖区",
+        "latitude": lat,
+        "longitude": lng,
+        "ticket_price": 0,
+        "duration_min": 120,
+        "open_time": "08:00-18:00",
+        "tags": "自然",
+        "rating": 4.9,
+        "description": "适合休闲游览",
+        "source": "mysql.poi_knowledge",
+        "source_updated_at": "2026-09-01 10:00:00",
     }
 
 
@@ -119,8 +128,7 @@ def test_store_level_cache_hits_on_repeat_search(tmp_path, monkeypatch):
     # 单测不依赖 sentence-transformers：精排永久降级会把 fallback=True，
     # 导致「降级结果不缓存」把本用例的缓存写入关掉。这里显式关精排。
     monkeypatch.setattr(settings, "rag_rerank_provider", "none")
-    with patch.object(poi_repository, "list_all_pois_with_status",
-                      return_value=([_poi()], True)):
+    with patch.object(poi_repository, "list_all_pois_with_status", return_value=([_poi()], True)):
         store = PoIKnowledgeStore(tmp_path, embedding_provider=_provider())
         first = store.search("西湖", city="杭州", category="attraction", limit=1)
         assert first and first[0]["name"] == "西湖"

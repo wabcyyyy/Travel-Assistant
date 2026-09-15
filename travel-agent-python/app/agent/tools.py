@@ -20,9 +20,9 @@ import re
 import httpx
 
 from app.agent import poi_repository
+from app.agent.trace import traced
 from app.common.config import settings
 from app.rag.store import poi_store
-from app.agent.trace import traced
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ def _anchor_name_similar(query: str, candidate: str) -> bool:
     向量/模糊 LIKE 对乱码或不存在名称也会召回；若候选名与查询几乎无关，
     不能当锚点，否则「不存在的景点」会被错误定位到市中心酒店。
     """
+
     def norm(s: str) -> str:
         return re.sub(r"[\s·'’\-()（）]", "", str(s or "")).lower()
 
@@ -49,6 +50,7 @@ def _anchor_name_similar(query: str, candidate: str) -> bool:
     overlap = len(set(q) & set(c))
     union = len(set(q) | set(c))
     return union > 0 and overlap / union >= 0.55 and overlap >= 4
+
 
 # 前端展示标签 → 知识库 tags 关键词（匹配用）
 PREFERENCE_KEYWORDS = {
@@ -154,25 +156,29 @@ def search_local_poi(city: str, name: str, *, category: str | None = None) -> li
     try:
         poi_store.ensure_loaded()
         hits = poi_store.search(query, city=city, category=category, limit=5)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("vector store unavailable, local search degrades: %s", exc)
         return []
     # 向量召回对无关词也会给 top-k：必须过名称门槛，否则「池外新地点」会被
     # 无关 POI 顶替（既污染证据池，也让该走向联网补池的缺口被静默填平）。
-    return [row for row in hits
-            if _anchor_name_similar(query, str(row.get("name") or ""))]
+    return [row for row in hits if _anchor_name_similar(query, str(row.get("name") or ""))]
 
 
 @traced("tool", "poi.search_attractions")
 def search_attractions(city: str, preferences: list[str], limit: int = 30) -> list[dict]:
     poi_store.ensure_loaded()
     local = poi_store.search(
-        _build_query(city, preferences), city=city, category="attraction", limit=limit,
+        _build_query(city, preferences),
+        city=city,
+        category="attraction",
+        limit=limit,
         preferences=_expand(preferences),
     )
     if not local:
-        local = [{**poi, "_authoritative": True}
-                 for poi in poi_repository.search_pois(city, category="attraction", limit=limit)]
+        local = [
+            {**poi, "_authoritative": True}
+            for poi in poi_repository.search_pois(city, category="attraction", limit=limit)
+        ]
     return _sort_by_preferences(_merge_pois([], local), preferences)[:limit]
 
 
@@ -181,8 +187,9 @@ def search_foods(city: str, limit: int = 10) -> list[dict]:
     poi_store.ensure_loaded()
     local = poi_store.search(city, city=city, category="food", limit=limit)
     if not local:
-        local = [{**poi, "_authoritative": True}
-                 for poi in poi_repository.search_pois(city, category="food", limit=limit)]
+        local = [
+            {**poi, "_authoritative": True} for poi in poi_repository.search_pois(city, category="food", limit=limit)
+        ]
     return _merge_pois([], local)[:limit]
 
 
@@ -191,8 +198,10 @@ def search_hotels(city: str, limit: int = 6) -> list[dict]:
     # 酒店换档需要完整、可枚举的候选集；不使用向量 Top-K 截断。
     rows = [{**poi, "_authoritative": True} for poi in poi_repository.list_hotel_pois(city)]
     if not rows and city in DESTINATION_CITIES:
-        rows = [{**poi, "_authoritative": True}
-                for poi in poi_repository.list_hotel_pois_by_cities(DESTINATION_CITIES[city])]
+        rows = [
+            {**poi, "_authoritative": True}
+            for poi in poi_repository.list_hotel_pois_by_cities(DESTINATION_CITIES[city])
+        ]
     if rows:
         return rows
     poi_store.ensure_loaded()
@@ -204,10 +213,15 @@ def get_poi_detail(city: str, name: str) -> dict | None:
 
 
 @traced("tool", "poi.find_nearby")
-def find_nearby_pois(city: str, name: str | None = None,
-                     latitude: float | None = None, longitude: float | None = None,
-                     limit: int = 5, radius_m: int | None = None,
-                     category: str | None = None) -> list[dict]:
+def find_nearby_pois(
+    city: str,
+    name: str | None = None,
+    latitude: float | None = None,
+    longitude: float | None = None,
+    limit: int = 5,
+    radius_m: int | None = None,
+    category: str | None = None,
+) -> list[dict]:
     """查找权威知识库中的同城近邻 POI（轻量 GraphRAG，真实坐标网格）。
 
     坐标优先使用显式传入值；仅给名称时依次尝试权威库详情、知识库检索解析真实
@@ -242,8 +256,9 @@ def find_nearby_pois(city: str, name: str | None = None,
                 break
     if anchor and anchor.get("id") is not None:
         exclude = str(anchor.get("id"))
-    return poi_store.nearby(city, latitude, longitude, limit=limit,
-                            radius_m=radius_m, category=category, exclude=exclude)
+    return poi_store.nearby(
+        city, latitude, longitude, limit=limit, radius_m=radius_m, category=category, exclude=exclude
+    )
 
 
 @traced("tool", "poi.get_consumption")
@@ -272,10 +287,9 @@ def _unsplash_image(name: str, city: str) -> str | None:
             headers={"Authorization": f"Client-ID {settings.unsplash_access_key}"},
             timeout=8,
         )
-        results = (resp.json().get("results") or [])
+        results = resp.json().get("results") or []
         if results and isinstance(results[0], dict):
-            return ((results[0].get("urls") or {}).get("regular")
-                    or (results[0].get("urls") or {}).get("full"))
+            return (results[0].get("urls") or {}).get("regular") or (results[0].get("urls") or {}).get("full")
     except Exception:
         return None
     return None

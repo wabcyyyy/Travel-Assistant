@@ -39,17 +39,30 @@ def test_norm_name_is_case_insensitive(enrich):
 
 def test_upsert_merges_case_variant_batch_duplicates(enrich):
     """批内两条仅大小写不同的同 (city,name,category) 记录：只 INSERT 一次，第二条 UPDATE。"""
+
     def rec(name, price):
-        return {"city": "北京", "name": name, "category": "food", "address": "某街",
-                "latitude": 39.9, "longitude": 116.4, "ticket_price": price,
-                "avg_cost": None, "duration_min": None, "open_time": None,
-                "tags": None, "rating": 4.5, "description": "x",
-                "source": "amap.poi", "_source_parts": set()}
+        return {
+            "city": "北京",
+            "name": name,
+            "category": "food",
+            "address": "某街",
+            "latitude": 39.9,
+            "longitude": 116.4,
+            "ticket_price": price,
+            "avg_cost": None,
+            "duration_min": None,
+            "open_time": None,
+            "tags": None,
+            "rating": 4.5,
+            "description": "x",
+            "source": "amap.poi",
+            "_source_parts": set(),
+        }
 
     conn = MagicMock()
     cursor = MagicMock()
     conn.cursor.return_value.__enter__.return_value = cursor
-    cursor.fetchall.return_value = []          # 库内初始为空
+    cursor.fetchall.return_value = []  # 库内初始为空
     cursor.lastrowid = 5001
     inserts = []
     updates = []
@@ -59,11 +72,11 @@ def test_upsert_merges_case_variant_batch_duplicates(enrich):
             inserts.append(params)
         elif sql.strip().upper().startswith("UPDATE"):
             updates.append(params)
+
     cursor.execute.side_effect = execute
 
     with patch.object(enrich, "_pooled_connect", return_value=conn):
-        inserted, updated, unchanged = enrich.upsert_pois(
-            [rec("Lush酒吧", 80), rec("lush酒吧", 90)])
+        inserted, updated, _unchanged = enrich.upsert_pois([rec("Lush酒吧", 80), rec("lush酒吧", 90)])
 
     assert inserted == 1, "大小写变体不应各自 INSERT（会撞唯一键）"
     assert updated == 1, "第二条应并入同一行走 UPDATE"
@@ -72,12 +85,25 @@ def test_upsert_merges_case_variant_batch_duplicates(enrich):
 
 def test_upsert_registers_inserted_row_for_intra_batch_dedup(enrich):
     """批内完全同名同品类重复也只落一行（第二条 UPDATE 合并）。"""
+
     def rec(name, price=None):
-        return {"city": "上海", "name": name, "category": "attraction", "address": "a",
-                "latitude": 31.2, "longitude": 121.4, "ticket_price": price,
-                "avg_cost": None, "duration_min": None, "open_time": None,
-                "tags": None, "rating": 4.6, "description": "d",
-                "source": "amap.poi", "_source_parts": set()}
+        return {
+            "city": "上海",
+            "name": name,
+            "category": "attraction",
+            "address": "a",
+            "latitude": 31.2,
+            "longitude": 121.4,
+            "ticket_price": price,
+            "avg_cost": None,
+            "duration_min": None,
+            "open_time": None,
+            "tags": None,
+            "rating": 4.6,
+            "description": "d",
+            "source": "amap.poi",
+            "_source_parts": set(),
+        }
 
     conn = MagicMock()
     cursor = MagicMock()
@@ -92,6 +118,7 @@ def test_upsert_registers_inserted_row_for_intra_batch_dedup(enrich):
             counts["insert"] += 1
         elif key.startswith("UPDATE"):
             counts["update"] += 1
+
     cursor.execute.side_effect = execute
 
     with patch.object(enrich, "_pooled_connect", return_value=conn):

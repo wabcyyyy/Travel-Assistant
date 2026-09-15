@@ -65,34 +65,44 @@ def test_has_double_lunch():
 
 
 def test_validate_plans_flags_double_lunch():
-    plans = [_plan(items=[
-        _attraction("景", "09:00", "11:00"),
-        _food("午1", "11:30", "12:30", 80),
-        _food("午2", "13:00", "14:00", 90),
-    ])]
+    plans = [
+        _plan(
+            items=[
+                _attraction("景", "09:00", "11:00"),
+                _food("午1", "11:30", "12:30", 80),
+                _food("午2", "13:00", "14:00", 90),
+            ]
+        )
+    ]
     issues, _ = validate_plans(plans)
     assert any("两顿午餐" in i for i in issues)
 
 
 def test_validate_plans_budget_overage():
-    plans = [_plan(items=[
-        _attraction("景", "09:00", "11:00", cost=100),
-        _food("餐", "12:00", "13:00", cost=200),
-        _hotel("店", cost=2000),
-    ])]
+    plans = [
+        _plan(
+            items=[
+                _attraction("景", "09:00", "11:00", cost=100),
+                _food("餐", "12:00", "13:00", cost=200),
+                _hotel("店", cost=2000),
+            ]
+        )
+    ]
     # 2人：门票200 + 餐400 + 酒店2000*1 + 交通35*2 = 2670 > 1000
-    issues, _ = validate_plans(plans, budget=1000, persons=2,
-                               consumption={"transport_price": 35})
+    issues, _ = validate_plans(plans, budget=1000, persons=2, consumption={"transport_price": 35})
     assert any("超出预算" in i for i in issues)
 
 
 def test_validate_plans_within_budget():
-    plans = [_plan(items=[
-        _attraction("景", "09:00", "11:00", cost=0),
-        _food("餐", "12:00", "13:00", cost=40),
-    ])]
-    issues, _ = validate_plans(plans, budget=5000, persons=1,
-                               consumption={"transport_price": 35})
+    plans = [
+        _plan(
+            items=[
+                _attraction("景", "09:00", "11:00", cost=0),
+                _food("餐", "12:00", "13:00", cost=40),
+            ]
+        )
+    ]
+    issues, _ = validate_plans(plans, budget=5000, persons=1, consumption={"transport_price": 35})
     assert not any("超出预算" in i for i in issues)
 
 
@@ -130,6 +140,7 @@ def test_estimate_plans_total_hotel_rooms():
 
 def test_fill_suggestion_gaps_noop_when_web_disabled(monkeypatch):
     from app.common.config import settings
+
     monkeypatch.setattr(settings, "web_search_enabled", False)
     rows = [{"name": "X", "category": "hotel"}]
     assert fill_suggestion_gaps(rows, "东京") is rows or fill_suggestion_gaps(rows, "东京") == rows
@@ -137,6 +148,7 @@ def test_fill_suggestion_gaps_noop_when_web_disabled(monkeypatch):
 
 def test_fill_suggestion_gaps_adds_missing_categories(monkeypatch):
     from app.common.config import settings
+
     monkeypatch.setattr(settings, "web_search_enabled", True)
 
     def fake_search(city, category, limit=4, budget_tier=None):
@@ -149,6 +161,7 @@ def test_fill_suggestion_gaps_adds_missing_categories(monkeypatch):
     monkeypatch.setattr("app.agent.web_search.web_search_enabled", lambda: True)
     # fill_suggestion_gaps 内部 import 的是模块函数，需 patch 到 generators 的引用路径
     import app.agent.web_search as ws
+
     monkeypatch.setattr(ws, "search_places_via_web", fake_search)
     monkeypatch.setattr(ws, "web_search_enabled", lambda: True)
 

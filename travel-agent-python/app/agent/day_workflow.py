@@ -12,4 +12,5 @@ from app.schemas.trip import DailyPlan, GenerateDayRequest
 
 def run_day_agent(req: GenerateDayRequest) -> DailyPlan:
     from app.agent.trip_graph import run_day
+
     return run_day(req)

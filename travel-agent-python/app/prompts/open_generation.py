@@ -21,8 +21,7 @@ OPEN_DAY_PROMPT_VERSION = "v1.1.narrative"
 OPEN_TRIP_PROMPT_VERSION = "v1.1.narrative"
 
 
-def open_day_system_prompt(*, day_no: int = 1, pace: str, hotel_clause: str,
-                           hotel_hint: str, mem) -> str:
+def open_day_system_prompt(*, day_no: int = 1, pace: str, hotel_clause: str, hotel_hint: str, mem) -> str:
     """开放模式单日生成的 system prompt 基座（动态追加块由调用方拼接）。
 
     参数与 _llm_open_day 中的局部变量同名：
@@ -39,12 +38,13 @@ def open_day_system_prompt(*, day_no: int = 1, pace: str, hotel_clause: str,
     trip_theme_key = (
         '"trip_theme":"整趟主题标题(≤40 字，能串起全部天数的核心意象，'
         '如「目的地·核心意象＋主线气质（住宿据点为据点）」)",'
-        if day_no <= 1 else ""
+        if day_no <= 1
+        else ""
     )
     trip_theme_rule = (
         "第 1 天必须输出顶层 trip_theme（整趟主题标题，≤40 字）；"
-        if day_no <= 1 else
-        "trip_theme 仅第 1 天输出，本次非第 1 天，禁止输出该字段；"
+        if day_no <= 1
+        else "trip_theme 仅第 1 天输出，本次非第 1 天，禁止输出该字段；"
     )
     return (
         "你是资深当地导游。基于你的目的地知识为用户安排一天行程，只输出 JSON："

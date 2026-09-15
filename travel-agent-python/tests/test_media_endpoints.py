@@ -71,9 +71,7 @@ def env(monkeypatch):
     monkeypatch.setattr(poi_photo.settings, "unsplash_access_key", UNSPLASH_KEY)
     monkeypatch.setattr(poi_photo.settings, "pexels_access_key", PEXELS_KEY)
     monkeypatch.setattr(redis_client.settings, "redis_url", "redis://127.0.0.1:1/0")
-    monkeypatch.setattr(
-        security, "authenticate", lambda token: security.AuthUser(id=1, username="alice", role="user")
-    )
+    monkeypatch.setattr(security, "authenticate", lambda token: security.AuthUser(id=1, username="alice", role="user"))
 
     app = FastAPI()
     install_exception_handlers(app)
@@ -91,6 +89,7 @@ def as_client(env):
 
 
 # ---------- SSRF 白名单（高德/autonavi 图床已移除） ----------
+
 
 @pytest.mark.parametrize(
     "url,allowed",
@@ -127,11 +126,13 @@ def test_image_proxy_maps_empty_non_image_and_oversized(env):
     cases = {
         "empty": httpx.Response(200, headers={"content-type": "image/jpeg"}, content=b""),
         "html": httpx.Response(200, headers={"content-type": "text/html"}, content=b"<html>"),
-        "huge": httpx.Response(200, headers={"content-type": "image/jpeg"}, content=b"x" * (image_proxy.MAX_IMAGE_BYTES + 1)),
+        "huge": httpx.Response(
+            200, headers={"content-type": "image/jpeg"}, content=b"x" * (image_proxy.MAX_IMAGE_BYTES + 1)
+        ),
     }
     expected = {"empty": 404, "html": 502, "huge": 502}
     for name, canned in cases.items():
-        client = httpx.Client(transport=httpx.MockTransport(lambda _r: canned), follow_redirects=False)
+        client = httpx.Client(transport=httpx.MockTransport(lambda _r, c=canned: c), follow_redirects=False)
         configure_clients(image=client, api=client)
         response = _client(app).get("/api/image-proxy", params={"url": "https://images.unsplash.com/a.jpg"})
         assert response.status_code == expected[name], name
@@ -150,6 +151,7 @@ def _client(app: FastAPI) -> TestClient:
 
 
 # ---------- POI 实景图多源解析（维基 → 图库；无高德） ----------
+
 
 def test_poi_photo_gallery_queries_must_not_include_city(as_client):
     """图库只按名称检索：带上城市会命中该城泛化风景图，整页卡片变成无关照片。"""

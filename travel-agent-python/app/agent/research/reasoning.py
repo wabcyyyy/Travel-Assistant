@@ -37,6 +37,7 @@ _EVAL_SYSTEM = (
     "只评估证据充分性，不生成行程。"
 )
 
+
 # 证据为空时确定性补查的默认关键词（各域兜底，避免空结果直接无证据交付）
 def _default_extra_keywords(task: ResearchTask) -> list[str]:
     if task.domain == "hotel":
@@ -84,7 +85,7 @@ def plan_research(task: ResearchTask) -> dict:
             "extra_keywords": [str(x) for x in (data.get("extra_keywords") or []) if x],
             "limit": int(data.get("limit") or 0) or 0,
         }
-    except Exception as exc:  # noqa: BLE001 - 研究规划失败必须可降级
+    except Exception as exc:
         logger.warning("research plan failed for %s/%s: %s", task.domain, task.city, exc)
         return {}
 
@@ -115,10 +116,8 @@ def evaluate_research(task: ResearchTask, items: list[dict], round_no: int) -> d
     if not items:
         return {"sufficient": False, "extra_keywords": _default_extra_keywords(task)}
     # M3-②（AD5）：意图覆盖确定性维度前置短路（round 1 且意图词非空时生效）
-    if (int(round_no) == 1 and task.intent_keywords
-            and not _intent_keywords_covered(task, items)):
-        merged = list(dict.fromkeys(
-            list(task.intent_keywords) + _default_extra_keywords(task)))
+    if int(round_no) == 1 and task.intent_keywords and not _intent_keywords_covered(task, items):
+        merged = list(dict.fromkeys(list(task.intent_keywords) + _default_extra_keywords(task)))
         return {"sufficient": False, "extra_keywords": merged}
     if not settings.llm_api_key:
         return {"sufficient": True, "extra_keywords": []}
@@ -140,6 +139,6 @@ def evaluate_research(task: ResearchTask, items: list[dict], round_no: int) -> d
             "sufficient": bool(data.get("sufficient", True)),
             "extra_keywords": [str(x) for x in (data.get("extra_keywords") or []) if x],
         }
-    except Exception as exc:  # noqa: BLE001 - 研究评估失败按充分处理
+    except Exception as exc:
         logger.warning("research evaluate failed for %s/%s: %s", task.domain, task.city, exc)
         return {"sufficient": True, "extra_keywords": []}

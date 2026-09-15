@@ -41,7 +41,7 @@ class ButlerNoteRequest(WireModel):
     region_hint: str | None = None
     budget: str | float | int | None = None
     requirements: str | None = None
-    plans: list[dict] | None = None          # 元素形如 {"day_no": 1, "items": ["名称", ...]}
+    plans: list[dict] | None = None  # 元素形如 {"day_no": 1, "items": ["名称", ...]}
     validation_log: list | None = None
     # 上限与 requirements 对齐 4000：Java 无 intent 时兜底 intent=requirements，
     # 但例 payload 会携带长文本，800 会 422 打断管家讲解（M1 意图贯通）。
@@ -96,8 +96,7 @@ class PoiNearbyItem(WireModel):
     category: str | None = None
     rating: float | None = None
     address: str | None = None
-    distance_m: int | None = Field(default=None, alias="_distance_m",
-                                   serialization_alias="_distance_m")
+    distance_m: int | None = Field(default=None, alias="_distance_m", serialization_alias="_distance_m")
 
 
 class PoiNearbyResponse(WireModel):

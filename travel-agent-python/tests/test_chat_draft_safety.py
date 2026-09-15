@@ -6,9 +6,9 @@ from app.agent.chat_draft import (
     _dedupe_plans,
     _deterministic_reduce,
     _fallback_hotel_intent,
+    _hotel_comparison_base_tier,
     _increase_target_days,
     _is_vague_poi_browse_request,
-    _hotel_comparison_base_tier,
     _plan_conflict,
     _reduce_target_days,
     _requested_day_count,
@@ -109,10 +109,15 @@ def test_conflict_and_note_only_change_are_detectable():
     request = _request("调整一下")
     changed_notes = [dict(plan, note="新备注") for plan in request.plans]
     assert _substantive_plan_signature(changed_notes) == _substantive_plan_signature(request.plans)
-    conflict_plans = [{"day_no": 1, "items": [
-        {"item_type": "attraction", "poi_name": "甲", "start_time": "09:00", "end_time": "11:00"},
-        {"item_type": "food", "poi_name": "乙", "start_time": "10:30", "end_time": "12:00"},
-    ]}]
+    conflict_plans = [
+        {
+            "day_no": 1,
+            "items": [
+                {"item_type": "attraction", "poi_name": "甲", "start_time": "09:00", "end_time": "11:00"},
+                {"item_type": "food", "poi_name": "乙", "start_time": "10:30", "end_time": "12:00"},
+            ],
+        }
+    ]
     assert _plan_conflict(conflict_plans) == (1, "甲", "乙")
 
 
@@ -123,9 +128,13 @@ def test_placeholder_reply_and_generic_hotel_change_are_normalized():
 
 def test_unspecified_hotel_scope_defaults_to_all_existing_nights():
     request = _request("换个酒店")
-    request.plans[1]["items"].append({
-        "id": 4, "item_type": "hotel", "poi_name": "杭州西子宾馆汪庄",
-    })
+    request.plans[1]["items"].append(
+        {
+            "id": 4,
+            "item_type": "hotel",
+            "poi_name": "杭州西子宾馆汪庄",
+        }
+    )
     intent = _with_stay_scope(HotelIntent("same", "奢华型", "奢华型"), request, [])
     assert intent.requested_nights == 2
     assert intent.requested_day_nos == (1, 2)
@@ -133,9 +142,13 @@ def test_unspecified_hotel_scope_defaults_to_all_existing_nights():
 
 def test_numbered_night_is_not_misread_as_night_count():
     request = _request("第二晚换酒店")
-    request.plans[1]["items"].append({
-        "id": 4, "item_type": "hotel", "poi_name": "杭州西子宾馆汪庄",
-    })
+    request.plans[1]["items"].append(
+        {
+            "id": 4,
+            "item_type": "hotel",
+            "poi_name": "杭州西子宾馆汪庄",
+        }
+    )
     intent = _with_stay_scope(HotelIntent("same", "奢华型", "奢华型"), request, [])
     assert not intent.invalid_scope
     assert intent.requested_nights == 1
@@ -144,10 +157,12 @@ def test_numbered_night_is_not_misread_as_night_count():
 
 def test_only_explicit_continuation_uses_previous_proposed_tier():
     request = _request("再便宜一点")
-    request.history = [{
-        "role": "ai",
-        "content": "你当前是奢华型，本次提供 **3 家豪华型酒店** 供比较。",
-    }]
+    request.history = [
+        {
+            "role": "ai",
+            "content": "你当前是奢华型，本次提供 **3 家豪华型酒店** 供比较。",
+        }
+    ]
     assert _hotel_comparison_base_tier(request, []) == "豪华型"
     request.message = "看看其他酒店"
     assert _hotel_comparison_base_tier(request, []) == "舒适型"
@@ -156,11 +171,13 @@ def test_only_explicit_continuation_uses_previous_proposed_tier():
 def test_explicit_new_hotel_day_can_target_day_without_existing_hotel():
     request = _request("第五天住四季")
     request.days = 5
-    request.plans.extend([
-        {"day_no": 3, "items": []},
-        {"day_no": 4, "items": []},
-        {"day_no": 5, "items": []},
-    ])
+    request.plans.extend(
+        [
+            {"day_no": 3, "items": []},
+            {"day_no": 4, "items": []},
+            {"day_no": 5, "items": []},
+        ]
+    )
     intent = _with_stay_scope(HotelIntent("specific", "奢华型", "奢华型"), request, [])
     assert not intent.invalid_scope
     assert intent.requested_day_nos == (5,)
@@ -186,13 +203,17 @@ def test_reduce_target_days_only_for_reduce_by_phrase():
 
 def test_deterministic_reduce_removes_cross_day_duplicates():
     request = _request("帮我减少一些重复景点")
-    request.plans[0]["items"].append({
-        "id": 5, "item_type": "attraction", "poi_name": "灵隐寺",
-        "start_time": "13:00", "end_time": "15:00",
-    })
+    request.plans[0]["items"].append(
+        {
+            "id": 5,
+            "item_type": "attraction",
+            "poi_name": "灵隐寺",
+            "start_time": "13:00",
+            "end_time": "15:00",
+        }
+    )
     plans = _deterministic_reduce(request)
-    names = [it.get("poi_name") for plan in plans for it in plan["items"]
-             if it.get("item_type") == "attraction"]
+    names = [it.get("poi_name") for plan in plans for it in plan["items"] if it.get("item_type") == "attraction"]
     assert names.count("灵隐寺") == 1
     # 酒店不受影响。
     assert any(it.get("poi_name") == "杭州西子宾馆汪庄" for plan in plans for it in plan["items"])
@@ -202,9 +223,19 @@ def test_deterministic_reduce_shortens_days():
     request = _request("缩短2天")
     request.days = 5
     request.plans = [
-        {"day_no": d, "note": f"第{d}天", "items": [
-            {"id": d, "item_type": "attraction", "poi_name": f"景点{d}", "start_time": "09:00", "end_time": "11:00"},
-        ]}
+        {
+            "day_no": d,
+            "note": f"第{d}天",
+            "items": [
+                {
+                    "id": d,
+                    "item_type": "attraction",
+                    "poi_name": f"景点{d}",
+                    "start_time": "09:00",
+                    "end_time": "11:00",
+                },
+            ],
+        }
         for d in range(1, 6)
     ]
     plans = _deterministic_reduce(request, target_days=3)
@@ -223,14 +254,20 @@ def test_add_day_is_parsed_as_increase_by():
 
 def test_dedupe_plans_removes_cross_day_duplicates_without_touching_hotels():
     plans = [
-        {"day_no": 1, "items": [
-            {"item_type": "attraction", "poi_name": "A", "start_time": "09:00", "end_time": "10:00"},
-            {"item_type": "hotel", "poi_name": "H"},
-        ]},
-        {"day_no": 2, "items": [
-            {"item_type": "attraction", "poi_name": "A", "start_time": "09:00", "end_time": "10:00"},
-            {"item_type": "food", "poi_name": "B", "start_time": "12:00", "end_time": "13:00"},
-        ]},
+        {
+            "day_no": 1,
+            "items": [
+                {"item_type": "attraction", "poi_name": "A", "start_time": "09:00", "end_time": "10:00"},
+                {"item_type": "hotel", "poi_name": "H"},
+            ],
+        },
+        {
+            "day_no": 2,
+            "items": [
+                {"item_type": "attraction", "poi_name": "A", "start_time": "09:00", "end_time": "10:00"},
+                {"item_type": "food", "poi_name": "B", "start_time": "12:00", "end_time": "13:00"},
+            ],
+        },
     ]
     out = _dedupe_plans(plans)
     names = [it["poi_name"] for p in out for it in p["items"]]
@@ -247,13 +284,32 @@ def test_rewrite_plan_routes_full_document():
         "mode": "rewrite_plan",
         "plan_document": {
             "schema_version": 1,
-            "trip": {"city": "杭州", "days": 1, "persons": 2, "budget": None,
-                     "start_date": None, "end_date": None, "preferences": [], "hotel_tier": None},
-            "days": [{
-                "day_no": 1, "note": "第一天",
-                "items": [{"id": 1, "item_type": "attraction", "poi_name": "苏堤春晓",
-                           "start_time": "08:30", "end_time": "10:00", "duration_min": 90}],
-            }],
+            "trip": {
+                "city": "杭州",
+                "days": 1,
+                "persons": 2,
+                "budget": None,
+                "start_date": None,
+                "end_date": None,
+                "preferences": [],
+                "hotel_tier": None,
+            },
+            "days": [
+                {
+                    "day_no": 1,
+                    "note": "第一天",
+                    "items": [
+                        {
+                            "id": 1,
+                            "item_type": "attraction",
+                            "poi_name": "苏堤春晓",
+                            "start_time": "08:30",
+                            "end_time": "10:00",
+                            "duration_min": 90,
+                        }
+                    ],
+                }
+            ],
         },
     }
     plans = _apply_plan_update(decision, request)
@@ -265,8 +321,7 @@ def test_rewrite_plan_routes_full_document():
 def test_plan_update_still_routes_patches():
     # 小修小补仍走 patches 补丁路径，不受 rewrite_plan 影响。
     request = _request("把苏堤春晓改到下午三点")
-    decision = {"mode": "plan_update",
-                "patches": [{"op": "update", "item_id": 1, "fields": {"start_time": "15:00"}}]}
+    decision = {"mode": "plan_update", "patches": [{"op": "update", "item_id": 1, "fields": {"start_time": "15:00"}}]}
     plans = _apply_plan_update(decision, request)
     assert plans is not None
     item = next(it for p in plans for it in p["items"] if it.get("id") == 1)

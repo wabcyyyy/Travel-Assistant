@@ -41,8 +41,11 @@ def client(tmp_path, monkeypatch) -> TestClient:
 
     monkeypatch.setattr(deps.settings, "jwt_secret", SIGNING_MATERIAL)
     monkeypatch.setattr(deps.token_revocation, "is_revoked", lambda _t: False)
-    monkeypatch.setattr(deps.user_repository, "find_by_username",
-                        lambda _u: {"id": 42, "username": "alice", "role": "user", "status": 1})
+    monkeypatch.setattr(
+        deps.user_repository,
+        "find_by_username",
+        lambda _u: {"id": 42, "username": "alice", "role": "user", "status": 1},
+    )
     state_and_sessions.reset_for_tests()
 
     app = FastAPI()
@@ -61,51 +64,73 @@ def _headers() -> dict[str, str]:
 def _seed_trip() -> int:
     with db_session.session_scope() as session:
         main = ItineraryMain(
-            user_id=42, title="杭州3日游", city="杭州",
-            start_date=date(2026, 4, 1), end_date=date(2026, 4, 3),
-            days=3, persons=2, budget=Decimal("3000.00"), status=2,
-            trip_theme="西湖慢行", plan_note="建议早出发",
+            user_id=42,
+            title="杭州3日游",
+            city="杭州",
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 4, 3),
+            days=3,
+            persons=2,
+            budget=Decimal("3000.00"),
+            status=2,
+            trip_theme="西湖慢行",
+            plan_note="建议早出发",
             cover_url="/api/uploads/covers/42/cover.jpg",
             cover_credit=json.dumps({"author": "Ada", "source": "unsplash"}),
         )
         session.add(main)
         session.flush()
-        day = ItineraryDay(itinerary_id=main.id, day_no=1, travel_date=date(2026, 4, 1),
-                           note="到达", metadata_json='{"theme":"湖畔"}')
+        day = ItineraryDay(
+            itinerary_id=main.id, day_no=1, travel_date=date(2026, 4, 1), note="到达", metadata_json='{"theme":"湖畔"}'
+        )
         session.add(day)
         session.flush()
-        session.add_all([
-            ItineraryItem(
-                day_id=day.id, itinerary_id=main.id, item_type="attraction", poi_name="西湖",
-                address="西湖区", start_time=time(9, 30), end_time=time(11, 0),
-                cost=Decimal("0.00"), latitude=Decimal("30.220000"), longitude=Decimal("120.120000"),
-                source="mysql.poi_knowledge", verification_status="verified",
-                freshness_status="fresh", review_requirement="none", sort_no=0,
-            ),
-            ItineraryItem(
-                day_id=day.id, itinerary_id=main.id, item_type="food", poi_name="楼外楼",
-                cost=Decimal("88.50"), source="llm.open_day", verification_status="unverified",
-                freshness_status="stale", review_requirement="before_departure", sort_no=1,
-            ),
-        ])
-        session.add(BudgetDetail(itinerary_id=main.id, category="餐饮",
-                                 amount=Decimal("88.50"), item_count=1))
+        session.add_all(
+            [
+                ItineraryItem(
+                    day_id=day.id,
+                    itinerary_id=main.id,
+                    item_type="attraction",
+                    poi_name="西湖",
+                    address="西湖区",
+                    start_time=time(9, 30),
+                    end_time=time(11, 0),
+                    cost=Decimal("0.00"),
+                    latitude=Decimal("30.220000"),
+                    longitude=Decimal("120.120000"),
+                    source="mysql.poi_knowledge",
+                    verification_status="verified",
+                    freshness_status="fresh",
+                    review_requirement="none",
+                    sort_no=0,
+                ),
+                ItineraryItem(
+                    day_id=day.id,
+                    itinerary_id=main.id,
+                    item_type="food",
+                    poi_name="楼外楼",
+                    cost=Decimal("88.50"),
+                    source="llm.open_day",
+                    verification_status="unverified",
+                    freshness_status="stale",
+                    review_requirement="before_departure",
+                    sort_no=1,
+                ),
+            ]
+        )
+        session.add(BudgetDetail(itinerary_id=main.id, category="餐饮", amount=Decimal("88.50"), item_count=1))
         return main.id
 
 
 def _create_share(client: TestClient, trip_id: int, expire_days: int | None = None) -> str:
-    response = client.post(
-        f"/api/itinerary/{trip_id}/share", json={"expireDays": expire_days}, headers=_headers()
-    )
+    response = client.post(f"/api/itinerary/{trip_id}/share", json={"expireDays": expire_days}, headers=_headers())
     assert response.status_code == 200, response.text
     return response.json()["data"]["shareToken"]
 
 
 def test_share_lifecycle(client: TestClient) -> None:
     trip_id = _seed_trip()
-    assert client.get(f"/api/itinerary/{trip_id}/share", headers=_headers()).json()["data"] == {
-        "shared": False
-    }
+    assert client.get(f"/api/itinerary/{trip_id}/share", headers=_headers()).json()["data"] == {"shared": False}
 
     token = _create_share(client, trip_id, expire_days=30)
     assert len(token) >= 24
@@ -118,9 +143,7 @@ def test_share_lifecycle(client: TestClient) -> None:
     assert client.get(f"/api/share/{token}").status_code == 200
 
     assert client.delete(f"/api/itinerary/{trip_id}/share", headers=_headers()).status_code == 200
-    assert client.get(f"/api/itinerary/{trip_id}/share", headers=_headers()).json()["data"] == {
-        "shared": False
-    }
+    assert client.get(f"/api/itinerary/{trip_id}/share", headers=_headers()).json()["data"] == {"shared": False}
     assert client.get(f"/api/share/{token}").status_code == 404
 
 
@@ -143,9 +166,21 @@ def test_anonymous_view_is_sanitized_whitelist(client: TestClient) -> None:
     data = response.json()["data"]
 
     assert set(data) == {
-        "city", "title", "days", "persons", "startDate", "endDate", "budget",
-        "hotelTier", "tripTheme", "coverUrl", "coverCredit", "totalAmount",
-        "dayList", "budgetList", "planNote",
+        "city",
+        "title",
+        "days",
+        "persons",
+        "startDate",
+        "endDate",
+        "budget",
+        "hotelTier",
+        "tripTheme",
+        "coverUrl",
+        "coverCredit",
+        "totalAmount",
+        "dayList",
+        "budgetList",
+        "planNote",
     }
     assert data["coverUrl"] == "/api/uploads/covers/42/cover.jpg"
     assert data["coverCredit"] == {"author": "Ada", "source": "unsplash"}
@@ -156,20 +191,40 @@ def test_anonymous_view_is_sanitized_whitelist(client: TestClient) -> None:
     assert day["dayTotalAmount"] == 88.5, "dayTotalAmount 为对 items[].cost 的新算值"
     item = day["items"][0]
     assert set(item) == {
-        "poiName", "itemType", "address", "startTime", "endTime",
-        "cost", "image", "latitude", "longitude", "source",
+        "poiName",
+        "itemType",
+        "address",
+        "startTime",
+        "endTime",
+        "cost",
+        "image",
+        "latitude",
+        "longitude",
+        "source",
     }
     assert item["startTime"] == "09:30"
 
     forbidden = {
-        "userId", "id", "itemId", "shareToken", "intent", "chat", "trace",
-        "qualityStatus", "qualityReport", "factEvidence", "factEvidenceJson",
-        "sources", "suggestions", "schemaVersion", "pendingFactCount",
+        "userId",
+        "id",
+        "itemId",
+        "shareToken",
+        "intent",
+        "chat",
+        "trace",
+        "qualityStatus",
+        "qualityReport",
+        "factEvidence",
+        "factEvidenceJson",
+        "sources",
+        "suggestions",
+        "schemaVersion",
+        "pendingFactCount",
     }
     assert not (_all_keys(data) & forbidden), "匿名 VO 不允许出现任何内部字段"
 
 
-def _all_keys(node) -> set[str]:  # noqa: ANN001
+def _all_keys(node) -> set[str]:
     keys: set[str] = set()
     if isinstance(node, dict):
         for key, value in node.items():
@@ -216,9 +271,7 @@ def test_archive_blocks_new_share_but_old_link_still_works(client: TestClient) -
     client.post(f"/api/itinerary/{trip_id}/archive", json={"archived": True}, headers=_headers())
     assert client.get(f"/api/share/{token}").status_code == 200, "归档不撤回已发出的链接"
 
-    response = client.post(
-        f"/api/itinerary/{trip_id}/share", json={"expireDays": None}, headers=_headers()
-    )
+    response = client.post(f"/api/itinerary/{trip_id}/share", json={"expireDays": None}, headers=_headers())
     assert response.status_code == 400
 
 
@@ -240,13 +293,9 @@ def test_share_owner_endpoints_require_auth(client: TestClient) -> None:
 
 def test_expire_days_validation(client: TestClient) -> None:
     trip_id = _seed_trip()
-    bad = client.post(
-        f"/api/itinerary/{trip_id}/share", json={"expireDays": 5}, headers=_headers()
-    )
+    bad = client.post(f"/api/itinerary/{trip_id}/share", json={"expireDays": 5}, headers=_headers())
     assert bad.status_code == 400
-    ok = client.post(
-        f"/api/itinerary/{trip_id}/share", json={"expireDays": 7}, headers=_headers()
-    )
+    ok = client.post(f"/api/itinerary/{trip_id}/share", json={"expireDays": 7}, headers=_headers())
     assert ok.status_code == 200 and ok.json()["data"]["shareExpiresAt"] is not None
 
 

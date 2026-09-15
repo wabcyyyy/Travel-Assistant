@@ -17,30 +17,34 @@
 依赖：intent / validate / document / plan_edit / hotel 全部。
 """
 
-import re
+import contextlib
 import json
-from copy import deepcopy
-from datetime import date, timedelta
-from difflib import SequenceMatcher
 import logging
+from datetime import date, timedelta
 
 from app.agent import tools
-from app.agent.day_stream import run_generate_day, run_plan_context
 from app.agent.memory import dialogue_messages
 from app.common.config import settings
 from app.common.llm_client import get_llm_client
-from app.common.season import season_factor, season_label
 from app.schemas.trip import (
-    MAX_TRIP_DAYS, ChatTurnRequest, ChatTurnResponse, GenerateDayRequest, HotelOption, HotelRoomOption,
+    MAX_TRIP_DAYS,
+    ChatTurnRequest,
+    ChatTurnResponse,
 )
 
-logger = logging.getLogger(__name__)
-
-
-from .validate import (DecisionJsonError, _decision_reply, _default_plan_update_reply, _parse_json_object, _plan_conflict, _substantive_plan_signature)
-from .hotel import (_fallback_hotel_intent, _has_explicit_hotel_comparison, _hotel_catalog, _hotel_comparison_base_tier, _hotel_intent_from_decision, _hotel_proposal_response, _hotel_signature, _is_hotel_request, _understand_hotel_intent, _with_stay_scope)
-from .document import (_decision_plan_document, _trip_plan_document)
-from .plan_edit import (_apply_plan_update, _dedupe_plans, _deterministic_extend, _deterministic_reduce)
+from .document import _decision_plan_document, _trip_plan_document
+from .hotel import (
+    _fallback_hotel_intent,
+    _has_explicit_hotel_comparison,
+    _hotel_catalog,
+    _hotel_comparison_base_tier,
+    _hotel_intent_from_decision,
+    _hotel_proposal_response,
+    _hotel_signature,
+    _is_hotel_request,
+    _understand_hotel_intent,
+    _with_stay_scope,
+)
 from .intent import (
     _increase_target_days,
     _is_reduction_request,
@@ -48,10 +52,25 @@ from .intent import (
     _reduce_target_days,
     _requested_day_count,
 )
+from .plan_edit import (
+    _apply_plan_update,
+    _dedupe_plans,
+    _deterministic_extend,
+    _deterministic_reduce,
+)
+from .validate import (
+    DecisionJsonError,
+    _decision_reply,
+    _default_plan_update_reply,
+    _parse_json_object,
+    _plan_conflict,
+    _substantive_plan_signature,
+)
+
+logger = logging.getLogger(__name__)
 
 
-def _decide_plan_change(req: ChatTurnRequest, hotels: list[dict],
-                        feedback: str | None = None) -> dict:
+def _decide_plan_change(req: ChatTurnRequest, hotels: list[dict], feedback: str | None = None) -> dict:
     document = _decision_plan_document(req)
     system = (
         "你是旅行计划 JSON 编辑器。你必须先理解用户自然语言，再从下列【封闭动作集】中选择一种，且只输出JSON。"
@@ -126,22 +145,33 @@ def _decide_plan_change(req: ChatTurnRequest, hotels: list[dict],
         )
         return _parse_json_object(repaired)
 
+
 def run_chat_turn(req: ChatTurnRequest) -> ChatTurnResponse:
     hotels = tools.search_hotels(req.city, limit=30)
     if _is_vague_poi_browse_request(req.message) and not _is_hotel_request(req, hotels):
         return ChatTurnResponse(
-            reply=("### 可以为你推荐其他景点\n\n"
-                   "请告诉我想查看哪一天、偏好的类型（自然 / 人文 / 亲子等），"
-                   "或直接说出想替换的景点；当前行程没有修改。"),
-            plans=[], changed=False, hotel_options=[], requires_confirmation=False,
-            plan_document=_trip_plan_document(req), operations=[],
+            reply=(
+                "### 可以为你推荐其他景点\n\n"
+                "请告诉我想查看哪一天、偏好的类型（自然 / 人文 / 亲子等），"
+                "或直接说出想替换的景点；当前行程没有修改。"
+            ),
+            plans=[],
+            changed=False,
+            hotel_options=[],
+            requires_confirmation=False,
+            plan_document=_trip_plan_document(req),
+            operations=[],
         )
     requested_days = _requested_day_count(req.message, req.days)
     if requested_days is not None and requested_days > MAX_TRIP_DAYS:
         return ChatTurnResponse(
             reply=f"### 行程天数上限\n\n每次生成行程最多支持 {MAX_TRIP_DAYS} 天，本次没有修改行程。",
-            plans=[], changed=False, hotel_options=[], requires_confirmation=False,
-            plan_document=_trip_plan_document(req), operations=[],
+            plans=[],
+            changed=False,
+            hotel_options=[],
+            requires_confirmation=False,
+            plan_document=_trip_plan_document(req),
+            operations=[],
         )
     try:
         decision = _decide_plan_change(req, hotels)
@@ -149,18 +179,21 @@ def run_chat_turn(req: ChatTurnRequest) -> ChatTurnResponse:
         logger.warning("unified plan decision remained invalid after repair: %s", exc)
         return ChatTurnResponse(
             reply="### 暂时没能生成可靠草稿\n\n模型返回的计划格式不完整，本次没有修改行程。请直接重试一次。",
-            plans=[], changed=False, plan_document=_trip_plan_document(req),
+            plans=[],
+            changed=False,
+            plan_document=_trip_plan_document(req),
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("unified plan decision failed: %s", exc)
         # 仅在模型不可用时启用旧规则兜底；正常语义路由不依赖关键词。
         if _is_hotel_request(req, hotels):
             intent = _understand_hotel_intent(req, hotels)
             return _hotel_proposal_response(req, hotels, intent)
         return ChatTurnResponse(
-            reply=("### 行程助手暂时不可用\n\n"
-                   "本次没有修改行程，请稍后重试；如果要求较复杂，也可以拆成一步发送。"),
-            plans=[], changed=False, plan_document=_trip_plan_document(req),
+            reply=("### 行程助手暂时不可用\n\n本次没有修改行程，请稍后重试；如果要求较复杂，也可以拆成一步发送。"),
+            plans=[],
+            changed=False,
+            plan_document=_trip_plan_document(req),
         )
 
     mode = str(decision.get("mode") or "no_change")
@@ -176,8 +209,7 @@ def run_chat_turn(req: ChatTurnRequest) -> ChatTurnResponse:
             intent = _with_stay_scope(
                 _fallback_hotel_intent(req.message, _hotel_comparison_base_tier(req, hotels)), req, hotels
             )
-        response = _hotel_proposal_response(req, hotels, intent, operations,
-                                            str(decision.get("reply") or ""))
+        response = _hotel_proposal_response(req, hotels, intent, operations, str(decision.get("reply") or ""))
         # 模型候选参数不完整时再用确定性意图识别重试一次，避免无卡片无提示。
         if not response.hotel_options and _is_hotel_request(req, hotels):
             return _hotel_proposal_response(req, hotels, _understand_hotel_intent(req, hotels), operations)
@@ -201,7 +233,7 @@ def run_chat_turn(req: ChatTurnRequest) -> ChatTurnResponse:
             )
             try:
                 repaired = _decide_plan_change(req, hotels, feedback=feedback)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning("plan_update repair attempt failed: %s", exc)
                 repaired = None
             if repaired and str(repaired.get("mode") or "plan_update") in ("plan_update", "rewrite_plan"):
@@ -221,46 +253,55 @@ def run_chat_turn(req: ChatTurnRequest) -> ChatTurnResponse:
         if plans is None:
             return ChatTurnResponse(
                 reply="### 无法生成安全草稿\n\n模型返回的计划结构或行程元数据不合法，本次未修改任何内容。",
-                plans=[], changed=False, plan_document=_trip_plan_document(req),
+                plans=[],
+                changed=False,
+                plan_document=_trip_plan_document(req),
             )
         # 防御性去重：任何环节的遗漏都在此最后兜底，保证草稿无跨天重复景点。
         plans = _dedupe_plans(plans)
-        if _hotel_signature(plans) != _hotel_signature(req.plans):
-            # 缩短/延长行程会顺带移除或新增日期里的住宿，这是用户明确要求的副作用，允许直接应用；
-            # 其余情况下（天数未变却出现酒店差异）则必须走酒店确认流程，防止模型偷偷改住宿。
-            if not (len(plans) != req.days):
-                return ChatTurnResponse(
-                    reply="### 需要先确认住宿\n\n检测到酒店发生变化。请选择酒店和房型后再应用，本次没有直接修改行程。",
-                    plans=[], changed=False, plan_document=_trip_plan_document(req),
+        # 缩短/延长行程会顺带移除或新增日期里的住宿，这是用户明确要求的副作用，允许直接应用；
+        # 其余情况下（天数未变却出现酒店差异）则必须走酒店确认流程，防止模型偷偷改住宿。
+        if _hotel_signature(plans) != _hotel_signature(req.plans) and len(plans) == req.days:
+            return ChatTurnResponse(
+                reply="### 需要先确认住宿\n\n检测到酒店发生变化。请选择酒店和房型后再应用，本次没有直接修改行程。",
+                plans=[],
+                changed=False,
+                plan_document=_trip_plan_document(req),
             )
         if _substantive_plan_signature(plans) == _substantive_plan_signature(req.plans):
             return ChatTurnResponse(
-                reply=("### 还没有形成有效调整\n\n"
-                       "本次建议没有实际改变景点、顺序或时间，因此未生成可应用草稿。"
-                       "请说明希望删减、移动或延长停留的具体安排。"),
-                plans=[], changed=False, plan_document=_trip_plan_document(req),
+                reply=(
+                    "### 还没有形成有效调整\n\n"
+                    "本次建议没有实际改变景点、顺序或时间，因此未生成可应用草稿。"
+                    "请说明希望删减、移动或延长停留的具体安排。"
+                ),
+                plans=[],
+                changed=False,
+                plan_document=_trip_plan_document(req),
                 operations=operations,
             )
         conflict = _plan_conflict(plans)
         if conflict:
             day_no, first, second = conflict
             return ChatTurnResponse(
-                reply=("### 新安排存在时间冲突\n\n"
-                       f"第 **{day_no} 天**的「{first}」与「{second}」时间重叠，"
-                       "本次没有生成可应用草稿。请指定要移动或替换其中哪一项。"),
-                plans=[], changed=False, plan_document=_trip_plan_document(req),
+                reply=(
+                    "### 新安排存在时间冲突\n\n"
+                    f"第 **{day_no} 天**的「{first}」与「{second}」时间重叠，"
+                    "本次没有生成可应用草稿。请指定要移动或替换其中哪一项。"
+                ),
+                plans=[],
+                changed=False,
+                plan_document=_trip_plan_document(req),
                 operations=operations,
             )
         updated_document = _trip_plan_document(req)
         updated_document["days"] = plans
         updated_document["trip"]["days"] = len(plans)
         if req.start_date:
-            try:
+            with contextlib.suppress(ValueError):
                 updated_document["trip"]["end_date"] = (
                     date.fromisoformat(req.start_date) + timedelta(days=len(plans) - 1)
                 ).isoformat()
-            except ValueError:
-                pass
         return ChatTurnResponse(
             reply=_decision_reply(final_decision.get("reply"), _default_plan_update_reply(req, plans)),
             plans=plans,
@@ -271,7 +312,8 @@ def run_chat_turn(req: ChatTurnRequest) -> ChatTurnResponse:
 
     return ChatTurnResponse(
         reply=_decision_reply(decision.get("reply"), "本次没有需要修改的内容。"),
-        plans=[], changed=False,
+        plans=[],
+        changed=False,
         plan_document=_trip_plan_document(req),
         operations=operations,
     )

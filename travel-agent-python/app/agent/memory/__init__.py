@@ -6,7 +6,7 @@
 - **不**做长期向量记忆；行程级状态以 Java DB 为真相源。
 """
 
-from app.agent.memory.working import WorkingMemory
 from app.agent.memory.dialogue import dialogue_messages, recent_turns
+from app.agent.memory.working import WorkingMemory
 
 __all__ = ["WorkingMemory", "dialogue_messages", "recent_turns"]

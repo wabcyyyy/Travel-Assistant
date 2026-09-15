@@ -17,15 +17,26 @@ class FakeClient:
 
 
 def test_function_calling_executes_registered_read_tool_then_returns_answer(monkeypatch):
-    monkeypatch.setattr("app.agent.tool_registry.registry.invoke",
-                        lambda name, arguments: {"city": arguments["city"], "items": []})
-    client = FakeClient([
-        {"message": {"role": "assistant", "tool_calls": [{
-            "id": "call-1", "type": "function",
-            "function": {"name": "search_pois", "arguments": json.dumps({"city": "杭州"})},
-        }]}},
-        {"message": {"role": "assistant", "content": "已完成检索"}},
-    ])
+    monkeypatch.setattr(
+        "app.agent.tool_registry.registry.invoke", lambda name, arguments: {"city": arguments["city"], "items": []}
+    )
+    client = FakeClient(
+        [
+            {
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call-1",
+                            "type": "function",
+                            "function": {"name": "search_pois", "arguments": json.dumps({"city": "杭州"})},
+                        }
+                    ],
+                }
+            },
+            {"message": {"role": "assistant", "content": "已完成检索"}},
+        ]
+    )
     with trace_run("fc-run") as trace:
         result = run_tool_call_loop(client, [{"role": "user", "content": "查杭州"}])
     assert result["message"]["content"] == "已完成检索"
@@ -35,9 +46,12 @@ def test_function_calling_executes_registered_read_tool_then_returns_answer(monk
 
 def test_function_calling_rejects_same_tool_and_arguments_twice(monkeypatch):
     monkeypatch.setattr("app.agent.tool_registry.registry.invoke", lambda *_args, **_kwargs: {})
-    call = {"id": "call", "type": "function", "function": {
-        "name": "search_pois", "arguments": '{"city":"杭州"}'}}
-    client = FakeClient([{"message": {"role": "assistant", "tool_calls": [call]}},
-                        {"message": {"role": "assistant", "tool_calls": [call]}}])
+    call = {"id": "call", "type": "function", "function": {"name": "search_pois", "arguments": '{"city":"杭州"}'}}
+    client = FakeClient(
+        [
+            {"message": {"role": "assistant", "tool_calls": [call]}},
+            {"message": {"role": "assistant", "tool_calls": [call]}},
+        ]
+    )
     with pytest.raises(FunctionCallingError, match="重复工具调用"):
         run_tool_call_loop(client, [{"role": "user", "content": "查"}])

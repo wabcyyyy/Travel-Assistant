@@ -19,7 +19,6 @@ import re
 import threading
 import time
 from collections import OrderedDict
-from typing import Optional
 
 import httpx
 
@@ -32,7 +31,7 @@ PHOTO_CACHE_MAX = 2048
 WIKI_COOLDOWN_SECONDS = 5 * 60
 _PAREN_RE = re.compile(r"[（(][^（）()]*[)）]")
 
-_cache: "OrderedDict[str, str]" = OrderedDict()
+_cache: OrderedDict[str, str] = OrderedDict()
 _cache_lock = threading.Lock()
 _wiki_cooldown_until = 0.0
 
@@ -44,7 +43,7 @@ def reset_state_for_tests() -> None:
     _wiki_cooldown_until = 0.0
 
 
-def _cache_get(key: str) -> Optional[str]:
+def _cache_get(key: str) -> str | None:
     with _cache_lock:
         if key not in _cache:
             return None
@@ -80,7 +79,7 @@ def resolve_poi_photo(name: str, city: str) -> str:
     return resolved
 
 
-def _do_resolve(name: str) -> Optional[str]:
+def _do_resolve(name: str) -> str | None:
     if wiki_available():
         url = _safe_wiki(wikipedia_photo, name)
         if url:
@@ -97,7 +96,7 @@ def _do_resolve(name: str) -> Optional[str]:
     return _safe(lambda: pexels_photo(query_name))
 
 
-def _safe(fn, *args) -> Optional[str]:
+def _safe(fn, *args) -> str | None:
     try:
         return fn(*args)
     except Exception as exc:  # 单源失败不影响下一源
@@ -105,7 +104,7 @@ def _safe(fn, *args) -> Optional[str]:
         return None
 
 
-def _safe_wiki(fn, *args) -> Optional[str]:
+def _safe_wiki(fn, *args) -> str | None:
     """维基系连接异常才进冷却；HTTP 200 但无图不算故障，避免误伤可达环境。"""
     try:
         return fn(*args)
@@ -120,7 +119,7 @@ def _wikipedia_title(name: str) -> str:
     return _PAREN_RE.sub("", name or "").strip()
 
 
-def wikipedia_photo(name: str) -> Optional[str]:
+def wikipedia_photo(name: str) -> str | None:
     title = _wikipedia_title(name)
     if not title:
         return None
@@ -148,7 +147,7 @@ def wikipedia_photo(name: str) -> Optional[str]:
     return None
 
 
-def wikimedia_commons_photo(name: str) -> Optional[str]:
+def wikimedia_commons_photo(name: str) -> str | None:
     title = _wikipedia_title(name)
     if not title:
         return None
@@ -206,7 +205,7 @@ def english_search_name(name: str) -> str:
     return raw
 
 
-def unsplash_photo(name: str) -> Optional[str]:
+def unsplash_photo(name: str) -> str | None:
     key = settings.unsplash_access_key
     query = (name or "").strip()
     if not key or not query:
@@ -228,7 +227,7 @@ def unsplash_photo(name: str) -> Optional[str]:
     return str(regular) if regular else None
 
 
-def pexels_photo(query: str) -> Optional[str]:
+def pexels_photo(query: str) -> str | None:
     key = settings.pexels_access_key
     query = (query or "").strip()
     if not key or not query:

@@ -10,7 +10,7 @@
 """
 
 import math
-from typing import Iterable
+from collections.abc import Iterable
 
 
 def haversine_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> float:

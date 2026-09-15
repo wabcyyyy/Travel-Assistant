@@ -10,20 +10,29 @@ from app.rag.store import PoIKnowledgeStore
 
 
 def _meta(pid, name, lat, lng, tags="自然", category="attraction", rating=4.5):
-    return {"metadata": {
-        "id": pid, "name": name, "city": "上海" if pid == 4 else "杭州", "category": category,
-        "latitude": lat, "longitude": lng, "tags": tags, "rating": rating,
-        "address": f"{name}地址", "ticket_price": 0,
-    }}
+    return {
+        "metadata": {
+            "id": pid,
+            "name": name,
+            "city": "上海" if pid == 4 else "杭州",
+            "category": category,
+            "latitude": lat,
+            "longitude": lng,
+            "tags": tags,
+            "rating": rating,
+            "address": f"{name}地址",
+            "ticket_price": 0,
+        }
+    }
 
 
 def _documents():
     return {
         "1": _meta(1, "西湖", 30.2400, 120.1500, tags="自然 拍照", rating=4.9),
-        "2": _meta(2, "苏堤", 30.2410, 120.1510, tags="自然", rating=4.7),   # ~130m
+        "2": _meta(2, "苏堤", 30.2410, 120.1510, tags="自然", rating=4.7),  # ~130m
         "3": _meta(3, "灵隐寺", 30.2410, 120.1530, tags="人文 历史", rating=4.8),  # ~280m
-        "4": _meta(4, "外滩", 31.2400, 121.4900, tags="地标", rating=4.8),   # 上海，不同城
-        "5": _meta(5, "无坐标POI", 0.0, 0.0, tags="自然", rating=4.0),        # 缺坐标
+        "4": _meta(4, "外滩", 31.2400, 121.4900, tags="地标", rating=4.8),  # 上海，不同城
+        "5": _meta(5, "无坐标POI", 0.0, 0.0, tags="自然", rating=4.0),  # 缺坐标
     }
 
 
@@ -79,17 +88,30 @@ def test_stats_counts_nodes_and_grid():
 
 def _poi(pid=1, name="西湖", lat=30.24, lng=120.15, tags="自然"):
     return {
-        "id": pid, "city": "杭州", "name": name, "category": "attraction",
-        "address": "西湖区", "latitude": lat, "longitude": lng,
-        "ticket_price": 0, "duration_min": 120, "open_time": "08:00-18:00",
-        "tags": tags, "rating": 4.9, "description": "适合休闲游览",
-        "source": "mysql.poi_knowledge", "source_updated_at": "2026-09-01 10:00:00",
+        "id": pid,
+        "city": "杭州",
+        "name": name,
+        "category": "attraction",
+        "address": "西湖区",
+        "latitude": lat,
+        "longitude": lng,
+        "ticket_price": 0,
+        "duration_min": 120,
+        "open_time": "08:00-18:00",
+        "tags": tags,
+        "rating": 4.9,
+        "description": "适合休闲游览",
+        "source": "mysql.poi_knowledge",
+        "source_updated_at": "2026-09-01 10:00:00",
     }
 
 
 def _store(tmp_path):
-    pois = [_poi(1, "西湖", 30.2400, 120.1500), _poi(2, "苏堤", 30.2410, 120.1510),
-            _poi(3, "灵隐寺", 30.2410, 120.1530, tags="人文")]
+    pois = [
+        _poi(1, "西湖", 30.2400, 120.1500),
+        _poi(2, "苏堤", 30.2410, 120.1510),
+        _poi(3, "灵隐寺", 30.2410, 120.1530, tags="人文"),
+    ]
     with patch.object(poi_repository, "list_all_pois_with_status", return_value=(pois, True)):
         store = PoIKnowledgeStore(tmp_path, embedding_provider=HashedEmbeddingProvider())
         store.ensure_loaded()
@@ -108,8 +130,7 @@ def test_store_nearby_and_graph_stats(tmp_path):
 
 def test_find_nearby_pois_resolves_coords_by_name(tmp_path):
     store = _store(tmp_path)
-    with patch.object(tools, "poi_store", store), \
-            patch.object(poi_repository, "get_poi", return_value=None):
+    with patch.object(tools, "poi_store", store), patch.object(poi_repository, "get_poi", return_value=None):
         rows = tools.find_nearby_pois("杭州", name="西湖", limit=5)
     # 锚点（西湖自身）被排除
     assert [row["name"] for row in rows] == ["苏堤", "灵隐寺"]
@@ -120,8 +141,7 @@ def test_find_nearby_pois_with_coords_still_excludes_anchor(tmp_path):
     store = _store(tmp_path)
     monkeypatch_store = patch.object(tools, "poi_store", store)
     with monkeypatch_store, patch.object(poi_repository, "get_poi", return_value=None):
-        rows = tools.find_nearby_pois("杭州", name="西湖",
-                                      latitude=30.2400, longitude=120.1500, limit=5)
+        rows = tools.find_nearby_pois("杭州", name="西湖", latitude=30.2400, longitude=120.1500, limit=5)
     assert [row["name"] for row in rows] == ["苏堤", "灵隐寺"]
 
 
@@ -147,9 +167,13 @@ def test_find_nearby_pois_rejects_unrelated_amap_fuzzy_hits(tmp_path, monkeypatc
     store = _store(tmp_path)
     monkeypatch.setattr(tools, "poi_store", store)
     monkeypatch.setattr(poi_repository, "get_poi", lambda *a, **k: None)
-    monkeypatch.setattr(tools, "search_local_poi", lambda *a, **k: [
-        {"id": 99, "name": "湖滨大酒店", "latitude": 30.25, "longitude": 120.16},
-    ])
+    monkeypatch.setattr(
+        tools,
+        "search_local_poi",
+        lambda *a, **k: [
+            {"id": 99, "name": "湖滨大酒店", "latitude": 30.25, "longitude": 120.16},
+        ],
+    )
     with patch.object(store, "search", return_value=[]):
         assert tools.find_nearby_pois("杭州", name="不存在的景点XYZ123") == []
 
@@ -177,13 +201,15 @@ def test_poi_nearby_endpoint_returns_items(tmp_path, monkeypatch):
     from app.api import agent
     from main import app
 
-    monkeypatch.setattr(agent, "find_nearby_pois", lambda *_args, **_kwargs: [
-        {"name": "苏堤", "category": "attraction", "rating": 4.7,
-         "address": "杭州", "_distance_m": 130},
-    ])
+    monkeypatch.setattr(
+        agent,
+        "find_nearby_pois",
+        lambda *_args, **_kwargs: [
+            {"name": "苏堤", "category": "attraction", "rating": 4.7, "address": "杭州", "_distance_m": 130},
+        ],
+    )
     with TestClient(app) as client:
-        response = client.post("/api/agent/v1/poi-nearby",
-                               json={"city": "杭州", "name": "西湖", "limit": 5})
+        response = client.post("/api/agent/v1/poi-nearby", json={"city": "杭州", "name": "西湖", "limit": 5})
     body = response.json()
     assert response.status_code == 200
     assert body["code"] == 200
@@ -211,11 +237,14 @@ def test_metrics_counts_cache_hits_and_routes():
     from app.agent.observability import metrics
 
     metrics.reset()
-    trace = {"run_id": "run-cache", "events": [
-        {"kind": "retrieval", "name": "cache_hit", "metadata": {}},
-        {"kind": "retrieval", "name": "poi.hybrid_search", "metadata": {"route": "enumerate"}},
-        {"kind": "retrieval", "name": "poi.hybrid_search", "metadata": {"route": "hybrid"}},
-    ]}
+    trace = {
+        "run_id": "run-cache",
+        "events": [
+            {"kind": "retrieval", "name": "cache_hit", "metadata": {}},
+            {"kind": "retrieval", "name": "poi.hybrid_search", "metadata": {"route": "enumerate"}},
+            {"kind": "retrieval", "name": "poi.hybrid_search", "metadata": {"route": "hybrid"}},
+        ],
+    }
     metrics.record(trace, success=True)
     snapshot = metrics.snapshot()
     assert snapshot["retrieval_cache_hits"] == 1

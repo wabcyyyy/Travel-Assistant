@@ -51,8 +51,7 @@ def _insert_task(user_id: int, itinerary_id: int) -> int:
     from app.db.models import ExportTask
 
     with session_scope() as session:
-        task = ExportTask(itinerary_id=itinerary_id, user_id=user_id,
-                          task_type="PDF", status="RUNNING")
+        task = ExportTask(itinerary_id=itinerary_id, user_id=user_id, task_type="PDF", status="RUNNING")
         session.add(task)
         session.flush()
         return task.id
@@ -76,6 +75,7 @@ def pdf_file(user_id: int, task_id: int) -> Path:
 
 # ---------- 渲染 ----------
 
+
 def _render_or_inline(task_id: int) -> None:
     try:
         export_pool.submit(render_pdf, task_id)
@@ -92,7 +92,7 @@ def render_pdf(task_id: int) -> None:
             if task is None:
                 logger.error("export task not found: %s", task_id)
                 return
-            itinerary_id, user_id = task.itinerary_id, task.user_id
+            itinerary_id = task.itinerary_id
             main = session.get(ItineraryMain, itinerary_id)
             model = build_model(main)
         target = Path(settings.export_dir) / f"itinerary_{task_id}.pdf"
@@ -105,7 +105,7 @@ def render_pdf(task_id: int) -> None:
             task.finished_at = datetime.now()
         generation_events.export_done(itinerary_id, task_id, "DONE", DOWNLOAD_URL_PREFIX + str(task_id))
         logger.info("export pdf done: task=%s file=%s", task_id, target)
-    except Exception as exc:  # noqa: BLE001 - 后台线程的失败以任务终态呈现
+    except Exception as exc:
         logger.error("export pdf failed: task=%s", task_id, exc_info=True)
         with session_scope() as session:
             task = session.get(_task_model(), task_id)
@@ -131,45 +131,68 @@ def _ensure_font() -> None:
 
 # ---------- 印刷模型 ----------
 
+
 def build_model(main: ItineraryMain | None) -> dict[str, Any]:
     if main is None:
         raise RuntimeError("行程不存在或已删除")
     with session_scope() as session:
-        days = session.execute(
-            select(ItineraryDay).where(ItineraryDay.itinerary_id == main.id).order_by(ItineraryDay.day_no)
-        ).scalars().all()
+        days = (
+            session.execute(
+                select(ItineraryDay).where(ItineraryDay.itinerary_id == main.id).order_by(ItineraryDay.day_no)
+            )
+            .scalars()
+            .all()
+        )
         day_list: list[dict[str, Any]] = []
         for day in days:
-            items = session.execute(
-                select(ItineraryItem).where(ItineraryItem.day_id == day.id).order_by(ItineraryItem.sort_no)
-            ).scalars().all()
-            row: dict[str, Any] = {"dayNo": day.day_no, "note": day.note,
-                                   "travelDate": str(day.travel_date) if day.travel_date else None}
+            items = (
+                session.execute(
+                    select(ItineraryItem).where(ItineraryItem.day_id == day.id).order_by(ItineraryItem.sort_no)
+                )
+                .scalars()
+                .all()
+            )
+            row: dict[str, Any] = {
+                "dayNo": day.day_no,
+                "note": day.note,
+                "travelDate": str(day.travel_date) if day.travel_date else None,
+            }
             _add_day_metadata(row, day.metadata_json)
-            row["items"] = [{
-                "itemType": item.item_type,
-                # 类型与来源都映射成用户能读的词，印刷品不外露内部枚举
-                "typeLabel": export_pdf.type_label(item.item_type),
-                "srcLabel": export_pdf.source_label(item.source),
-                "poiName": item.poi_name,
-                "startTime": iso_time(item.start_time), "endTime": iso_time(item.end_time),
-                "durationMin": item.duration_min, "cost": item.cost, "tag": item.tag,
-                "remark": item.remark, "whyThis": item.why_note, "openTime": item.open_time,
-                "source": item.source,
-            } for item in items]
+            row["items"] = [
+                {
+                    "itemType": item.item_type,
+                    # 类型与来源都映射成用户能读的词，印刷品不外露内部枚举
+                    "typeLabel": export_pdf.type_label(item.item_type),
+                    "srcLabel": export_pdf.source_label(item.source),
+                    "poiName": item.poi_name,
+                    "startTime": iso_time(item.start_time),
+                    "endTime": iso_time(item.end_time),
+                    "durationMin": item.duration_min,
+                    "cost": item.cost,
+                    "tag": item.tag,
+                    "remark": item.remark,
+                    "whyThis": item.why_note,
+                    "openTime": item.open_time,
+                    "source": item.source,
+                }
+                for item in items
+            ]
             day_list.append(row)
-        budgets = session.execute(
-            select(BudgetDetail).where(BudgetDetail.itinerary_id == main.id)
-        ).scalars().all()
+        budgets = session.execute(select(BudgetDetail).where(BudgetDetail.itinerary_id == main.id)).scalars().all()
     budget_list = [{"category": b.category, "amount": b.amount, "itemCount": b.item_count} for b in budgets]
     total = sum((b["amount"] or 0 for b in budget_list), start=0)
     return {
-        "title": main.title, "city": main.city, "days": main.days, "persons": main.persons,
+        "title": main.title,
+        "city": main.city,
+        "days": main.days,
+        "persons": main.persons,
         "budget": main.budget,
         "startDate": str(main.start_date) if main.start_date else None,
         "endDate": str(main.end_date) if main.end_date else None,
         "preferences": main.preferences,
-        "dayList": day_list, "budgetList": budget_list, "totalAmount": total,
+        "dayList": day_list,
+        "budgetList": budget_list,
+        "totalAmount": total,
     }
 
 
@@ -189,8 +212,11 @@ def _add_day_metadata(row: dict[str, Any], metadata_json: str | None) -> None:
     notes = [str(tip) for tip in (metadata.get("practicalNotes") or []) if str(tip).strip()]
     if notes:
         row["practicalNotes"] = notes
-    backups = [str(item.get("name") or item.get("title") or "")
-               for item in (metadata.get("backupPlan") or []) if isinstance(item, dict)]
+    backups = [
+        str(item.get("name") or item.get("title") or "")
+        for item in (metadata.get("backupPlan") or [])
+        if isinstance(item, dict)
+    ]
     backups = [name for name in backups if name.strip()]
     if backups:
         row["backupPlan"] = "、".join(backups)
@@ -198,8 +224,10 @@ def _add_day_metadata(row: dict[str, Any], metadata_json: str | None) -> None:
 
 # ---------- 任务表访问 ----------
 
+
 def _task_model():
     from app.db.models import ExportTask
+
     return ExportTask
 
 
@@ -210,9 +238,15 @@ def _to_vo(task_id: int, include_download_url: bool) -> dict[str, Any]:
         # 于是 status 恒为 RUNNING、createdAt 恒为 null（MyBatis-Plus 不回填 server default）。
         # 这里从库里重读，池满走 CallerRuns 就地渲染时首次响应就能拿到 DONE。
         # 前端不受影响：它只用 create 响应的 id，状态一律靠轮询 tasks/{id} 判定。
-        vo = {"id": task.id, "itineraryId": task.itinerary_id, "taskType": task.task_type,
-              "status": task.status, "errorMsg": task.error_msg,
-              "createdAt": iso_datetime(task.created_at), "finishedAt": iso_datetime(task.finished_at)}
+        vo = {
+            "id": task.id,
+            "itineraryId": task.itinerary_id,
+            "taskType": task.task_type,
+            "status": task.status,
+            "errorMsg": task.error_msg,
+            "createdAt": iso_datetime(task.created_at),
+            "finishedAt": iso_datetime(task.finished_at),
+        }
     # Java 的 ExportTaskVO 没有 @JsonInclude，Jackson 默认连 null 一起发：
     # downloadUrl 恒在（未完成时为 null），前端类型也声明为 `string | null`。
     vo["downloadUrl"] = DOWNLOAD_URL_PREFIX + str(task_id) if include_download_url else None

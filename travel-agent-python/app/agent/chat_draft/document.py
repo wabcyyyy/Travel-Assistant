@@ -15,26 +15,17 @@
 依赖：intent（读取目标天数）；对外被 plan_edit / hotel / decide 调用。
 """
 
-import re
-import json
-from copy import deepcopy
-from datetime import date, timedelta
-from difflib import SequenceMatcher
 import logging
+from copy import deepcopy
 
-from app.agent import tools
-from app.agent.day_stream import run_generate_day, run_plan_context
-from app.common.config import settings
-from app.common.llm_client import get_llm_client
-from app.common.season import season_factor, season_label
 from app.schemas.trip import (
-    MAX_TRIP_DAYS, ChatTurnRequest, ChatTurnResponse, GenerateDayRequest, HotelOption, HotelRoomOption,
+    MAX_TRIP_DAYS,
+    ChatTurnRequest,
 )
 
+from .intent import _requested_day_count
+
 logger = logging.getLogger(__name__)
-
-
-from .intent import (_requested_day_count)
 
 
 def _trip_plan_document(req: ChatTurnRequest) -> dict:
@@ -55,6 +46,7 @@ def _trip_plan_document(req: ChatTurnRequest) -> dict:
         "pending_action": None,
     }
 
+
 def _decision_plan_document(req: ChatTurnRequest) -> dict:
     """给模型的精简计划。
 
@@ -70,8 +62,15 @@ def _decision_plan_document(req: ChatTurnRequest) -> dict:
                 {
                     key: item.get(key)
                     for key in (
-                        "id", "item_type", "poi_name", "address", "start_time", "end_time",
-                        "duration_min", "tag", "remark",
+                        "id",
+                        "item_type",
+                        "poi_name",
+                        "address",
+                        "start_time",
+                        "end_time",
+                        "duration_min",
+                        "tag",
+                        "remark",
                     )
                     if item.get(key) is not None
                 }
@@ -81,6 +80,7 @@ def _decision_plan_document(req: ChatTurnRequest) -> dict:
         for plan in req.plans
     ]
     return document
+
 
 def _hydrate_decision_plans(compact_plans: list[dict], req: ChatTurnRequest) -> list[dict] | None:
     """把模型返回的精简计划合并回业务侧的完整权威字段。"""
@@ -93,8 +93,15 @@ def _hydrate_decision_plans(compact_plans: list[dict], req: ChatTurnRequest) -> 
     seen_ids: set[int] = set()
     hydrated: list[dict] = []
     allowed_keys = {
-        "id", "item_type", "poi_name", "address", "start_time", "end_time",
-        "duration_min", "tag", "remark",
+        "id",
+        "item_type",
+        "poi_name",
+        "address",
+        "start_time",
+        "end_time",
+        "duration_min",
+        "tag",
+        "remark",
     }
     for compact_plan in compact_plans:
         if not isinstance(compact_plan, dict) or not isinstance(compact_plan.get("items"), list):
@@ -112,8 +119,7 @@ def _hydrate_decision_plans(compact_plans: list[dict], req: ChatTurnRequest) -> 
                 original = existing_by_id[item_id]
                 # 模型不能借普通编辑直接改变酒店，也不能把旧项目 id 套给另一个 POI。
                 if original.get("item_type") == "hotel" and any(
-                    compact_item.get(key) != original.get(key)
-                    for key in allowed_keys if key in compact_item
+                    compact_item.get(key) != original.get(key) for key in allowed_keys if key in compact_item
                 ):
                     return None
                 if compact_item.get("poi_name") != original.get("poi_name"):
@@ -128,6 +134,7 @@ def _hydrate_decision_plans(compact_plans: list[dict], req: ChatTurnRequest) -> 
         full_plan["items"] = full_items
         hydrated.append(full_plan)
     return hydrated
+
 
 def _extract_document_plans(data: dict, req: ChatTurnRequest) -> list[dict] | None:
     document = data.get("plan_document")
@@ -150,8 +157,9 @@ def _extract_document_plans(data: dict, req: ChatTurnRequest) -> list[dict] | No
     plans = document.get("days")
     if not isinstance(plans, list) or len(plans) != target_days:
         return None
-    valid_days = {int(plan.get("day_no")) for plan in plans if isinstance(plan, dict)
-                  and isinstance(plan.get("day_no"), int)}
+    valid_days = {
+        int(plan.get("day_no")) for plan in plans if isinstance(plan, dict) and isinstance(plan.get("day_no"), int)
+    }
     if valid_days != set(range(1, target_days + 1)):
         return None
     return _hydrate_decision_plans(plans, req)

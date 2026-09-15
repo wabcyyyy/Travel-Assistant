@@ -10,9 +10,13 @@ import json
 import pytest
 
 from app.agent import day_stream
-from app.common import event_publisher
-from app.common.event_publisher import publish_degraded, publish_research_done, publish_research_start
 from app.agent.trace import trace_run
+from app.common import event_publisher
+from app.common.event_publisher import (
+    publish_degraded,
+    publish_research_done,
+    publish_research_start,
+)
 from app.schemas.trip import PlanContextRequest
 
 
@@ -49,8 +53,7 @@ def _successful_context() -> dict:
 
 
 def test_plan_context_success_publishes_start_and_done(events, monkeypatch):
-    monkeypatch.setattr(day_stream, "run_research_context",
-                        lambda req: _successful_context())
+    monkeypatch.setattr(day_stream, "run_research_context", lambda req: _successful_context())
 
     result = day_stream.run_plan_context("杭州", ["亲子"], itinerary_id=88)
 
@@ -64,9 +67,11 @@ def test_plan_context_success_publishes_start_and_done(events, monkeypatch):
     assert done[2] == {
         "evidenceCount": 17,
         "degraded": False,
-        "domains": [{"domain": "attraction", "count": 10},
-                    {"domain": "food", "count": 6},
-                    {"domain": "hotel", "count": 1}],
+        "domains": [
+            {"domain": "attraction", "count": 10},
+            {"domain": "food", "count": 6},
+            {"domain": "hotel", "count": 1},
+        ],
     }
     assert not any(e[1] == "degraded" for e in events)
     # 返回契约保持不变
@@ -79,7 +84,9 @@ def test_plan_context_degraded_pack_publishes_degraded_event(events, monkeypatch
     # 降级包 items 为空，返回的 foods 列表也随之清空
     context["foods"] = []
     context["research_report"]["agents"]["food"] = {
-        "domain": "food", "count": 0, "degraded": True,
+        "domain": "food",
+        "count": 0,
+        "degraded": True,
         "gaps": ["研究失败：高德超时"],
     }
     monkeypatch.setattr(day_stream, "run_research_context", lambda req: context)
@@ -114,8 +121,7 @@ def test_plan_context_exception_publishes_degraded_and_reraises(events, monkeypa
 
 
 def test_plan_context_without_itinerary_id_publishes_nothing(events, monkeypatch):
-    monkeypatch.setattr(day_stream, "run_research_context",
-                        lambda req: _successful_context())
+    monkeypatch.setattr(day_stream, "run_research_context", lambda req: _successful_context())
 
     day_stream.run_plan_context("杭州", [])
 
@@ -124,21 +130,27 @@ def test_plan_context_without_itinerary_id_publishes_nothing(events, monkeypatch
 
 def test_research_event_stats_without_report_falls_back_to_list_lengths(events, monkeypatch):
     """旧式 stub 上下文没有 research_report 时按列表长度统计且不算降级。"""
-    monkeypatch.setattr(day_stream, "run_research_context", lambda req: {
-        "candidates": [{"name": "a"}, {"name": "b"}],
-        "foods": [{"name": "f"}],
-        "hotels": [],
-        "consumption": {},
-    })
+    monkeypatch.setattr(
+        day_stream,
+        "run_research_context",
+        lambda req: {
+            "candidates": [{"name": "a"}, {"name": "b"}],
+            "foods": [{"name": "f"}],
+            "hotels": [],
+            "consumption": {},
+        },
+    )
 
     day_stream.run_plan_context("杭州", [], itinerary_id=1)
 
     done = events[1][2]
     assert done["evidenceCount"] == 3
     assert done["degraded"] is False
-    assert done["domains"] == [{"domain": "attraction", "count": 2},
-                               {"domain": "food", "count": 1},
-                               {"domain": "hotel", "count": 0}]
+    assert done["domains"] == [
+        {"domain": "attraction", "count": 2},
+        {"domain": "food", "count": 1},
+        {"domain": "hotel", "count": 0},
+    ]
 
 
 def test_plan_context_request_accepts_camel_case_itinerary_id():
@@ -154,9 +166,7 @@ def test_publisher_helpers_route_through_publish_event(events):
     publish_research_done(3, 2, False, [{"domain": "attraction", "count": 2}])
     publish_degraded(3, "research", "r", "f")
 
-    assert [(e[0], e[1]) for e in events] == [(3, "research_start"),
-                                              (3, "research_done"),
-                                              (3, "degraded")]
+    assert [(e[0], e[1]) for e in events] == [(3, "research_start"), (3, "research_done"), (3, "degraded")]
 
 
 def _fake_redis_recorder(monkeypatch) -> list[str]:
@@ -180,8 +190,7 @@ def _fake_redis_recorder(monkeypatch) -> list[str]:
 def test_plan_context_events_carry_trace_run_id(monkeypatch):
     """M5 三向关联：trace 上下文内发布的 research 事件 data 携带当前 runId。"""
     published = _fake_redis_recorder(monkeypatch)
-    monkeypatch.setattr(day_stream, "run_research_context",
-                        lambda req: _successful_context())
+    monkeypatch.setattr(day_stream, "run_research_context", lambda req: _successful_context())
 
     with trace_run("run-plan-context") as recorder:
         day_stream.run_plan_context("杭州", [], itinerary_id=88)
@@ -197,8 +206,7 @@ def test_plan_context_events_carry_trace_run_id(monkeypatch):
 def test_plan_context_events_without_trace_have_no_run_id(monkeypatch):
     """无 trace 上下文时退化为旧形态：事件 data 不含 runId。"""
     published = _fake_redis_recorder(monkeypatch)
-    monkeypatch.setattr(day_stream, "run_research_context",
-                        lambda req: _successful_context())
+    monkeypatch.setattr(day_stream, "run_research_context", lambda req: _successful_context())
 
     day_stream.run_plan_context("杭州", [], itinerary_id=88)
 

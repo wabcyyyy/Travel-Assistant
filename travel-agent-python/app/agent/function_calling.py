@@ -12,16 +12,15 @@ from typing import Any
 from app.agent.run_limits import current_limits
 from app.agent.tool_registry import ToolInvocationError, registry
 from app.agent.trace import record_event
-from app.common.config import settings
 
 
 class FunctionCallingError(RuntimeError):
     pass
 
 
-def run_tool_call_loop(client: Any, messages: list[dict], *,
-                      max_rounds: int = 3, model: str | None = None,
-                      max_tokens: int | None = None) -> dict[str, Any]:
+def run_tool_call_loop(
+    client: Any, messages: list[dict], *, max_rounds: int = 3, model: str | None = None, max_tokens: int | None = None
+) -> dict[str, Any]:
     """执行 OpenAI-compatible tools 协议并返回最终 assistant message。"""
     conversation = [dict(message) for message in messages]
     seen: set[str] = set()
@@ -32,15 +31,19 @@ def run_tool_call_loop(client: Any, messages: list[dict], *,
         if limits:
             limits.check("llm")
         extra: dict[str, Any] = {"max_tokens": max_tokens} if max_tokens else {}
-        response = client.chat_response(conversation, model=model, tools=schemas,
-                                        tool_choice="auto", **extra)
+        response = client.chat_response(conversation, model=model, tools=schemas, tool_choice="auto", **extra)
         message = response.get("message") or {}
         calls = message.get("tool_calls") or []
         conversation.append(message)
         if not calls:
-            record_event("decision", "function_calling.complete", metadata={
-                "rounds": round_no + 1, "tool_calls": len(tool_events),
-            })
+            record_event(
+                "decision",
+                "function_calling.complete",
+                metadata={
+                    "rounds": round_no + 1,
+                    "tool_calls": len(tool_events),
+                },
+            )
             return {"message": message, "tool_calls": tool_events, "rounds": round_no + 1}
         if round_no + 1 >= max_rounds:
             raise FunctionCallingError("Function Calling 达到最大轮数")
@@ -64,9 +67,20 @@ def run_tool_call_loop(client: Any, messages: list[dict], *,
                 status = "error"
             call_id = str(call.get("id") or "")
             tool_events.append({"name": name, "call_id": call_id, "status": status})
-            conversation.append({"role": "tool", "tool_call_id": call_id,
-                                 "content": json.dumps(result, ensure_ascii=False, default=str)})
-            record_event("decision", "function_calling.tool_result", metadata={
-                "name": name, "status": status, "round": round_no + 1,
-            })
+            conversation.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "content": json.dumps(result, ensure_ascii=False, default=str),
+                }
+            )
+            record_event(
+                "decision",
+                "function_calling.tool_result",
+                metadata={
+                    "name": name,
+                    "status": status,
+                    "round": round_no + 1,
+                },
+            )
     raise FunctionCallingError("Function Calling 未返回最终答案")

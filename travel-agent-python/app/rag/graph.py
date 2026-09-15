@@ -49,7 +49,7 @@ class PoiGraph:
 
     @staticmethod
     def _split_tags(tags: Any) -> list[str]:
-        tokens = _split_by(str(tags or ""), _TAG_SPLIT + ("|",))
+        tokens = _split_by(str(tags or ""), (*_TAG_SPLIT, "|"))
         return sorted({token.strip() for token in tokens if token.strip()})
 
     def rebuild(self, documents: dict[str, dict[str, Any]]) -> dict[str, int]:
@@ -76,27 +76,40 @@ class PoiGraph:
         with self._lock:
             return {
                 "nodes": len(self._nodes),
-                "cities": len({city for city, _, _ in self._grid}
-                              | {city for city, _ in self._tags}),
+                "cities": len({city for city, _, _ in self._grid} | {city for city, _ in self._tags}),
                 "grid_cells": len(self._grid),
                 "tag_edges": sum(len(pids) for pids in self._tags.values()),
             }
 
-    def neighbors(self, poi_id: str | int, *, limit: int | None = None,
-                  radius_m: int | None = None, category: str | None = None) -> list[dict[str, Any]]:
+    def neighbors(
+        self, poi_id: str | int, *, limit: int | None = None, radius_m: int | None = None, category: str | None = None
+    ) -> list[dict[str, Any]]:
         """给定 POI 的同城近邻：距离升序，不含自身。"""
         with self._lock:
             meta = self._nodes.get(str(poi_id))
             if not meta or not _valid_coords(meta.get("latitude"), meta.get("longitude")):
                 return []
             return self._spatial_query(
-                str(meta.get("city") or ""), float(meta["latitude"]), float(meta["longitude"]),
-                exclude={str(poi_id)}, limit=limit, radius_m=radius_m, category=category,
+                str(meta.get("city") or ""),
+                float(meta["latitude"]),
+                float(meta["longitude"]),
+                exclude={str(poi_id)},
+                limit=limit,
+                radius_m=radius_m,
+                category=category,
             )
 
-    def nearby(self, city: str, latitude: float, longitude: float, *,
-               limit: int | None = None, radius_m: int | None = None,
-               category: str | None = None, exclude: str | int | None = None) -> list[dict[str, Any]]:
+    def nearby(
+        self,
+        city: str,
+        latitude: float,
+        longitude: float,
+        *,
+        limit: int | None = None,
+        radius_m: int | None = None,
+        category: str | None = None,
+        exclude: str | int | None = None,
+    ) -> list[dict[str, Any]]:
         """给定坐标的同城近邻（供地图点位/“附近推荐”使用）。
 
         ``exclude`` 用于锚点 POI 自身的 id：按名称解析锚点坐标后查询时，
@@ -105,10 +118,15 @@ class PoiGraph:
         if not _valid_coords(latitude, longitude):
             return []
         with self._lock:
-            return self._spatial_query(str(city or ""), float(latitude), float(longitude),
-                                       exclude={str(exclude)} if exclude is not None else set(),
-                                       limit=limit, radius_m=radius_m,
-                                       category=category)
+            return self._spatial_query(
+                str(city or ""),
+                float(latitude),
+                float(longitude),
+                exclude={str(exclude)} if exclude is not None else set(),
+                limit=limit,
+                radius_m=radius_m,
+                category=category,
+            )
 
     def same_tag(self, poi_id: str | int, *, limit: int | None = None) -> list[dict[str, Any]]:
         """同城市、标签重合度最高的同类 POI（标签相邻层）。"""
@@ -127,9 +145,10 @@ class PoiGraph:
                         candidate_counter[pid] += 1
             top_n = max(limit or settings.rag_graph_nearby_limit, 1)
             # 标签重合度优先（图的边语义），评分其次，id 保持稳定序。
-            ranked = sorted(candidate_counter.items(),
-                            key=lambda pair: (-pair[1], -(float(self._nodes[pair[0]].get("rating") or 0.0)),
-                                              pair[0]))[:top_n]
+            ranked = sorted(
+                candidate_counter.items(),
+                key=lambda pair: (-pair[1], -(float(self._nodes[pair[0]].get("rating") or 0.0)), pair[0]),
+            )[:top_n]
             results: list[dict[str, Any]] = []
             for pid, shared in ranked:
                 row = dict(self._nodes[pid])
@@ -137,9 +156,17 @@ class PoiGraph:
                 results.append(row)
             return results
 
-    def _spatial_query(self, city: str, latitude: float, longitude: float, *,
-                       exclude: set[str], limit: int | None, radius_m: int | None,
-                       category: str | None) -> list[dict[str, Any]]:
+    def _spatial_query(
+        self,
+        city: str,
+        latitude: float,
+        longitude: float,
+        *,
+        exclude: set[str],
+        limit: int | None,
+        radius_m: int | None,
+        category: str | None,
+    ) -> list[dict[str, Any]]:
         radius = float(radius_m or self.radius_m)
         top_n = max(int(limit or settings.rag_graph_nearby_limit), 1)
         ring = max(int(radius / _CELL_MIN_METERS) + 1, 1)
@@ -153,8 +180,7 @@ class PoiGraph:
                     meta = self._nodes[pid]
                     if category and meta.get("category") != category:
                         continue
-                    distance = haversine_meters(latitude, longitude,
-                                                float(meta["latitude"]), float(meta["longitude"]))
+                    distance = haversine_meters(latitude, longitude, float(meta["latitude"]), float(meta["longitude"]))
                     if distance <= radius:
                         scored.append((distance, pid, meta))
         scored.sort(key=lambda value: (value[0], value[1]))

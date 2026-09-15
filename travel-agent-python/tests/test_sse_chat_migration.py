@@ -28,7 +28,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.api.business import itinerary as itinerary_routes
 from app.api.business.auth import auth_router
-from app.api.business.itinerary import ChatEditBody, router as itinerary_router
+from app.api.business.itinerary import ChatEditBody
+from app.api.business.itinerary import router as itinerary_router
 from app.api.deps import AuthUser as _AuthUser
 from app.common import event_hub, event_publisher
 from app.common.config import settings
@@ -75,23 +76,46 @@ def env(monkeypatch, tmp_path):
 def _seed() -> None:
     hashed = user_service.hash_password(PASSWORD)
     with db_session.session_scope() as session:
-        session.add_all([
-            SysUser(id=OWNER, username="alice", password=hashed, status=1, role="user"),
-            SysUser(id=2, username="mallory", password=hashed, status=1, role="user"),
-        ])
-        session.add(ItineraryMain(
-            id=TRIP, user_id=OWNER, title="杭州2日游", city="杭州", days=2, persons=2,
-            budget=Decimal("3000.00"), status=2, start_date=date(2026, 4, 20),
-            end_date=date(2026, 4, 21), preferences="亲子,美食", hotel_tier="comfort"))
+        session.add_all(
+            [
+                SysUser(id=OWNER, username="alice", password=hashed, status=1, role="user"),
+                SysUser(id=2, username="mallory", password=hashed, status=1, role="user"),
+            ]
+        )
+        session.add(
+            ItineraryMain(
+                id=TRIP,
+                user_id=OWNER,
+                title="杭州2日游",
+                city="杭州",
+                days=2,
+                persons=2,
+                budget=Decimal("3000.00"),
+                status=2,
+                start_date=date(2026, 4, 20),
+                end_date=date(2026, 4, 21),
+                preferences="亲子,美食",
+                hotel_tier="comfort",
+            )
+        )
         day = ItineraryDay(itinerary_id=TRIP, day_no=1, note="湖山线", generation_status="SUCCEEDED")
         session.add(day)
         session.flush()
-        session.add_all([
-            ItineraryItem(day_id=day.id, itinerary_id=TRIP, item_type="attraction", poi_name="西湖",
-                          cost=Decimal("45.00"), start_time=time(9, 30), sort_no=0),
-            BudgetDetail(itinerary_id=TRIP, category="门票", amount=Decimal("45.00"), item_count=1),
-            BudgetDetail(itinerary_id=TRIP, category="酒店", amount=Decimal("600.00"), item_count=2),
-        ])
+        session.add_all(
+            [
+                ItineraryItem(
+                    day_id=day.id,
+                    itinerary_id=TRIP,
+                    item_type="attraction",
+                    poi_name="西湖",
+                    cost=Decimal("45.00"),
+                    start_time=time(9, 30),
+                    sort_no=0,
+                ),
+                BudgetDetail(itinerary_id=TRIP, category="门票", amount=Decimal("45.00"), item_count=1),
+                BudgetDetail(itinerary_id=TRIP, category="酒店", amount=Decimal("600.00"), item_count=2),
+            ]
+        )
 
 
 @pytest.fixture
@@ -137,12 +161,12 @@ def _inline_pool(monkeypatch) -> None:
 
 # ---------- 进程内事件总线 ----------
 
+
 def test_local_subscribers_receive_events_without_redis() -> None:
     """Redis 不可用时本地流必须照收：seq 退进程内自增，广播失败不影响投递。"""
 
     async def scenario():
-        subscription, rejected = event_hub.subscribe(
-            TRIP, event_publisher.too_many_connections_envelope(TRIP))
+        subscription, rejected = event_hub.subscribe(TRIP, event_publisher.too_many_connections_envelope(TRIP))
         assert rejected is False
         event_publisher.publish_event(TRIP, "day_start", {"dayNo": 1})
         frame = await subscription.take(timeout=1)
@@ -152,8 +176,7 @@ def test_local_subscribers_receive_events_without_redis() -> None:
     frame = asyncio.run(scenario())
     assert frame is not None and frame is not event_hub.CLOSED
     envelope = json.loads(frame)
-    assert (envelope["type"], envelope["itineraryId"], envelope["data"]) == (
-        "day_start", TRIP, {"dayNo": 1})
+    assert (envelope["type"], envelope["itineraryId"], envelope["data"]) == ("day_start", TRIP, {"dayNo": 1})
     assert set(envelope) == {"type", "itineraryId", "seq", "ts", "data"}
     assert envelope["seq"] >= 1 and envelope["ts"].endswith("+08:00")
     assert event_hub.subscriber_count(TRIP) == 0
@@ -223,6 +246,7 @@ def test_saturated_subscriber_is_dropped_rather_than_blocking_publisher() -> Non
 # TestClient 会把响应整体缓冲完才返回，无限 SSE 流在它下面永远"回不来"；
 # 因此这两个用例直接调用路由协程并消费 body_iterator，再 aclose 验证订阅被摘除。
 
+
 def test_events_endpoint_streams_in_process_frames() -> None:
     async def scenario():
         response = await itinerary_routes.events(TRIP, user=_AuthUser(id=OWNER, username="alice", role="user"))
@@ -247,13 +271,12 @@ def test_events_endpoint_streams_in_process_frames() -> None:
 
 def test_chat_edit_stream_endpoint_sends_event_frames(monkeypatch) -> None:
     _inline_pool(monkeypatch)
-    _stub_turn(monkeypatch, ChatTurnResponse(reply="两天足够", changed=True,
-                                             plans=[{"day_no": 1, "items": []}]))
+    _stub_turn(monkeypatch, ChatTurnResponse(reply="两天足够", changed=True, plans=[{"day_no": 1, "items": []}]))
 
     async def scenario():
         response = await itinerary_routes.chat_edit_stream(
-            TRIP, ChatEditBody(message="再加一天", history=[]),
-            user=_AuthUser(id=OWNER, username="alice", role="user"))
+            TRIP, ChatEditBody(message="再加一天", history=[]), user=_AuthUser(id=OWNER, username="alice", role="user")
+        )
         kinds = []
         async for chunk in response.body_iterator:
             kinds.append(json.loads(chunk.removeprefix("data:").strip())["type"])
@@ -267,8 +290,7 @@ def test_chat_edit_stream_endpoint_sends_event_frames(monkeypatch) -> None:
 def test_events_endpoint_checks_ownership_before_the_stream(client: TestClient) -> None:
     """非本人必须是 HTTP 404，而不是流建立后再发 error（与 Java findOwnedMain 同序）。"""
     with db_session.session_scope() as session:
-        session.add(ItineraryMain(id=77, user_id=2, title="别人的行程", city="北京", days=1,
-                                  persons=1, status=2))
+        session.add(ItineraryMain(id=77, user_id=2, title="别人的行程", city="北京", days=1, persons=1, status=2))
     missing = client.get("/api/itinerary/77/events")
     assert missing.status_code == 404 and missing.json()["message"] == "行程不存在"
     assert client.get("/api/itinerary/999999/events").status_code == 404
@@ -283,6 +305,7 @@ def test_events_endpoint_requires_login() -> None:
 
 
 # ---------- 对话改行程：阻塞版 ----------
+
 
 def test_chat_edit_builds_the_same_agent_body_the_java_gateway_sent(monkeypatch) -> None:
     turn = ChatTurnResponse(reply="已把西湖挪到下午", plans=[{"day_no": 1, "items": []}], changed=True)
@@ -305,25 +328,59 @@ def test_chat_edit_builds_the_same_agent_body_the_java_gateway_sent(monkeypatch)
     assert out["reply"] == "已把西湖挪到下午" and out["changed"] is True
     assert out["plans"][0]["_baseRevision"] == out["baseRevision"]
     assert out["messageId"] and set(out) == {
-        "reply", "changed", "plans", "hotelOptions", "baseRevision", "requiresConfirmation",
-        "planDocument", "operations", "pendingAction", "messageId"}
+        "reply",
+        "changed",
+        "plans",
+        "hotelOptions",
+        "baseRevision",
+        "requiresConfirmation",
+        "planDocument",
+        "operations",
+        "pendingAction",
+        "messageId",
+    }
 
 
 def test_chat_edit_persists_both_rows_and_invalidates_older_drafts(monkeypatch) -> None:
     with db_session.session_scope() as session:
-        session.add(ItineraryChatMessage(
-            itinerary_id=TRIP, user_id=OWNER, role="ai", content="上一版建议",
-            plans_json='[{"day_no": 1, "items": [], "_baseRevision": "deadbeef"}]',
-            hotel_options_json="[]", changed=1))
+        session.add(
+            ItineraryChatMessage(
+                itinerary_id=TRIP,
+                user_id=OWNER,
+                role="ai",
+                content="上一版建议",
+                plans_json='[{"day_no": 1, "items": [], "_baseRevision": "deadbeef"}]',
+                hotel_options_json="[]",
+                changed=1,
+            )
+        )
         session.flush()
         older_id = session.execute(select(ItineraryChatMessage).limit(1)).scalar_one().id
 
-    _stub_turn(monkeypatch, ChatTurnResponse(
-        reply="好", plans=[{"day_no": 1, "items": []}], changed=True,
-        hotel_options=[HotelOption(id="h1", hotel_name="西子宾馆", tier="comfort", base_price=600.0,
-                                   season_factor=1.0, season_label="平季", nightly_price=600.0,
-                                   nights=1, rooms=1, total_price=600.0, within_budget=True,
-                                   reason="近湖且含早")]))
+    _stub_turn(
+        monkeypatch,
+        ChatTurnResponse(
+            reply="好",
+            plans=[{"day_no": 1, "items": []}],
+            changed=True,
+            hotel_options=[
+                HotelOption(
+                    id="h1",
+                    hotel_name="西子宾馆",
+                    tier="comfort",
+                    base_price=600.0,
+                    season_factor=1.0,
+                    season_label="平季",
+                    nightly_price=600.0,
+                    nights=1,
+                    rooms=1,
+                    total_price=600.0,
+                    within_budget=True,
+                    reason="近湖且含早",
+                )
+            ],
+        ),
+    )
     itinerary_chat.chat_edit(OWNER, TRIP, "换个酒店", [])
 
     with db_session.session_scope() as session:
@@ -339,15 +396,23 @@ def test_chat_edit_persists_both_rows_and_invalidates_older_drafts(monkeypatch) 
 
 def test_chat_edit_keeps_older_draft_when_nothing_changed(monkeypatch) -> None:
     with db_session.session_scope() as session:
-        session.add(ItineraryChatMessage(
-            itinerary_id=TRIP, user_id=OWNER, role="ai", content="待应用",
-            plans_json='[{"day_no": 1, "items": [], "_baseRevision": "x"}]',
-            hotel_options_json="[]", changed=1))
+        session.add(
+            ItineraryChatMessage(
+                itinerary_id=TRIP,
+                user_id=OWNER,
+                role="ai",
+                content="待应用",
+                plans_json='[{"day_no": 1, "items": [], "_baseRevision": "x"}]',
+                hotel_options_json="[]",
+                changed=1,
+            )
+        )
     _stub_turn(monkeypatch, ChatTurnResponse(reply="只是问一句", changed=False))
     itinerary_chat.chat_edit(OWNER, TRIP, "西湖几点开", [])
     with db_session.session_scope() as session:
-        kept = session.execute(select(ItineraryChatMessage).where(
-            ItineraryChatMessage.content == "待应用")).scalar_one()
+        kept = session.execute(
+            select(ItineraryChatMessage).where(ItineraryChatMessage.content == "待应用")
+        ).scalar_one()
         assert kept.plans_json != "[]", "没改动也没酒店提案时不该把用户的待应用草稿清掉"
 
 
@@ -357,9 +422,17 @@ def test_chat_edit_prefers_the_pending_draft_over_database_days(monkeypatch) -> 
     revision = itinerary_chat.plan_revision(itinerary_chat.current_plans(TRIP))
     pending_with_rev = [dict(plan, _baseRevision=revision) for plan in pending]
     with db_session.session_scope() as session:
-        session.add(ItineraryChatMessage(
-            itinerary_id=TRIP, user_id=OWNER, role="ai", content="改成两天",
-            plans_json=json.dumps(pending_with_rev), hotel_options_json="[]", changed=1))
+        session.add(
+            ItineraryChatMessage(
+                itinerary_id=TRIP,
+                user_id=OWNER,
+                role="ai",
+                content="改成两天",
+                plans_json=json.dumps(pending_with_rev),
+                hotel_options_json="[]",
+                changed=1,
+            )
+        )
     seen = _stub_turn(monkeypatch, ChatTurnResponse(reply="好", changed=False))
     itinerary_chat.chat_edit(OWNER, TRIP, "第二天去灵隐", [])
     assert seen[0]["days"] == 2, "DB 里只有 1 天，草稿是 2 天"
@@ -374,8 +447,9 @@ def test_chat_edit_maps_agent_failure_to_the_gateway_502(monkeypatch) -> None:
         itinerary_chat.chat_edit(OWNER, TRIP, "随便改改", [])
     assert (exc.value.status, exc.value.message) == (502, "行程助手暂不可用")
     with db_session.session_scope() as session:
-        assert session.execute(select(ItineraryChatMessage)).scalars().all() == [], \
+        assert session.execute(select(ItineraryChatMessage)).scalars().all() == [], (
             "agent 失败时两条记忆都不该落库（Java 同：先调用后落库）"
+        )
 
 
 def test_chat_edit_rejects_foreign_itinerary_before_calling_agent(monkeypatch) -> None:
@@ -388,8 +462,7 @@ def test_chat_edit_rejects_foreign_itinerary_before_calling_agent(monkeypatch) -
 
 def test_chat_edit_endpoint_wraps_the_result_in_the_result_envelope(client: TestClient, monkeypatch) -> None:
     _stub_turn(monkeypatch, ChatTurnResponse(reply="好", changed=False))
-    body = client.post(f"/api/itinerary/{TRIP}/chat-edit",
-                       json={"message": "西湖几点开", "history": []}).json()
+    body = client.post(f"/api/itinerary/{TRIP}/chat-edit", json={"message": "西湖几点开", "history": []}).json()
     assert body["code"] == 200 and body["data"]["reply"] == "好"
     # 空消息保持 Java 的宽松口径：这层不拦，交给 agent 校验后映射成 502
     empty = client.post(f"/api/itinerary/{TRIP}/chat-edit", json={"message": ""})
@@ -398,12 +471,14 @@ def test_chat_edit_endpoint_wraps_the_result_in_the_result_envelope(client: Test
 
 # ---------- 对话改行程：流式版 ----------
 
+
 def test_stream_frames_match_the_blocking_response_and_rejoin_into_reply(monkeypatch) -> None:
     _inline_pool(monkeypatch)
     reply = "字" * 85
-    seen = _stub_turn(monkeypatch, ChatTurnResponse(
-        reply=reply, plans=[{"day_no": 1, "items": []}], changed=True,
-        operations=[{"kind": "move"}]))
+    seen = _stub_turn(
+        monkeypatch,
+        ChatTurnResponse(reply=reply, plans=[{"day_no": 1, "items": []}], changed=True, operations=[{"kind": "move"}]),
+    )
     frames = _envelopes(_drain(itinerary_chat.chat_edit_stream(OWNER, TRIP, "把西湖改到下午", [])))
 
     assert [frame["type"] for frame in frames[:3]] == ["chat_token"] * 3
@@ -416,16 +491,29 @@ def test_stream_frames_match_the_blocking_response_and_rejoin_into_reply(monkeyp
     assert frames[-1]["data"]["messageId"] == stream_id
     draft = frames[-2]["data"]
     assert "reply" not in draft
-    assert set(draft) == {"changed", "plans", "hotelOptions", "baseRevision", "requiresConfirmation",
-                          "planDocument", "operations", "pendingAction", "messageId"}
+    assert set(draft) == {
+        "changed",
+        "plans",
+        "hotelOptions",
+        "baseRevision",
+        "requiresConfirmation",
+        "planDocument",
+        "operations",
+        "pendingAction",
+        "messageId",
+    }
     assert draft["operations"] == [{"kind": "move"}]
     # 与阻塞版同一条上下文构造：agent 收到的入参形状一致
     assert seen[0]["message"] == "把西湖改到下午" and seen[0]["plans"]
-    assert all(set(frame) == {"type", "itineraryId", "seq", "ts", "data"}
-               and frame["ts"].endswith("+08:00") for frame in frames)
+    assert all(
+        set(frame) == {"type", "itineraryId", "seq", "ts", "data"} and frame["ts"].endswith("+08:00")
+        for frame in frames
+    )
     with db_session.session_scope() as session:
-        roles = [row.role for row in session.execute(
-            select(ItineraryChatMessage).order_by(ItineraryChatMessage.id)).scalars().all()]
+        roles = [
+            row.role
+            for row in session.execute(select(ItineraryChatMessage).order_by(ItineraryChatMessage.id)).scalars().all()
+        ]
         assert roles == ["user", "ai"], "流式路径同样要落库，否则历史与 pendingAction 失效"
 
 
@@ -433,8 +521,7 @@ def test_stream_heartbeats_while_the_model_is_running(monkeypatch) -> None:
     """模型没跑完之前连接不能静默：空闲周期要补心跳帧（Java 那段窗口是完全静默的）。"""
     _stub_turn(monkeypatch, ChatTurnResponse(reply="好", changed=False))
     submitted: list = []
-    monkeypatch.setattr(itinerary_chat.chat_pool, "submit",
-                        lambda task, *args: submitted.append(args))
+    monkeypatch.setattr(itinerary_chat.chat_pool, "submit", lambda task, *args: submitted.append(args))
     frames = _envelopes(_drain_first(itinerary_chat.chat_edit_stream(OWNER, TRIP, "改一下", []), 2))
     assert [frame["type"] for frame in frames] == ["heartbeat", "heartbeat"]
     assert len(submitted) == 1, "任务已提交，只是还没跑完"
@@ -462,8 +549,7 @@ def test_stream_error_frames_for_busy_and_failed_turns(monkeypatch) -> None:
     busy = _envelopes(_drain(itinerary_chat.chat_edit_stream(OWNER, TRIP, "改一下", [])))
     assert len(busy) == 1 and busy[0]["type"] == "error"
     # 与生成任务的 429 同语义，但 SSE 下只能变成事件（HTTP 已经是 200）
-    assert busy[0]["data"] == {"code": "AGENT_BUSY", "message": "行程助手繁忙，请稍后重试",
-                               "retryable": True}
+    assert busy[0]["data"] == {"code": "AGENT_BUSY", "message": "行程助手繁忙，请稍后重试", "retryable": True}
 
     def boom(request):
         raise RuntimeError("模型炸了")
@@ -501,9 +587,17 @@ def test_history_window_applies_when_the_db_is_empty(monkeypatch) -> None:
 
 def test_persisted_memory_replaces_client_history(monkeypatch) -> None:
     with db_session.session_scope() as session:
-        session.add(ItineraryChatMessage(itinerary_id=TRIP, user_id=OWNER, role="ai",
-                                         content="库里的记忆", plans_json="[]",
-                                         hotel_options_json="[]", changed=0))
+        session.add(
+            ItineraryChatMessage(
+                itinerary_id=TRIP,
+                user_id=OWNER,
+                role="ai",
+                content="库里的记忆",
+                plans_json="[]",
+                hotel_options_json="[]",
+                changed=0,
+            )
+        )
     seen = _stub_turn(monkeypatch, ChatTurnResponse(reply="好", changed=False))
     itinerary_chat.chat_edit(OWNER, TRIP, "继续", [{"role": "user", "content": f"m{i}"} for i in range(30)])
     # 一旦库里有记忆就以它为准，并压成 {role, content} 两键（客户端传的整段被忽略）

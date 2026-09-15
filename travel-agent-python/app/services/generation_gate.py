@@ -21,8 +21,8 @@ from app.services import state_and_sessions
 
 logger = logging.getLogger(__name__)
 
-DAY_LOCK_TTL_SECONDS = 5 * 60          # 大于单日最坏生成耗时
-RESUME_LOCK_TTL_SECONDS = 10 * 60      # 大于 Python 读超时 180s + 落库
+DAY_LOCK_TTL_SECONDS = 5 * 60  # 大于单日最坏生成耗时
+RESUME_LOCK_TTL_SECONDS = 10 * 60  # 大于 Python 读超时 180s + 落库
 RESUME_KEY_PREFIX = "gen:resume:"
 
 
@@ -64,6 +64,7 @@ def request_fingerprint(request: Any) -> str:
 
     `request` 可以是 `GenerateRequest` 模型或等值 dict（恢复任务从库里重建时也是这个形状）。
     """
+
     def field(*names: str) -> Any:
         for name in names:
             value = request.get(name) if isinstance(request, dict) else getattr(request, name, None)

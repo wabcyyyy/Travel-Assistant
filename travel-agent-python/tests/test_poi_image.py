@@ -18,20 +18,22 @@ def test_attach_poi_images_skips_hotel_and_keeps_existing(monkeypatch):
 
     monkeypatch.setattr(tools, "poi_image", fake)
 
-    plan = [{
-        "day_no": 1,
-        "items": [
-            {"item_type": "attraction", "poi_name": "故宫"},
-            {"item_type": "food", "poi_name": "全聚德", "image": "http://keep"},
-            {"item_type": "hotel", "poi_name": "某酒店"},
-        ],
-    }]
+    plan = [
+        {
+            "day_no": 1,
+            "items": [
+                {"item_type": "attraction", "poi_name": "故宫"},
+                {"item_type": "food", "poi_name": "全聚德", "image": "http://keep"},
+                {"item_type": "hotel", "poi_name": "某酒店"},
+            ],
+        }
+    ]
     tools.attach_poi_images(plan, "北京")
 
     items = plan[0]["items"]
     assert items[0]["image"] == "http://img/故宫"
     assert items[1]["image"] == "http://keep"  # 已有图片不被覆盖
-    assert "image" not in items[2]             # 酒店不补图
+    assert "image" not in items[2]  # 酒店不补图
     assert ("北京", "故宫") in calls
     assert ("北京", "某酒店") not in calls
 

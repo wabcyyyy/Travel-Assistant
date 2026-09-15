@@ -10,10 +10,10 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from app.agent.run_limits import current_limits
 from app.agent.schedule_optimizer import optimize_daily_plan
 from app.agent.tool_registry import registry
 from app.agent.trace import record_event, traced
-from app.agent.run_limits import current_limits
 from app.common.config import settings
 from app.schemas.trip import LocalReplanRequest
 
@@ -53,7 +53,7 @@ def _replace_unlocked(plan: dict, candidate_items: dict[str, dict], locked: set[
     unlocked_indexes = [index for index in active_indexes if _name(items[index]) not in locked]
     replacements = list(candidate_items.values())
     replaced_from: list[str] = []
-    for index, candidate in zip(unlocked_indexes, replacements):
+    for index, candidate in zip(unlocked_indexes, replacements, strict=False):
         old_name = _name(items[index])
         if old_name == _name(candidate):
             continue
@@ -79,23 +79,31 @@ def run_local_replan(req: LocalReplanRequest) -> dict[str, Any]:
         raw_day = plan.get("day_no")
         try:
             by_day[int(raw_day)] = plan
-        except (TypeError, ValueError):
-            raise ValueError(f"plans 中存在缺少或非法的 day_no：{raw_day!r}")
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"plans 中存在缺少或非法的 day_no：{raw_day!r}") from exc
     missing_days = [day_no for day_no in affected if day_no not in by_day]
     if missing_days:
         raise ValueError(f"找不到受影响日期：{missing_days}")
 
     locked = {str(name).strip() for name in req.locked_names if str(name).strip()}
     candidate_items = _candidate_items(req, req.plans)
-    requested_candidates = [str(name).strip() for name in req.candidate_names
-                            if str(name).strip() and str(name).strip() not in set(req.locked_names)]
+    requested_candidates = [
+        str(name).strip()
+        for name in req.candidate_names
+        if str(name).strip() and str(name).strip() not in set(req.locked_names)
+    ]
     unresolved = [name for name in requested_candidates if name not in candidate_items]
     if unresolved:
         return {
-            "status": "failed", "city": req.city, "affected_day_nos": affected,
-            "plans": deepcopy(req.plans), "locked_items": sorted(locked),
-            "replaced_items": [], "violations": [f"候选点位不存在：{', '.join(unresolved)}"],
-            "score": 0.0, "route_report": {},
+            "status": "failed",
+            "city": req.city,
+            "affected_day_nos": affected,
+            "plans": deepcopy(req.plans),
+            "locked_items": sorted(locked),
+            "replaced_items": [],
+            "violations": [f"候选点位不存在：{', '.join(unresolved)}"],
+            "score": 0.0,
+            "route_report": {},
         }
 
     output = deepcopy(req.plans)
@@ -111,10 +119,14 @@ def run_local_replan(req: LocalReplanRequest) -> dict[str, Any]:
         try:
             matrix = registry.invoke("get_route_matrix", {"items": active, "mode": settings.route_mode})
             optimized = optimize_daily_plan(
-                working, route_matrix=matrix, mode=settings.route_mode,
-                budget_limit=req.budget, required_names=day_locked, locked_names=day_locked,
+                working,
+                route_matrix=matrix,
+                mode=settings.route_mode,
+                budget_limit=req.budget,
+                required_names=day_locked,
+                locked_names=day_locked,
             )
-        except Exception as exc:  # noqa: BLE001 - 局部失败必须可解释返回
+        except Exception as exc:
             violations.append(f"第 {day_no} 天局部重规划失败：{exc}")
             reports[day_no] = {"status": "failed", "violations": [str(exc)]}
             continue
@@ -134,22 +146,37 @@ def run_local_replan(req: LocalReplanRequest) -> dict[str, Any]:
             replacement = next((name for name in new_names if name in candidate_items and name != old_name), None)
             replaced_items.append({"day_no": day_no, "from": old_name, "to": replacement})
         violations.extend([f"第 {day_no} 天：{issue}" for issue in optimized.violations])
-        output = [optimized.plan if isinstance(plan, dict) and int(plan.get("day_no", -1)) == day_no else plan
-                  for plan in output]
+        output = [
+            optimized.plan if isinstance(plan, dict) and int(plan.get("day_no", -1)) == day_no else plan
+            for plan in output
+        ]
 
     failed = bool(violations) or len(reports) != len(affected)
     limits = current_limits()
     if limits:
         limits.record_replan(progressed=not failed and bool(replaced_items))
-    record_event("decision", "local_replan_result", metadata={
-        "affected_days": affected, "locked_count": len(locked),
-        "replacement_count": len(replaced_items), "failed": failed,
-    }, action_id=req.action_id)
+    record_event(
+        "decision",
+        "local_replan_result",
+        metadata={
+            "affected_days": affected,
+            "locked_count": len(locked),
+            "replacement_count": len(replaced_items),
+            "failed": failed,
+        },
+        action_id=req.action_id,
+    )
     return {
-        "status": "failed" if failed else ("degraded" if any(report.get("degraded") for report in reports.values()) else "success"),
-        "city": req.city, "affected_day_nos": affected, "plans": output,
-        "locked_items": sorted(locked), "replaced_items": replaced_items,
-        "violations": violations, "score": round(sum(scores) / len(scores), 4) if scores else 0.0,
+        "status": "failed"
+        if failed
+        else ("degraded" if any(report.get("degraded") for report in reports.values()) else "success"),
+        "city": req.city,
+        "affected_day_nos": affected,
+        "plans": output,
+        "locked_items": sorted(locked),
+        "replaced_items": replaced_items,
+        "violations": violations,
+        "score": round(sum(scores) / len(scores), 4) if scores else 0.0,
         "route_report": reports,
         "failure_reasons": list(req.failure_reasons),
     }

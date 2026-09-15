@@ -16,7 +16,6 @@ from dataclasses import dataclass, field
 from app.agent.reflect import MAX_DAILY_ATTRACTIONS, MAX_DAILY_MINUTES, parse_time
 from app.agent.route_service import RouteService, default_route_service, is_estimated
 
-
 _OPEN_RE = re.compile(r"(\d{1,2}):(\d{2})\s*[-~至]\s*(\d{1,2}):(\d{2})")
 
 
@@ -57,8 +56,9 @@ def _route_minutes(first: dict, second: dict, matrix: dict[tuple[str, str], dict
     route = matrix.get((first_key, second_key))
     if route is None:
         # 测试替身或调用方可能按名称构造矩阵，而业务项使用 poi_id。
-        route = matrix.get((str(first.get("poi_name") or first.get("name")),
-                            str(second.get("poi_name") or second.get("name"))))
+        route = matrix.get(
+            (str(first.get("poi_name") or first.get("name")), str(second.get("poi_name") or second.get("name")))
+        )
     if route is None:
         return 0, None
     try:
@@ -125,7 +125,8 @@ def optimize_daily_plan(
                 "name": item.get("poi_name") or item.get("name"),
                 "reason": f"超过每日景点上限 {max_attractions}",
             }
-            for item in attractions if id(item) not in keep and item.get("poi_name") not in required
+            for item in attractions
+            if id(item) not in keep and item.get("poi_name") not in required
         ]
         active = [item for item in active if item.get("item_type") != "attraction" or id(item) in keep]
 
@@ -135,10 +136,7 @@ def optimize_daily_plan(
         matrix = service.matrix(active, mode=mode)
 
     original_order = {id(item): index for index, item in enumerate(active)}
-    if len(active) <= 7:
-        orders = itertools.permutations(active)
-    else:
-        orders = (tuple(active),)
+    orders = itertools.permutations(active) if len(active) <= 7 else (tuple(active),)
 
     best: tuple[tuple[int, int, int, int], list[dict], list[str], list[dict], int, list[str]] | None = None
     start_min = parse_time(day_start) or 540
@@ -147,10 +145,7 @@ def optimize_daily_plan(
     for order in orders:
         if locked:
             # 局部重规划只能调整未锁定点位；锁定点保留原来的活动槽位。
-            locked_positions = {
-                index: item for index, item in enumerate(active)
-                if item.get("poi_name") in locked
-            }
+            locked_positions = {index: item for index, item in enumerate(active) if item.get("poi_name") in locked}
             if any(order[index] is not item for index, item in locked_positions.items()):
                 continue
         cursor = start_min
@@ -249,7 +244,10 @@ def optimize_daily_plans(
         active = [item for item in plan.get("items") or [] if item.get("item_type") in ("attraction", "food")]
         matrix = service.matrix(active, mode=mode)
         report = optimize_daily_plan(
-            plan, route_matrix=matrix, objective=objective, budget_limit=day_budget,
+            plan,
+            route_matrix=matrix,
+            objective=objective,
+            budget_limit=day_budget,
         )
         optimized.append(report.plan)
         reports.append(report)

@@ -25,7 +25,8 @@ from __future__ import annotations
 import json
 import sys
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from app.agent.day_stream import run_plan_context
 from app.agent.generators import ReferencePool
@@ -39,8 +40,8 @@ JUDGE_SYSTEM_PROMPT = (
     "规则：与参考资料一致的声明为 supported；参考资料未覆盖、无法核实的声明为 "
     "unsupported；模型自述的估算值（remark 含“估算/供参考/以现场为准”）不抽取；"
     "时间安排、顺序、预算等规划性内容不是事实声明，不抽取。"
-    "只输出 JSON：{\"claims\":[{\"text\":\"声明内容\",\"supported\":true或false,"
-    "\"evidence\":\"支持的参考资料编号 R3 或 null\"}]}"
+    '只输出 JSON：{"claims":[{"text":"声明内容","supported":true或false,'
+    '"evidence":"支持的参考资料编号 R3 或 null"}]}'
 )
 
 
@@ -84,17 +85,17 @@ def default_judge(reference_block: str, plans_json: str) -> list[dict[str, Any]]
     start, end = raw.find("{"), raw.rfind("}")
     if start == -1 or end == -1:
         raise ValueError("judge 输出中未找到 JSON")
-    claims = json.loads(raw[start:end + 1]).get("claims")
+    claims = json.loads(raw[start : end + 1]).get("claims")
     return claims if isinstance(claims, list) else []
 
 
-def evaluate_generation(plans: list[dict], *, reference_stats: dict[str, Any],
-                        reference_block: str, judge: JudgeFn | None = None) -> dict[str, float]:
+def evaluate_generation(
+    plans: list[dict], *, reference_stats: dict[str, Any], reference_block: str, judge: JudgeFn | None = None
+) -> dict[str, float]:
     """评测一次引用式生成的全部指标；无参考资料时跳过 faithfulness。"""
     metrics = reference_metrics(reference_stats)
     if reference_stats.get("references"):
-        metrics["faithfulness"] = faithfulness_score(
-            plans, reference_block, judge or default_judge)
+        metrics["faithfulness"] = faithfulness_score(plans, reference_block, judge or default_judge)
     return metrics
 
 
@@ -103,39 +104,48 @@ def aggregate_generation_metrics(results: list[dict[str, float]]) -> dict[str, f
     if not results:
         return {}
     keys = {key for result in results for key in result if isinstance(result[key], (int, float))}
-    return {key: round(sum(float(result[key]) for result in results if key in result)
-                       / max(sum(1 for result in results if key in result), 1), 4)
-            for key in sorted(keys)}
+    return {
+        key: round(
+            sum(float(result[key]) for result in results if key in result)
+            / max(sum(1 for result in results if key in result), 1),
+            4,
+        )
+        for key in sorted(keys)
+    }
 
 
-def run_generation_case(city: str, *, days: int = 2, persons: int = 2,
-                        budget: float | None = None, preferences: list[str] | None = None,
-                        requirements: str | None = None,
-                        judge: JudgeFn | None = None) -> dict[str, Any]:
+def run_generation_case(
+    city: str,
+    *,
+    days: int = 2,
+    persons: int = 2,
+    budget: float | None = None,
+    preferences: list[str] | None = None,
+    requirements: str | None = None,
+    judge: JudgeFn | None = None,
+) -> dict[str, Any]:
     """对单个城市执行一次真实评测：检索上下文 → 开放模式引用式生成 → 指标。"""
-    from app.schemas.trip import GenerateRequest
-
     from app.agent.workflow import _generate_open_plans
+    from app.schemas.trip import GenerateRequest
 
     preferences = preferences or []
     context = run_plan_context(city, preferences)
-    req = GenerateRequest(city=city, days=days, persons=persons, budget=budget,
-                          preferences=preferences, requirements=requirements)
+    req = GenerateRequest(
+        city=city, days=days, persons=persons, budget=budget, preferences=preferences, requirements=requirements
+    )
     started = time.monotonic()
-    state = _generate_open_plans(req, "", context.get("hotels"),
-                                 candidates=context.get("candidates"),
-                                 foods=context.get("foods"))
+    state = _generate_open_plans(
+        req, "", context.get("hotels"), candidates=context.get("candidates"), foods=context.get("foods")
+    )
     duration_ms = int((time.monotonic() - started) * 1000)
     if state is None:
         return {"city": city, "error": "open_research_failed", "duration_ms": duration_ms}
     plans = state.get("daily_plans") or []
     stats = (state.get("schedule_report") or {}).get("reference_stats") or {}
     pool = ReferencePool(context)
-    metrics = evaluate_generation(plans, reference_stats=stats,
-                                  reference_block=pool.block(), judge=judge)
+    metrics = evaluate_generation(plans, reference_stats=stats, reference_block=pool.block(), judge=judge)
     record_event("evaluation", "generation_case", metadata={"city": city, **metrics})
-    return {"city": city, "days": days, "metrics": metrics,
-            "reference_stats": stats, "duration_ms": duration_ms}
+    return {"city": city, "days": days, "metrics": metrics, "reference_stats": stats, "duration_ms": duration_ms}
 
 
 DEFAULT_CITIES = ("北京", "上海", "成都", "西安", "三亚", "杭州")
@@ -148,8 +158,7 @@ def main() -> int:
     ok = [result for result in results if "metrics" in result]
     report = {
         "cases": results,
-        "aggregate": aggregate_generation_metrics(
-            [result["metrics"] for result in ok]),
+        "aggregate": aggregate_generation_metrics([result["metrics"] for result in ok]),
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0

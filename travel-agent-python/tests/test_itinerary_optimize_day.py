@@ -23,7 +23,14 @@ from app.api.business.itinerary import router as itinerary_router
 from app.common.config import settings
 from app.common.envelope import install_exception_handlers
 from app.db import session as db_session
-from app.db.models import Base, ItineraryDay, ItineraryItem, ItineraryMain, ItineraryVersion, SysUser
+from app.db.models import (
+    Base,
+    ItineraryDay,
+    ItineraryItem,
+    ItineraryMain,
+    ItineraryVersion,
+    SysUser,
+)
 from app.services import cache_store, user_service
 
 JWT_MATERIAL = "example-only-hs256-test-signing-material"
@@ -47,24 +54,57 @@ def _seed() -> None:
     hashed = user_service.hash_password("x")
     with db_session.session_scope() as session:
         session.add(SysUser(username="alice", password=hashed, status=1, role="user"))
-        trip = ItineraryMain(user_id=1, title="杭州2日游", city="杭州", start_date=date(2026, 4, 1),
-                             end_date=date(2026, 4, 2), days=2, persons=2, budget=Decimal("2000.00"), status=2)
+        trip = ItineraryMain(
+            user_id=1,
+            title="杭州2日游",
+            city="杭州",
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 4, 2),
+            days=2,
+            persons=2,
+            budget=Decimal("2000.00"),
+            status=2,
+        )
         session.add(trip)
         session.flush()
-        first = ItineraryDay(itinerary_id=trip.id, day_no=1, generation_status="SUCCEEDED",
-                             metadata_json='{"theme": "初版标题"}')
+        first = ItineraryDay(
+            itinerary_id=trip.id, day_no=1, generation_status="SUCCEEDED", metadata_json='{"theme": "初版标题"}'
+        )
         second = ItineraryDay(itinerary_id=trip.id, day_no=2, generation_status="SUCCEEDED")
         session.add_all([first, second])
         session.flush()
         # 共线三点、故意乱序：甲(经度 0.0) 丙(0.2) 乙(0.1) —— 唯一最优路径为 甲 → 乙 → 丙
-        session.add_all([
-            ItineraryItem(day_id=first.id, itinerary_id=trip.id, item_type="attraction", poi_name="甲点",
-                          latitude=Decimal("30.000000"), longitude=Decimal("120.000000"), sort_no=0),
-            ItineraryItem(day_id=first.id, itinerary_id=trip.id, item_type="attraction", poi_name="丙点",
-                          latitude=Decimal("30.000000"), longitude=Decimal("120.200000"), sort_no=1),
-            ItineraryItem(day_id=first.id, itinerary_id=trip.id, item_type="attraction", poi_name="乙点",
-                          latitude=Decimal("30.000000"), longitude=Decimal("120.100000"), sort_no=2),
-        ])
+        session.add_all(
+            [
+                ItineraryItem(
+                    day_id=first.id,
+                    itinerary_id=trip.id,
+                    item_type="attraction",
+                    poi_name="甲点",
+                    latitude=Decimal("30.000000"),
+                    longitude=Decimal("120.000000"),
+                    sort_no=0,
+                ),
+                ItineraryItem(
+                    day_id=first.id,
+                    itinerary_id=trip.id,
+                    item_type="attraction",
+                    poi_name="丙点",
+                    latitude=Decimal("30.000000"),
+                    longitude=Decimal("120.200000"),
+                    sort_no=1,
+                ),
+                ItineraryItem(
+                    day_id=first.id,
+                    itinerary_id=trip.id,
+                    item_type="attraction",
+                    poi_name="乙点",
+                    latitude=Decimal("30.000000"),
+                    longitude=Decimal("120.100000"),
+                    sort_no=2,
+                ),
+            ]
+        )
 
 
 @pytest.fixture
@@ -84,12 +124,18 @@ def _trip_id(client: TestClient) -> int:
 
 def _day_ids(trip_id: int) -> list[int]:
     with db_session.session_scope() as session:
-        return [row.id for row in session.execute(
-            select(ItineraryDay).where(ItineraryDay.itinerary_id == trip_id).order_by(ItineraryDay.day_no)
-        ).scalars().all()]
+        return [
+            row.id
+            for row in session.execute(
+                select(ItineraryDay).where(ItineraryDay.itinerary_id == trip_id).order_by(ItineraryDay.day_no)
+            )
+            .scalars()
+            .all()
+        ]
 
 
 # ---------- 优化路线 ----------
+
 
 def test_optimize_reorders_collinear_day_and_writes_snapshots(client: TestClient) -> None:
     trip_id = _trip_id(client)
@@ -105,9 +151,14 @@ def test_optimize_reorders_collinear_day_and_writes_snapshots(client: TestClient
     assert [item["sortNo"] for item in items] == [0, 1, 2]
 
     with db_session.session_scope() as session:
-        ops = [row.operation for row in session.execute(
-            select(ItineraryVersion).where(ItineraryVersion.itinerary_id == trip_id).order_by(ItineraryVersion.id)
-        ).scalars().all()]
+        ops = [
+            row.operation
+            for row in session.execute(
+                select(ItineraryVersion).where(ItineraryVersion.itinerary_id == trip_id).order_by(ItineraryVersion.id)
+            )
+            .scalars()
+            .all()
+        ]
     assert ops.count("optimize") >= 2, "优化前后各应有一条 optimize 快照"
 
 
@@ -116,8 +167,7 @@ def test_optimize_keeps_unmapped_trailing_items(client: TestClient) -> None:
     trip_id = _trip_id(client)
     day1, _ = _day_ids(trip_id)
     with db_session.session_scope() as session:
-        session.add(ItineraryItem(day_id=day1, itinerary_id=trip_id, item_type="hotel",
-                                  poi_name="湖畔酒店", sort_no=3))
+        session.add(ItineraryItem(day_id=day1, itinerary_id=trip_id, item_type="hotel", poi_name="湖畔酒店", sort_no=3))
 
     response = client.post(f"/api/itinerary/{trip_id}/optimize", json={"dayId": day1})
     names = [item["poiName"] for item in response.json()["data"]["dayList"][0]["items"]]
@@ -139,6 +189,7 @@ def test_optimize_requires_two_active_items_and_day_id(client: TestClient) -> No
 
 # ---------- 日标题 ----------
 
+
 def test_patch_day_theme_set_and_clear(client: TestClient) -> None:
     trip_id = _trip_id(client)
     day1, _ = _day_ids(trip_id)
@@ -151,9 +202,14 @@ def test_patch_day_theme_set_and_clear(client: TestClient) -> None:
     assert clear_resp.json()["data"]["dayList"][0]["theme"] in (None, "")
 
     with db_session.session_scope() as session:
-        ops = [row.operation for row in session.execute(
-            select(ItineraryVersion).where(ItineraryVersion.itinerary_id == trip_id).order_by(ItineraryVersion.id)
-        ).scalars().all()]
+        ops = [
+            row.operation
+            for row in session.execute(
+                select(ItineraryVersion).where(ItineraryVersion.itinerary_id == trip_id).order_by(ItineraryVersion.id)
+            )
+            .scalars()
+            .all()
+        ]
     assert ops.count("update_day") >= 4, "两次编辑各前后一条 update_day 快照"
 
 

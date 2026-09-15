@@ -16,7 +16,6 @@ import threading
 import time
 import uuid
 from collections import deque
-from typing import Optional
 
 from app.common import redis_client
 
@@ -64,6 +63,7 @@ def register_key(ip: str) -> str:
 
 # ---------- 滑动窗口 ----------
 
+
 def sliding_hit(key: str, window_seconds: int) -> int:
     """记一次事件，返回窗口内事件数（含本次）。"""
     now = time.time()
@@ -89,9 +89,7 @@ def sliding_hit(key: str, window_seconds: int) -> int:
 def sliding_count(key: str, window_seconds: int) -> int:
     try:
         now = time.time()
-        return int(
-            _redis().zcount(key, (now - window_seconds) * 1000, "+inf") or 0
-        )
+        return int(_redis().zcount(key, (now - window_seconds) * 1000, "+inf") or 0)
     except Exception as exc:
         redis_client.note_failure(exc)
         logger.debug("sliding_count redis fallback (%s): %s", key, exc)
@@ -116,6 +114,7 @@ def reset_counter(key: str) -> None:
 # ---------- 一次性标记（SETNX + TTL） ----------
 # 移植自 Java `DistributedStateService.tryMark/isMarked/unmark`：生成日锁与恢复去重锁都靠它。
 # Redis 可用时跨实例互斥；不可用时退回进程内 map（仅单机有效），与 Java 同语义。
+
 
 def try_mark(key: str, ttl_seconds: int) -> bool:
     """占位成功返回 True；已被占用返回 False（**不**续期别人的占用）。
@@ -171,6 +170,7 @@ def unmark(key: str) -> None:
 
 
 # ---------- 多端会话 ----------
+
 
 def register_session(username: str, jti: str, token: str, ttl_seconds: int) -> None:
     if not username or not jti or not token or ttl_seconds <= 0:

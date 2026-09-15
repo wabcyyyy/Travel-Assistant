@@ -69,10 +69,7 @@ def _statements_in_range(lo: int | None, hi: int | None) -> list[tuple[str, str]
             continue
         if hi is not None and number > hi:
             continue
-        out.extend(
-            (path.name, statement)
-            for statement in split_statements(path.read_text(encoding="utf-8"))
-        )
+        out.extend((path.name, statement) for statement in split_statements(path.read_text(encoding="utf-8")))
     return out
 
 

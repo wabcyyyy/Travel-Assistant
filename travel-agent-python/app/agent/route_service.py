@@ -14,13 +14,12 @@ from __future__ import annotations
 import math
 import threading
 import time
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable
 
 from app.agent.geo import haversine_meters
 from app.agent.trace import record_event
 from app.common.config import settings
-
 
 ESTIMATE_SOURCE = "coordinate-estimate"
 ROUTE_SPEED_KMH = 25.0
@@ -39,8 +38,7 @@ _ROUTE_CACHE_MAX = 2000
 def _prune_route_cache(now: float) -> None:
     if len(_route_cache) < _ROUTE_CACHE_MAX:
         return
-    expired = [key for key, (stored_at, _) in _route_cache.items()
-               if now - stored_at > settings.route_cache_ttl]
+    expired = [key for key, (stored_at, _) in _route_cache.items() if now - stored_at > settings.route_cache_ttl]
     for key in expired:
         _route_cache.pop(key, None)
     # 仍超限时按写入时间淘汰最旧的（近似 LRU，避免无界内存）。
@@ -94,10 +92,19 @@ def is_estimated(source: str | None) -> bool:
     return str(source or "") == ESTIMATE_SOURCE
 
 
-def _base_result(first: dict, second: dict, mode: str, *, source: str,
-                 distance_m: float, duration_min: int, confidence: float,
-                 degraded: bool, departure_time: str | datetime | None = None,
-                 fallback_reason: str | None = None) -> dict:
+def _base_result(
+    first: dict,
+    second: dict,
+    mode: str,
+    *,
+    source: str,
+    distance_m: float,
+    duration_min: int,
+    confidence: float,
+    degraded: bool,
+    departure_time: str | datetime | None = None,
+    fallback_reason: str | None = None,
+) -> dict:
     result = {
         "from_poi_id": _item_key(first),
         "to_poi_id": _item_key(second),
@@ -119,9 +126,13 @@ def _base_result(first: dict, second: dict, mode: str, *, source: str,
     return result
 
 
-def coordinate_estimate(first: dict, second: dict, mode: str = "walking",
-                        departure_time: str | datetime | None = None,
-                        reason: str = "route_service_unavailable") -> dict | None:
+def coordinate_estimate(
+    first: dict,
+    second: dict,
+    mode: str = "walking",
+    departure_time: str | datetime | None = None,
+    reason: str = "route_service_unavailable",
+) -> dict | None:
     """使用坐标产生保守估算；任一地点缺坐标时不猜路线。"""
     first_coords = _coords(first)
     second_coords = _coords(second)
@@ -132,14 +143,20 @@ def coordinate_estimate(first: dict, second: dict, mode: str = "walking",
     base = max(5.0, distance_m * ROAD_DISTANCE_FACTOR / (speed_kmh * 1000 / 60))
     duration = math.ceil(base * (1 + ROUTE_BUFFER_RATIO) + ROUTE_FIXED_BUFFER_MIN)
     return _base_result(
-        first, second, mode, source=ESTIMATE_SOURCE, distance_m=distance_m,
-        duration_min=duration, confidence=0.45, degraded=True,
-        departure_time=departure_time, fallback_reason=reason,
+        first,
+        second,
+        mode,
+        source=ESTIMATE_SOURCE,
+        distance_m=distance_m,
+        duration_min=duration,
+        confidence=0.45,
+        degraded=True,
+        departure_time=departure_time,
+        fallback_reason=reason,
     )
 
 
-def _with_peak_factor(result: dict | None,
-                      departure_time: str | datetime | None) -> dict | None:
+def _with_peak_factor(result: dict | None, departure_time: str | datetime | None) -> dict | None:
     """对路线结果统一做高峰系数修正（注入的供应商/测试替身同样适用）。"""
     if result is None or not departure_time or "base_duration_min" in result:
         return result
@@ -164,12 +181,17 @@ class RouteService:
         self.fetcher = fetcher
         self._local = threading.local()
 
-    def get_route(self, first: dict, second: dict, *, mode: str = "walking",
-                  departure_time: str | datetime | None = None) -> dict | None:
+    def get_route(
+        self, first: dict, second: dict, *, mode: str = "walking", departure_time: str | datetime | None = None
+    ) -> dict | None:
         first_key, second_key = _item_key(first), _item_key(second)
         cache_key = (
-            first_key, second_key, tuple(_coords(first) or ()), tuple(_coords(second) or ()),
-            mode, str(departure_time or ""),
+            first_key,
+            second_key,
+            tuple(_coords(first) or ()),
+            tuple(_coords(second) or ()),
+            mode,
+            str(departure_time or ""),
         )
         now = time.monotonic()
         cached = _route_cache.get(cache_key)
@@ -186,7 +208,7 @@ class RouteService:
                 self._local.calls = calls + 1
                 try:
                     result = self.fetcher(first, second, mode, departure_time)
-                except Exception as exc:  # noqa: BLE001 - 注入的供应商失败必须可降级
+                except Exception as exc:
                     record_event("tool", "route.fetch", status="error", error=str(exc), metadata={"mode": mode})
                     result = None
                     fallback_reason = "route_service_error"
@@ -199,26 +221,35 @@ class RouteService:
 
         if result is None:
             result = coordinate_estimate(
-                first, second, mode, departure_time, reason=fallback_reason,
+                first,
+                second,
+                mode,
+                departure_time,
+                reason=fallback_reason,
             )
         if result is not None:
             _prune_route_cache(now)
             _route_cache[cache_key] = (now, dict(result))
-            record_event("tool", "route.get", metadata={
-                "mode": mode,
-                "source": result["source"],
-                "degraded": result["degraded"],
-                "duration_min": result["duration_min"],
-            })
+            record_event(
+                "tool",
+                "route.get",
+                metadata={
+                    "mode": mode,
+                    "source": result["source"],
+                    "degraded": result["degraded"],
+                    "duration_min": result["duration_min"],
+                },
+            )
         return result
 
-    def matrix(self, items: list[dict], *, mode: str = "walking",
-               departure_time: str | datetime | None = None) -> dict[tuple[str, str], dict]:
+    def matrix(
+        self, items: list[dict], *, mode: str = "walking", departure_time: str | datetime | None = None
+    ) -> dict[tuple[str, str], dict]:
         # 调用预算属于一次矩阵构建，不应在全局单例生命周期内累计。
         self._local.calls = 0
         matrix: dict[tuple[str, str], dict] = {}
         for index, first in enumerate(items):
-            for second in items[index + 1:]:
+            for second in items[index + 1 :]:
                 result = self.get_route(first, second, mode=mode, departure_time=departure_time)
                 reverse = self.get_route(second, first, mode=mode, departure_time=departure_time)
                 if result is not None:
@@ -235,6 +266,7 @@ def clear_route_cache() -> None:
 default_route_service = RouteService()
 
 
-def get_route_matrix(items: list[dict], *, mode: str = "walking",
-                     departure_time: str | datetime | None = None) -> dict[tuple[str, str], dict]:
+def get_route_matrix(
+    items: list[dict], *, mode: str = "walking", departure_time: str | datetime | None = None
+) -> dict[tuple[str, str], dict]:
     return default_route_service.matrix(items, mode=mode, departure_time=departure_time)

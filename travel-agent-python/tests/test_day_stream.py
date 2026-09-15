@@ -1,6 +1,6 @@
-from app.agent import day_stream
 from pydantic import ValidationError
 
+from app.agent import day_stream
 from app.schemas.trip import BackupRule, GenerateDayRequest, GenerateRequest, PhotoSpot
 
 
@@ -16,22 +16,28 @@ def test_generate_request_rejects_more_than_one_week():
 def test_open_city_can_generate_after_workflow_enters_fallback(monkeypatch):
     """没有本地候选的城市也不能因某一天重试而中止整段行程。"""
     monkeypatch.setattr(day_stream.settings, "llm_api_key", "configured")
-    monkeypatch.setattr(day_stream, "_llm_open_day", lambda req, used: {
-        "note": "苏州第2天行程",
-        "theme": "园林慢游",
-        "mini_route": {"mode": "walking"},
-        "backup_plan": [{"name": "狮子林"}],
-        "photo_spots": [{"name": "拙政园入口"}],
-        "practical_notes": ["提前预约"],
-        "items": [{
-            "item_type": "attraction",
-            "poi_name": "拙政园",
-            "start_time": "09:00",
-            "end_time": "11:00",
-            "duration_min": 120,
-            "cost": 0,
-        }],
-    })
+    monkeypatch.setattr(
+        day_stream,
+        "_llm_open_day",
+        lambda req, used: {
+            "note": "苏州第2天行程",
+            "theme": "园林慢游",
+            "mini_route": {"mode": "walking"},
+            "backup_plan": [{"name": "狮子林"}],
+            "photo_spots": [{"name": "拙政园入口"}],
+            "practical_notes": ["提前预约"],
+            "items": [
+                {
+                    "item_type": "attraction",
+                    "poi_name": "拙政园",
+                    "start_time": "09:00",
+                    "end_time": "11:00",
+                    "duration_min": 120,
+                    "cost": 0,
+                }
+            ],
+        },
+    )
 
     plan, source = day_stream._generate_day_once(
         GenerateDayRequest(
@@ -61,17 +67,23 @@ def test_open_city_can_generate_after_workflow_enters_fallback(monkeypatch):
 def test_duration_min_follows_scheduled_window(monkeypatch):
     """库内典型时长（如 480）不得覆盖已排时间窗（09:00-11:30 → 150）。"""
     monkeypatch.setattr(day_stream.settings, "llm_api_key", "configured")
-    monkeypatch.setattr(day_stream, "_llm_open_day", lambda req, used: {
-        "note": "杭州第1天",
-        "items": [{
-            "item_type": "attraction",
-            "poi_name": "西湖",
-            "start_time": "09:00",
-            "end_time": "11:30",
-            "duration_min": 480,
-            "cost": 0,
-        }],
-    })
+    monkeypatch.setattr(
+        day_stream,
+        "_llm_open_day",
+        lambda req, used: {
+            "note": "杭州第1天",
+            "items": [
+                {
+                    "item_type": "attraction",
+                    "poi_name": "西湖",
+                    "start_time": "09:00",
+                    "end_time": "11:30",
+                    "duration_min": 480,
+                    "cost": 0,
+                }
+            ],
+        },
+    )
     plan, _ = day_stream._generate_day_once(
         GenerateDayRequest(
             city="杭州",

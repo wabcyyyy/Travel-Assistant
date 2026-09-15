@@ -43,6 +43,7 @@ def get_supported_cities() -> dict:
 
 # ---- agent 能力（同进程直调，迁移前是 Java→HTTP 一跳）----
 
+
 @router.post("/clarify")
 def post_clarify(body: dict[str, Any]) -> dict:
     """槽位澄清：纯解析，不落库（同 Java `ItineraryCityService.clarify`）。"""
@@ -53,8 +54,7 @@ def post_clarify(body: dict[str, Any]) -> dict:
 @router.post("/city-guide")
 def post_city_guide(body: dict[str, Any]) -> dict:
     history = body.get("history")
-    return ok(itinerary_city.city_guide(str(body.get("input") or ""),
-                                        history if isinstance(history, list) else []))
+    return ok(itinerary_city.city_guide(str(body.get("input") or ""), history if isinstance(history, list) else []))
 
 
 @router.post("/poi-nearby")
@@ -63,13 +63,15 @@ def post_poi_nearby(body: dict[str, Any]) -> dict:
 
 
 @router.post("/generate")
-def post_generate(body: itinerary_generation.GenerateTripRequest,
-                  user: AuthUser | None = Depends(enforce_business_auth)) -> dict:
+def post_generate(
+    body: itinerary_generation.GenerateTripRequest, user: AuthUser | None = Depends(enforce_business_auth)
+) -> dict:
     """建壳 + 异步逐日生成，立即返回可轮询的初始详情（status=1）。"""
     return ok(itinerary_generation.generate(user.id, body))
 
 
 # ---- 偏好：字面量路径必须声明在 /{id} 之前，否则会被路径参数吞掉 ----
+
 
 class PreferenceSignalsBody(BaseModel):
     explicitPreferences: list[str] | None = None
@@ -128,6 +130,7 @@ def top_preferences(user_id: int, limit: int = 5) -> list[str]:
 
 
 # ---- 写路径与版本（M4）----
+
 
 class VersionBody(BaseModel):
     operation: str = "snapshot"
@@ -269,13 +272,13 @@ class ChatEditBody(BaseModel):
 
 
 @router.get("/{id}/events")
-async def events(id: int = Path(..., ge=1),
-                 user: AuthUser | None = Depends(enforce_business_auth)) -> StreamingResponse:
+async def events(
+    id: int = Path(..., ge=1), user: AuthUser | None = Depends(enforce_business_auth)
+) -> StreamingResponse:
     """订阅生成进度事件流（进程内 SSE；取代 Java 的「Redis pub/sub → SseEmitter」转发桥）。"""
     # 归属查询进线程池，登记订阅必须在事件循环里做（要捕获 loop 才能跨线程投递）
     await run_in_threadpool(itinerary_query.find_owned_main, user.id, id)
-    subscription, _rejected = event_hub.subscribe(
-        id, event_publisher.too_many_connections_envelope(id))
+    subscription, _rejected = event_hub.subscribe(id, event_publisher.too_many_connections_envelope(id))
     return _sse(_event_frames(id, subscription))
 
 
@@ -295,14 +298,16 @@ async def _event_frames(itinerary_id: int, subscription):
 
 
 @router.post("/{id}/chat-edit")
-def chat_edit(id: int = Path(..., ge=1), body: ChatEditBody = Body(...),
-              user: AuthUser | None = Depends(enforce_business_auth)) -> dict:
+def chat_edit(
+    id: int = Path(..., ge=1), body: ChatEditBody = Body(...), user: AuthUser | None = Depends(enforce_business_auth)
+) -> dict:
     return ok(itinerary_chat.chat_edit(user.id, id, body.message, body.history))
 
 
 @router.post("/{id}/chat-edit/stream")
-async def chat_edit_stream(id: int = Path(..., ge=1), body: ChatEditBody = Body(...),
-                           user: AuthUser | None = Depends(enforce_business_auth)) -> StreamingResponse:
+async def chat_edit_stream(
+    id: int = Path(..., ge=1), body: ChatEditBody = Body(...), user: AuthUser | None = Depends(enforce_business_auth)
+) -> StreamingResponse:
     """对话编辑的 SSE 变体：与非阻塞版同参构造、同一条落库收尾路径。"""
     await run_in_threadpool(itinerary_query.find_owned_main, user.id, id)
     return _sse(_sse_frames(itinerary_chat.chat_edit_stream(user.id, id, body.message, body.history)))
@@ -321,7 +326,8 @@ def _sse(frames) -> StreamingResponse:
             "Cache-Control": "no-cache",
             # 反向代理默认会缓冲响应，SSE 会被攒成一坨；这个头让 nginx 对该连接关掉缓冲
             "X-Accel-Buffering": "no",
-        })
+        },
+    )
 
 
 @router.get("/{id}/versions")
@@ -359,6 +365,7 @@ def restore_version(
 
 # ---- 封面 / 收藏 / 归档（SPEC v2.3 §6.3/§6.5，S1）----
 
+
 class CoverBody(BaseModel):
     source: str
     unsplashId: str | None = None
@@ -386,8 +393,9 @@ def upload_cover(
 ) -> dict:
     """用户上传（jpeg/png，≤5MB——S0-3 在服务层流式截断）；文件名一律不使用（uuid 落盘）。"""
     data = cover_service.read_upload_capped(file.file, settings.cover_upload_max_bytes)
-    return ok(cover_service.set_cover_upload(
-        user.id, id, filename=file.filename, content_type=file.content_type, data=data))
+    return ok(
+        cover_service.set_cover_upload(user.id, id, filename=file.filename, content_type=file.content_type, data=data)
+    )
 
 
 class FavoriteBody(BaseModel):
@@ -417,6 +425,7 @@ def set_archived(
 
 
 # ---- 公开分享（SPEC v2.3 §6.6，S2）：owner 面三端点；匿名面在 share.py ----
+
 
 class ShareCreateBody(BaseModel):
     expireDays: int | None = None

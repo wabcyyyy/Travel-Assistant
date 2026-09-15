@@ -10,19 +10,18 @@ import contextvars
 import functools
 import time
 from collections import deque
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from threading import Lock
-from typing import Callable, Iterator
 
-from app.agent.trace import TraceRecorder, trace_run
+from app.agent.run_limits import begin_limits, current_limits, end_limits
 from app.agent.tool_registry import begin_tool_budget, end_tool_budget
-from app.agent.run_limits import begin_limits, end_limits, current_limits
+from app.agent.trace import TraceRecorder, trace_run
 from app.agent.trace_store import TraceStore
 from app.common.config import settings
 
 # 场景标记：用于 token 用量按业务场景拆分（generate/clarify/chat/assist/other）。
-_active_scene: "contextvars.ContextVar[str | None]" = contextvars.ContextVar(
-    "active_scene", default=None)
+_active_scene: contextvars.ContextVar[str | None] = contextvars.ContextVar("active_scene", default=None)
 
 
 def current_scene() -> str:
@@ -40,12 +39,15 @@ def use_scene(scene: str) -> Iterator[None]:
 
 def scene(name: str) -> Callable:
     """路由装饰器：把 handler 内的 LLM 调用归到指定业务场景。"""
+
     def decorator(fn: Callable) -> Callable:
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
             with use_scene(name):
                 return fn(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -87,7 +89,7 @@ class MetricsRegistry:
         # 按业务场景拆分的 token 用量：scene -> {llm_calls, prompt_tokens, completion_tokens}
         self._scene_counts: dict[str, dict[str, int]] = {}
         # 最近 60 分钟逐分钟 token 消耗（内存环形桶，Agent 重启清零）
-        self._timeline: "deque[dict]" = deque(maxlen=60)
+        self._timeline: deque[dict] = deque(maxlen=60)
         self._store = TraceStore(settings.trace_storage_path) if settings.trace_storage_enabled else None
 
     def record_llm_call(self, prompt_tokens: int, completion_tokens: int) -> None:
@@ -100,14 +102,12 @@ class MetricsRegistry:
             self._counts["llm_calls"] += 1
             self._counts["prompt_tokens"] += prompt
             self._counts["completion_tokens"] += completion
-            bucket = self._scene_counts.setdefault(
-                scene, {"llm_calls": 0, "prompt_tokens": 0, "completion_tokens": 0})
+            bucket = self._scene_counts.setdefault(scene, {"llm_calls": 0, "prompt_tokens": 0, "completion_tokens": 0})
             bucket["llm_calls"] += 1
             bucket["prompt_tokens"] += prompt
             bucket["completion_tokens"] += completion
             if not self._timeline or self._timeline[-1]["ts"] != minute:
-                self._timeline.append(
-                    {"ts": minute, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0})
+                self._timeline.append({"ts": minute, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0})
             slot = self._timeline[-1]
             slot["calls"] += 1
             slot["prompt_tokens"] += prompt
@@ -128,12 +128,8 @@ class MetricsRegistry:
     def record(self, trace: dict, *, success: bool) -> None:
         events = trace.get("events") or []
         durations = [float(e.get("duration_ms") or 0) for e in events]
-        status_events = [
-            e for e in events
-            if e.get("kind") == "decision" and e.get("name") == "run_status"
-        ]
-        run_status = ((status_events[-1].get("metadata") or {}).get("status")
-                      if status_events else None)
+        status_events = [e for e in events if e.get("kind") == "decision" and e.get("name") == "run_status"]
+        run_status = (status_events[-1].get("metadata") or {}).get("status") if status_events else None
         is_degraded = run_status == "degraded"
         is_cancelled = run_status == "cancelled"
         is_failed = not success or run_status == "failed"
@@ -150,7 +146,8 @@ class MetricsRegistry:
             "validation_retries": sum(e.get("kind") == "route" and e.get("name") in ("fix", "retry") for e in events),
             "fallback_runs": sum(e.get("kind") == "route" and e.get("name") == "fallback" for e in events),
             "route_violations": sum(
-                e.get("kind") == "decision" and e.get("name") in ("reflect_result", "day.reflect_result")
+                e.get("kind") == "decision"
+                and e.get("name") in ("reflect_result", "day.reflect_result")
                 and (e.get("metadata") or {}).get("needs_fix") is True
                 for e in events
             ),
@@ -158,28 +155,21 @@ class MetricsRegistry:
             "mcp_failures": sum(e.get("kind") == "mcp" and e.get("status") == "error" for e in events),
             "retrieval_calls": sum(e.get("kind") == "retrieval" for e in events),
             "retrieval_fallbacks": sum(
-                e.get("kind") == "retrieval" and (e.get("metadata") or {}).get("fallback") is True
-                for e in events
+                e.get("kind") == "retrieval" and (e.get("metadata") or {}).get("fallback") is True for e in events
             ),
             # P2 检索路由/缓存：命中率与路由分布，供缓存调优与回归对比。
-            "retrieval_cache_hits": sum(
-                e.get("kind") == "retrieval" and e.get("name") == "cache_hit" for e in events
-            ),
+            "retrieval_cache_hits": sum(e.get("kind") == "retrieval" and e.get("name") == "cache_hit" for e in events),
             "route_enumerate": sum(
-                e.get("kind") == "retrieval"
-                and (e.get("metadata") or {}).get("route") == "enumerate" for e in events
+                e.get("kind") == "retrieval" and (e.get("metadata") or {}).get("route") == "enumerate" for e in events
             ),
             "route_lexical": sum(
-                e.get("kind") == "retrieval"
-                and (e.get("metadata") or {}).get("route") == "lexical" for e in events
+                e.get("kind") == "retrieval" and (e.get("metadata") or {}).get("route") == "lexical" for e in events
             ),
             "route_hybrid": sum(
-                e.get("kind") == "retrieval"
-                and (e.get("metadata") or {}).get("route") == "hybrid" for e in events
+                e.get("kind") == "retrieval" and (e.get("metadata") or {}).get("route") == "hybrid" for e in events
             ),
             "tool_budget_exhausted": sum(
-                e.get("kind") == "tool" and (e.get("metadata") or {}).get("budget_exhausted") is True
-                for e in events
+                e.get("kind") == "tool" and (e.get("metadata") or {}).get("budget_exhausted") is True for e in events
             ),
             "degraded_runs": int(is_degraded),
         }
@@ -195,14 +185,21 @@ class MetricsRegistry:
                 if self._store is not None:
                     self._store.append(trace)
             if is_failed:
-                self._last_failures.append({
-                    "run_id": trace.get("run_id"),
-                    "events": [
-                        {"kind": e.get("kind"), "name": e.get("name"), "status": e.get("status"),
-                         "error": e.get("error")}
-                        for e in events if e.get("status") == "error"
-                    ],
-                })
+                self._last_failures.append(
+                    {
+                        "run_id": trace.get("run_id"),
+                        "events": [
+                            {
+                                "kind": e.get("kind"),
+                                "name": e.get("name"),
+                                "status": e.get("status"),
+                                "error": e.get("error"),
+                            }
+                            for e in events
+                            if e.get("status") == "error"
+                        ],
+                    }
+                )
                 self._last_failures = self._last_failures[-20:]
 
     def snapshot(self) -> dict:
@@ -218,6 +215,7 @@ class MetricsRegistry:
             data["tokens_timeline"] = [dict(slot) for slot in self._timeline]
             try:
                 from app.common import db_pool
+
                 data["db_pool"] = db_pool.pool_stats()
             except Exception:
                 data["db_pool"] = None
@@ -243,8 +241,7 @@ class MetricsRegistry:
 
     def prometheus_text(self) -> str:
         snapshot = self.snapshot()
-        lines = ["# HELP travel_agent_runs_total Agent runs.",
-                 "# TYPE travel_agent_runs_total counter"]
+        lines = ["# HELP travel_agent_runs_total Agent runs.", "# TYPE travel_agent_runs_total counter"]
         for key, value in snapshot.items():
             if isinstance(value, (int, float)) and not isinstance(value, bool):
                 metric = "travel_agent_" + key.replace(".", "_")
@@ -256,8 +253,9 @@ metrics = MetricsRegistry()
 
 
 @contextmanager
-def observe_run(run_id: str | None = None, request_id: str | None = None,
-                action_id: str | None = None) -> Iterator[TraceRecorder]:
+def observe_run(
+    run_id: str | None = None, request_id: str | None = None, action_id: str | None = None
+) -> Iterator[TraceRecorder]:
     budget_token = begin_tool_budget()
     limits_token = begin_limits()
     with trace_run(run_id, request_id, action_id) as recorder:
@@ -269,8 +267,11 @@ def observe_run(run_id: str | None = None, request_id: str | None = None,
                 "decision",
                 "run_status",
                 status="error",
-                metadata={"status": "failed", "error_type": type(exc).__name__,
-                          "limits": limits.snapshot() if limits else {}},
+                metadata={
+                    "status": "failed",
+                    "error_type": type(exc).__name__,
+                    "limits": limits.snapshot() if limits else {},
+                },
                 error=str(exc),
             )
             recorder.record("decision", "run_limits", metadata=limits.snapshot() if limits else {})

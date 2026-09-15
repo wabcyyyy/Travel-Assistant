@@ -32,10 +32,12 @@ def _clip_text(limit: int):
     「先截断、后声明 max_length」——max_length 表达契约意图，
     BeforeValidator 保证超限输入被裁剪而不是拒绝（旧数据兼容）。
     """
+
     def _clip(value: object) -> object:
         if isinstance(value, str) and len(value) > limit:
             return value[:limit]
         return value
+
     return _clip
 
 
@@ -144,6 +146,7 @@ class TripItem(WireModel):
     freshness_status: Literal["fresh", "stale", "unknown"] = "unknown"
     review_requirement: Literal["none", "before_departure"] = "before_departure"
     fact_evidence: dict[str, FactEvidence] = Field(default_factory=dict)
+
 
 class Suggestion(WireModel):
     """备选池条目：生成时未排入行程、可在「发现更多」一键加入的候选点位。
@@ -361,6 +364,7 @@ class GenerateDayRequest(WireModel):
 
 class LocalReplanRequest(WireModel):
     """只对受影响日期做重规划的显式输入契约。"""
+
     city: str = Field(min_length=1, max_length=64)
     affected_day_nos: list[int] = Field(min_length=1, max_length=MAX_TRIP_DAYS)
     locked_names: list[str] = Field(default_factory=list, max_length=100)

@@ -73,9 +73,7 @@ class SentenceTransformerEmbeddingProvider(EmbeddingProvider):
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:
-            raise RuntimeError(
-                "RAG semantic provider requires the 'sentence-transformers' dependency"
-            ) from exc
+            raise RuntimeError("RAG semantic provider requires the 'sentence-transformers' dependency") from exc
         self.model_name = model_name
         # 只使用本地缓存，避免把"离线可运行"变成启动时隐式联网下载；
         # 模型由 scripts/fetch_rag_model.py 预置到 cache_dir（RAG_MODEL_CACHE_DIR）。
@@ -103,13 +101,14 @@ def create_embedding_provider(
         return HashedEmbeddingProvider()
     if configured in {"semantic", "sentence-transformers", "sentence_transformers", "st"}:
         try:
-            return SentenceTransformerEmbeddingProvider(
-                model, cache_dir=settings.rag_model_cache_dir or None)
+            return SentenceTransformerEmbeddingProvider(model, cache_dir=settings.rag_model_cache_dir or None)
         except Exception as exc:
             logger.warning(
                 "语义 Embedding 不可用，降级为哈希向量（检索仍可用但语义能力下降）: %s；"
                 "修复：uv sync 安装依赖后执行 `uv run python scripts/fetch_rag_model.py` "
-                "预置模型（国内可设 HF_ENDPOINT=https://hf-mirror.com）", exc)
+                "预置模型（国内可设 HF_ENDPOINT=https://hf-mirror.com）",
+                exc,
+            )
             fallback = HashedEmbeddingProvider()
             fallback.fallback = True
             return fallback
@@ -145,9 +144,7 @@ class CrossEncoderReranker(RerankerProvider):
         try:
             from sentence_transformers import CrossEncoder
         except ImportError as exc:
-            raise RuntimeError(
-                "RAG reranker requires the 'sentence-transformers' dependency"
-            ) from exc
+            raise RuntimeError("RAG reranker requires the 'sentence-transformers' dependency") from exc
         self.model_name = model_name
         # 只使用本地缓存（默认 HF 缓存目录；或 RAG_RERANK_MODEL 直接指向本地路径）。
         # 注意：不传 cache_folder——ST 6.x 会把它转成已弃用的 cache_dir 并告警。
@@ -211,9 +208,30 @@ def build_poi_document(poi: dict[str, Any]) -> str:
 # 查询路由（P2）：把无意图查询从“向量+精排”重路径上移走。
 # 泛词集合覆盖品类与旅游意图词；不含任何具体意图的查询走评分枚举。
 _GENERIC_QUERY_WORDS = (
-    "景点", "美食", "餐饮", "餐厅", "酒店", "住宿", "好玩", "旅游", "旅行",
-    "热门", "推荐", "必去", "必吃", "必玩", "打卡", "小吃", "特产", "商圈",
-    "附近", "周边", "攻略", "名胜", "景区", "游玩",
+    "景点",
+    "美食",
+    "餐饮",
+    "餐厅",
+    "酒店",
+    "住宿",
+    "好玩",
+    "旅游",
+    "旅行",
+    "热门",
+    "推荐",
+    "必去",
+    "必吃",
+    "必玩",
+    "打卡",
+    "小吃",
+    "特产",
+    "商圈",
+    "附近",
+    "周边",
+    "攻略",
+    "名胜",
+    "景区",
+    "游玩",
 )
 
 _NAME_STRIP_RE = re.compile(r"[\s（）()【】\[\]·]")
@@ -292,24 +310,31 @@ class HybridRetriever:
         return "hybrid"
 
     def _enumerate(
-        self, *, city: str | None, category: str | None,
-        preferences: list[str] | None, top_k: int,
+        self,
+        *,
+        city: str | None,
+        category: str | None,
+        preferences: list[str] | None,
+        top_k: int,
     ) -> list[dict[str, Any]]:
         """无意图查询的确定性枚举：偏好命中优先，其次评分，最后稳定按 id。"""
         rows = [
-            dict(item["metadata"]) for item in self.documents.values()
+            dict(item["metadata"])
+            for item in self.documents.values()
             if self._allowed(item["metadata"], city, category)
         ]
         for row in rows:
             preference_score = self._preference_score(row, preferences or [])
             rating_score = min(max(float(row.get("rating") or 0.0) / 5.0, 0.0), 1.0)
-            row.update({
-                "_route": "enumerate",
-                "_preference_score": round(preference_score, 6),
-                "_business_score": round(0.16 * preference_score + 0.06 * rating_score, 6),
-                "_retrieval_score": round(preference_score + rating_score, 6),
-                "_authoritative": True,
-            })
+            row.update(
+                {
+                    "_route": "enumerate",
+                    "_preference_score": round(preference_score, 6),
+                    "_business_score": round(0.16 * preference_score + 0.06 * rating_score, 6),
+                    "_retrieval_score": round(preference_score + rating_score, 6),
+                    "_authoritative": True,
+                }
+            )
         rows.sort(key=lambda row: (-row["_retrieval_score"], int(row.get("id") or 0)))
         return rows[:top_k]
 
@@ -323,12 +348,11 @@ class HybridRetriever:
         cached = self._lexical_cache.get(cache_key)
         if cached is None:
             allowed = {
-                doc_id: item for doc_id, item in self.documents.items()
+                doc_id: item
+                for doc_id, item in self.documents.items()
                 if self._allowed(item["metadata"], city, category)
             }
-            document_tokens = {
-                doc_id: tokenize(item["document"]) for doc_id, item in allowed.items()
-            }
+            document_tokens = {doc_id: tokenize(item["document"]) for doc_id, item in allowed.items()}
             document_frequency: Counter[str] = Counter()
             for tokens in document_tokens.values():
                 document_frequency.update(set(tokens))
@@ -416,29 +440,28 @@ class HybridRetriever:
         lexical: list[tuple[str, float]] = []
         semantic: list[tuple[str, float]] = []
         if route == "enumerate":
-            rows = self._enumerate(city=city, category=category,
-                                   preferences=preferences, top_k=final_k)
+            rows = self._enumerate(city=city, category=category, preferences=preferences, top_k=final_k)
             self.last_telemetry = {
-                "provider": "enumerate", "route": route,
+                "provider": "enumerate",
+                "route": route,
                 "embedding_provider": self.embedding_provider.provider_name,
                 "embedding_model": self.embedding_provider.model_name,
-                "semantic_count": 0, "lexical_count": 0,
-                "fused_count": 0, "candidate_count": len(rows),
+                "semantic_count": 0,
+                "lexical_count": 0,
+                "fused_count": 0,
+                "candidate_count": len(rows),
                 "top_k": final_k,
                 "fallback": bool(self.embedding_provider.fallback),
                 "selected_poi_ids": [row.get("id") for row in rows],
                 "duration_ms": round((time.perf_counter() - started) * 1000, 2),
             }
-            record_event("retrieval", "poi.hybrid_search",
-                         metadata={"query": query[:120], **self.last_telemetry})
+            record_event("retrieval", "poi.hybrid_search", metadata={"query": query[:120], **self.last_telemetry})
             return rows
         if route == "lexical":
             # 精确名直查：BM25 的名称加权保证目标 rank-1，无需向量与精排。
-            lexical = self._lexical_search(query, city=city, category=category,
-                                           candidate_limit=candidate_limit)
+            lexical = self._lexical_search(query, city=city, category=category, candidate_limit=candidate_limit)
         else:
-            lexical = self._lexical_search(query, city=city, category=category,
-                                           candidate_limit=candidate_limit)
+            lexical = self._lexical_search(query, city=city, category=category, candidate_limit=candidate_limit)
             semantic, semantic_fallback = self._semantic_search(
                 query, city=city, category=category, candidate_limit=candidate_limit
             )
@@ -472,15 +495,17 @@ class HybridRetriever:
                 + 0.06 * rating_score
                 - 0.12 * budget_penalty
             )
-            row.update({
-                "_semantic_score": round(semantic_score.get(doc_id, 0.0), 6),
-                "_lexical_score": round(lexical_score.get(doc_id, 0.0), 6),
-                "_distance": round(1.0 - semantic_score[doc_id], 6) if doc_id in semantic_score else None,
-                "_rrf_score": round(rrf, 8),
-                "_business_score": round(business, 6),
-                "_retrieval_score": round(rrf + business, 8),
-                "_authoritative": True,
-            })
+            row.update(
+                {
+                    "_semantic_score": round(semantic_score.get(doc_id, 0.0), 6),
+                    "_lexical_score": round(lexical_score.get(doc_id, 0.0), 6),
+                    "_distance": round(1.0 - semantic_score[doc_id], 6) if doc_id in semantic_score else None,
+                    "_rrf_score": round(rrf, 8),
+                    "_business_score": round(business, 6),
+                    "_retrieval_score": round(rrf + business, 8),
+                    "_authoritative": True,
+                }
+            )
             reranked.append((rrf + business, doc_id, row))
         reranked.sort(key=lambda value: (-value[0], value[1]))
         # 精排（P0②）：对融合排序头部窗口做 cross-encoder 重打分。
@@ -494,14 +519,12 @@ class HybridRetriever:
             started_rerank = time.perf_counter()
             scores: list[float] | None = None
             try:
-                scores = self.reranker.rerank(
-                    query, [self.documents[doc_id]["document"] for _, doc_id, _ in window]
-                )
-            except Exception as exc:  # noqa: BLE001 - 精排失败不阻断检索
+                scores = self.reranker.rerank(query, [self.documents[doc_id]["document"] for _, doc_id, _ in window])
+            except Exception as exc:
                 logger.warning("精排失败，退回融合排序: %s", exc)
             if scores is not None:
                 rescored: list[tuple[float, str, dict[str, Any]]] = []
-                for (_, doc_id, row), score in zip(window, scores):
+                for (_, doc_id, row), score in zip(window, scores, strict=False):
                     rerank_score = max(0.0, min(1.0, float(score)))
                     # business 分值域约 [-0.12, 0.58]，归一到 0~1 后与精排分加权。
                     business = float(row["_business_score"])
@@ -530,8 +553,7 @@ class HybridRetriever:
             "fused_count": len(ids),
             "candidate_count": len(ids),
             "top_k": final_k,
-            "fallback": bool(self.embedding_provider.fallback or semantic_fallback
-                             or self.reranker.fallback),
+            "fallback": bool(self.embedding_provider.fallback or semantic_fallback or self.reranker.fallback),
             **rerank_telemetry,
             "selected_poi_ids": [row.get("id") for row in rows],
             "duration_ms": round((time.perf_counter() - started) * 1000, 2),

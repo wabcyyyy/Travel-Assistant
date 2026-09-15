@@ -18,12 +18,16 @@ from app.db.session import session_scope
 def top_preferences(user_id: int, limit: int = 5) -> list[str]:
     safe_limit = max(1, min(limit, 20))
     with session_scope() as session:
-        rows = session.execute(
-            select(UserPreference)
-            .where(UserPreference.user_id == user_id, UserPreference.negative == 0)
-            .order_by(UserPreference.count.desc())
-            .limit(safe_limit)
-        ).scalars().all()
+        rows = (
+            session.execute(
+                select(UserPreference)
+                .where(UserPreference.user_id == user_id, UserPreference.negative == 0)
+                .order_by(UserPreference.count.desc())
+                .limit(safe_limit)
+            )
+            .scalars()
+            .all()
+        )
         return [row.pref_label for row in rows]
 
 
@@ -53,9 +57,7 @@ def _record_one(session, user_id: int, labels, source, confidence, is_negative: 
             continue
         label = raw_label.strip()
         existing = session.execute(
-            select(UserPreference).where(
-                UserPreference.user_id == user_id, UserPreference.pref_label == label
-            )
+            select(UserPreference).where(UserPreference.user_id == user_id, UserPreference.pref_label == label)
         ).scalar_one_or_none()
         if existing is None:
             existing = UserPreference(
@@ -78,12 +80,16 @@ def _record_one(session, user_id: int, labels, source, confidence, is_negative: 
 def signals(user_id: int, limit: int = 50) -> list[dict]:
     safe_limit = max(1, min(limit, 50))
     with session_scope() as session:
-        rows = session.execute(
-            select(UserPreference)
-            .where(UserPreference.user_id == user_id)
-            .order_by(UserPreference.hard_constraint.desc(), UserPreference.updated_at.desc())
-            .limit(safe_limit)
-        ).scalars().all()
+        rows = (
+            session.execute(
+                select(UserPreference)
+                .where(UserPreference.user_id == user_id)
+                .order_by(UserPreference.hard_constraint.desc(), UserPreference.updated_at.desc())
+                .limit(safe_limit)
+            )
+            .scalars()
+            .all()
+        )
     return [
         {
             "label": row.pref_label,

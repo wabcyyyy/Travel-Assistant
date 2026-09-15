@@ -58,9 +58,14 @@ def test_butler_note_wire_key_and_camel_request(monkeypatch):
 
     monkeypatch.setattr(agent, "run_butler_note", fake_run_butler_note)
     with _client() as client:
-        r = client.post("/api/agent/v1/butler-note", json={
-            "city": "杭州", "hotelTier": "高端", "preferences": ["人文"],
-        })
+        r = client.post(
+            "/api/agent/v1/butler-note",
+            json={
+                "city": "杭州",
+                "hotelTier": "高端",
+                "preferences": ["人文"],
+            },
+        )
     body = r.json()
     assert r.status_code == 200
     assert body["code"] == 200
@@ -89,13 +94,12 @@ def test_poi_intros_wire_key(monkeypatch):
 
     captured = {}
     monkeypatch.setattr(
-        agent, "run_poi_intros",
-        lambda city, names, intent=None: (
-            captured.update(city=city, names=names, intent=intent) or {"西湖": "介绍"}),
+        agent,
+        "run_poi_intros",
+        lambda city, names, intent=None: captured.update(city=city, names=names, intent=intent) or {"西湖": "介绍"},
     )
     with _client() as client:
-        r = client.post("/api/agent/v1/poi-intros",
-                        json={"city": "杭州", "names": ["西湖", ""]})
+        r = client.post("/api/agent/v1/poi-intros", json={"city": "杭州", "names": ["西湖", ""]})
     body = r.json()
     assert r.status_code == 200
     assert list(body["data"].keys()) == ["intros"]
@@ -124,14 +128,22 @@ def test_poi_nearby_keeps_distance_m_wire_key_and_extra_fields(monkeypatch):
 
     def fake_find(*_args, **kwargs):
         captured.update(kwargs)
-        return [{"id": 2, "name": "苏堤", "category": "attraction", "rating": 4.7,
-                 "address": "杭州", "latitude": 30.241, "longitude": 120.151,
-                 "_distance_m": 130}]
+        return [
+            {
+                "id": 2,
+                "name": "苏堤",
+                "category": "attraction",
+                "rating": 4.7,
+                "address": "杭州",
+                "latitude": 30.241,
+                "longitude": 120.151,
+                "_distance_m": 130,
+            }
+        ]
 
     monkeypatch.setattr(agent, "find_nearby_pois", fake_find)
     with _client() as client:
-        r = client.post("/api/agent/v1/poi-nearby",
-                        json={"city": "杭州", "name": "西湖", "limit": 5, "radiusM": 1000})
+        r = client.post("/api/agent/v1/poi-nearby", json={"city": "杭州", "name": "西湖", "limit": 5, "radiusM": 1000})
     body = r.json()
     assert r.status_code == 200
     assert list(body["data"].keys()) == ["items"]
@@ -167,13 +179,18 @@ def test_city_guide_wire_keys(monkeypatch):
 
     def fake_run_city_guide(req: dict) -> dict:
         captured.update(req)
-        return {"kind": "city", "city": "杭州", "message": "好选择",
-                "suggestions": [{"name": "绍兴", "reason": "水乡"}]}
+        return {
+            "kind": "city",
+            "city": "杭州",
+            "message": "好选择",
+            "suggestions": [{"name": "绍兴", "reason": "水乡"}],
+        }
 
     monkeypatch.setattr(agent, "run_city_guide", fake_run_city_guide)
     with _client() as client:
-        r = client.post("/api/agent/v1/city-guide",
-                        json={"input": "想去江南", "history": [{"role": "user", "content": "嗨"}]})
+        r = client.post(
+            "/api/agent/v1/city-guide", json={"input": "想去江南", "history": [{"role": "user", "content": "嗨"}]}
+        )
     body = r.json()
     assert r.status_code == 200
     assert set(body["data"].keys()) == {"kind", "city", "message", "suggestions"}
@@ -220,16 +237,16 @@ def test_poi_nearby_accepts_camel_and_snake_keys():
 
 def test_butler_note_dump_keys_match_business_reads():
     """model_dump() 输出 snake 键，与 run_butler_note 的 req.get(...) 键逐一对齐。"""
-    m = ButlerNoteRequest.model_validate({"city": "杭州", "hotelTier": "高端",
-                                          "regionHint": "浙江", "validationLog": ["x"]})
+    m = ButlerNoteRequest.model_validate(
+        {"city": "杭州", "hotelTier": "高端", "regionHint": "浙江", "validationLog": ["x"]}
+    )
     dumped = m.model_dump()
     for key in ("city", "hotel_tier", "region_hint", "validation_log"):
         assert key in dumped
 
 
 def test_city_guide_dump_by_alias_uses_input_key():
-    m = CityGuideRequest.model_validate({"input": "想去江南",
-                                         "history": [{"role": "user", "content": "嗨"}]})
+    m = CityGuideRequest.model_validate({"input": "想去江南", "history": [{"role": "user", "content": "嗨"}]})
     dumped = m.model_dump(by_alias=True)
     assert "input" in dumped and "user_input" not in dumped
     assert dumped["input"] == "想去江南"

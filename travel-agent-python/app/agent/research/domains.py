@@ -12,8 +12,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from app.agent.research.evidence import ResearchDomain, ResearchTask
 
@@ -27,8 +27,7 @@ DEFAULT_LIMITS: dict[ResearchDomain, int] = {
 
 
 def _attraction_params(task: ResearchTask) -> dict:
-    return {"city": task.city, "preferences": task.preferences,
-            "limit": task.limit or DEFAULT_LIMITS["attraction"]}
+    return {"city": task.city, "preferences": task.preferences, "limit": task.limit or DEFAULT_LIMITS["attraction"]}
 
 
 def _food_params(task: ResearchTask) -> dict:
@@ -64,15 +63,21 @@ def _hotel_gap(items: list[dict]) -> str | None:
 
 DOMAINS: dict[ResearchDomain, DomainConfig] = {
     "attraction": DomainConfig(
-        domain="attraction", tool_name="search_attractions",
-        params=_attraction_params, gap_hint=_attraction_gap,
+        domain="attraction",
+        tool_name="search_attractions",
+        params=_attraction_params,
+        gap_hint=_attraction_gap,
     ),
     "food": DomainConfig(
-        domain="food", tool_name="search_foods",
-        params=_food_params, gap_hint=_food_gap,
+        domain="food",
+        tool_name="search_foods",
+        params=_food_params,
+        gap_hint=_food_gap,
     ),
     "hotel": DomainConfig(
-        domain="hotel", tool_name="search_hotels",
-        params=_hotel_params, gap_hint=_hotel_gap,
+        domain="hotel",
+        tool_name="search_hotels",
+        params=_hotel_params,
+        gap_hint=_hotel_gap,
     ),
 }

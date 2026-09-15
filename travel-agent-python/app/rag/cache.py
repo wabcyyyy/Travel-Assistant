@@ -36,11 +36,19 @@ logger = logging.getLogger(__name__)
 CacheKey = tuple[tuple, str]
 
 
-def make_cache_key(query: str, *, city: str | None, category: str | None,
-                   top_k: int, preferences: list[str] | None,
-                   budget: float | None) -> CacheKey:
+def make_cache_key(
+    query: str,
+    *,
+    city: str | None,
+    category: str | None,
+    top_k: int,
+    preferences: list[str] | None,
+    budget: float | None,
+) -> CacheKey:
     signature = (
-        city or "", category or "", int(top_k),
+        city or "",
+        category or "",
+        int(top_k),
         tuple(sorted(str(p) for p in (preferences or []))),
         None if budget is None else round(float(budget), 2),
     )
@@ -50,7 +58,7 @@ def make_cache_key(query: str, *, city: str | None, category: str | None,
 def _cosine(left: list[float], right: list[float]) -> float:
     if not left or not right or len(left) != len(right):
         return 0.0
-    dot = sum(a * b for a, b in zip(left, right))
+    dot = sum(a * b for a, b in zip(left, right, strict=False))
     norm = (sum(a * a for a in left) ** 0.5) * (sum(b * b for b in right) ** 0.5)
     return dot / norm if norm else 0.0
 
@@ -68,16 +76,14 @@ class _Entry:
 class RetrievalCache:
     """线程安全的进程内检索缓存；零外部依赖，索引版本变化即整体失效。"""
 
-    def __init__(self, *, ttl_seconds: int | None = None, max_entries: int | None = None,
-                 similarity: float | None = None) -> None:
+    def __init__(
+        self, *, ttl_seconds: int | None = None, max_entries: int | None = None, similarity: float | None = None
+    ) -> None:
         # 显式 None 判断：0 是合法值（ttl=0 立即过期、similarity=0 关闭近似命中），
         # 不能走 falsy 回退。
-        self.ttl_seconds = int(ttl_seconds if ttl_seconds is not None
-                               else settings.rag_cache_ttl_seconds)
-        self.max_entries = max(int(max_entries if max_entries is not None
-                                   else settings.rag_cache_max_entries), 1)
-        self.similarity = float(similarity if similarity is not None
-                                else settings.rag_cache_similarity)
+        self.ttl_seconds = int(ttl_seconds if ttl_seconds is not None else settings.rag_cache_ttl_seconds)
+        self.max_entries = max(int(max_entries if max_entries is not None else settings.rag_cache_max_entries), 1)
+        self.similarity = float(similarity if similarity is not None else settings.rag_cache_similarity)
         self._buckets: dict[tuple, OrderedDict[str, _Entry]] = {}
         self._lock = threading.Lock()
         self.hits = 0
@@ -97,13 +103,15 @@ class RetrievalCache:
         with self._lock:
             return {
                 "entries": sum(len(bucket) for bucket in self._buckets.values()),
-                "hits": self.hits, "semantic_hits": self.semantic_hits,
+                "hits": self.hits,
+                "semantic_hits": self.semantic_hits,
                 "misses": self.misses,
                 "hit_rate": round(self.hits / max(self.hits + self.misses, 1), 4),
             }
 
-    def lookup(self, key: CacheKey, *, embedding_provider: Any = None,
-               index_version: str = "") -> list[dict[str, Any]] | None:
+    def lookup(
+        self, key: CacheKey, *, embedding_provider: Any = None, index_version: str = ""
+    ) -> list[dict[str, Any]] | None:
         signature, query = key
         now = time.monotonic()
         with self._lock:
@@ -126,23 +134,23 @@ class RetrievalCache:
             # 深拷贝出缓存：调用方对行的原地修改不会污染缓存条目。
             return copy.deepcopy(entry.rows)
 
-    def store(self, key: CacheKey, rows: list[dict[str, Any]], *,
-              embedding_provider: Any = None, index_version: str = "") -> None:
+    def store(
+        self, key: CacheKey, rows: list[dict[str, Any]], *, embedding_provider: Any = None, index_version: str = ""
+    ) -> None:
         if not rows:
             return  # 空结果不缓存：往往意味着瞬时故障或空索引。
         signature, query = key
         now = time.monotonic()
         try:
-            embedding = (embedding_provider.embed_query(query)
-                         if embedding_provider is not None else [])
-        except Exception as exc:  # noqa: BLE001 - 向量化失败只影响缓存，不影响检索
+            embedding = embedding_provider.embed_query(query) if embedding_provider is not None else []
+        except Exception as exc:
             logger.debug("缓存条目向量化失败，跳过写入: %s", exc)
             return
         with self._lock:
             bucket = self._buckets.setdefault(signature, OrderedDict())
-            bucket[query] = _Entry(rows=rows, query_embedding=embedding,
-                                   index_version=index_version,
-                                   expires_at=now + self.ttl_seconds)
+            bucket[query] = _Entry(
+                rows=rows, query_embedding=embedding, index_version=index_version, expires_at=now + self.ttl_seconds
+            )
             bucket.move_to_end(query)
             self._evict()
 
@@ -151,8 +159,9 @@ class RetrievalCache:
         for query in expired:
             bucket.pop(query, None)
 
-    def _semantic_lookup(self, bucket: OrderedDict[str, _Entry], query: str,
-                         embedding_provider: Any, index_version: str) -> _Entry | None:
+    def _semantic_lookup(
+        self, bucket: OrderedDict[str, _Entry], query: str, embedding_provider: Any, index_version: str
+    ) -> _Entry | None:
         """同签名桶内的近似命中：cosine ≥ 阈值即复用（取最高分）。"""
         if self.similarity <= 0:
             return None

@@ -7,8 +7,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends, Path, Query
 
 from app.api.deps import AuthUser
@@ -29,30 +27,32 @@ def stats() -> dict:
 
 
 @router.get("/users")
-def users(page: int = Query(1), size: int = Query(10),
-          keyword: Optional[str] = Query(None)) -> dict:
+def users(page: int = Query(1), size: int = Query(10), keyword: str | None = Query(None)) -> dict:
     return ok(admin_service.page_users(page, size, keyword))
 
 
 @router.put("/users/{id}/status/{status}")
-def update_status(id: int = Path(...), status: int = Path(...),
-                  user: AuthUser = Depends(enforce_business_auth)) -> dict:
+def update_status(
+    id: int = Path(...), status: int = Path(...), user: AuthUser = Depends(enforce_business_auth)
+) -> dict:
     admin_service.update_status(id, status, user.username)
     return ok()
 
 
 @router.delete("/users/{id}")
-def delete_user(id: int = Path(...),
-                user: AuthUser = Depends(enforce_business_auth)) -> dict:
+def delete_user(id: int = Path(...), user: AuthUser = Depends(enforce_business_auth)) -> dict:
     admin_service.delete_user(id, user.username)
     return ok()
 
 
 @router.get("/itineraries")
-def itineraries(page: int = Query(1), size: int = Query(10),
-                keyword: Optional[str] = Query(None),
-                status: Optional[int] = Query(None),
-                userId: Optional[int] = Query(None)) -> dict:
+def itineraries(
+    page: int = Query(1),
+    size: int = Query(10),
+    keyword: str | None = Query(None),
+    status: int | None = Query(None),
+    userId: int | None = Query(None),
+) -> dict:
     return ok(admin_service.page_itineraries(page, size, keyword, status, userId))
 
 
@@ -68,6 +68,5 @@ def agent_metrics() -> dict:
 
 
 @router.get("/llm-usage")
-def llm_usage(range: str = Query("24h"), limit: int = Query(200),
-              offset: int = Query(0)) -> dict:
+def llm_usage(range: str = Query("24h"), limit: int = Query(200), offset: int = Query(0)) -> dict:
     return ok(admin_service.llm_usage(range, limit, offset))

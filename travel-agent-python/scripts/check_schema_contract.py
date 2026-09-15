@@ -30,7 +30,7 @@ if str(_SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(_SERVICE_ROOT))
 
 try:
-    from app.db.schema_source import resolve_migration_dir  # noqa: E402
+    from app.db.schema_source import resolve_migration_dir
 except ImportError:
     # 本脚本的定位是"零依赖静态检查"：CI 的 schema job 用裸 python3 调它（没装 uv 依赖），
     # 那种环境 import 不到 app 包。这里的兜底是同一套规则的极简副本，
@@ -40,6 +40,7 @@ except ImportError:
         if java_dir.is_dir() and next(java_dir.glob("V*.sql"), None) is not None:
             return java_dir
         return _SERVICE_ROOT / "app" / "db" / "migrations" / "sql"
+
 
 # 与运行时同源：Java 侧那份优先（Flyway 与 Alembic 读同一份），归档后自动切本仓副本
 MIGRATION_DIR = resolve_migration_dir()
@@ -54,9 +55,7 @@ _CREATE_TABLE_RE = re.compile(r"CREATE TABLE (?:IF NOT EXISTS )?(\w+)\s*\((.*?)\
 _ALTER_TABLE_RE = re.compile(r"ALTER TABLE\s+`?(\w+)`?([^;]*);", re.S | re.I)
 _ADD_COLUMN_RE = re.compile(r"\bADD\s+COLUMN\s+`?(\w+)`?", re.I)
 # ADD 后面跟这些关键字都不是新增列，静默忽略即可。
-_NON_COLUMN_ADD_RE = re.compile(
-    r"\bADD\s+(COLUMN|INDEX|KEY|UNIQUE|CONSTRAINT|PRIMARY|FULLTEXT|SPATIAL)\b", re.I
-)
+_NON_COLUMN_ADD_RE = re.compile(r"\bADD\s+(COLUMN|INDEX|KEY|UNIQUE|CONSTRAINT|PRIMARY|FULLTEXT|SPATIAL)\b", re.I)
 
 
 def migration_files() -> list[Path]:
@@ -76,9 +75,7 @@ def parse_migrations() -> tuple[dict[str, set[str]], list[str]]:
         text = f.read_text(encoding="utf-8")
 
         for m in _CREATE_TABLE_RE.finditer(text):
-            tables.setdefault(m.group(1).lower(), set()).update(
-                c.lower() for c in _COLUMN_RE.findall(m.group(2))
-            )
+            tables.setdefault(m.group(1).lower(), set()).update(c.lower() for c in _COLUMN_RE.findall(m.group(2)))
 
         for m in _ALTER_TABLE_RE.finditer(text):
             table, body = m.group(1).lower(), m.group(2)
@@ -87,7 +84,7 @@ def parse_migrations() -> tuple[dict[str, set[str]], list[str]]:
             # 只认 ADD COLUMN / ADD INDEX|KEY|CONSTRAINT...；其余 ADD 形态提示出来，
             # 不让它静默漏过（例如手写 ADD (col INT) 这种不带 COLUMN 关键字的写法）。
             for add in re.finditer(r"\bADD\b(?! COLUMN)", body, re.I):
-                tail = body[add.start():add.start() + 24]
+                tail = body[add.start() : add.start() + 24]
                 if not _NON_COLUMN_ADD_RE.match(tail) and "COLUMN" not in tail.upper()[:12]:
                     warnings.append(f"{f.name}: 未识别的 ADD 形态，可能漏解析 → {tail.strip()!r}")
 
@@ -145,11 +142,9 @@ def main() -> int:
         return 1
     for w in warnings:
         print("  !", w)
-    java_half = "Python 只读列与 Java 实体列全部存在" if ENTITY_DIR.is_dir() \
-        else "Java 实体列对照已跳过（模块已删除）"
+    java_half = "Python 只读列与 Java 实体列全部存在" if ENTITY_DIR.is_dir() else "Java 实体列对照已跳过（模块已删除）"
     print(
-        f"OK: 应用 {len(files)} 个迁移文件（{files[0].name} … {files[-1].name}），"
-        f"覆盖 {len(tables)} 张表；{java_half}"
+        f"OK: 应用 {len(files)} 个迁移文件（{files[0].name} … {files[-1].name}），覆盖 {len(tables)} 张表；{java_half}"
     )
     return 0
 

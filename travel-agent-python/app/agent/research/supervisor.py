@@ -40,14 +40,32 @@ def decompose(req: GenerateRequest) -> list[ResearchTask]:
     # M3-②（AD5）：intent 纯规则抽词随任务卡下发，驱动补池检索与意图覆盖评估。
     intent_keywords = build_intent_keywords(req.intent)
     return [
-        ResearchTask(domain="attraction", city=req.city,
-                     preferences=req.preferences, budget=req.budget, limit=40,
-                     intent=req.intent, intent_keywords=intent_keywords),
-        ResearchTask(domain="food", city=req.city, budget=req.budget, limit=16,
-                     intent=req.intent, intent_keywords=intent_keywords),
-        ResearchTask(domain="hotel", city=req.city, budget=req.budget,
-                     hotel_tier=req.hotel_tier, limit=10, intent=req.intent,
-                     intent_keywords=intent_keywords),
+        ResearchTask(
+            domain="attraction",
+            city=req.city,
+            preferences=req.preferences,
+            budget=req.budget,
+            limit=40,
+            intent=req.intent,
+            intent_keywords=intent_keywords,
+        ),
+        ResearchTask(
+            domain="food",
+            city=req.city,
+            budget=req.budget,
+            limit=16,
+            intent=req.intent,
+            intent_keywords=intent_keywords,
+        ),
+        ResearchTask(
+            domain="hotel",
+            city=req.city,
+            budget=req.budget,
+            hotel_tier=req.hotel_tier,
+            limit=10,
+            intent=req.intent,
+            intent_keywords=intent_keywords,
+        ),
     ]
 
 
@@ -58,21 +76,19 @@ def run_research_parallel(tasks: list[ResearchTask]) -> dict[ResearchDomain, Evi
     若在 worker 内才 copy，trace/预算上下文已经丢失，研究轨迹挂不到本次运行。
     """
     packs: dict[ResearchDomain, EvidencePack] = {}
-    with ThreadPoolExecutor(max_workers=_RESEARCH_WORKERS,
-                            thread_name_prefix="research-agent") as pool:
+    with ThreadPoolExecutor(max_workers=_RESEARCH_WORKERS, thread_name_prefix="research-agent") as pool:
         futures: dict[ResearchDomain, object] = {}
         for task in tasks:
             context = contextvars.copy_context()
-            futures[task.domain] = pool.submit(
-                context.run, lambda t=task: run_research(t))
+            futures[task.domain] = pool.submit(context.run, lambda t=task: run_research(t))
         for domain, future in futures.items():
             try:
                 packs[domain] = future.result()
-            except Exception as exc:  # noqa: BLE001 - 单域研究失败必须可降级
+            except Exception as exc:
                 logger.warning("research agent %s failed: %s", domain, exc)
                 packs[domain] = EvidencePack(
-                    domain=domain, confidence=0.0, rounds=0,
-                    gaps=[f"研究失败：{exc}"], degraded=True)
+                    domain=domain, confidence=0.0, rounds=0, gaps=[f"研究失败：{exc}"], degraded=True
+                )
     return packs
 
 
@@ -84,8 +100,9 @@ def synthesize(packs: dict[ResearchDomain, EvidencePack], req: GenerateRequest) 
     consumption = tools.get_consumption(req.city)
     research_report = {
         "mode": "supervisor",
-        "agents": {domain: (packs[domain].to_dict() if domain in packs else None)
-                   for domain in ("attraction", "food", "hotel")},
+        "agents": {
+            domain: (packs[domain].to_dict() if domain in packs else None) for domain in ("attraction", "food", "hotel")
+        },
     }
     record_event("decision", "research_summary", metadata=research_report)
     # 研究阶段汇总指标（证据规模/推理轮次/降级包数）由 Supervisor 统一上报。
@@ -118,7 +135,7 @@ def run_refill(domain: ResearchDomain, req: GenerateRequest) -> EvidencePack:
     task = ResearchTask(
         domain=domain,
         city=req.city,
-        preferences=list(req.preferences or []) + ["热门", "必游"],
+        preferences=[*(req.preferences or []), "热门", "必游"],
         budget=req.budget,
         hotel_tier=req.hotel_tier,
         limit=60,

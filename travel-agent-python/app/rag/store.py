@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
@@ -32,11 +33,18 @@ def record_cache_event(cache_key: tuple, *, kind: str) -> None:
         from app.agent.trace import record_event
 
         signature, query = cache_key
-        record_event("retrieval", "cache_hit", metadata={
-            "kind": kind, "query": query[:120],
-            "city": signature[0], "category": signature[1], "top_k": signature[2],
-        })
-    except Exception:  # noqa: BLE001 - 遥测失败不影响检索主链路
+        record_event(
+            "retrieval",
+            "cache_hit",
+            metadata={
+                "kind": kind,
+                "query": query[:120],
+                "city": signature[0],
+                "category": signature[1],
+                "top_k": signature[2],
+            },
+        )
+    except Exception:
         pass
 
 
@@ -87,9 +95,7 @@ class PoIKnowledgeStore:
         # 维度守护（兜底）：既有集合维度与当前 provider 不符时重置，避免
         # 「保留旧索引」恢复分支用错误维度查询直接报错（正常路径由版本签名重建覆盖）。
         self._collection.reset_if_dimension_mismatch(vector_size)
-        self._retriever = HybridRetriever(
-            self._collection, self.embedding_provider, rrf_k=settings.rag_rrf_k
-        )
+        self._retriever = HybridRetriever(self._collection, self.embedding_provider, rrf_k=settings.rag_rrf_k)
 
     def _version_signature(self) -> dict[str, Any]:
         """索引版本签名：任一点的 payload 与此不一致即触发全量重建。"""
@@ -112,8 +118,7 @@ class PoIKnowledgeStore:
         with self._sync_lock:
             self._ensure_index()
             now = time.monotonic()
-            stale = (settings.rag_refresh_seconds > 0
-                     and now - self._last_load_at > settings.rag_refresh_seconds)
+            stale = settings.rag_refresh_seconds > 0 and now - self._last_load_at > settings.rag_refresh_seconds
             if self._loaded and not self._source_unavailable and not force and not stale:
                 return
             # 数据库恢复期间避免每个请求都重复连接；force 仍可立即触发检查。
@@ -136,7 +141,7 @@ class PoIKnowledgeStore:
                 return
             try:
                 self._sync(pois)
-            except Exception as exc:  # noqa: BLE001 - 索引同步失败不能拖垮检索
+            except Exception as exc:
                 # 保留旧内存目录继续服务，并把本次纳入与"数据源不可用"同样的
                 # 30s 退避窗口；否则每个请求都会重复"查全表→失败"。
                 logger.warning("RAG 索引同步失败，沿用现有索引: %s", exc)
@@ -163,8 +168,11 @@ class PoIKnowledgeStore:
             pid = str(payload["id"])
             document = str(payload.get("document") or "")
             metadata = {key: value for key, value in payload.items() if key != "document"}
-            restored[pid] = {"document": document, "metadata": metadata,
-                             "fingerprint": metadata.get("content_fingerprint", "")}
+            restored[pid] = {
+                "document": document,
+                "metadata": metadata,
+                "fingerprint": metadata.get("content_fingerprint", ""),
+            }
         self._documents = restored
         self._retriever.set_documents(self._documents)
         self._graph.rebuild(self._documents)
@@ -175,27 +183,41 @@ class PoIKnowledgeStore:
         source = poi.get("source") or "mysql.poi_knowledge"
         source_updated_at = str(poi.get("source_updated_at") or "")
         fingerprint_payload = {
-            "id": pid, "document": document, "city": poi.get("city") or "",
-            "category": poi.get("category") or "", "address": poi.get("address") or "",
-            "latitude": poi.get("latitude"), "longitude": poi.get("longitude"),
-            "ticket_price": poi.get("ticket_price"), "avg_cost": poi.get("avg_cost"),
+            "id": pid,
+            "document": document,
+            "city": poi.get("city") or "",
+            "category": poi.get("category") or "",
+            "address": poi.get("address") or "",
+            "latitude": poi.get("latitude"),
+            "longitude": poi.get("longitude"),
+            "ticket_price": poi.get("ticket_price"),
+            "avg_cost": poi.get("avg_cost"),
             "duration_min": poi.get("duration_min"),
-            "open_time": poi.get("open_time") or "", "tags": poi.get("tags") or "",
-            "rating": poi.get("rating"), "description": poi.get("description") or "",
-            "source": source, "source_updated_at": source_updated_at,
+            "open_time": poi.get("open_time") or "",
+            "tags": poi.get("tags") or "",
+            "rating": poi.get("rating"),
+            "description": poi.get("description") or "",
+            "source": source,
+            "source_updated_at": source_updated_at,
         }
         fingerprint = hashlib.sha256(
             json.dumps(fingerprint_payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
         ).hexdigest()
         metadata: dict[str, Any] = {
-            "id": int(poi["id"]), "city": poi.get("city") or "",
-            "category": poi.get("category") or "", "name": poi.get("name") or "",
-            "address": poi.get("address") or "", "latitude": float(poi.get("latitude") or 0.0),
+            "id": int(poi["id"]),
+            "city": poi.get("city") or "",
+            "category": poi.get("category") or "",
+            "name": poi.get("name") or "",
+            "address": poi.get("address") or "",
+            "latitude": float(poi.get("latitude") or 0.0),
             "longitude": float(poi.get("longitude") or 0.0),
             "duration_min": int(poi.get("duration_min") or 0),
-            "open_time": poi.get("open_time") or "", "tags": poi.get("tags") or "",
-            "rating": float(poi.get("rating") or 0.0), "description": poi.get("description") or "",
-            "source": source, "source_updated_at": source_updated_at,
+            "open_time": poi.get("open_time") or "",
+            "tags": poi.get("tags") or "",
+            "rating": float(poi.get("rating") or 0.0),
+            "description": poi.get("description") or "",
+            "source": source,
+            "source_updated_at": source_updated_at,
             "embedding_provider": self.embedding_provider.provider_name,
             "embedding_model": self.embedding_provider.model_name,
             "embedding_version": self.embedding_provider.version,
@@ -207,15 +229,11 @@ class PoIKnowledgeStore:
         ticket_price = poi.get("ticket_price")
         avg_cost = poi.get("avg_cost")
         if ticket_price is not None:
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 metadata["ticket_price"] = float(ticket_price)
-            except (TypeError, ValueError):
-                pass
         if avg_cost is not None:
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 metadata["avg_cost"] = float(avg_cost)
-            except (TypeError, ValueError):
-                pass
         return pid, document, metadata, fingerprint
 
     def _sync(self, pois: list[dict]) -> None:
@@ -237,8 +255,7 @@ class PoIKnowledgeStore:
         # 任一点的版本签名与当前不一致（或旧数据缺指纹）即触发全量重建，
         # 避免不同 embedding/文档版本的向量混在同一集合。
         version_mismatch = any(
-            any(payload.get(key) != signature[key] for key in version_keys)
-            for payload in existing_payloads
+            any(payload.get(key) != signature[key] for key in version_keys) for payload in existing_payloads
         )
         legacy = any("content_fingerprint" not in payload for payload in existing_payloads)
         full_rebuild = version_mismatch or legacy
@@ -247,8 +264,11 @@ class PoIKnowledgeStore:
             changed_count = len(desired)
             deleted_count = len(existing_by_id)
         else:
-            changed_ids = [pid for pid, item in desired.items()
-                           if existing_by_id.get(pid, {}).get("content_fingerprint") != item["fingerprint"]]
+            changed_ids = [
+                pid
+                for pid, item in desired.items()
+                if existing_by_id.get(pid, {}).get("content_fingerprint") != item["fingerprint"]
+            ]
             deleted = set(existing_by_id) - set(desired)
             if deleted:
                 self._collection.delete(ids=sorted(deleted))
@@ -272,13 +292,18 @@ class PoIKnowledgeStore:
             "embedding_model": self.embedding_provider.model_name,
             "embedding_version": self.embedding_provider.version,
             "document_version": settings.rag_document_version,
-            "poi_count": len(desired), "changed_count": changed_count,
-            "deleted_count": deleted_count, "full_rebuild": full_rebuild,
+            "poi_count": len(desired),
+            "changed_count": changed_count,
+            "deleted_count": deleted_count,
+            "full_rebuild": full_rebuild,
             "fallback": bool(self.embedding_provider.fallback),
         }
         logger.info(
             "RAG 索引同步完成：总数=%s，更新=%s，删除=%s，全量重建=%s",
-            len(desired), changed_count, deleted_count, full_rebuild,
+            len(desired),
+            changed_count,
+            deleted_count,
+            full_rebuild,
         )
 
     def _index_version(self, desired: dict[str, dict[str, Any]]) -> str:
@@ -299,56 +324,78 @@ class PoIKnowledgeStore:
         )
 
     def search(
-        self, query: str, city: str | None = None, category: str | None = None,
-        limit: int | None = None, *, preferences: list[str] | None = None,
+        self,
+        query: str,
+        city: str | None = None,
+        category: str | None = None,
+        limit: int | None = None,
+        *,
+        preferences: list[str] | None = None,
         budget: float | None = None,
     ) -> list[dict[str, Any]]:
         self.ensure_loaded()
         top_k = limit or settings.rag_top_k
-        cache_key = make_cache_key(query, city=city, category=category, top_k=top_k,
-                                   preferences=preferences, budget=budget)
+        cache_key = make_cache_key(
+            query, city=city, category=category, top_k=top_k, preferences=preferences, budget=budget
+        )
         if settings.rag_cache_enabled:
             # 必须传 embedding_provider，否则近似命中分支在生产链路永远不生效
             # （单测传入 provider 掩盖了这一集成缺口）。
             cached = self._cache.lookup(
-                cache_key, embedding_provider=self.embedding_provider,
-                index_version=str(self._last_sync.get("index_version", "")))
+                cache_key,
+                embedding_provider=self.embedding_provider,
+                index_version=str(self._last_sync.get("index_version", "")),
+            )
             if cached is not None:
                 record_cache_event(cache_key, kind="hit")
                 return cached
         rows = self._retriever.search(
-            query, city=city, category=category,
-            top_k=top_k, preferences=preferences, budget=budget,
+            query,
+            city=city,
+            category=category,
+            top_k=top_k,
+            preferences=preferences,
+            budget=budget,
         )
         # 降级结果（向量/精排 fallback）与空结果不缓存，避免固化瞬时故障。
         if settings.rag_cache_enabled and rows and not self._retriever.last_telemetry.get("fallback"):
-            self._cache.store(cache_key, rows, embedding_provider=self.embedding_provider,
-                              index_version=str(self._last_sync.get("index_version", "")))
+            self._cache.store(
+                cache_key,
+                rows,
+                embedding_provider=self.embedding_provider,
+                index_version=str(self._last_sync.get("index_version", "")),
+            )
         return rows
 
     def cache_stats(self) -> dict[str, Any]:
         """语义缓存命中统计（观测/评测用）。"""
         return self._cache.stats()
 
-    def nearby(self, city: str, latitude: float, longitude: float, *,
-               limit: int | None = None, radius_m: int | None = None,
-               category: str | None = None,
-               exclude: str | int | None = None) -> list[dict[str, Any]]:
+    def nearby(
+        self,
+        city: str,
+        latitude: float,
+        longitude: float,
+        *,
+        limit: int | None = None,
+        radius_m: int | None = None,
+        category: str | None = None,
+        exclude: str | int | None = None,
+    ) -> list[dict[str, Any]]:
         """给定坐标的同城权威 POI 近邻（轻量 GraphRAG 空间层）。"""
         self.ensure_loaded()
-        return self._graph.nearby(city, latitude, longitude, limit=limit,
-                                  radius_m=radius_m, category=category, exclude=exclude)
+        return self._graph.nearby(
+            city, latitude, longitude, limit=limit, radius_m=radius_m, category=category, exclude=exclude
+        )
 
-    def neighbors(self, poi_id: str | int, *, limit: int | None = None,
-                  radius_m: int | None = None,
-                  category: str | None = None) -> list[dict[str, Any]]:
+    def neighbors(
+        self, poi_id: str | int, *, limit: int | None = None, radius_m: int | None = None, category: str | None = None
+    ) -> list[dict[str, Any]]:
         """给定 POI 的同城近邻（轻量 GraphRAG 空间层）。"""
         self.ensure_loaded()
-        return self._graph.neighbors(poi_id, limit=limit, radius_m=radius_m,
-                                     category=category)
+        return self._graph.neighbors(poi_id, limit=limit, radius_m=radius_m, category=category)
 
-    def same_tag(self, poi_id: str | int, *,
-                 limit: int | None = None) -> list[dict[str, Any]]:
+    def same_tag(self, poi_id: str | int, *, limit: int | None = None) -> list[dict[str, Any]]:
         """给定 POI 的同标签同类推荐（轻量 GraphRAG 标签层）。"""
         self.ensure_loaded()
         return self._graph.same_tag(poi_id, limit=limit)
@@ -377,11 +424,13 @@ def log_embedding_provider() -> None:
         logger.warning(
             "[rag] 语义 embedding 不可用，已降级为哈希向量（%s）；"
             "修复：uv sync 安装依赖后执行 `uv run python scripts/fetch_rag_model.py` 预置模型"
-            "（国内可设 HF_ENDPOINT=https://hf-mirror.com）", provider.identity)
+            "（国内可设 HF_ENDPOINT=https://hf-mirror.com）",
+            provider.identity,
+        )
         return
     try:
         dim = len(provider.embed_query("dimension-probe"))
-    except Exception as exc:  # noqa: BLE001 - 探测失败不影响启动，交由检索层降级
+    except Exception as exc:
         logger.warning("[rag] embedding provider=%s 探测维度失败: %s", provider.identity, exc)
         return
     logger.info("[rag] embedding provider=%s dim=%s（检索默认口径）", provider.identity, dim)

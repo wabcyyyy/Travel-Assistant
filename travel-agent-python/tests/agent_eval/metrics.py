@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from collections import Counter
+
 from app.agent.intent import build_intent_keywords
 from app.agent.reflect import _item_end, _item_start, estimate_transfer_minutes
 
 
 def _items(response) -> list[dict]:
-    return [item.model_dump() if hasattr(item, "model_dump") else item
-            for plan in response.daily_plans
-            for item in plan.items]
+    return [
+        item.model_dump() if hasattr(item, "model_dump") else item
+        for plan in response.daily_plans
+        for item in plan.items
+    ]
 
 
 def _has_coord(value) -> bool:
@@ -48,8 +51,7 @@ def evaluate_narrative(response, case: dict) -> dict:
     theme_sentence_days = sum(1 for plan in plans if plan.theme and "→" not in plan.theme)
     practical_days = sum(1 for plan in plans if plan.practical_notes)
     why_filled = sum(1 for i in attractions if (i.get("why_this") or "").strip())
-    coord_ok = sum(1 for i in attractions
-                   if _has_coord(i.get("latitude")) and _has_coord(i.get("longitude")))
+    coord_ok = sum(1 for i in attractions if _has_coord(i.get("latitude")) and _has_coord(i.get("longitude")))
     pending_review = sum(1 for i in items if i.get("verification_status") == "unverified")
 
     theme_hit_rate = None
@@ -62,8 +64,7 @@ def evaluate_narrative(response, case: dict) -> dict:
         text = "".join(corpus)
         theme_hit_rate = sum(1 for k in keywords if k in text) / len(keywords)
         poi_relevance = sum(
-            1 for i in attractions
-            if any(k in (i.get("why_this") or "") + (i.get("remark") or "") for k in keywords)
+            1 for i in attractions if any(k in (i.get("why_this") or "") + (i.get("remark") or "") for k in keywords)
         ) / max(len(attractions), 1)
 
     return {
@@ -116,24 +117,30 @@ def evaluate_response(response, case: dict, catalog: dict, trace: dict) -> dict:
     rooms = (case["persons"] + 1) // 2
     selected_ticket = sum(float(i.get("cost") or 0) for i in items if i.get("item_type") == "attraction")
     # 住宿期望与生产口径一致：N 天 = N-1 晚，最后一天不计房价。
-    selected_hotel = sum(float(i.cost or 0)
-                         for plan in response.daily_plans if plan.day_no < case["days"]
-                         for i in plan.items if i.item_type == "hotel")
+    selected_hotel = sum(
+        float(i.cost or 0)
+        for plan in response.daily_plans
+        if plan.day_no < case["days"]
+        for i in plan.items
+        if i.item_type == "hotel"
+    )
     # 餐饮期望与生产口径一致：有价日期按实际选中餐厅人均价×2 餐，
     # 无价日期回落到城市人均餐价×2；否则指标会惩罚"高价餐厅如实计价"这一有意改进。
     priced_meal = 0.0
     priced_days = 0
     for plan in response.daily_plans:
-        day_meal = max((float(i.cost or 0) for i in plan.items
-                        if i.item_type == "food" and i.cost is not None), default=0.0)
+        day_meal = max(
+            (float(i.cost or 0) for i in plan.items if i.item_type == "food" and i.cost is not None), default=0.0
+        )
         if day_meal > 0:
             priced_meal += day_meal * 2
             priced_days += 1
     unpriced_days = max(case["days"] - priced_days, 0)
     expected = {
         "门票": round(selected_ticket * case["persons"], 2),
-        "餐饮": round(priced_meal * case["persons"]
-                      + float(cons.get("meal_price", 60)) * 2 * unpriced_days * case["persons"], 2),
+        "餐饮": round(
+            priced_meal * case["persons"] + float(cons.get("meal_price", 60)) * 2 * unpriced_days * case["persons"], 2
+        ),
         "交通": round(float(cons.get("transport_price", 35)) * case["days"] * case["persons"], 2),
         "酒店": round(selected_hotel * rooms, 2),
     }
@@ -159,8 +166,10 @@ def evaluate_response(response, case: dict, catalog: dict, trace: dict) -> dict:
         "route_violation_rate": round(route_violations / route_pairs, 4) if route_pairs else 0.0,
         "attraction_duplicate_rate": round(duplicate_count / max(len(attractions), 1), 4),
         "budget_deviation_rate": round(abs(actual_total - expected_total) / expected_total, 4)
-        if expected_total else 0.0,
-        "fallback_success": len(response.daily_plans) == case["days"] and all(plan.items for plan in response.daily_plans),
+        if expected_total
+        else 0.0,
+        "fallback_success": len(response.daily_plans) == case["days"]
+        and all(plan.items for plan in response.daily_plans),
         "trace": {
             "node_count": len(node_events),
             "tool_count": len(tool_events),

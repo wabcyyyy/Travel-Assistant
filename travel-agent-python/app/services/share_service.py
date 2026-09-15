@@ -36,6 +36,7 @@ INVALID_LINK_MESSAGE = "链接不存在或已失效"
 
 # ---------- owner 面（authenticated） ----------
 
+
 def create_share(user_id: int, itinerary_id: int, expire_days: int | None) -> dict[str, Any]:
     if expire_days not in ALLOWED_EXPIRE_DAYS:
         raise ApiError(400, "expireDays 仅支持 7 或 30")
@@ -71,9 +72,7 @@ def remove_share(user_id: int, itinerary_id: int) -> None:
     _write_share_columns(user_id, itinerary_id, token=None, expires_at=None)
 
 
-def _write_share_columns(
-    user_id: int, itinerary_id: int, *, token: str | None, expires_at: datetime | None
-) -> None:
+def _write_share_columns(user_id: int, itinerary_id: int, *, token: str | None, expires_at: datetime | None) -> None:
     with session_scope() as session:
         session.execute(
             update(ItineraryMain)
@@ -84,6 +83,7 @@ def _write_share_columns(
 
 
 # ---------- 匿名面 ----------
+
 
 def enforce_rate_limit(client_ip: str) -> None:
     count = state_and_sessions.sliding_hit(f"share:view:{client_ip}", SHARE_RATE_WINDOW_SECONDS)
@@ -102,19 +102,23 @@ def view_shared(token: str) -> dict[str, Any]:
         ).scalar_one_or_none()
         if main is None or _expired(main.share_expires_at):
             raise ApiError(404, INVALID_LINK_MESSAGE)
-        days = session.execute(
-            select(ItineraryDay)
-            .where(ItineraryDay.itinerary_id == main.id)
-            .order_by(ItineraryDay.day_no)
-        ).scalars().all()
-        items = session.execute(
-            select(ItineraryItem)
-            .where(ItineraryItem.itinerary_id == main.id)
-            .order_by(ItineraryItem.day_id, ItineraryItem.sort_no)
-        ).scalars().all()
-        budgets = session.execute(
-            select(BudgetDetail).where(BudgetDetail.itinerary_id == main.id)
-        ).scalars().all()
+        days = (
+            session.execute(
+                select(ItineraryDay).where(ItineraryDay.itinerary_id == main.id).order_by(ItineraryDay.day_no)
+            )
+            .scalars()
+            .all()
+        )
+        items = (
+            session.execute(
+                select(ItineraryItem)
+                .where(ItineraryItem.itinerary_id == main.id)
+                .order_by(ItineraryItem.day_id, ItineraryItem.sort_no)
+            )
+            .scalars()
+            .all()
+        )
+        budgets = session.execute(select(BudgetDetail).where(BudgetDetail.itinerary_id == main.id)).scalars().all()
         return _shared_vo(main, days, items, budgets)
 
 
@@ -123,6 +127,7 @@ def _expired(expires_at: datetime | None) -> bool:
 
 
 # ---------- 脱敏 VO（白名单） ----------
+
 
 def _shared_vo(
     main: ItineraryMain,
@@ -139,14 +144,16 @@ def _shared_vo(
         day_items = [_shared_item(item) for item in items_by_day.get(day.id, [])]
         day_total = sum((entry["cost"] or 0.0) for entry in day_items)
         metadata = _loads_object(day.metadata_json) or {}
-        day_list.append({
-            "dayNo": day.day_no,
-            "travelDate": iso_date(day.travel_date),
-            "theme": metadata.get("theme"),
-            "note": day.note,
-            "dayTotalAmount": round(day_total, 2),
-            "items": day_items,
-        })
+        day_list.append(
+            {
+                "dayNo": day.day_no,
+                "travelDate": iso_date(day.travel_date),
+                "theme": metadata.get("theme"),
+                "note": day.note,
+                "dayTotalAmount": round(day_total, 2),
+                "items": day_items,
+            }
+        )
 
     budget_list = [
         {"category": budget.category, "amount": number(budget.amount), "itemCount": budget.item_count}

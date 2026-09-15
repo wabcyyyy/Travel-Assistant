@@ -10,8 +10,7 @@
 from __future__ import annotations
 
 import math
-from decimal import Decimal, ROUND_HALF_UP
-from typing import Sequence
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import delete, select
 
@@ -42,9 +41,7 @@ def recalculate(itinerary_id: int) -> list[BudgetDetail]:
             return []
         persons = main.persons or 1
         days = main.days or 1
-        items = session.execute(
-            select(ItineraryItem).where(ItineraryItem.itinerary_id == itinerary_id)
-        ).scalars().all()
+        items = session.execute(select(ItineraryItem).where(ItineraryItem.itinerary_id == itinerary_id)).scalars().all()
 
         ticket = meal = hotel = ZERO
         ticket_count = meal_count = hotel_count = 0
@@ -141,9 +138,9 @@ def _hotel_capacity(session, item: ItineraryItem) -> int:
     if not item.poi_id.isdigit():
         return 2
     room = session.execute(
-        select(HotelRoomType).where(
-            HotelRoomType.poi_id == int(item.poi_id), HotelRoomType.room_name == room_name
-        ).limit(1)
+        select(HotelRoomType)
+        .where(HotelRoomType.poi_id == int(item.poi_id), HotelRoomType.room_name == room_name)
+        .limit(1)
     ).scalar_one_or_none()
     if room is None or room.capacity is None:
         return 2

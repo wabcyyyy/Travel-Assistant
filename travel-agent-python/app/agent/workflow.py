@@ -25,8 +25,8 @@
 import logging
 from typing import TypedDict
 
-from app.agent import research
-from app.agent import poi_repository
+from app.agent import poi_repository, research
+from app.agent.day_stream import _llm_open_day, _llm_open_trip, _local_ground
 from app.agent.formatting.facts import (
     apply_item_facts,
     build_lookup,
@@ -51,16 +51,22 @@ from app.agent.generators import (
     build_suggestions,
     fill_suggestion_gaps,
 )
-from app.agent.day_stream import _llm_open_day, _llm_open_trip, _local_ground
 from app.agent.observability import metrics
 from app.agent.reflect import build_feedback, validate_plans
 from app.agent.route_matrix import route_matrix_for_plans
-from app.agent.trace import record_event, traced
 from app.agent.tools import search_attractions, search_foods
+from app.agent.trace import record_event, traced
 from app.common.config import settings
 from app.schemas.trip import (
-    AdjustRequest, AdjustResponse, DailyPlan, GenerateDayRequest,
-    GenerateRequest, GenerateResponse, PoiOption, SourceRecord, Suggestion,
+    AdjustRequest,
+    AdjustResponse,
+    DailyPlan,
+    GenerateDayRequest,
+    GenerateRequest,
+    GenerateResponse,
+    PoiOption,
+    SourceRecord,
+    Suggestion,
     TripItem,
 )
 
@@ -75,8 +81,7 @@ def _generation_attempt_limit(state: dict) -> int:
     return 1 if request is not None and request.days > 1 else MAX_FIX_ATTEMPTS
 
 
-def _draft_state(req: GenerateRequest, reason: str,
-                 schedule_report: dict | None = None) -> dict:
+def _draft_state(req: GenerateRequest, reason: str, schedule_report: dict | None = None) -> dict:
     """结构化"待研究"草案：如实标注降级，不冒充生成结果。"""
     plans = draft_day_plans(req.city, req.days, reason)
     report = dict(schedule_report or {})
@@ -203,8 +208,13 @@ def _floor_suggestions(raw: list[dict], extra_pool: list[dict]) -> list[dict]:
                 except (TypeError, ValueError):
                     rating = 0
                 # 海外开放模式常无评分：无 rating 时只看标签，避免 activity 永远为 0
-                if poi.get("rating") is not None and rating < 4.3 and not any(
-                        x in tags for x in ("体验", "演出", "潜水", "SPA", "spa", "冲浪", "剧场", "美术馆", "观景")):
+                if (
+                    poi.get("rating") is not None
+                    and rating < 4.3
+                    and not any(
+                        x in tags for x in ("体验", "演出", "潜水", "SPA", "spa", "冲浪", "剧场", "美术馆", "观景")
+                    )
+                ):
                     continue
                 by_cat.setdefault(cat, []).append(_from_poi(poi, "activity"))
                 used_names.add(key)
@@ -264,15 +274,22 @@ def research_pois(state: AgentState) -> dict:
     """
     req: GenerateRequest = state["request"]
     context = research.run_research_context(req)
-    return {"candidates": context["candidates"], "foods": context["foods"],
-            "hotels": context["hotels"], "consumption": context["consumption"],
-            "research_report": context["research_report"]}
+    return {
+        "candidates": context["candidates"],
+        "foods": context["foods"],
+        "hotels": context["hotels"],
+        "consumption": context["consumption"],
+        "research_report": context["research_report"],
+    }
 
 
-def _generate_open_plans(req: GenerateRequest, feedback: str,
-                         context_hotels: list[dict] | None,
-                         candidates: list[dict] | None = None,
-                         foods: list[dict] | None = None) -> dict | None:
+def _generate_open_plans(
+    req: GenerateRequest,
+    feedback: str,
+    context_hotels: list[dict] | None,
+    candidates: list[dict] | None = None,
+    foods: list[dict] | None = None,
+) -> dict | None:
     """开放模式生成：权威参考资料 + LLM 知识 + 高德落坐标。
 
     引用式生成：本地知识库检索结果（candidates/foods）作为带编号参考
@@ -295,12 +312,20 @@ def _generate_open_plans(req: GenerateRequest, feedback: str,
         research_errors: list[str] = []
         if req.days > 1:
             trip_req = GenerateDayRequest(
-                city=req.city, persons=req.persons, budget=req.budget,
+                city=req.city,
+                persons=req.persons,
+                budget=req.budget,
                 start_date=(str(req.start_date) if req.start_date else None),
-                day_no=1, days=req.days, used_names=[],
-                hotel_tier=req.hotel_tier, needs_hotel=True, context=context,
-                requirements=req.requirements, intent=req.intent,
-                region_hint=req.region_hint, feedback=feedback,
+                day_no=1,
+                days=req.days,
+                used_names=[],
+                hotel_tier=req.hotel_tier,
+                needs_hotel=True,
+                context=context,
+                requirements=req.requirements,
+                intent=req.intent,
+                region_hint=req.region_hint,
+                feedback=feedback,
             )
             try:
                 trip_plans, trip_suggestions = _llm_open_trip(trip_req)
@@ -313,12 +338,11 @@ def _generate_open_plans(req: GenerateRequest, feedback: str,
                     except (TypeError, ValueError):
                         key = i + 1
                     if key in plans_by_day:
-                        record_event("decision", "duplicate_day_no_dropped",
-                                     metadata={"day_no": key})
+                        record_event("decision", "duplicate_day_no_dropped", metadata={"day_no": key})
                         continue
                     plans_by_day[key] = p
                 raw_suggestions.extend(trip_suggestions)
-            except Exception as exc:  # noqa: BLE001 - open research is best effort
+            except Exception as exc:
                 logger.warning("open research failed for %s: %s", req.city, exc)
                 research_errors.append(f"开放研究失败：{exc}")
                 plans_by_day = {}
@@ -327,17 +351,25 @@ def _generate_open_plans(req: GenerateRequest, feedback: str,
         for day_no in range(1, req.days + 1):
             if req.days == 1:
                 day_req = GenerateDayRequest(
-                    city=req.city, persons=req.persons, budget=req.budget,
+                    city=req.city,
+                    persons=req.persons,
+                    budget=req.budget,
                     start_date=(str(req.start_date) if req.start_date else None),
-                    day_no=day_no, days=req.days, used_names=sorted(used),
-                    hotel_tier=req.hotel_tier, needs_hotel=day_no <= stay_nights(req.days),
-                    context=context, requirements=req.requirements, intent=req.intent,
-                    region_hint=req.region_hint, feedback=feedback,
+                    day_no=day_no,
+                    days=req.days,
+                    used_names=sorted(used),
+                    hotel_tier=req.hotel_tier,
+                    needs_hotel=day_no <= stay_nights(req.days),
+                    context=context,
+                    requirements=req.requirements,
+                    intent=req.intent,
+                    region_hint=req.region_hint,
+                    feedback=feedback,
                 )
                 try:
                     plan = _llm_open_day(day_req, used)
                     raw_suggestions.extend(plan.get("suggestions") or [])
-                except Exception as exc:  # noqa: BLE001 - open research is best effort
+                except Exception as exc:
                     logger.warning("open research failed for %s day %s: %s", req.city, day_no, exc)
                     research_errors.append(f"第{day_no}天开放研究失败：{exc}")
                     plan = {"note": f"{req.city}第{day_no}天待研究", "items": []}
@@ -346,28 +378,33 @@ def _generate_open_plans(req: GenerateRequest, feedback: str,
             ground_cache: dict = {}
             # 结构校验：LLM 可能返回非 dict 项或无 poi_name 的脏项，必须在
             # 落地前过滤，否则 format_output 的 item.get / TripItem(**item) 崩溃。
-            plan["items"] = [item for item in (plan.get("items") or [])
-                             if isinstance(item, dict) and str(item.get("poi_name") or "").strip()]
+            plan["items"] = [
+                item
+                for item in (plan.get("items") or [])
+                if isinstance(item, dict) and str(item.get("poi_name") or "").strip()
+            ]
             for item in plan["items"]:
                 if not ref_pool.ground(item):
                     _local_ground(item, req.city, ground_cache)
                 if item.get("poi_name"):
                     used.add(str(item["poi_name"]))
-            plans.append({
-                "day_no": day_no,
-                "note": plan.get("note"),
-                "theme": plan.get("theme"),
-                "mini_route": plan.get("mini_route") or plan.get("miniRoute") or {},
-                "backup_plan": plan.get("backup_plan") or plan.get("backupPlan") or [],
-                "photo_spots": plan.get("photo_spots") or plan.get("photoSpots") or [],
-                "practical_notes": plan.get("practical_notes") or plan.get("practicalNotes") or [],
-                # 叙事层透传：day_options（当日可选方案）与 trip_theme
-                # （整趟主题，open_trip 顶层/open_day 第 1 天产出，见
-                # _llm_open_trip 的注入逻辑）；items 内 why_this 随 dict 原样携带。
-                "day_options": plan.get("day_options") or plan.get("dayOptions") or [],
-                "trip_theme": plan.get("trip_theme") or plan.get("tripTheme"),
-                "items": plan.get("items") or [],
-            })
+            plans.append(
+                {
+                    "day_no": day_no,
+                    "note": plan.get("note"),
+                    "theme": plan.get("theme"),
+                    "mini_route": plan.get("mini_route") or plan.get("miniRoute") or {},
+                    "backup_plan": plan.get("backup_plan") or plan.get("backupPlan") or [],
+                    "photo_spots": plan.get("photo_spots") or plan.get("photoSpots") or [],
+                    "practical_notes": plan.get("practical_notes") or plan.get("practicalNotes") or [],
+                    # 叙事层透传：day_options（当日可选方案）与 trip_theme
+                    # （整趟主题，open_trip 顶层/open_day 第 1 天产出，见
+                    # _llm_open_trip 的注入逻辑）；items 内 why_this 随 dict 原样携带。
+                    "day_options": plan.get("day_options") or plan.get("dayOptions") or [],
+                    "trip_theme": plan.get("trip_theme") or plan.get("tripTheme"),
+                    "items": plan.get("items") or [],
+                }
+            )
         if research_errors and not any(p.get("items") for p in plans):
             # 整段开放研究失败：交由调用方降级，避免把候选库城市打成空草案。
             return None
@@ -415,11 +452,11 @@ def _generate_open_plans(req: GenerateRequest, feedback: str,
             "schedule_report": schedule_report,
             "degraded_reason": (
                 "已使用开放研究生成；关键事实需出发前复核"
-                if not research_errors else
-                "开放研究部分失败，已返回待研究草案；关键事实需出发前复核"
+                if not research_errors
+                else "开放研究部分失败，已返回待研究草案；关键事实需出发前复核"
             ),
         }
-    except Exception as exc:  # noqa: BLE001 - 开放模式整体异常时降级
+    except Exception as exc:
         logger.warning("open generation crashed for %s: %s", req.city, exc)
         return None
 
@@ -437,8 +474,11 @@ def generate_itinerary(state: AgentState) -> dict:
     # 重试耗尽或未配置 LLM 则返回结构化待研究草案——如实降级，不冒充生成结果。
     if settings.llm_api_key and attempts < MAX_GENERATION_ATTEMPTS:
         open_state = _generate_open_plans(
-            req, feedback, state.get("hotels"),
-            candidates=state.get("candidates"), foods=state.get("foods"),
+            req,
+            feedback,
+            state.get("hotels"),
+            candidates=state.get("candidates"),
+            foods=state.get("foods"),
         )
         if open_state is not None:
             return open_state
@@ -447,11 +487,9 @@ def generate_itinerary(state: AgentState) -> dict:
             # 挂钩而直接落到空 plans，草案分支成为死代码）。
             return _draft_state(req, "开放研究重试耗尽，已返回待研究草案", schedule_report)
         record_event("route", "retry", metadata={"reason": "open_research_failed"})
-        return {"error": "开放研究失败", "attempts": attempts + 1,
-                "schedule_report": schedule_report}
+        return {"error": "开放研究失败", "attempts": attempts + 1, "schedule_report": schedule_report}
 
-    reason = ("未配置 LLM，无法生成行程内容" if not settings.llm_api_key
-              else "开放研究重试耗尽，已返回待研究草案")
+    reason = "未配置 LLM，无法生成行程内容" if not settings.llm_api_key else "开放研究重试耗尽，已返回待研究草案"
     return _draft_state(req, reason, schedule_report)
 
 
@@ -478,9 +516,14 @@ def reflect(state: AgentState) -> dict:
             consumption=state.get("consumption"),
             budget_overage_ratio=settings.budget_overage_ratio,
         )
-    record_event("decision", "reflect_result", metadata={
-        "issue_count": len(issues), "needs_fix": bool(issues),
-    })
+    record_event(
+        "decision",
+        "reflect_result",
+        metadata={
+            "issue_count": len(issues),
+            "needs_fix": bool(issues),
+        },
+    )
     return {
         "validation_issues": issues,
         "validation_log": log,
@@ -539,11 +582,15 @@ def research_refill(state: AgentState) -> dict:
     agents = dict(research_report.get("agents") or {})
     agents[domain] = {**pack.to_dict(), "refilled": True}
     research_report["agents"] = agents
-    record_event("decision", "research_refill", metadata={
-        "domain": domain, "count": len(pack.items), "rounds": pack.rounds})
+    record_event(
+        "decision", "research_refill", metadata={"domain": domain, "count": len(pack.items), "rounds": pack.rounds}
+    )
     metrics.record_research_refill()
-    return {"candidates": candidates, "research_report": research_report,
-            "refill_count": state.get("refill_count", 0) + 1}
+    return {
+        "candidates": candidates,
+        "research_report": research_report,
+        "refill_count": state.get("refill_count", 0) + 1,
+    }
 
 
 @traced("node", "format")
@@ -553,8 +600,7 @@ def _quality_fallback_reason(state: AgentState) -> str | None:
         # LLM-only 原则：重试耗尽也不允许用知识库候选拼装行程替换模型结果
         # （那是"直接使用知识库"）。保留开放模式结果，把未修复的约束问题
         # 如实降级标注，交给用户复核。
-        record_event("route", "keep_llm_result",
-                     metadata={"reason": "validation_retry_exhausted"})
+        record_event("route", "keep_llm_result", metadata={"reason": "validation_retry_exhausted"})
         return "开放模式结果未通过全部约束校验（见校验日志），已保留但请复核当日时间安排"
     return None
 
@@ -594,16 +640,24 @@ def format_output(state: AgentState) -> dict:
                 attraction_total += float(item.get("cost") or 0)
             sync_duration_from_time_window(item)
             items.append(TripItem(**item))
-        daily_plans.append(DailyPlan(day_no=plan["day_no"], note=plan.get("note"), items=items,
-                                     theme=plan.get("theme"), mini_route=plan.get("mini_route") or {},
-                                     backup_plan=plan.get("backup_plan") or [],
-                                     photo_spots=plan.get("photo_spots") or [],
-                                     practical_notes=plan.get("practical_notes") or [],
-                                     day_options=plan.get("day_options") or [],
-                                     trip_theme=plan.get("trip_theme")))
+        daily_plans.append(
+            DailyPlan(
+                day_no=plan["day_no"],
+                note=plan.get("note"),
+                items=items,
+                theme=plan.get("theme"),
+                mini_route=plan.get("mini_route") or {},
+                backup_plan=plan.get("backup_plan") or [],
+                photo_spots=plan.get("photo_spots") or [],
+                practical_notes=plan.get("practical_notes") or [],
+                day_options=plan.get("day_options") or [],
+                trip_theme=plan.get("trip_theme"),
+            )
+        )
 
     budget_estimate = prices.recompute_budget(
-        state["budget_estimate"], daily_plans, hotel_total, attraction_total, consumption)
+        state["budget_estimate"], daily_plans, hotel_total, attraction_total, consumption
+    )
     check = run_final_validation(req, daily_plans, schedule_report, state.get("consumption"))
     outcome = judge_output(state, daily_plans, schedule_report, check, quality_fallback_reason)
 
@@ -612,8 +666,7 @@ def format_output(state: AgentState) -> dict:
     open_research = bool((state.get("schedule_report") or {}).get("open_research"))
     # 体验类不在 Supervisor 三域研究里：从知识库补入，保证「发现更多-体验」有地板
     activities = [
-        {**row, "_authoritative": True}
-        for row in poi_repository.search_pois(req.city, category="activity", limit=12)
+        {**row, "_authoritative": True} for row in poi_repository.search_pois(req.city, category="activity", limit=12)
     ]
     tier_label, _tier_g, _tier_ppd = _budget_tier(req.budget, req.persons, req.days)
     suggestion_rows = fill_suggestion_gaps(
@@ -625,32 +678,36 @@ def format_output(state: AgentState) -> dict:
             state.get("raw_suggestions") or [],
             allow_external=open_research,
         ),
-        req.city, budget_tier=tier_label or None,
+        req.city,
+        budget_tier=tier_label or None,
     )
 
-    return {"result": GenerateResponse(
-        city=req.city,
-        days=req.days,
-        title=f"{req.city}{req.days}日游",
-        # 整趟主题承接第 1 天（open_trip 顶层 / open_day day_no==1 产出）
-        trip_theme=(daily_plans[0].trip_theme if daily_plans else None),
-        daily_plans=daily_plans,
-        budget_estimate=budget_estimate,
-        suggestions=[Suggestion(**row) for row in suggestion_rows],
-        validation_log=outcome.validation_log,
-        price_note=prices.price_note(),
-        schedule_report=schedule_report,
-        critic_report=check.critic_report,
-        destination_status=outcome.destination_status,
-        sources=list(source_records.values()),
-        quality_report=outcome.quality_report,
-        status=outcome.status,
-        status_reason=outcome.status_reason,
-    )}
+    return {
+        "result": GenerateResponse(
+            city=req.city,
+            days=req.days,
+            title=f"{req.city}{req.days}日游",
+            # 整趟主题承接第 1 天（open_trip 顶层 / open_day day_no==1 产出）
+            trip_theme=(daily_plans[0].trip_theme if daily_plans else None),
+            daily_plans=daily_plans,
+            budget_estimate=budget_estimate,
+            suggestions=[Suggestion(**row) for row in suggestion_rows],
+            validation_log=outcome.validation_log,
+            price_note=prices.price_note(),
+            schedule_report=schedule_report,
+            critic_report=check.critic_report,
+            destination_status=outcome.destination_status,
+            sources=list(source_records.values()),
+            quality_report=outcome.quality_report,
+            status=outcome.status,
+            status_reason=outcome.status_reason,
+        )
+    }
 
 
 def run_generate(req: GenerateRequest) -> GenerateResponse:
     from app.agent.trip_graph import run_trip
+
     return run_trip(req)
 
 
