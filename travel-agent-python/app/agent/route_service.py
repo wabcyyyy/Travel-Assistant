@@ -22,6 +22,10 @@ from app.agent.trace import record_event
 from app.common.config import settings
 
 ESTIMATE_SOURCE = "coordinate-estimate"
+# 路线估算常量的唯一声明（G-1.3 ②）：原 reflect.py 重复副本已删除并改从本模块
+# import——两处数值漂移会让「路线服务估算」与「reflect 校验」对同一路段给出
+# 不一致的时长判断。ROAD_DISTANCE_FACTOR：直线距离 → 城市道路距离的折算系数；
+# 25 km/h 为非实时路况下的城市均速；BUFFER 给安全余量，避免"理论刚好可达"。
 ROUTE_SPEED_KMH = 25.0
 ROAD_DISTANCE_FACTOR = 1.35
 ROUTE_BUFFER_RATIO = 0.25

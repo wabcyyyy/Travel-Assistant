@@ -17,17 +17,18 @@ import re
 
 from app.agent.generation_core import estimate_plans_total, has_double_lunch, meal_slot_of
 from app.agent.geo import haversine_meters
-from app.agent.route_service import is_estimated
+from app.agent.route_service import (
+    ROAD_DISTANCE_FACTOR,
+    ROUTE_BUFFER_RATIO,
+    ROUTE_FIXED_BUFFER_MIN,
+    ROUTE_SPEED_KMH,
+    is_estimated,
+)
 
 MAX_DAILY_MINUTES = 480
 MAX_DAILY_ATTRACTIONS = 6
 # 白天有效活动窗口：约 09:00-19:00；排程过稀时要求回填
 MIN_ACTIVE_MINUTES = 240
-# 不是实时路况：使用城市道路折算 + 安全余量，避免把行程排到“理论刚好可达”。
-ROUTE_SPEED_KMH = 25.0
-ROAD_DISTANCE_FACTOR = 1.35
-ROUTE_BUFFER_RATIO = 0.25
-ROUTE_FIXED_BUFFER_MIN = 10
 
 _TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})$")
 
