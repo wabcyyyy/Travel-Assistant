@@ -110,3 +110,19 @@ describe('chatEditStreamItinerary', () => {
     ).rejects.toThrow('流式连接不可用')
   })
 })
+
+// ---------- 幂等键（X-Idempotency-Key） ----------
+
+import { newIdempotencyKey } from './itinerary'
+
+describe('newIdempotencyKey', () => {
+  it('返回非空字符串', () => {
+    expect(newIdempotencyKey()).toBeTruthy()
+    expect(typeof newIdempotencyKey()).toBe('string')
+  })
+
+  it('两次调用生成不同的键（同键 = 同一次操作，键必须唯一）', () => {
+    const seen = new Set(Array.from({ length: 50 }, () => newIdempotencyKey()))
+    expect(seen.size).toBe(50)
+  })
+})

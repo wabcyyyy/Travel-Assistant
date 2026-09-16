@@ -22,22 +22,27 @@ export function getSupportedCities() {
   return requestGet<string[]>('/itinerary/supported-cities')
 }
 
-export function generateItinerary(data: {
-  city: string
-  days: number
-  persons: number
-  stayNights: number
-  budget?: number
-  startDate?: string
-  endDate?: string
-  /** 旅行意图（最高优先级生成信号，≤800 字；完整交互见重构方案 §5.2） */
-  intent?: string
-  preferences: string[]
-  hotelTier?: string
-  regionHint?: string
-  requirements?: string
-}) {
-  return requestPost<ItineraryDetail>('/itinerary/generate', data)
+export function generateItinerary(
+  data: {
+    city: string
+    days: number
+    persons: number
+    stayNights: number
+    budget?: number
+    startDate?: string
+    endDate?: string
+    /** 旅行意图（最高优先级生成信号，≤800 字；完整交互见重构方案 §5.2） */
+    intent?: string
+    preferences: string[]
+    hotelTier?: string
+    regionHint?: string
+    requirements?: string
+  },
+  opts?: { idempotencyKey?: string },
+) {
+  return requestPost<ItineraryDetail>('/itinerary/generate', data, {
+    headers: opts?.idempotencyKey ? { 'X-Idempotency-Key': opts.idempotencyKey } : undefined,
+  })
 }
 
 export function getItineraryList() {
@@ -297,4 +302,17 @@ export function applyHotelOption(
     actionMessageId,
     baseRevision,
   })
+}
+
+/**
+ * 幂等键：同一次生成流程（含失败后重试）复用同一键，后端据此回放同一个
+ * 行程而不是建第二份壳（防双击/网络超时导致的重复 LLM 账单）。
+ * crypto.randomUUID 需要 secure context；localhost 与 https 均满足，
+ * 非 secure 环境回退到时间戳+随机数。
+ */
+export function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `idem-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }

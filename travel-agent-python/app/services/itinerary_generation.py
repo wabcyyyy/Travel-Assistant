@@ -431,6 +431,22 @@ def _reserve_idempotent(user_id: int, key: str | None) -> int | None:
     return int(existing) if isinstance(existing, int) else None
 
 
+def _replay_if_known(user_id: int, replay_id: int | None, idempotency_key: str | None) -> dict[str, Any] | None:
+    """幂等重放：占位值指向的行程存在且属于本人时，回放它的详情。
+
+    占位值在首次建壳成功后回填；理论上此处读不到值只在「占位后进程崩溃
+    未回填」的窗口出现——此时释放键并降级为新一次生成（宁重复、不 500）。
+    """
+    if replay_id is None:
+        return None
+    with session_scope() as session:
+        exists = session.get(ItineraryMain, replay_id)
+    if exists is not None and exists.user_id == user_id:
+        return itinerary_query.detail(user_id, replay_id)
+    cache_store.delete(_IDEM_NAMESPACE, f"{user_id}:{(idempotency_key or '').strip()[:128]}")
+    return None
+
+
 def generate(user_id: int, body: GenerateTripRequest, idempotency_key: str | None = None) -> dict[str, Any]:
     """建壳 → 逐日异步生成 → 立即返回可轮询的初始详情（status=1）。
 
@@ -438,15 +454,9 @@ def generate(user_id: int, body: GenerateTripRequest, idempotency_key: str | Non
     返回既有行程，不重复建壳（见 _reserve_idempotent）。
     """
     command = _validate(body)
-    replay_id = _reserve_idempotent(user_id, idempotency_key)
-    if replay_id is not None:
-        # 占位值在首次建壳成功后回填；理论上此处读不到值只在「占位后进程
-        # 崩溃未回填」的窗口出现——降级为新一次生成（宁重复、不 500）。
-        with session_scope() as session:
-            exists = session.get(ItineraryMain, replay_id)
-        if exists is not None and exists.user_id == user_id:
-            return itinerary_query.detail(user_id, replay_id)
-        cache_store.delete(_IDEM_NAMESPACE, f"{user_id}:{(idempotency_key or '').strip()[:128]}")
+    replay = _replay_if_known(user_id, _reserve_idempotent(user_id, idempotency_key), idempotency_key)
+    if replay is not None:
+        return replay
     with session_scope() as session:
         main = ItineraryMain(
             user_id=user_id,
@@ -498,6 +508,11 @@ def generate(user_id: int, body: GenerateTripRequest, idempotency_key: str | Non
                 .values(status=3, gen_state="FAILED", plan_note=QUEUE_FULL_NOTE)
             )
         itinerary_query.evict_detail(user_id, itinerary_id)
+        # 幂等键随本次明确失败一并释放：4xx 是"结果已知"的失败，用户重试
+        # 期望的是新一次尝试，而不是被回放到同一个 FAILED 壳。幂等只防
+        # "结果未知"（网络超时/断连）的重复——那条路径在 try 块之外，不受影响。
+        if idempotency_key and idempotency_key.strip():
+            cache_store.delete(_IDEM_NAMESPACE, f"{user_id}:{idempotency_key.strip()[:128]}")
         raise ApiError(429, "行程生成任务已满，系统繁忙，请稍后再试") from exc
     return itinerary_query.detail(user_id, itinerary_id)
 

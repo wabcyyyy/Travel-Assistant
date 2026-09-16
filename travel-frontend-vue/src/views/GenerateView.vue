@@ -231,7 +231,7 @@ import {
   Sunny,
 } from '@element-plus/icons-vue'
 
-import { generateItinerary, cityGuide } from '../api'
+import { generateItinerary, cityGuide, newIdempotencyKey } from '../api'
 
 const router = useRouter()
 const route = useRoute()
@@ -302,6 +302,12 @@ const form = reactive({
 const loading = ref(false)
 const errorMsg = ref('')
 const dateRange = ref<[string, string] | null>(null)
+/**
+ * 幂等键：进入页面生成一次，本次流程内的失败重试（再点生成）复用同一个键——
+ * 网络超时时服务端可能已建壳，复用键让后端回放同一个行程而不是建第二份
+ * （防双击 / 弱网重复提交造成重复 LLM 账单）。成功后跳转离开页面，键随之作废。
+ */
+const generationKey = ref(newIdempotencyKey())
 
 function disablePastDate(date: Date) {
   const today = new Date()
@@ -458,20 +464,24 @@ async function onSubmit() {
   loading.value = true
   errorMsg.value = ''
   try {
-    const res = await generateItinerary({
-      city: form.city,
-      days: form.days,
-      persons: form.persons,
-      stayNights: Math.max(form.days - 1, 0), // 后端契约保留，由天数派生
-      budget: form.budget ?? undefined,
-      startDate: dateRange.value?.[0],
-      endDate: dateRange.value?.[1],
-      preferences: form.preferences,
-      hotelTier: form.hotelTier || undefined,
-      regionHint: provinceHint.value || undefined,
-      intent: intentPayload || undefined,
-      requirements: requirementsPayload || undefined,
-    })
+    const res = await generateItinerary(
+      {
+        city: form.city,
+        days: form.days,
+        persons: form.persons,
+        stayNights: Math.max(form.days - 1, 0), // 后端契约保留，由天数派生
+        budget: form.budget ?? undefined,
+        startDate: dateRange.value?.[0],
+        endDate: dateRange.value?.[1],
+        preferences: form.preferences,
+        hotelTier: form.hotelTier || undefined,
+        regionHint: provinceHint.value || undefined,
+        intent: intentPayload || undefined,
+        requirements: requirementsPayload || undefined,
+      },
+      { idempotencyKey: generationKey.value },
+    )
+    generationKey.value = newIdempotencyKey() // 成功即流程结束；回退再生成是新流程
     router.push({ name: 'trip-detail', params: { id: res.data.id } })
   } catch (err) {
     errorMsg.value = err instanceof Error ? err.message : '生成失败'

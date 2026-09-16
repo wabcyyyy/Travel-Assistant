@@ -113,9 +113,10 @@ def test_generate_keys_are_scoped_per_user(monkeypatch, tmp_path):
     assert a["id"] != b["id"], "键按 user 隔离"
 
 
-def test_key_survives_queue_full_and_replay_returns_failed_shell(monkeypatch, tmp_path):
-    """占位后建壳成功但入队被拒（429）：键仍指向该行程——重试拿回同一个
-    失败壳（用户可见"生成失败"），而不是第二份行程第二份账单。"""
+def test_queue_full_releases_key_for_fresh_retry(monkeypatch, tmp_path):
+    """入队被拒（429）是"结果已知"的失败：键随之释放，用户重试 = 新一次
+    尝试（新建壳）。幂等只防"结果未知"（网络超时/断连）的重复——那类重试
+    在 try 块之外拿到 200 后不会发生。"""
 
     def _reject(*_a, **_k):
         raise TaskRejected()
@@ -128,13 +129,13 @@ def test_key_survives_queue_full_and_replay_returns_failed_shell(monkeypatch, tm
         itinerary_generation.generate(1, body, idempotency_key="abc")
     assert first.value.status == 429
     monkeypatch.setattr(itinerary_generation, "submit_planning", lambda *a, **k: None)
-    replay = itinerary_generation.generate(1, body, idempotency_key="abc")
+    retry = itinerary_generation.generate(1, body, idempotency_key="abc")
     from app.db.models import ItineraryMain
 
     with db_session.session_scope() as session:
-        mains = session.query(ItineraryMain).all()
-    assert len(mains) == 1, "重试不得再次建壳"
-    assert replay["id"] == mains[0].id
+        mains = session.query(ItineraryMain).order_by(ItineraryMain.id).all()
+    assert len(mains) == 2, "429 后重试应建第二份壳（键已释放）"
+    assert retry["id"] == mains[1].id
 
 
 # ---------- API 层 ----------
