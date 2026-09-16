@@ -34,13 +34,15 @@ from app.schemas.trip import (
 
 from .document import _decision_plan_document, _trip_plan_document
 from .hotel import (
-    _fallback_hotel_intent,
-    _has_explicit_hotel_comparison,
     _hotel_catalog,
-    _hotel_comparison_base_tier,
     _hotel_intent_from_decision,
     _hotel_proposal_response,
     _hotel_signature,
+)
+from .hotel_intent import (
+    _fallback_hotel_intent,
+    _has_explicit_hotel_comparison,
+    _hotel_comparison_base_tier,
     _is_hotel_request,
     _understand_hotel_intent,
     _with_stay_scope,
