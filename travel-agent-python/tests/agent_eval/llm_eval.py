@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from app.agent import poi_repository, workflow
-from app.agent.day_stream import GENERATION_TEMPERATURE
+from app.agent.day_prompts import GENERATION_TEMPERATURE
 from app.agent.observability import observe_run
 from app.common.config import settings
 from app.prompts.open_generation import OPEN_DAY_PROMPT_VERSION, OPEN_TRIP_PROMPT_VERSION
@@ -232,7 +232,7 @@ def main() -> int:
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "mode": "real-llm-themed" if themed else "real-llm",
         "model": settings.llm_model,
-        # 与开放模式真实生成调用同源（day_stream.GENERATION_TEMPERATURE）
+        # 与开放模式真实生成调用同源（day_prompts.GENERATION_TEMPERATURE）
         "temperature": GENERATION_TEMPERATURE,
         "prompt_version": PROMPT_VERSION,
         # M5：报告头部固定两套开放生成 Prompt 的契约版本

@@ -16,10 +16,11 @@ from app.agent.butler import run_butler_note, run_poi_intros
 from app.agent.chat_draft import run_chat_turn
 from app.agent.city_guide import run_city_guide
 from app.agent.clarify import run_clarify
-from app.agent.day_stream import run_generate_day, run_plan_context
+from app.agent.day_stream import run_generate_day
 from app.agent.local_replan import run_local_replan
 from app.agent.nl_edit import run_edit_ops
 from app.agent.observability import metrics, observe_run, scene, use_scene
+from app.agent.plan_context import run_plan_context
 from app.agent.schedule_optimizer import optimize_daily_plan
 from app.agent.tool_registry import registry
 from app.agent.tools import find_nearby_pois

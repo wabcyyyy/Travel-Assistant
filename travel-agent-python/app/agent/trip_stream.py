@@ -17,13 +17,11 @@ import re
 import threading
 from collections.abc import Iterator
 
-from app.agent.day_stream import (
+from app.agent.day_prompts import (
     DAY_ATTRACTION_CONTEXT_LIMIT,
     DAY_FOOD_CONTEXT_LIMIT,
     GENERATION_TEMPERATURE,
-    local_ground,
     open_trip_prompt,
-    sanitize_narrative,
 )
 from app.agent.generation_core import (
     PoiSeenRegistry,
@@ -39,7 +37,9 @@ from app.agent.generators import (
     fill_suggestion_gaps,
     pick_hotels,
 )
+from app.agent.grounding import local_ground
 from app.agent.json_utils import parse_llm_json
+from app.agent.narrative import sanitize_narrative
 from app.agent.trace import record_event
 from app.common.config import settings
 from app.common.llm_client import StreamCancelled, get_llm_client

@@ -15,7 +15,7 @@ import logging
 import pytest
 from pydantic import ValidationError
 
-from app.agent import day_stream
+from app.agent import day_prompts, day_stream
 from app.agent import intent as intent_module
 from app.agent.generators import (
     _distill_cached,
@@ -306,7 +306,7 @@ def test_llm_open_trip_injects_intent_before_reference_block(monkeypatch):
             captured["system"] = system_prompt
             return json.dumps({"daily_plans": [{"day_no": 1, "items": []}], "suggestions": []}, ensure_ascii=False)
 
-    monkeypatch.setattr(day_stream, "get_llm_client", lambda: TripClient())
+    monkeypatch.setattr(day_prompts, "get_llm_client", lambda: TripClient())
     fake = FakeDistillClient(reply=json.dumps(_FAKE_DISTILL, ensure_ascii=False))
     monkeypatch.setattr(intent_module, "get_llm_client", lambda: fake)
 
@@ -317,7 +317,7 @@ def test_llm_open_trip_injects_intent_before_reference_block(monkeypatch):
         intent="两日深度慢游，只逛不赶",
         context=_ref_context(),
     )
-    day_stream.llm_open_trip(req)
+    day_prompts.llm_open_trip(req)
 
     system = captured["system"]
     assert "两日深度慢游，只逛不赶" in system

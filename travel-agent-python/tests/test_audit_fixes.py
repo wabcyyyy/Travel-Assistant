@@ -12,8 +12,9 @@ import httpx
 import pytest
 
 from app.agent import tools, workflow
-from app.agent.day_stream import llm_open_day, local_ground
+from app.agent.day_stream import llm_open_day
 from app.agent.generators import ReferencePool
+from app.agent.grounding import local_ground
 from app.agent.reflect import parse_time, validate_plans
 from app.agent.research import reasoning
 from app.agent.tool_registry import registry
@@ -85,9 +86,9 @@ def test_open_trip_prompt_uses_stay_nights_hotel_clause(monkeypatch):
             captured["system"] = system_prompt
             return json.dumps({"daily_plans": [{"day_no": 1, "items": []}], "suggestions": []})
 
-    monkeypatch.setattr("app.agent.day_stream.get_llm_client", lambda: FakeClient())
+    monkeypatch.setattr("app.agent.day_prompts.get_llm_client", lambda: FakeClient())
     req = GenerateDayRequest(city="丽江", day_no=1, days=3, needs_hotel=True)
-    from app.agent.day_stream import llm_open_trip
+    from app.agent.day_prompts import llm_open_trip
 
     llm_open_trip(req)
     assert "最后一天不安排入住" in captured["system"]

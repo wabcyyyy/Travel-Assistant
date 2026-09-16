@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from app.agent import day_stream
+from app.agent import plan_context
 from app.agent.trace import trace_run
 from app.common import event_publisher
 from app.common.event_publisher import (
@@ -53,9 +53,9 @@ def _successful_context() -> dict:
 
 
 def test_plan_context_success_publishes_start_and_done(events, monkeypatch):
-    monkeypatch.setattr(day_stream, "run_research_context", lambda req: _successful_context())
+    monkeypatch.setattr(plan_context, "run_research_context", lambda req: _successful_context())
 
-    result = day_stream.run_plan_context("杭州", ["亲子"], itinerary_id=88)
+    result = plan_context.run_plan_context("杭州", ["亲子"], itinerary_id=88)
 
     assert [e[1] for e in events] == ["research_start", "research_done"]
     start = events[0]
@@ -89,9 +89,9 @@ def test_plan_context_degraded_pack_publishes_degraded_event(events, monkeypatch
         "degraded": True,
         "gaps": ["研究失败：高德超时"],
     }
-    monkeypatch.setattr(day_stream, "run_research_context", lambda req: context)
+    monkeypatch.setattr(plan_context, "run_research_context", lambda req: context)
 
-    day_stream.run_plan_context("杭州", [], itinerary_id=88)
+    plan_context.run_plan_context("杭州", [], itinerary_id=88)
 
     types = [e[1] for e in events]
     assert types == ["research_start", "research_done", "degraded"]
@@ -109,10 +109,10 @@ def test_plan_context_exception_publishes_degraded_and_reraises(events, monkeypa
     def _boom(req):
         raise ValueError("开放研究失败")
 
-    monkeypatch.setattr(day_stream, "run_research_context", _boom)
+    monkeypatch.setattr(plan_context, "run_research_context", _boom)
 
     with pytest.raises(ValueError):
-        day_stream.run_plan_context("杭州", [], itinerary_id=88)
+        plan_context.run_plan_context("杭州", [], itinerary_id=88)
 
     assert [e[1] for e in events] == ["research_start", "degraded"]
     degraded = events[1]
@@ -121,9 +121,9 @@ def test_plan_context_exception_publishes_degraded_and_reraises(events, monkeypa
 
 
 def test_plan_context_without_itinerary_id_publishes_nothing(events, monkeypatch):
-    monkeypatch.setattr(day_stream, "run_research_context", lambda req: _successful_context())
+    monkeypatch.setattr(plan_context, "run_research_context", lambda req: _successful_context())
 
-    day_stream.run_plan_context("杭州", [])
+    plan_context.run_plan_context("杭州", [])
 
     assert events == []
 
@@ -131,7 +131,7 @@ def test_plan_context_without_itinerary_id_publishes_nothing(events, monkeypatch
 def test_research_event_stats_without_report_falls_back_to_list_lengths(events, monkeypatch):
     """旧式 stub 上下文没有 research_report 时按列表长度统计且不算降级。"""
     monkeypatch.setattr(
-        day_stream,
+        plan_context,
         "run_research_context",
         lambda req: {
             "candidates": [{"name": "a"}, {"name": "b"}],
@@ -141,7 +141,7 @@ def test_research_event_stats_without_report_falls_back_to_list_lengths(events, 
         },
     )
 
-    day_stream.run_plan_context("杭州", [], itinerary_id=1)
+    plan_context.run_plan_context("杭州", [], itinerary_id=1)
 
     done = events[1][2]
     assert done["evidenceCount"] == 3
@@ -190,10 +190,10 @@ def _fake_redis_recorder(monkeypatch) -> list[str]:
 def test_plan_context_events_carry_trace_run_id(monkeypatch):
     """M5 三向关联：trace 上下文内发布的 research 事件 data 携带当前 runId。"""
     published = _fake_redis_recorder(monkeypatch)
-    monkeypatch.setattr(day_stream, "run_research_context", lambda req: _successful_context())
+    monkeypatch.setattr(plan_context, "run_research_context", lambda req: _successful_context())
 
     with trace_run("run-plan-context") as recorder:
-        day_stream.run_plan_context("杭州", [], itinerary_id=88)
+        plan_context.run_plan_context("杭州", [], itinerary_id=88)
 
     payloads = [json.loads(p) for p in published]
     assert [p["type"] for p in payloads] == ["research_start", "research_done"]
@@ -206,9 +206,9 @@ def test_plan_context_events_carry_trace_run_id(monkeypatch):
 def test_plan_context_events_without_trace_have_no_run_id(monkeypatch):
     """无 trace 上下文时退化为旧形态：事件 data 不含 runId。"""
     published = _fake_redis_recorder(monkeypatch)
-    monkeypatch.setattr(day_stream, "run_research_context", lambda req: _successful_context())
+    monkeypatch.setattr(plan_context, "run_research_context", lambda req: _successful_context())
 
-    day_stream.run_plan_context("杭州", [], itinerary_id=88)
+    plan_context.run_plan_context("杭州", [], itinerary_id=88)
 
     assert published
     for payload in (json.loads(p) for p in published):

@@ -20,7 +20,8 @@ import logging
 import re
 from copy import deepcopy
 
-from app.agent.day_stream import run_generate_day, run_plan_context
+from app.agent.day_stream import run_generate_day
+from app.agent.plan_context import run_plan_context
 from app.schemas.trip import (
     MAX_TRIP_DAYS,
     ChatTurnRequest,

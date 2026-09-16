@@ -10,7 +10,7 @@
 
 import json
 
-from app.agent import day_stream
+from app.agent import day_prompts, day_stream, narrative
 from app.prompts import open_generation
 from app.schemas.trip import (
     BackupRule,
@@ -87,11 +87,11 @@ def test_oversized_narrative_input_is_clipped_not_rejected():
     assert response.trip_theme == "题" * 40
 
 
-# ---------- 2. 清洗函数：day_stream.sanitize_narrative ----------
+# ---------- 2. 清洗函数：narrative.sanitize_narrative ----------
 
 
 def test_sanitize_narrative_clips_lengths_and_counts():
-    plan = day_stream.sanitize_narrative(
+    plan = narrative.sanitize_narrative(
         {
             "theme": "长" * 50,
             "trip_theme": "题" * 60,
@@ -112,7 +112,7 @@ def test_sanitize_narrative_clips_lengths_and_counts():
 
 
 def test_sanitize_narrative_defaults_missing_keys_to_empty():
-    plan = day_stream.sanitize_narrative({"note": "只有概览"})
+    plan = narrative.sanitize_narrative({"note": "只有概览"})
     assert plan["theme"] is None
     assert plan["trip_theme"] is None
     assert plan["practical_notes"] == []
@@ -122,7 +122,7 @@ def test_sanitize_narrative_defaults_missing_keys_to_empty():
 
 
 def test_sanitize_narrative_tolerates_invalid_types():
-    plan = day_stream.sanitize_narrative(
+    plan = narrative.sanitize_narrative(
         {
             "theme": 123,
             "trip_theme": 456,
@@ -143,7 +143,7 @@ def test_sanitize_narrative_tolerates_invalid_types():
 
 
 def test_sanitize_narrative_coerces_string_photo_spot_and_numeric_notes():
-    plan = day_stream.sanitize_narrative(
+    plan = narrative.sanitize_narrative(
         {
             "practical_notes": ["穿运动鞋", 42, {"bad": "dict"}],
             "photo_spots": ["清水寺舞台", {"name": "伏见稻荷"}],
@@ -154,7 +154,7 @@ def test_sanitize_narrative_coerces_string_photo_spot_and_numeric_notes():
 
 
 def test_sanitize_narrative_normalizes_camel_case_keys():
-    plan = day_stream.sanitize_narrative(
+    plan = narrative.sanitize_narrative(
         {
             "tripTheme": "京都巡礼",
             "photoSpots": [{"name": "清水寺"}],
@@ -173,7 +173,7 @@ def test_sanitize_narrative_normalizes_camel_case_keys():
 
 
 def test_sanitize_narrative_keeps_why_this_of_non_attraction_items():
-    plan = day_stream.sanitize_narrative(
+    plan = narrative.sanitize_narrative(
         {
             "items": [
                 {"item_type": "food", "poi_name": "一兰拉面", "why_this": "汤头口碑第一"},
@@ -369,9 +369,9 @@ def test_llm_open_trip_sanitizes_plans_and_injects_trip_theme(monkeypatch):
             "suggestions": [],
         }
     )
-    monkeypatch.setattr(day_stream, "get_llm_client", lambda: client)
+    monkeypatch.setattr(day_prompts, "get_llm_client", lambda: client)
     req = GenerateDayRequest(city="京都", day_no=1, days=2, needs_hotel=True)
-    plans, suggestions = day_stream.llm_open_trip(req)
+    plans, suggestions = day_prompts.llm_open_trip(req)
 
     # max_tokens 叙事增量：days*1150+1100，上限 8000（2 天 → 3400）
     assert client.kwargs[0]["max_tokens"] == 2 * 1150 + 1100

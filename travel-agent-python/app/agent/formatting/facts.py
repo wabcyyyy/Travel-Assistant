@@ -12,9 +12,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from app.agent.day_stream import has_coord
 from app.agent.generation_core import PoiFactRow
 from app.agent.generators import has_valid_coords
+from app.agent.grounding import has_coord
 from app.agent.reflect import parse_time
 from app.schemas.trip import SourceRecord
 
