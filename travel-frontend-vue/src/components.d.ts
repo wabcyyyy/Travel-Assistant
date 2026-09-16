@@ -26,6 +26,7 @@ declare module 'vue' {
     ChatEditPanel: typeof import('./components/trip/ChatEditPanel.vue')['default']
     Chip: typeof import('./components/ui/Chip.vue')['default']
     CoverDialog: typeof import('./components/trip/CoverDialog.vue')['default']
+    DayInlineTips: typeof import('./components/trip/day-card/DayInlineTips.vue')['default']
     DayListCard: typeof import('./components/trip/DayListCard.vue')['default']
     DayNarrativePanel: typeof import('./components/trip/DayNarrativePanel.vue')['default']
     DiscoverPanel: typeof import('./components/trip/DiscoverPanel.vue')['default']
