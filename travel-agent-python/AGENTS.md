@@ -26,6 +26,13 @@
 - **业务面**：违反业务规则是**异常路径**。抛 `app/common/envelope.py` 的 `ApiError(status, message)`——status 既作 HTTP 状态码也作 body.code，由全局 handler 统一包成 `Result{code,message,data}` 信封。业务路由里不要 try/except 吞成 200。
 - 判据：这条失败**有没有替代产出**？有（降级草案、缓存回退）→ agent 轨；没有（权限、校验、不存在）→ 业务轨。
 
+## 边界（门禁机检，违反即红）
+
+- **分层**：`app.api → app.services → app.agent`，禁反向与跨层（import-linter 契约 1）。
+- **agent 门面**：api/services 只准 `from app.agent import X` 用 `app/agent/__init__.py` 的导出面；深路径 import agent 子模块即红（契约 2）。新增对外能力 = 在 `__init__.py` 登记 re-export + `__all__`。
+- **跨模块共用符号**：agent 层内多模块共用的内部函数由所属模块去下划线提级为「跨模块 API」并在模块 docstring 登记（见 generators/day_stream/tools/workflow）；不搞第二份实现，也不靠门面转发内部符号。
+- **工具面**：全部工具经 `app/agent/tool_registry.py` 注册表派发（预算/参数校验/审计全覆盖），禁 `getattr(tools, name)` 字符串派发。注册 handler 一律调用期读 `tools` 模块属性（晚绑定），保 `patch.object(tools, ...)` 可 mock。
+
 ## 数据访问选址（新增读写先选对门）
 
 - **业务写**（行程/用户状态的写路径）→ `app/services/`（版本快照、缓存失效在 service 层做）。
@@ -39,9 +46,12 @@
 ```bash
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1  # 一键门禁（= CI preflight + 离线测试）
 # 单项（check.ps1 的组成，同序）：ruff check . / ruff format --check . /
-#   python scripts/typecheck.py（pyright 基线 ratchet，--update 只减不增）/ secret scan / 离线 pytest
+#   python scripts/typecheck.py（pyright 基线 ratchet，--update 只减不增）/
+#   lint-imports（分层与门面边界）/ secret scan / 离线 pytest / 契约导出漂移
 uv run pytest tests/ -q --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval  # 离线测试
 uv run python scripts/export_contracts.py        # 改 schemas 后导出契约（产物入仓）
 uv run python tests/agent_eval/eval_agent.py     # 离线评测（行为改动后对比）
 uv run pytest tests/api -q                       # 活栈契约（需先起服务）
 ```
+
+配置：`app/common/config.py` 是 **pydantic-settings 字段定义式**（键名小写即环境变量名，如 `agent_host` ↔ `AGENT_HOST`）；新增键 = 加字段 + 同 PR 更新 `.env.example`（`tests/test_env_example_alignment.py` 会验）。启动校验在 `Settings.validate_boot()`（main.py lifespan 调）；依赖运行语境的安全检查（密钥强度、绑定地址）只放这里，不放 import 期。
