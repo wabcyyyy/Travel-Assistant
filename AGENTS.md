@@ -10,7 +10,8 @@ AI 旅行规划 Agent：输入城市/天数/偏好/一句话意图，LangGraph �
 
 ```bash
 # 一键门禁（改任何 Python 代码后跑这个）：ruff check → ruff format --check →
-# pyright 基线 ratchet → secret scan → 离线测试；与 CI preflight 同序同果
+# pyright 基线 ratchet → import-linter 边界 → 代码规模 ratchet → secret scan →
+# 离线测试 → 契约漂移；与 CI preflight 同序同果
 cd travel-agent-python && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
 
 # 契约导出（改了 app/schemas/ 后必须跑，产物入仓，CI 校验漂移）
