@@ -80,6 +80,44 @@ jobs:
         working-directory: .
         run: docker compose config -q
 
+  agent-eval:
+    needs: preflight
+    # 行为防线（G-2.0）：mock 驱动的离线 eval 与流式事件快照。与单测分层——
+    # 单测断言单点字段，这里断言**端到端行为与事件序列**（P2 拆分的判据）。
+    # 独立 job 而非并入 python-agent：失败语义清晰（行为回归 vs 单测失败），
+    # 且与单测并行跑。
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: travel-agent-python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+          enable-cache: true
+      - name: Sync deps (lockfile-driven)
+        run: uv sync --frozen
+      - name: Streaming event snapshot (trip/day)
+        # trip 的 NDJSON 事件序列 + day 链路 plan/trace 逐字节比对 golden；
+        # 有意改口径须 GOLDEN_REGENERATE=1 重生成并人工复核 diff
+        env:
+          RAG_EMBEDDING_PROVIDER: hashed
+          LLM_API_KEY: ''
+        run: uv run pytest tests/test_stream_snapshot.py -q
+      - name: Offline eval (agent + research)
+        # 离线护栏已让 eval 完全确定（无外网、fixture 驱动），因此报告本身就是
+        # 基线：跑完与入仓报告逐字节比对 = 行为防倒退门禁（同契约 drift 手法）。
+        # 指标口径见 tests/agent_eval/report/report.md；有意改口径须重生成报告
+        # 并随同一 commit 入仓（人工复核 diff）。
+        env:
+          LLM_API_KEY: ''
+          RAG_EMBEDDING_PROVIDER: hashed
+        run: |
+          uv run python tests/agent_eval/eval_agent.py
+          uv run python tests/agent_eval/eval_research.py
+          git diff --exit-code -- tests/agent_eval/report/
+
   frontend:
     needs: preflight
     # 前端门禁：类型检查 + 生产构建 + 纯逻辑单测（store reducer / SSE 帧解析）

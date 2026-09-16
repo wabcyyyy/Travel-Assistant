@@ -20,9 +20,11 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from app.agent import tools, workflow
+from app.agent.formatting import prices as pricing
 from app.agent.research import reasoning
 from app.agent.route_service import clear_route_cache
 from app.agent.trace import trace_run
+from app.common.config import settings
 from app.prompts.open_generation import OPEN_DAY_PROMPT_VERSION, OPEN_TRIP_PROMPT_VERSION
 from app.schemas.trip import GenerateRequest
 from tests.agent_eval import mock_llm
@@ -30,6 +32,12 @@ from tests.agent_eval.metrics import evaluate_response
 
 CASES_PATH = Path(__file__).with_name("cases.json")
 REPORT_DIR = Path(__file__).with_name("report")
+
+
+def _forbid_network_call(*args, **kwargs):
+    """实时价/联网入口的哨兵：被调用即报错，证明这条评测链路真的离线。"""
+    raise AssertionError("离线评测不得发起实时价/联网查询")
+
 
 # 生成契约字段白名单：case 里的 name/prompt_version 是评测元数据，
 # 不属于 GenerateRequest；intent 等契约字段按白名单自然透传（M5）。
@@ -54,8 +62,19 @@ def run_case(case: dict) -> dict:
     fixture = mock_llm.catalog(case["city"])
     # LLM-only 口径下的离线评测：mock 开放模式的模型输出（而非旧的
     # 确定性 fallback），走真实的编排/引用落地/反思/格式化链路。
+    #
+    # 离线护栏（G-2.0）：仅有 fixture 检索还不够——实时价与联网补池默认开启，
+    # 会真的去打 LLM 网关（失败被内部吞掉降级），导致报告随环境凭据/网络抖动
+    # 漂移、耗时不可控，CI 上更会因无外网而产出另一套数字。这里显式关闭，
+    # 并把实时价入口换成"一旦调用即报错"的哨兵：离线不是靠约定，而是被证明。
     with (
         patch.object(workflow.settings, "llm_api_key", "fixture"),
+        patch.object(settings, "live_price_search", False),
+        patch.object(settings, "live_food_price_search", False),
+        patch.object(settings, "web_search_enabled", False),
+        patch.object(settings, "llm_generation_web_search", False),
+        patch.object(pricing, "query_live_price", _forbid_network_call),
+        patch.object(pricing, "query_live_food_price", _forbid_network_call),
         patch.object(tools, "search_attractions", mock_llm.search_attractions),
         patch.object(tools, "search_foods", mock_llm.search_foods),
         patch.object(tools, "get_consumption", mock_llm.get_consumption),

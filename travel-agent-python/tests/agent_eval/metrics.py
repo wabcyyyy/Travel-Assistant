@@ -173,8 +173,12 @@ def evaluate_response(response, case: dict, catalog: dict, trace: dict) -> dict:
         "trace": {
             "node_count": len(node_events),
             "tool_count": len(tool_events),
-            "nodes": [event["name"] for event in node_events],
-            "tools": [event["name"] for event in tool_events],
+            # 排序而非保留调用顺序：研究三域并行执行，节点/工具事件的**到达
+            # 顺序**由线程调度决定——同一份 fixture 两次运行会得到不同的排列，
+            # 报告因此字节不稳定，无法充当防倒退门禁的比对基准（G-2.0）。
+            # 保留"调过哪些节点/工具、各多少次"，只丢弃不可靠的先后。
+            "nodes": sorted(event["name"] for event in node_events),
+            "tools": sorted(event["name"] for event in tool_events),
             "routes": [event["name"] for event in trace.get("events", []) if event["kind"] == "route"],
         },
         "research_rounds": research_rounds,

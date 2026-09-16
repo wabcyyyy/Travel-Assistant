@@ -42,22 +42,22 @@
         "node_count": 10,
         "tool_count": 4,
         "nodes": [
-          "parse",
-          "parse",
-          "research",
-          "research",
-          "generate",
-          "generate",
-          "reflect",
-          "reflect",
           "format",
-          "format"
+          "format",
+          "generate",
+          "generate",
+          "parse",
+          "parse",
+          "reflect",
+          "reflect",
+          "research",
+          "research"
         ],
         "tools": [
+          "fixture.get_consumption",
           "search_attractions",
           "search_foods",
-          "search_hotels",
-          "fixture.get_consumption"
+          "search_hotels"
         ],
         "routes": [
           "pass"
@@ -91,26 +91,26 @@
         "node_count": 14,
         "tool_count": 4,
         "nodes": [
-          "parse",
-          "parse",
-          "research",
-          "research",
-          "generate",
-          "generate",
-          "reflect",
-          "reflect",
-          "generate",
-          "generate",
-          "reflect",
-          "reflect",
           "format",
-          "format"
+          "format",
+          "generate",
+          "generate",
+          "generate",
+          "generate",
+          "parse",
+          "parse",
+          "reflect",
+          "reflect",
+          "reflect",
+          "reflect",
+          "research",
+          "research"
         ],
         "tools": [
+          "fixture.get_consumption",
           "search_attractions",
           "search_foods",
-          "search_hotels",
-          "fixture.get_consumption"
+          "search_hotels"
         ],
         "routes": [
           "fix",
@@ -146,26 +146,26 @@
         "node_count": 14,
         "tool_count": 4,
         "nodes": [
-          "parse",
-          "parse",
-          "research",
-          "research",
-          "generate",
-          "generate",
-          "reflect",
-          "reflect",
-          "generate",
-          "generate",
-          "reflect",
-          "reflect",
           "format",
-          "format"
+          "format",
+          "generate",
+          "generate",
+          "generate",
+          "generate",
+          "parse",
+          "parse",
+          "reflect",
+          "reflect",
+          "reflect",
+          "reflect",
+          "research",
+          "research"
         ],
         "tools": [
+          "fixture.get_consumption",
           "search_attractions",
           "search_foods",
-          "search_hotels",
-          "fixture.get_consumption"
+          "search_hotels"
         ],
         "routes": [
           "fix",
@@ -201,26 +201,26 @@
         "node_count": 14,
         "tool_count": 4,
         "nodes": [
-          "parse",
-          "parse",
-          "research",
-          "research",
-          "generate",
-          "generate",
-          "reflect",
-          "reflect",
-          "generate",
-          "generate",
-          "reflect",
-          "reflect",
           "format",
-          "format"
+          "format",
+          "generate",
+          "generate",
+          "generate",
+          "generate",
+          "parse",
+          "parse",
+          "reflect",
+          "reflect",
+          "reflect",
+          "reflect",
+          "research",
+          "research"
         ],
         "tools": [
+          "fixture.get_consumption",
           "search_attractions",
           "search_foods",
-          "search_hotels",
-          "fixture.get_consumption"
+          "search_hotels"
         ],
         "routes": [
           "fix",
@@ -256,26 +256,26 @@
         "node_count": 14,
         "tool_count": 4,
         "nodes": [
-          "parse",
-          "parse",
-          "research",
-          "research",
-          "generate",
-          "generate",
-          "reflect",
-          "reflect",
-          "generate",
-          "generate",
-          "reflect",
-          "reflect",
           "format",
-          "format"
+          "format",
+          "generate",
+          "generate",
+          "generate",
+          "generate",
+          "parse",
+          "parse",
+          "reflect",
+          "reflect",
+          "reflect",
+          "reflect",
+          "research",
+          "research"
         ],
         "tools": [
+          "fixture.get_consumption",
           "search_attractions",
           "search_foods",
-          "search_hotels",
-          "fixture.get_consumption"
+          "search_hotels"
         ],
         "routes": [
           "fix",
@@ -311,26 +311,26 @@
         "node_count": 14,
         "tool_count": 4,
         "nodes": [
-          "parse",
-          "parse",
-          "research",
-          "research",
-          "generate",
-          "generate",
-          "reflect",
-          "reflect",
-          "generate",
-          "generate",
-          "reflect",
-          "reflect",
           "format",
-          "format"
+          "format",
+          "generate",
+          "generate",
+          "generate",
+          "generate",
+          "parse",
+          "parse",
+          "reflect",
+          "reflect",
+          "reflect",
+          "reflect",
+          "research",
+          "research"
         ],
         "tools": [
+          "fixture.get_consumption",
           "search_attractions",
           "search_foods",
-          "search_hotels",
-          "fixture.get_consumption"
+          "search_hotels"
         ],
         "routes": [
           "fix",

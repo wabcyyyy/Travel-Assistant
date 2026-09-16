@@ -31,13 +31,29 @@ from app.agent.research import (
     run_research_context,
 )
 from app.agent.research.evidence import ResearchTask
+from app.common.config import settings
 from app.schemas.trip import GenerateRequest
 from tests.agent_eval import mock_llm
 
 
+def _forbid_network_call(*args, **kwargs):
+    """联网入口哨兵：被调用即报错，证明这条评测链路真的离线。"""
+    raise AssertionError("离线评测不得发起联网查询")
+
+
 def _research_patch():
-    """研究链路注入：检索工具 + LLM 推理全部替换为确定性 fixture。"""
+    """研究链路注入：检索工具 + LLM 推理全部替换为确定性 fixture。
+
+    附带离线护栏（G-2.0）：`_run_search` 在证据不足(<3)时会走联网补池，
+    仅 mock 检索工具并不足以保证离线——默认开启的 WEB_SEARCH_ENABLED 会让
+    报告随网络抖动漂移、CI 上产出另一套数字。这里显式关闭并把联网入口换成
+    哨兵，使"离线可复现"成为被证明的事实。
+    """
     return (
+        patch.object(settings, "web_search_enabled", False),
+        patch.object(settings, "llm_generation_web_search", False),
+        # 函数内导入，必须 patch 源模块（factory 模块级没有该属性）
+        patch("app.agent.web_search.search_places_via_web", _forbid_network_call),
         patch.object(tools, "search_attractions", mock_llm.search_attractions),
         patch.object(tools, "search_foods", mock_llm.search_foods),
         patch.object(tools, "search_hotels", mock_llm.search_hotels),
