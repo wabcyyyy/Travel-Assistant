@@ -58,11 +58,11 @@ class _FixtureLLMClient:
     def __init__(self, payload: str, chunk: int = CHUNK) -> None:
         self._chunks = [payload[i : i + chunk] for i in range(0, len(payload), chunk)] or [""]
 
-    def stream_chat_deltas(self, messages, **kwargs):  # noqa: ANN001, ANN003 - 跟随 llm_client 签名
+    def stream_chat_deltas(self, messages, **kwargs):  # 跟随 llm_client 签名
         yield from self._chunks
 
 
-def _forbid_network_call(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202 - 哨兵，签名无关
+def _forbid_network_call(*args, **kwargs):
     raise AssertionError("离线快照不得发起实时价/联网查询")
 
 

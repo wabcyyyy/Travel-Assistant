@@ -54,4 +54,14 @@ uv run python tests/agent_eval/eval_agent.py     # 离线评测（行为改动�
 uv run pytest tests/api -q                       # 活栈契约（需先起服务）
 ```
 
+行为防线（G-2.0，CI 的 `agent-eval` job 同款）：
+
+- **流式快照**：`uv run pytest tests/test_stream_snapshot.py`——trip/day 两条链路的
+  事件序列/DailyPlan 与 `tests/golden/stream_*.json` 逐字节比对。有意改口径：
+  `GOLDEN_REGENERATE=1 uv run pytest tests/test_stream_snapshot.py`，**人工复核 diff 后**入库。
+- **eval ratchet**：跑 `eval_agent.py` + `eval_research.py` 后
+  `git diff --exit-code tests/agent_eval/report/`。离线护栏（实时价/联网入口哨兵）保证
+  报告确定可复现，故报告字节即基线；指标口径见 `report/report.md`。
+- 改 P2 拆分时先跑这两条：单测断言单点字段，它们断言**端到端行为与事件序列**。
+
 配置：`app/common/config.py` 是 **pydantic-settings 字段定义式**（键名小写即环境变量名，如 `agent_host` ↔ `AGENT_HOST`）；新增键 = 加字段 + 同 PR 更新 `.env.example`（`tests/test_env_example_alignment.py` 会验）。启动校验在 `Settings.validate_boot()`（main.py lifespan 调）；依赖运行语境的安全检查（密钥强度、绑定地址）只放这里，不放 import 期。
