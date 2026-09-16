@@ -36,3 +36,21 @@ def _default_clear_agent_internal_token(monkeypatch):
 
     monkeypatch.setattr(settings, "agent_internal_token", "")
     yield
+
+
+@pytest.fixture(autouse=True)
+def _clear_external_client_caches():
+    """G-3.2：外部调用基类带进程内 TTL 缓存，跨用例会互相污染。
+
+    典型症状：前一个用例把「无图」/「搜不到」的负结果存进缓存，后一个用例
+    打了桩却拿到缓存的 None，表现为"桩没生效"。这里在用例前后各清一次，
+    让每个用例从干净缓存出发（正/负 TTL 的语义由 test_external_client 专门覆盖）。
+    """
+    from app.agent import pricing, tools, web_search
+
+    clients = (tools._image_client, tools._wiki_client, pricing._price_client, web_search._search_client)
+    for client in clients:
+        client.clear_cache()
+    yield
+    for client in clients:
+        client.clear_cache()

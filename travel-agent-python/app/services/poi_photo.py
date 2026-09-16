@@ -23,7 +23,7 @@ from collections import OrderedDict
 import httpx
 
 from app.common.config import settings
-from app.services.http_client import WIKI_USER_AGENT, image_client
+from app.common.http_client import WIKI_USER_AGENT, image_client
 
 logger = logging.getLogger(__name__)
 

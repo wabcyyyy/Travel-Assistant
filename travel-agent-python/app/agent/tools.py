@@ -19,11 +19,11 @@
 import logging
 import re
 
-import httpx
-
 from app.agent import poi_repository
 from app.agent.trace import traced
 from app.common.config import settings
+from app.common.external_client import BACKGROUND, ExternalClient
+from app.common.http_client import image_client
 from app.rag.store import poi_store
 
 logger = logging.getLogger(__name__)
@@ -274,27 +274,47 @@ def search_hotel_room_types(poi_ids: list[int]) -> list[dict]:
 
 _poi_image_cache: dict[tuple[str, str], str | None] = {}
 
+# 图片通道（G-3.2 外部调用基类）：超时 8s、响应上限 256KB、成功缓存 6h、
+# 负结果 5min（图库偶尔限流时要能较快重试）；后台车道节流。
+_image_client: ExternalClient = ExternalClient(
+    name="poi_image",
+    ttl_seconds=6 * 3600,
+    negative_ttl_seconds=300,
+    max_response_bytes=256 * 1024,
+    timeout_seconds=8,
+)
+
+
+_wiki_client: ExternalClient = ExternalClient(
+    name="poi_image_wiki",
+    ttl_seconds=6 * 3600,
+    negative_ttl_seconds=300,
+    max_response_bytes=256 * 1024,
+    timeout_seconds=4,
+)
+
 
 def _unsplash_image(name: str, city: str) -> str | None:
     """从 Unsplash 检索 POI 实景照片（免费 API，返回真实摄影图，非地图位置图）。"""
-    if not settings.unsplash_access_key:
-        return None
     query = " ".join(x for x in (name, city) if x).strip()
-    if not query:
+    key = ExternalClient.resolve_key(settings.unsplash_access_key)
+    if not query or not key:
         return None
-    try:
-        resp = httpx.get(
+
+    def _load() -> str | None:
+        resp = image_client().get(
             "https://api.unsplash.com/search/photos",
             params={"query": query[:60], "per_page": 1, "orientation": "landscape", "content_filter": "high"},
-            headers={"Authorization": f"Client-ID {settings.unsplash_access_key}"},
-            timeout=8,
+            headers={"Authorization": f"Client-ID {key}"},
         )
+        if _image_client.clamp_bytes(resp.content) is None:
+            return None
         results = resp.json().get("results") or []
         if results and isinstance(results[0], dict):
             return (results[0].get("urls") or {}).get("regular") or (results[0].get("urls") or {}).get("full")
-    except Exception:
         return None
-    return None
+
+    return _image_client.call(f"unsplash:{query[:60]}", _load, lane=BACKGROUND)
 
 
 def _wikipedia_image(name: str) -> str | None:
@@ -302,8 +322,9 @@ def _wikipedia_image(name: str) -> str | None:
     title = re.sub(r"[（(][^（）()]*[)）]", "", name or "").strip()
     if not title:
         return None
-    try:
-        resp = httpx.get(
+
+    def _load() -> str | None:
+        resp = image_client().get(
             "https://zh.wikipedia.org/w/api.php",
             params={
                 "action": "query",
@@ -315,17 +336,18 @@ def _wikipedia_image(name: str) -> str | None:
                 "pithumbsize": "500",
                 "format": "json",
             },
-            timeout=4,
             headers={"User-Agent": "TravelAssistantDemo/1.0 (student-project; contact=dev@localhost.invalid)"},
         )
+        if _wiki_client.clamp_bytes(resp.content) is None:
+            return None
         pages = (resp.json().get("query") or {}).get("pages") or {}
         for page in pages.values():
             thumb = (page.get("thumbnail") or {}).get("source")
             if thumb:
                 return thumb
-    except Exception:
         return None
-    return None
+
+    return _wiki_client.call(f"wiki:{title}", _load, lane=BACKGROUND)
 
 
 def poi_image(name: str | None, city: str) -> str | None:

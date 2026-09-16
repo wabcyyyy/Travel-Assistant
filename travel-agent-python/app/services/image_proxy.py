@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 import httpx
 from fastapi import Response
 
-from app.services.http_client import IMAGE_USER_AGENT, image_client
+from app.common.http_client import IMAGE_USER_AGENT, image_client
 
 logger = logging.getLogger(__name__)
 

@@ -19,8 +19,8 @@ from app.api import security
 from app.api.business.media import router as media_router
 from app.common import redis_client
 from app.common.envelope import install_exception_handlers
+from app.common.http_client import configure_clients
 from app.services import cache_store, image_proxy, poi_photo
-from app.services.http_client import configure_clients
 from app.services.image_proxy import is_safe_image_url
 
 UNSPLASH_KEY = "test-unsplash-key"

@@ -1,4 +1,9 @@
-"""共享 HTTP 客户端。
+"""共享 HTTP 客户端（G-3.2 自 app/services 提级到 common）。
+
+归属说明：本模块是**基础设施**而非业务服务——agent 层（图片落地）与 services 层
+（封面/图库代理）都要用它，放在 services 会让 agent 反向依赖 services（违反
+「api → services → agent」分层）。common 层对两侧都可见，是唯一不破分层的落点。
+
 
 超时口径迁移说明：Java 的 `imageRestClient` 是 connect 2.5s / read 7s（见
 `RestClientConfig.java:33-40`），这里逐字对齐；而 Java 调高德 Web API 用的默认

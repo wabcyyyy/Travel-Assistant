@@ -12,9 +12,19 @@ import logging
 from app.agent.run_limits import current_limits
 from app.common.addons import addons
 from app.common.config import settings
+from app.common.external_client import BACKGROUND, ExternalClient
 from app.common.llm_client import get_llm_client
 
 logger = logging.getLogger(__name__)
+
+# 联网搜索的补池通道（G-3.2）：成功缓存 30min（同一 query 短期会反复出现），
+# 负结果 2min（搜不到要能较快重试）。
+_search_client: ExternalClient = ExternalClient(
+    name="web_search",
+    ttl_seconds=1800,
+    negative_ttl_seconds=120,
+    timeout_seconds=60,
+)
 
 
 def web_search_enabled() -> bool:
@@ -57,9 +67,13 @@ def web_search_text(question: str, *, max_tokens: int = 400) -> str:
 
 def web_search_json(question: str, *, schema_hint: str, max_tokens: int = 800) -> dict | list | None:
     """联网检索并解析 JSON；失败返回 None。"""
-    if not web_search_enabled() or not question or not _check_budget():
+    if not web_search_enabled() or not question:
         return None
-    try:
+    prompt = question.strip()[:500]
+
+    def _load() -> dict | list | None:
+        if not _check_budget():
+            return None
         client = get_llm_client()
         raw = client.complete(
             question.strip()[:500],
@@ -79,9 +93,8 @@ def web_search_json(question: str, *, schema_hint: str, max_tokens: int = 800) -
         if start_arr != -1 and end_arr != -1:
             return json.loads(raw[start_arr : end_arr + 1])
         return None
-    except Exception as exc:
-        logger.warning("web search json failed: %s", exc)
-        return None
+
+    return _search_client.call(f"json:{prompt}", _load, lane=BACKGROUND)
 
 
 _CATEGORY_PROMPTS = {

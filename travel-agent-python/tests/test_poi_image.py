@@ -1,9 +1,28 @@
 import app.agent.tools as tools
 
 
+class _StubClient:
+    """共享图片通道替身：只暴露 .get（G-3.2 起图片经 services.http_client）。"""
+
+    def __init__(self, get):
+        self.get = get
+
+
 class _FakeResp:
+    """最小 httpx.Response 替身。
+
+    必须带 `.content`：G-3.2 起图片通道经 ExternalClient，会用它做响应字节
+    上限检查（真实 httpx.Response 一定有此属性，桩缺了会静默降级成 None）。
+    """
+
     def __init__(self, payload):
         self._payload = payload
+
+    @property
+    def content(self) -> bytes:
+        import json
+
+        return json.dumps(self._payload, ensure_ascii=False).encode("utf-8")
 
     def json(self):
         return self._payload
@@ -46,7 +65,7 @@ def test_poi_image_returns_none_without_external_hit_and_caches(monkeypatch):
         calls.append(1)
         return _FakeResp({})
 
-    monkeypatch.setattr(tools.httpx, "get", fake_get)
+    monkeypatch.setattr(tools, "image_client", lambda: _StubClient(fake_get))
     monkeypatch.setattr(tools.settings, "unsplash_access_key", "")
     monkeypatch.setattr(tools.settings, "poi_image_wiki", True)
     tools._poi_image_cache.clear()
@@ -69,12 +88,12 @@ def test_poi_image_prefers_wikipedia_then_unsplash(monkeypatch):
     def wiki_only(*_a, **_k):
         return _FakeResp(wiki_payload)
 
-    monkeypatch.setattr(tools.httpx, "get", wiki_only)
+    monkeypatch.setattr(tools, "image_client", lambda: _StubClient(wiki_only))
     assert tools.poi_image("西湖", "杭州") == "https://upload.wikimedia.org/x.jpg"
 
     tools._poi_image_cache.clear()
     monkeypatch.setattr(tools.settings, "poi_image_wiki", False)
-    monkeypatch.setattr(tools.httpx, "get", lambda *_a, **_k: _FakeResp(unsplash_payload))
+    monkeypatch.setattr(tools, "image_client", lambda: _StubClient(lambda *_a, **_k: _FakeResp(unsplash_payload)))
     assert tools.poi_image("西湖", "杭州") == "https://images.unsplash.com/abc"
 
 
@@ -85,7 +104,7 @@ def test_unsplash_disabled_returns_none(monkeypatch):
         hits.append(1)
         raise AssertionError("不应发起请求")
 
-    monkeypatch.setattr(tools.httpx, "get", fake_get)
+    monkeypatch.setattr(tools, "image_client", lambda: _StubClient(fake_get))
     monkeypatch.setattr(tools.settings, "unsplash_access_key", "")
     assert tools._unsplash_image("故宫", "北京") is None
     assert hits == []

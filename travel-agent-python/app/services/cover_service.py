@@ -29,10 +29,10 @@ from sqlalchemy import update
 
 from app.common.config import settings
 from app.common.envelope import ApiError
+from app.common.http_client import IMAGE_USER_AGENT, image_client
 from app.db.models import ItineraryMain
 from app.db.session import session_scope
 from app.services import itinerary_query
-from app.services.http_client import IMAGE_USER_AGENT, image_client
 from app.services.image_proxy import MAX_IMAGE_BYTES, is_safe_image_url
 
 logger = logging.getLogger(__name__)

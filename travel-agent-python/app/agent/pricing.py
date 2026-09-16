@@ -6,9 +6,19 @@
 import json
 import logging
 
+from app.common.external_client import BACKGROUND, ExternalClient
 from app.common.llm_client import get_llm_client
 
 logger = logging.getLogger(__name__)
+
+# 实时价核价的外部调用口径（G-3.2）：LLM 通道的"响应上限"由 max_tokens 承担
+_LIVE_PRICE_MAX_TOKENS = 200
+_price_client: ExternalClient = ExternalClient(
+    name="live_price",
+    ttl_seconds=3600,
+    negative_ttl_seconds=180,
+    timeout_seconds=30,
+)
 
 _HOTEL_SYSTEM_PROMPT = (
     "你是酒店价格查询助手。基于联网搜索结果回答，不要编造。只输出 JSON，格式："
@@ -44,36 +54,39 @@ def query_live_price(city: str, hotel_name: str, checkin_date: str | None) -> di
 
     注意：刻意不把未来入住日期放进搜索词——搜索引擎拿不到未来报价，
     查"当前挂牌价"作基准，季节差异由调用方的系数处理。
+
+    G-3.2：经外部调用基类——成功缓存 1h（价格日内基本稳定）、**负结果 3min**
+    （查不到要能较快重试）、后台车道节流（价格核验是补强而非主链路）。
     """
-    try:
+    question = f"{city}「{hotel_name}」标准房型 目前一晚 网络挂牌价大约多少人民币？只报一个有代表性的每晚价格。"
+
+    def _load() -> dict | None:
         client = get_llm_client()
-        question = f"{city}「{hotel_name}」标准房型 目前一晚 网络挂牌价大约多少人民币？只报一个有代表性的每晚价格。"
         raw = client.complete(
             question,
             system_prompt=_HOTEL_SYSTEM_PROMPT,
             temperature=0.1,
+            max_tokens=_LIVE_PRICE_MAX_TOKENS,
             enable_search=True,
         )
         return _parse_price_json(raw, "price_per_night")
-    except Exception as e:
-        logger.warning("live hotel price search failed (%s/%s): %s", city, hotel_name, e)
-        return None
+
+    return _price_client.call(f"hotel:{city}:{hotel_name}", _load, lane=BACKGROUND)
 
 
 def query_live_food_price(city: str, restaurant_name: str) -> dict | None:
-    """餐饮人均实时价；失败返回 None，由调用方钳制/回落城市均价。"""
-    try:
+    """餐饮人均实时价；失败返回 None，由调用方钳制/回落城市均价（G-3.2 同上）。"""
+    question = f"{city}「{restaurant_name}」正常一餐人均消费大约多少人民币？只报一个有代表性的人均价格，已换算人民币。"
+
+    def _load() -> dict | None:
         client = get_llm_client()
-        question = (
-            f"{city}「{restaurant_name}」正常一餐人均消费大约多少人民币？只报一个有代表性的人均价格，已换算人民币。"
-        )
         raw = client.complete(
             question,
             system_prompt=_FOOD_SYSTEM_PROMPT,
             temperature=0.1,
+            max_tokens=_LIVE_PRICE_MAX_TOKENS,
             enable_search=True,
         )
         return _parse_price_json(raw, "price_per_person")
-    except Exception as e:
-        logger.warning("live food price search failed (%s/%s): %s", city, restaurant_name, e)
-        return None
+
+    return _price_client.call(f"food:{city}:{restaurant_name}", _load, lane=BACKGROUND)
