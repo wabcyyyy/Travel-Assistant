@@ -55,19 +55,29 @@ jobs:
         working-directory: travel-agent-python
     steps:
       - uses: actions/checkout@v4
+        with:
+          # diff-cover 要拿 origin/master 做比对基线（默认 fetch-depth=1 拿不到）
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: '3.12'
           enable-cache: true
       - name: Sync deps (lockfile-driven)
         run: uv sync --frozen
-      - name: Offline unit tests
+      - name: Offline unit tests (+ coverage for diff gate)
         env:
           # 单测不依赖真实密钥；固定 hashed 向量（零模型加载，离线确定性）
           AGENT_INTERNAL_TOKEN: ''
           LLM_API_KEY: ''
           RAG_EMBEDDING_PROVIDER: hashed
-        run: uv run pytest tests/ --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval -q
+        # coverage.xml 供下一步 diff-cover 用；全量覆盖率不设阈值（存量面有历史
+        # 包袱），只对**本次变更行**设门槛——这是 G-3.4 的口径。
+        run: |
+          uv run pytest tests/ --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval -q             --cov=app --cov-report=xml --cov-report=
+      - name: Coverage gate on changed lines
+        # G-3.4：本次变更行覆盖率 ≥70%，门槛只升不降（INV-1）。
+        # 故意提交无测试的新函数 → 本步红（与 "门禁只升不降" 同一纪律）。
+        run: uv run diff-cover coverage.xml --compare-branch=origin/master --fail-under=70
       - name: Contract schema drift check
         # 契约唯一源是 app/schemas/**（登记表 app/schemas/contracts.py）；入仓导出物
         # （事件/分组 schema + openapi.json + 前端生成类型）与模型不同步即红

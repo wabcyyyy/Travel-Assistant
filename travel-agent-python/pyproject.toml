@@ -41,9 +41,11 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "diff-cover>=10.5.1",
     "import-linter>=2.15",
     "pyright>=1.1.414",
     "pytest==8.2.2",
+    "pytest-cov>=7.1.0",
     "ruff>=0.16.7",
 ]
 

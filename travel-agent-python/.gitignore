@@ -8,3 +8,6 @@ dist/
 build/
 *.log
 data/
+# G-3.4：diff-cover 的中间产物（CI 里生成，不入仓）
+coverage.xml
+.coverage

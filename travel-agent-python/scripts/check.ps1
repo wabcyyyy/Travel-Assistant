@@ -39,10 +39,21 @@ if (Test-Path $secrets) {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
-Step "offline tests"
+Step "offline tests (+ coverage)"
 $env:RAG_EMBEDDING_PROVIDER = "hashed"
-uv run pytest tests/ -q --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval
+uv run pytest tests/ -q --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval --cov=app --cov-report=xml --cov-report=
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Step "coverage gate on changed lines (diff-cover, G-3.4)"
+# 本次变更行覆盖率 >= 70%，门槛只升不降。基线取 origin/master；无该引用时
+# （如浅克隆或离线仓库）跳过并提示，避免本地门禁因缺基线而误红。
+git rev-parse --verify --quiet origin/master > $null
+if ($LASTEXITCODE -eq 0) {
+    uv run diff-cover coverage.xml --compare-branch=origin/master --fail-under=70
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+} else {
+    Write-Host "  skipped: origin/master not available (shallow clone?)" -ForegroundColor Yellow
+}
 
 Step "contract export drift"
 # CI python-agent job 同款检查：重跑导出后与入仓产物逐字节比对（G-1.1）

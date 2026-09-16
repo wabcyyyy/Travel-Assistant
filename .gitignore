@@ -48,3 +48,6 @@ docs/
 
 # 本地侦察/探针临时物（TREK 稀疏克隆、无头截图与 stub 等，不入库）
 .tmp-*
+# G-3.4：diff-cover 的中间产物（CI 里生成，不入仓）
+coverage.xml
+.coverage
