@@ -19,6 +19,7 @@
 
 - **业务面**（路由 + 服务 + 信封）：抄 `app/services/itinerary_query.py` 配合 `app/api/business/` 的路由写法——瘦路由、逻辑进 service、返回走 Result 信封。
 - **Agent 面**（研究编排 + 工具 + 降级）：抄 `app/agent/research/`——子任务并行、证据包汇聚、失败响亮降级、全程 trace 事件。
+- **生成链路**（行程内容组装）：先读 `app/agent/README.md` 的模块蓝图——它定义每模块职责、依赖方向（`stream → workflow → generators → generation_core`，禁反向）与"新增生成能力先抄谁"。
 
 ## 双轨错误边界（何时用哪个）
 
