@@ -13,11 +13,10 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, time
+from datetime import time
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel
 from sqlalchemy import select, update
 
 from app.agent.nl_edit import run_edit_ops
@@ -34,6 +33,7 @@ from app.db.models import (
     PoiKnowledge,
 )
 from app.db.session import session_scope
+from app.schemas.business.itinerary import ItemUpsertRequest
 from app.schemas.trip import EditOpRequest
 from app.services import (
     budget_engine,
@@ -47,33 +47,6 @@ logger = logging.getLogger(__name__)
 
 VALID_ITEM_TYPES = ("attraction", "food", "hotel", "transport")
 RESERVATION_REMINDER_PREFIX = "【预约提醒】"
-
-
-class ItemUpsertRequest(BaseModel):
-    """字段名与 Java `ItemUpsertRequest` 一致（camelCase，前端已在发这个形状）。"""
-
-    dayId: int | None = None
-    itemType: str | None = None
-    poiName: str | None = None
-    poiId: str | None = None
-    address: str | None = None
-    latitude: Decimal | None = None
-    longitude: Decimal | None = None
-    startTime: time | None = None
-    endTime: time | None = None
-    durationMin: int | None = None
-    cost: Decimal | None = None
-    tag: str | None = None
-    remark: str | None = None
-    openTime: str | None = None
-    imageUrl: str | None = None
-    source: str | None = None
-    sourceUpdatedAt: datetime | None = None
-    verificationStatus: str | None = None
-    valueKind: str | None = None
-    freshnessStatus: str | None = None
-    reviewRequirement: str | None = None
-    factEvidenceJson: str | None = None
 
 
 # PUT 里带 dayId 即跨天移动（Java 侧此前刻意忽略该字段，v2.2 §6.8 才放开）

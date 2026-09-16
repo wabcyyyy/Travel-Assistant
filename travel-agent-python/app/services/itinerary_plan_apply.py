@@ -19,12 +19,12 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.common.envelope import ApiError
 from app.db.models import HotelRoomType, ItineraryDay, ItineraryItem, PoiKnowledge
 from app.db.session import session_scope
+from app.schemas.business.itinerary import HotelOptionRequest
 from app.schemas.trip import MAX_TRIP_DAYS
 from app.services import (
     budget_engine,
@@ -42,17 +42,6 @@ MAX_POI_NAME = 128
 DEFAULT_NEW_DAY_NOTE = "宽松安排"
 HOTEL_START_TIME = time(20, 0)
 BASIC_ROOM_TYPE = "基础房型"
-
-
-class HotelOptionRequest(BaseModel):
-    """字段名与 Java `HotelOptionApplyRequest` 一致（前端按 camelCase 发）。"""
-
-    hotelName: str | None = None
-    tier: str | None = None
-    roomType: str | None = None
-    dayNos: list[int] | None = None
-    actionMessageId: int | None = None
-    baseRevision: str | None = None
 
 
 # ---------- 应用 AI 草稿 ----------

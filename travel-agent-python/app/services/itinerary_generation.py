@@ -35,7 +35,7 @@ from app.common.envelope import ApiError
 from app.common.task_pool import SlotExecutor, TaskRejected
 from app.db.models import ItineraryDay, ItineraryMain
 from app.db.session import session_scope
-from app.schemas.common import WireModel
+from app.schemas.business.itinerary import GenerateTripRequest
 from app.schemas.stream_events import StreamEvent
 from app.schemas.trip import MAX_TRIP_DAYS, DailyPlan, GenerateDayRequest
 from app.services import (
@@ -95,27 +95,6 @@ class GenerateCommand:
         if self.intent and self.intent.strip():
             return self.intent.strip()
         return self.requirements or ""
-
-
-class GenerateTripRequest(WireModel):
-    """`POST /api/itinerary/generate` 的请求体；与 Java `GenerateRequest` 字段一一对应。
-
-    约束**不写在 pydantic 上**：Java 的报错文案来自 Bean Validation 的 message，
-    由 `_validate` 按同一顺序逐条判定，才能保证前端拿到同一句中文提示。
-    """
-
-    city: str | None = None
-    days: int | None = None
-    persons: int | None = 1
-    stayNights: int | None = None
-    startDate: date | None = None
-    endDate: date | None = None
-    budget: Decimal | None = None
-    preferences: list[str] | None = None
-    hotelTier: str | None = None
-    regionHint: str | None = None
-    requirements: str | None = None
-    intent: str | None = None
 
 
 def submit_planning(user_id: int, itinerary_id: int, command: GenerateCommand) -> None:

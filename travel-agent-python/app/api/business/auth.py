@@ -12,77 +12,19 @@ CSRF 面：Java 侧关闭了 Spring CSRF 保护，靠 SameSite=Lax 挡跨站 POS
 
 from __future__ import annotations
 
-import re
-
 from fastapi import APIRouter, Depends, Request, Response
-from pydantic import BaseModel, field_validator
 
 from app.api.deps import AuthUser, extract_token
 from app.api.security import enforce_business_auth
 from app.common.config import settings
 from app.common.envelope import ApiError, ok
+from app.schemas.business.auth import LoginBody, RegisterBody
 from app.services import user_service
 
 COOKIE_NAME = "TA_AUTH"
-USERNAME_RE = re.compile(r"^[A-Za-z0-9_一-龥]+$")
-PASSWORD_RE = re.compile(r"^[A-Za-z0-9!@#$%^&*_\-]+$")
 
 auth_router = APIRouter(prefix="/api/auth", tags=["auth"])
 user_router = APIRouter(prefix="/api/user", tags=["user"], dependencies=[Depends(enforce_business_auth)])
-
-
-class LoginBody(BaseModel):
-    username: str
-    password: str
-
-    @field_validator("username")
-    @classmethod
-    def _username_not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("用户名不能为空")
-        return value
-
-    @field_validator("password")
-    @classmethod
-    def _password_not_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("密码不能为空")
-        return value
-
-
-class RegisterBody(BaseModel):
-    username: str
-    password: str
-    nickname: str | None = None
-
-    @field_validator("username")
-    @classmethod
-    def _username_rules(cls, value: str) -> str:
-        if not value or not value.strip():
-            raise ValueError("用户名不能为空")
-        if not (3 <= len(value) <= 32):
-            raise ValueError("用户名长度需在 3-32 之间")
-        if not USERNAME_RE.match(value):
-            raise ValueError("用户名仅支持中英文、数字与下划线")
-        return value
-
-    @field_validator("password")
-    @classmethod
-    def _password_rules(cls, value: str) -> str:
-        if not value or not value.strip():
-            raise ValueError("密码不能为空")
-        if not (6 <= len(value) <= 24):
-            raise ValueError("密码长度需在 6-24 之间")
-        if not PASSWORD_RE.match(value):
-            raise ValueError("密码包含非法字符")
-        return value
-
-    @field_validator("nickname")
-    @classmethod
-    def _nickname_rules(cls, value: str | None) -> str | None:
-        if value is not None and len(value) > 32:
-            raise ValueError("昵称长度需在 32 以内")
-        return value
 
 
 def client_ip(request: Request) -> str:

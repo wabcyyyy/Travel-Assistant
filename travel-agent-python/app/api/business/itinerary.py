@@ -7,7 +7,6 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends, File, Path, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import AuthUser
@@ -15,6 +14,22 @@ from app.api.security import enforce_business_auth
 from app.common import event_hub, event_publisher
 from app.common.config import settings
 from app.common.envelope import ApiError, ok
+from app.schemas.business.itinerary import (
+    ApplyPlansBody,
+    ArchiveBody,
+    ChatEditBody,
+    CoverBody,
+    FavoriteBody,
+    GenerateTripRequest,
+    HotelOptionRequest,
+    ItemUpsertRequest,
+    NlEditBody,
+    OptimizeDayBody,
+    PreferenceSignalsBody,
+    ShareCreateBody,
+    UpdateDayBody,
+    VersionBody,
+)
 from app.services import (
     cover_service,
     itinerary_chat,
@@ -27,7 +42,6 @@ from app.services import (
     preferences,
     share_service,
 )
-from app.services.itinerary_command import ItemUpsertRequest
 
 router = APIRouter(
     prefix="/api/itinerary",
@@ -63,22 +77,12 @@ def post_poi_nearby(body: dict[str, Any]) -> dict:
 
 
 @router.post("/generate")
-def post_generate(
-    body: itinerary_generation.GenerateTripRequest, user: AuthUser | None = Depends(enforce_business_auth)
-) -> dict:
+def post_generate(body: GenerateTripRequest, user: AuthUser | None = Depends(enforce_business_auth)) -> dict:
     """建壳 + 异步逐日生成，立即返回可轮询的初始详情（status=1）。"""
     return ok(itinerary_generation.generate(user.id, body))
 
 
 # ---- 偏好：字面量路径必须声明在 /{id} 之前，否则会被路径参数吞掉 ----
-
-
-class PreferenceSignalsBody(BaseModel):
-    explicitPreferences: list[str] | None = None
-    hardConstraints: list[str] | None = None
-    negativePreferences: list[str] | None = None
-    source: str | None = None
-    confidence: float | None = None
 
 
 @router.get("/preferences")
@@ -132,11 +136,6 @@ def top_preferences(user_id: int, limit: int = 5) -> list[str]:
 # ---- 写路径与版本（M4）----
 
 
-class VersionBody(BaseModel):
-    operation: str = "snapshot"
-    summary: str = "行程快照"
-
-
 @router.post("/{id}/items")
 def add_item(
     request: ItemUpsertRequest,
@@ -155,10 +154,6 @@ def update_item(
     return ok(itinerary_command.update_item(user.id, itemId, request))
 
 
-class OptimizeDayBody(BaseModel):
-    dayId: int | None = None
-
-
 @router.post("/{id}/optimize")
 def post_optimize(
     body: OptimizeDayBody,
@@ -169,10 +164,6 @@ def post_optimize(
     if body.dayId is None:
         raise ApiError(400, "dayId 必填")
     return ok(itinerary_command.optimize_day(user.id, id, body.dayId))
-
-
-class UpdateDayBody(BaseModel):
-    theme: str | None = None
 
 
 @router.patch("/{id}/days/{dayId}")
@@ -186,10 +177,6 @@ def patch_day(
     return ok(itinerary_command.update_day(user.id, id, dayId, body.theme))
 
 
-class NlEditBody(BaseModel):
-    instruction: str = ""
-
-
 @router.post("/{id}/nl-edit")
 def post_nl_edit(
     body: NlEditBody,
@@ -198,14 +185,6 @@ def post_nl_edit(
 ) -> dict:
     """自然语言编辑：解析并**直接落库**（chat-edit 只出草稿，两者职责不同）。"""
     return ok(itinerary_command.nl_edit(user.id, id, body.instruction))
-
-
-class ApplyPlansBody(BaseModel):
-    # `plans` 只为兼容既有前端 body 形状而存在：服务端**不使用**它，
-    # 落库内容一律取自 actionMessageId 指向的草稿（同 Java 门面的有意丢弃）。
-    plans: list[dict[str, Any]] | None = None
-    actionMessageId: int | None = None
-    baseRevision: str | None = None
 
 
 @router.post("/{id}/apply-plans")
@@ -219,7 +198,7 @@ def post_apply_plans(
 
 @router.post("/{id}/hotel-option")
 def post_hotel_option(
-    body: itinerary_plan_apply.HotelOptionRequest,
+    body: HotelOptionRequest,
     id: int = Path(..., ge=1),
     user: AuthUser | None = Depends(enforce_business_auth),
 ) -> dict:
@@ -257,18 +236,6 @@ def chat_history(id: int = Path(..., ge=1), user: AuthUser | None = Depends(enfo
 def clear_chat_history(id: int = Path(..., ge=1), user: AuthUser | None = Depends(enforce_business_auth)) -> dict:
     itinerary_chat.clear_history(user.id, id)
     return ok()
-
-
-class ChatEditBody(BaseModel):
-    """对话改行程入参。
-
-    `message` 这里**故意不做非空校验**：Java 的 controller 是 `getOrDefault("message","")`，
-    空消息一路走到 agent 才被判无效、再由网关映射成 `502 行程助手暂不可用`。
-    在这层加 min_length 会把同一请求的响应从 502 变成 400，属于改契约不改 bug。
-    """
-
-    message: str = ""
-    history: list[dict[str, Any]] = []
 
 
 @router.get("/{id}/events")
@@ -366,11 +333,6 @@ def restore_version(
 # ---- 封面 / 收藏 / 归档（SPEC v2.3 §6.3/§6.5，S1）----
 
 
-class CoverBody(BaseModel):
-    source: str
-    unsplashId: str | None = None
-
-
 @router.post("/{id}/cover")
 def set_cover(
     body: CoverBody,
@@ -398,10 +360,6 @@ def upload_cover(
     )
 
 
-class FavoriteBody(BaseModel):
-    favorite: bool
-
-
 @router.post("/{id}/favorite")
 def set_favorite(
     body: FavoriteBody,
@@ -409,10 +367,6 @@ def set_favorite(
     user: AuthUser | None = Depends(enforce_business_auth),
 ) -> dict:
     return ok(itinerary_command.set_favorite(user.id, id, body.favorite))
-
-
-class ArchiveBody(BaseModel):
-    archived: bool
 
 
 @router.post("/{id}/archive")
@@ -425,10 +379,6 @@ def set_archived(
 
 
 # ---- 公开分享（SPEC v2.3 §6.6，S2）：owner 面三端点；匿名面在 share.py ----
-
-
-class ShareCreateBody(BaseModel):
-    expireDays: int | None = None
 
 
 @router.post("/{id}/share")

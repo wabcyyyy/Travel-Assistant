@@ -28,7 +28,6 @@ from sqlalchemy.orm import sessionmaker
 
 from app.api.business import itinerary as itinerary_routes
 from app.api.business.auth import auth_router
-from app.api.business.itinerary import ChatEditBody
 from app.api.business.itinerary import router as itinerary_router
 from app.api.deps import AuthUser as _AuthUser
 from app.common import event_hub, event_publisher
@@ -45,6 +44,7 @@ from app.db.models import (
     ItineraryMain,
     SysUser,
 )
+from app.schemas.business.itinerary import ChatEditBody
 from app.schemas.trip import ChatTurnResponse, HotelOption
 from app.services import cache_store, itinerary_chat, state_and_sessions, user_service
 

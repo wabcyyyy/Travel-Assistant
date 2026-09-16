@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 
 import bcrypt
@@ -26,12 +25,11 @@ from app.common.config import settings
 from app.common.envelope import ApiError
 from app.db.models import SysUser
 from app.db.session import session_scope
+from app.schemas.business.auth import UserInfoVO
 from app.services import state_and_sessions as sessions
 
 logger = logging.getLogger(__name__)
 
-USERNAME_RE = re.compile(r"^[A-Za-z0-9_\u4e00-\u9fa5]+$")
-PASSWORD_RE = re.compile(r"^[A-Za-z0-9!@#$%^&*_-]+$")
 ROLE_ADMIN = "admin"
 
 
@@ -62,13 +60,14 @@ def verify_password(raw: str, stored: str) -> bool:
 
 
 def to_vo(user: SysUser) -> dict:
-    return {
-        "id": user.id,
-        "username": user.username,
-        "nickname": user.nickname,
-        "phone": user.phone,
-        "role": user.role,
-    }
+    # 模型即契约：形状唯一源在 app/schemas/business/auth.py（G-1.1）
+    return UserInfoVO(
+        id=user.id,
+        username=user.username,
+        nickname=user.nickname,
+        phone=user.phone,
+        role=user.role,
+    ).model_dump()
 
 
 def _find_user(username: str) -> SysUser | None:
