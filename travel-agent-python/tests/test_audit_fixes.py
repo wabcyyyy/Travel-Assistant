@@ -11,7 +11,7 @@ import json
 import httpx
 import pytest
 
-from app.agent import tools, workflow
+from app.agent import open_plans, tools, workflow
 from app.agent.day_stream import llm_open_day
 from app.agent.grounding import local_ground
 from app.agent.reference_pool import ReferencePool
@@ -35,7 +35,7 @@ def test_multi_day_budget_counts_stay_nights_not_days(monkeypatch):
     monkeypatch.setattr(tools, "search_hotels", mock_llm.search_hotels)
     monkeypatch.setattr(reasoning, "plan_research", mock_llm.plan_research)
     monkeypatch.setattr(reasoning, "evaluate_research", mock_llm.evaluate_research)
-    monkeypatch.setattr(workflow, "local_ground", lambda *_a, **_k: None)
+    monkeypatch.setattr(open_plans, "local_ground", lambda *_a, **_k: None)
 
     def trip_with_hotel_every_day(req):
         plans = []
@@ -71,7 +71,7 @@ def test_multi_day_budget_counts_stay_nights_not_days(monkeypatch):
             )
         return plans, []
 
-    monkeypatch.setattr(workflow, "llm_open_trip", trip_with_hotel_every_day)
+    monkeypatch.setattr(open_plans, "llm_open_trip", trip_with_hotel_every_day)
     # persons=1 → rooms=1；3 天行程即便每天排酒店，也只计 2 晚 = 800。
     response = workflow.run_generate(GenerateRequest(city="杭州", days=3, persons=1))
     assert response.budget_estimate["酒店"] == 800.0
@@ -113,7 +113,7 @@ def test_multi_day_open_failure_retries_once_and_returns_draft(monkeypatch):
     monkeypatch.setattr(tools, "search_hotels", mock_llm.search_hotels)
     monkeypatch.setattr(reasoning, "plan_research", mock_llm.plan_research)
     monkeypatch.setattr(reasoning, "evaluate_research", mock_llm.evaluate_research)
-    monkeypatch.setattr(workflow, "llm_open_trip", failing_trip)
+    monkeypatch.setattr(open_plans, "llm_open_trip", failing_trip)
 
     response = workflow.run_generate(GenerateRequest(city="杭州", days=3))
 
@@ -281,7 +281,7 @@ def test_generate_open_plans_filters_malformed_items(monkeypatch):
     monkeypatch.setattr(tools, "search_hotels", mock_llm.search_hotels)
     monkeypatch.setattr(reasoning, "plan_research", mock_llm.plan_research)
     monkeypatch.setattr(reasoning, "evaluate_research", mock_llm.evaluate_research)
-    monkeypatch.setattr(workflow, "local_ground", lambda *_a, **_k: None)
+    monkeypatch.setattr(open_plans, "local_ground", lambda *_a, **_k: None)
 
     def dirty_day(req, _used):
         return {
@@ -302,7 +302,7 @@ def test_generate_open_plans_filters_malformed_items(monkeypatch):
             ],
         }
 
-    monkeypatch.setattr(workflow, "llm_open_day", dirty_day)
+    monkeypatch.setattr(open_plans, "llm_open_day", dirty_day)
     response = workflow.run_generate(GenerateRequest(city="杭州", days=1))
     names = [item.poi_name for day in response.daily_plans for item in day.items]
     assert names == ["杭州景点1"]  # 脏项被过滤而非 500

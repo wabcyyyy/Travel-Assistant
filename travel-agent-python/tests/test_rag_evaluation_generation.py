@@ -7,7 +7,7 @@ Prompt 注入、单日生成引用落地集成、生成评测指标与聚合。
 
 import json
 
-from app.agent import day_stream
+from app.agent import day_stream, graph_nodes
 from app.agent.reference_pool import (
     ReferencePool,
     normalize_poi_name,
@@ -335,7 +335,6 @@ def test_aggregate_ignores_missing_faithfulness():
 
 def test_run_generation_case_offline_with_stubs(monkeypatch):
     """注入检索与生成替身，验证评测 case 组装与指标透传。"""
-    from app.agent import workflow
 
     def fake_context(city, preferences):
         return _context()
@@ -356,9 +355,9 @@ def test_run_generation_case_offline_with_stubs(monkeypatch):
         return {"daily_plans": plans, "schedule_report": {"reference_stats": dict(pool.stats)}}
 
     monkeypatch.setattr(eg, "run_plan_context", fake_context)
-    # run_generation_case 在函数内 from app.agent.workflow import generate_open_plans，
-    # 因此替身必须打在 workflow 模块上。
-    monkeypatch.setattr(workflow, "generate_open_plans", fake_open_plans)
+    # run_generation_case 在函数内 from app.agent.graph_nodes import generate_open_plans，
+    # 因此替身打在 graph_nodes（该函数的真正归属模块）上。
+    monkeypatch.setattr(graph_nodes, "generate_open_plans", fake_open_plans)
 
     def judge(reference_block, plans_json):
         return [{"text": "声明", "supported": True}]

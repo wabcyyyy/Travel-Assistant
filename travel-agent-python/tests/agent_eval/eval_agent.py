@@ -19,7 +19,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from app.agent import tools, workflow
+from app.agent import open_plans, tools, workflow
 from app.agent.formatting import prices as pricing
 from app.agent.research import reasoning
 from app.agent.route_service import clear_route_cache
@@ -83,8 +83,8 @@ def run_case(case: dict) -> dict:
         patch.object(reasoning, "evaluate_research", mock_llm.evaluate_research),
         patch.object(tools, "attach_poi_images", mock_llm.attach_poi_images),
         patch.object(tools, "search_local_poi", mock_llm.search_local_poi),
-        patch.object(workflow, "llm_open_day", mock_llm.fixture_open_day),
-        patch.object(workflow, "llm_open_trip", mock_llm.fixture_open_trip),
+        patch.object(open_plans, "llm_open_day", mock_llm.fixture_open_day),
+        patch.object(open_plans, "llm_open_trip", mock_llm.fixture_open_trip),
         trace_run(f"fixture-{case['city']}-{case['days']}") as recorder,
     ):
         response = workflow.run_generate(build_generate_request(case))

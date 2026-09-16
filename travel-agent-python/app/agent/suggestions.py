@@ -10,6 +10,7 @@
 
 import logging
 
+from app.agent import poi_repository
 from app.agent.trace import record_event
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,111 @@ def _daily_attraction_target(days: int) -> int:
     """确定性兜底的每日景点数：总天数越长，每日安排越精简、节奏越舒适。"""
     # 两个景点能为跨城移动和用餐保留足够缓冲；短途也不以堆景点换取数量。
     return 2
+
+
+def activity_floor(city: str) -> list[dict]:
+    """体验类不在 Supervisor 三域研究里：从知识库补入，保证「发现更多-体验」有地板。
+
+    唯一实现（G-1.3 ④）：原在 _generate_open_plans 后处理与建议装配两处逐字重复。
+    """
+    return [{**row, "_authoritative": True} for row in poi_repository.search_pois(city, category="activity", limit=12)]
+
+
+def floor_suggestions(raw: list[dict], extra_pool: list[dict]) -> list[dict]:
+    """备选池数量地板：主类尽量 ≥4、每类 ≤20；shopping=商城/名店。
+
+    酒店/体验/美食也参与地板；体验类从 extra_pool 的 activity 或景点映射补充。
+    """
+    main_cats = ("attraction", "activity", "food", "hotel", "shopping")
+    max_per = 20
+    min_per = 4
+
+    def _norm_name(name: str) -> str:
+        return "".join(str(name or "").lower().split())
+
+    by_cat: dict[str, list[dict]] = {}
+    used_names: set[str] = set()
+    for s in raw or []:
+        if not isinstance(s, dict):
+            continue
+        cat = str(s.get("category") or "attraction")
+        if cat == "souvenir":
+            cat = "shopping"
+        name = str(s.get("name") or s.get("poi_name") or "").strip()
+        key = _norm_name(name)
+        if name and key in used_names:
+            continue
+        if name:
+            used_names.add(key)
+        by_cat.setdefault(cat, []).append({**s, "category": cat})
+
+    def _from_poi(poi: dict, cat: str) -> dict:
+        name = str(poi.get("name") or "").strip()
+        price = poi.get("ticket_price")
+        if price is None or price == 0:
+            price = poi.get("avg_cost")
+        return {
+            "name": name,
+            "category": cat,
+            "intro": (poi.get("description") or "")[:80] or None,
+            "latitude": poi.get("latitude"),
+            "longitude": poi.get("longitude"),
+            "estimated_cost": float(price or 0),
+            "source": poi.get("source"),
+            "poi_id": str(poi.get("id") or "") or None,
+        }
+
+    for cat in main_cats:
+        if len(by_cat.get(cat) or []) >= min_per:
+            continue
+        need = min_per - len(by_cat.get(cat) or [])
+        pool_cat = cat
+        if cat == "activity":
+            pool_cat = "activity"
+        for poi in extra_pool or []:
+            if need <= 0:
+                break
+            if str(poi.get("category") or "") != pool_cat:
+                continue
+            name = str(poi.get("name") or "").strip()
+            key = _norm_name(name)
+            if not name or key in used_names:
+                continue
+            by_cat.setdefault(cat, []).append(_from_poi(poi, cat))
+            used_names.add(key)
+            need -= 1
+        # 体验类知识库常为空：允许用未入程的高分景点/付费体验顶上
+        if cat == "activity" and need > 0:
+            for poi in extra_pool or []:
+                if need <= 0:
+                    break
+                if str(poi.get("category") or "") != "attraction":
+                    continue
+                name = str(poi.get("name") or "").strip()
+                key = _norm_name(name)
+                if not name or key in used_names:
+                    continue
+                tags = str(poi.get("tags") or "")
+                try:
+                    rating = float(poi.get("rating") or 0)
+                except (TypeError, ValueError):
+                    rating = 0
+                # 海外开放模式常无评分：无 rating 时只看标签，避免 activity 永远为 0
+                if (
+                    poi.get("rating") is not None
+                    and rating < 4.3
+                    and not any(
+                        x in tags for x in ("体验", "演出", "潜水", "SPA", "spa", "冲浪", "剧场", "美术馆", "观景")
+                    )
+                ):
+                    continue
+                by_cat.setdefault(cat, []).append(_from_poi(poi, "activity"))
+                used_names.add(key)
+                need -= 1
+    out: list[dict] = []
+    for cat in ("attraction", "activity", "food", "hotel", "shopping"):
+        out.extend((by_cat.get(cat) or [])[:max_per])
+    return out
 
 
 def build_suggestions(

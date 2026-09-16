@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.agent import tools, workflow
+from app.agent import open_plans, tools, workflow
 from app.agent.research import (
     ResearchTask,
     decompose,
@@ -132,8 +132,8 @@ def test_workflow_search_node_writes_research_report(monkeypatch):
     monkeypatch.setattr(tools, "search_foods", mock_llm.search_foods)
     monkeypatch.setattr(tools, "search_hotels", mock_llm.search_hotels)
     monkeypatch.setattr(tools, "get_consumption", mock_llm.get_consumption)
-    monkeypatch.setattr(workflow, "local_ground", lambda *_a, **_k: None)
-    monkeypatch.setattr(workflow, "llm_open_day", mock_llm.fixture_open_day)
+    monkeypatch.setattr(open_plans, "local_ground", lambda *_a, **_k: None)
+    monkeypatch.setattr(open_plans, "llm_open_day", mock_llm.fixture_open_day)
 
     response = workflow.run_generate(GenerateRequest(city="杭州", days=1))
     research = (response.schedule_report or {}).get("research") or {}
@@ -212,7 +212,7 @@ def test_supervisor_refill_merges_evidence_and_regenerates(monkeypatch):
     monkeypatch.setattr(tools, "search_foods", mock_llm.search_foods)
     monkeypatch.setattr(tools, "search_hotels", mock_llm.search_hotels)
     monkeypatch.setattr(tools, "get_consumption", mock_llm.get_consumption)
-    monkeypatch.setattr(workflow, "local_ground", lambda *_a, **_k: None)
+    monkeypatch.setattr(open_plans, "local_ground", lambda *_a, **_k: None)
 
     state = {"calls": 0}
 
@@ -302,7 +302,7 @@ def test_supervisor_refill_merges_evidence_and_regenerates(monkeypatch):
             ],
         }
 
-    monkeypatch.setattr(workflow, "llm_open_day", open_day)
+    monkeypatch.setattr(open_plans, "llm_open_day", open_day)
 
     response = workflow.run_generate(GenerateRequest(city="杭州", days=1))
     names = [item.poi_name for day in response.daily_plans for item in day.items]
@@ -321,7 +321,7 @@ def test_refill_not_triggered_for_non_evidence_gap(monkeypatch):
     monkeypatch.setattr(tools, "search_foods", mock_llm.search_foods)
     monkeypatch.setattr(tools, "search_hotels", mock_llm.search_hotels)
     monkeypatch.setattr(tools, "get_consumption", mock_llm.get_consumption)
-    monkeypatch.setattr(workflow, "local_ground", lambda *_a, **_k: None)
+    monkeypatch.setattr(open_plans, "local_ground", lambda *_a, **_k: None)
 
     def open_day(req, _used):
         # 两个景点时间重叠 → 时间冲突（非证据缺口）
@@ -351,7 +351,7 @@ def test_refill_not_triggered_for_non_evidence_gap(monkeypatch):
             ],
         }
 
-    monkeypatch.setattr(workflow, "llm_open_day", open_day)
+    monkeypatch.setattr(open_plans, "llm_open_day", open_day)
 
     response = workflow.run_generate(GenerateRequest(city="杭州", days=1))
     research = (response.schedule_report or {}).get("research") or {}

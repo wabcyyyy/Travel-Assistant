@@ -6,8 +6,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import NamedTuple
+from typing import Any, Literal, NamedTuple
 
 from app.agent.critic import critique_plans
 from app.agent.reflect import validate_plans
@@ -34,11 +35,14 @@ class FinalCheck(NamedTuple):
 
 
 class QualityOutcome(NamedTuple):
+    """质量判定结果；两个状态字段用契约字面量而非 str——它们直接喂给
+    GenerateResponse，收窄可让错字在类型层暴露而不是流到 wire。"""
+
     validation_log: list[str]
     quality_report: QualityReport
-    status: str
+    status: Literal["success", "degraded", "failed"]
     status_reason: str | None
-    destination_status: str
+    destination_status: Literal["knowledge_backed", "researched", "draft_only"]
 
 
 def run_final_validation(
@@ -96,7 +100,7 @@ def run_final_validation(
 
 
 def judge_output(
-    state: dict,
+    state: Mapping[str, Any],
     daily_plans: list[DailyPlan],
     schedule_report: dict,
     check: FinalCheck,
