@@ -148,7 +148,8 @@ import { getPoiNearby, type NearbyPoi } from '../../api/itinerary'
 import { searchLocalPois, type LocalPoi } from '../../api/pois'
 import { useItineraryStore } from '../../store/itinerary'
 import { useDiscoverAdd } from '../../composables/useDiscoverAdd'
-import type { TripItem, TripSuggestion } from '../../types/itinerary'
+import type { TripItem } from '../../types/itinerary'
+import type { Suggestion } from '../../types/generated/contracts'
 import AppDialog from '../ui/AppDialog.vue'
 import AppInput from '../ui/AppInput.vue'
 import Segmented from '../ui/Segmented.vue'
@@ -181,7 +182,7 @@ interface PanelEntry {
   category: Category
   dayNo?: number
   item?: TripItem
-  suggestion?: TripSuggestion
+  suggestion?: Suggestion
   poi?: LocalPoi
 }
 
@@ -335,8 +336,11 @@ function distanceText(meters: number | null): string {
   return meters >= 1000 ? `${(meters / 1000).toFixed(1)} 公里` : `${Math.round(meters)} 米`
 }
 
-function toSuggestion(n: { name: string; category: Category; address: string }): TripSuggestion {
-  return { name: n.name, category: n.category, address: n.address || null } as TripSuggestion
+function toSuggestion(n: { name: string; category: Category; address: string }): Suggestion {
+  // FE 品类 chip（含 other）收窄为契约品类：other 归 attraction（下游 itemTypeOf 对二者同样归 attraction，落库行为不变）
+  const category: Suggestion['category'] =
+    n.category === 'food' || n.category === 'hotel' || n.category === 'shopping' ? n.category : 'attraction'
+  return { name: n.name, category, address: n.address || null } as Suggestion
 }
 
 async function loadNearby(): Promise<void> {
@@ -409,7 +413,7 @@ function thumbUrl(entry: PanelEntry): string {
 }
 
 /* ---------- 拖拽入天（HTML5 DnD）：载荷经 dataTransfer 交给左栏日卡，壳负责落库 ---------- */
-type DragSource = PanelEntry | { kind: 'suggestion'; suggestion: TripSuggestion }
+type DragSource = PanelEntry | { kind: 'suggestion'; suggestion: Suggestion }
 
 interface NearbyRow {
   name: string

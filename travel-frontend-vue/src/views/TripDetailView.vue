@@ -273,7 +273,8 @@ import { getItineraryDetail } from '../api/itinerary'
 import { useItineraryStore } from '../store/itinerary'
 import { useItineraryActions } from '../composables/useItineraryActions'
 import { useItineraryStream, type ItineraryStreamEvent } from '../composables/useItineraryStream'
-import type { DayPlan, ItineraryDetail, TripItem, TripSuggestion } from '../types/itinerary'
+import type { DayPlan, ItineraryDetail, TripItem } from '../types/itinerary'
+import type { Suggestion } from '../types/generated/contracts'
 import type { LocalPoi } from '../api/pois'
 
 // 行程详情编排壳（M4-②a §5.4；v2.6 §19.3 三栏重排）：
@@ -616,7 +617,7 @@ async function onDiscoverDrop(payload: { dayId: number; entry: unknown }) {
     kind?: string
     itemId?: number
     name?: string
-    suggestion?: TripSuggestion
+    suggestion?: Suggestion
     poi?: LocalPoi
   } | null
   if (!data || typeof data !== 'object') return

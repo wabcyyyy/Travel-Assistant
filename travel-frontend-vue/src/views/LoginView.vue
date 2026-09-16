@@ -112,7 +112,7 @@ async function onSubmit() {
       await register({
         username: form.username,
         password: form.password,
-        nickname: form.nickname || undefined,
+        nickname: form.nickname || null,
       })
       ElMessage.success('注册成功')
     }

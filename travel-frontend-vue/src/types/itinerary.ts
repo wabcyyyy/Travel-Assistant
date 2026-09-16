@@ -1,53 +1,18 @@
-export type VerificationStatus = 'verified' | 'partially_verified' | 'unverified'
-export type ValueKind = 'observed' | 'estimated' | 'generated'
-export type FreshnessStatus = 'fresh' | 'stale' | 'unknown'
-export type ReviewRequirement = 'none' | 'before_departure'
+/**
+ * 行程域视图类型。
+ *
+ * 与后端线级契约重叠的类型（FactEvidence/QualityReport/HotelOption/Suggestion 等）
+ * 一律来自生成类型 types/generated/contracts.ts（G-1.1 单一源，手写副本已删除）；
+ * 本文件只保留「业务详情 VO」（ORM + metadata_json 动态组装、后端无对应 schema）
+ * 与少量对契约的视图层收窄/扩展。
+ */
+import type * as Contracts from './generated/contracts'
 
-export interface FactEvidence {
-  sourceRef?: string | null
-  sourceUrl?: string | null
-  provider?: string | null
-  retrievedAt?: string | null
-  expiresAt?: string | null
-  verificationStatus: VerificationStatus
-  valueKind: ValueKind
-  freshnessStatus: FreshnessStatus
-  reviewRequirement: ReviewRequirement
-}
-
-export interface QualityIssue {
-  code: string
-  path?: string | null
-  message: string
-}
-
-export interface QualityReport {
-  qualityStatus: 'DRAFT' | 'READY_WITH_WARNINGS' | 'READY' | 'BLOCKED' | 'STALE'
-  qualityRuleVersion: string
-  validatedAt?: string | null
-  blockingIssues: QualityIssue[]
-  warnings: QualityIssue[]
-  metrics: Record<string, number>
-}
-
-export interface SourceRecord {
-  sourceId: string
-  storageSource?: string | null
-  provider?: string | null
-  publisher?: string | null
-  sourceUrl?: string | null
-  retrievedAt?: string | null
-  publishedAt?: string | null
-  expiresAt?: string | null
-}
-
-/** 封面署名（S1）：随图落库，详情/分享页展示用 */
-export interface CoverCredit {
-  author?: string | null
-  authorUrl?: string | null
-  license?: string | null
-  source?: string | null
-}
+// 契约别名：核验状态枚举的唯一源是生成类型，业务 VO 字段直接引用
+type VerificationStatus = Contracts.FactEvidence['verificationStatus']
+type ValueKind = Contracts.FactEvidence['valueKind']
+type FreshnessStatus = Contracts.FactEvidence['freshnessStatus']
+type ReviewRequirement = Contracts.FactEvidence['reviewRequirement']
 
 export interface TripItem {
   id?: number
@@ -76,20 +41,21 @@ export interface TripItem {
   valueKind?: ValueKind
   freshnessStatus?: FreshnessStatus
   reviewRequirement?: ReviewRequirement
-  factEvidence?: Record<string, FactEvidence>
+  factEvidence?: Record<string, Contracts.FactEvidence>
   sortNo?: number
 }
 
-/** 逐日备选分支（M3 生成契约补齐后生效）：跨城 / 取舍时的方案分叉 */
-export interface DayOption {
-  label: string
-  summary: string
-  tradeoff: string
-  items?: TripItem[]
+/**
+ * 逐日备选分支：契约字段（label/summary/tradeoff）来自生成类型；
+ * items 在契约里是开放结构（unknown[]），视图层收窄为业务点位。
+ */
+export interface DayOption extends Contracts.DayOption {
+  items: TripItem[]
 }
 
 /** 拍照点位条目（DayVO.photoSpots 为 Map 透传）：§4.1.2 PhotoSpot{name, tip, best_time}；
- * name/title 兼容历史数据（旧版仅名称）。 */
+ * name/title 兼容历史数据（旧版仅名称）。历史行可能缺键，故**不**继承契约类型
+ * （契约层全键必有，视图层须全可选）。 */
 export interface PhotoSpotEntry {
   name?: string | null
   title?: string | null
@@ -100,7 +66,7 @@ export interface PhotoSpotEntry {
 }
 
 /** 备选安排条目（DayVO.backupPlan 为 Map 透传）：§4.1.2 BackupRule{if, action}；
- * name/title 兼容历史数据（旧版仅名称）。 */
+ * name/title 兼容历史数据（旧版仅名称）。同 PhotoSpotEntry：历史行缺键不继承契约。 */
 export interface BackupPlanEntry {
   name?: string | null
   title?: string | null
@@ -130,18 +96,12 @@ export interface BudgetRow {
   itemCount: number
 }
 
-/** 备选池条目（发现更多）：生成时候选池中未排入行程的优质点位 */
-export interface TripSuggestion {
-  poiId?: string | null
-  name: string
-  category: 'attraction' | 'activity' | 'food' | 'hotel' | 'shopping' | 'souvenir'
-  address?: string | null
-  latitude?: number | null
-  longitude?: number | null
-  intro?: string | null
-  needReservation?: boolean
-  estimatedCost?: number | null
-  used?: boolean
+/** 封面署名（S1）：随图落库，详情/分享页展示用 */
+export interface CoverCredit {
+  author?: string | null
+  authorUrl?: string | null
+  license?: string | null
+  source?: string | null
 }
 
 export interface ItineraryDetail {
@@ -174,13 +134,13 @@ export interface ItineraryDetail {
   budgetList: BudgetRow[]
   totalAmount: number
   destinationStatus?: 'knowledge_backed' | 'researched' | 'draft_only'
-  qualityStatus?: QualityReport['qualityStatus']
+  qualityStatus?: Contracts.QualityReport['qualityStatus']
   qualityRuleVersion?: string
   validatedAt?: string | null
   pendingFactCount?: number
-  sources?: SourceRecord[]
-  qualityReport?: QualityReport
-  suggestions?: TripSuggestion[]
+  sources?: Contracts.SourceRecord[]
+  qualityReport?: Contracts.QualityReport
+  suggestions?: Contracts.Suggestion[]
 }
 
 export interface ItinerarySummary {
@@ -208,72 +168,25 @@ export interface ItinerarySummary {
   hasShare?: boolean
 }
 
-export interface UserInfo {
-  id: number
-  username: string
-  nickname: string | null
-  phone: string | null
-  role?: string | null
-}
-
-export interface LoginResponse {
-  /** @deprecated 凭据在 HttpOnly Cookie，字段可能为 null */
-  token?: string | null
-  user: UserInfo
-}
-
 /**
  * 酒店备选方案（/chat-edit 草稿与 /hotel-option 应用共用）。
- * 本体放在 types 层：types/chat 依赖它，放 api 域文件会造成 types↔api 循环依赖。
+ * 契约字段来自生成类型；baseRevision 是业务层 /hotel-option 应用的附加字段
+ * （乐观并发指纹，不在 agent 契约内）。
  */
-export interface HotelOption {
-  id: string
-  hotelName: string
-  tier: string
-  address?: string | null
-  rating?: number | null
-  basePrice: number
-  seasonFactor: number
-  seasonLabel: string
-  nightlyPrice: number
-  nights: number
-  rooms: number
-  totalPrice: number
-  priceDelta?: number | null
-  withinBudget: boolean
-  budgetCapacity?: number | null
-  budgetOverage: number
-  isCurrent: boolean
-  reason: string
-  requestedNights: number
-  requestedDayNos: number[]
-  availableDayNos: number[]
-  roomTypes: HotelRoomOption[]
-  baseRevision?: string
+export interface HotelOption extends Contracts.HotelOption {
+  baseRevision?: string | null
 }
 
-export interface HotelRoomOption {
-  id: string
-  roomName: string
-  basePrice: number
+/** 每晚价格明细行：契约里是开放 dict，视图层按实际消费键收窄
+ * （type 别名而非 interface：对象字面量类型才有隐式索引签名，可 narrowing 覆盖契约的 Record）。 */
+export type NightlyBreakdownRow = {
+  dayNo: number
+  stayDate?: string | null
+  seasonLabel: string
+  seasonFactor: number
   nightlyPrice: number
-  nights: number
-  rooms: number
-  totalPrice: number
-  priceDelta?: number | null
-  projectedHotelTotal?: number | null
-  withinBudget: boolean
-  budgetOverage: number
-  capacity: number
-  bedType?: string | null
-  breakfast?: string | null
-  description?: string | null
-  isDefault: boolean
-  nightlyBreakdown?: Array<{
-    dayNo: number
-    stayDate?: string | null
-    seasonLabel: string
-    seasonFactor: number
-    nightlyPrice: number
-  }>
+}
+
+export interface HotelRoomOption extends Contracts.HotelRoomOption {
+  nightlyBreakdown: NightlyBreakdownRow[]
 }

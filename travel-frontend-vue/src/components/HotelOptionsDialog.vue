@@ -180,7 +180,7 @@ async function onChoose(option: HotelOption) {
       room.roomName,
       selection.dayNos,
       props.messageId,
-      props.baseRevision || option.baseRevision,
+      props.baseRevision || option.baseRevision || undefined,
     )
     ElMessage.success(`已应用「${option.hotelName}」`)
     emit('applied', nextDetail)

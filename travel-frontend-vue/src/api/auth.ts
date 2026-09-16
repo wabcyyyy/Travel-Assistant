@@ -1,13 +1,14 @@
 import { requestGet, requestPost } from './request'
-import type { LoginResponse, UserInfo } from '../types/itinerary'
+import type * as Contracts from '../types/generated/contracts'
 
-/** 认证域：登录/注册/登出/用户信息。主凭据为 HttpOnly Cookie。 */
+/** 认证域：登录/注册/登出/用户信息。主凭据为 HttpOnly Cookie。
+ * 请求/响应类型来自契约单一源（app/schemas/business/auth.py 的生成类型）。 */
 
-export function login(data: { username: string; password: string }) {
-  return requestPost<LoginResponse>('/auth/login', data)
+export function login(data: Contracts.LoginBody) {
+  return requestPost<Contracts.LoginData>('/auth/login', data)
 }
 
-export function register(data: { username: string; password: string; nickname?: string }) {
+export function register(data: Contracts.RegisterBody) {
   return requestPost<void>('/auth/register', data)
 }
 
@@ -17,5 +18,5 @@ export function logoutApi() {
 }
 
 export function getUserInfo() {
-  return requestGet<UserInfo>('/user/info')
+  return requestGet<Contracts.UserInfoVO>('/user/info')
 }
