@@ -27,6 +27,7 @@ declare module 'vue' {
     Chip: typeof import('./components/ui/Chip.vue')['default']
     CoverDialog: typeof import('./components/trip/CoverDialog.vue')['default']
     DayInlineTips: typeof import('./components/trip/day-card/DayInlineTips.vue')['default']
+    DayItemRow: typeof import('./components/trip/day-card/DayItemRow.vue')['default']
     DayListCard: typeof import('./components/trip/DayListCard.vue')['default']
     DayNarrativePanel: typeof import('./components/trip/DayNarrativePanel.vue')['default']
     DiscoverPanel: typeof import('./components/trip/DiscoverPanel.vue')['default']
