@@ -11,7 +11,7 @@ import json
 import httpx
 import pytest
 
-from app.agent import open_plans, tools, workflow
+from app.agent import landing, open_plans, tools, workflow
 from app.agent.day_stream import llm_open_day
 from app.agent.grounding import local_ground
 from app.agent.reference_pool import ReferencePool
@@ -35,7 +35,7 @@ def test_multi_day_budget_counts_stay_nights_not_days(monkeypatch):
     monkeypatch.setattr(tools, "search_hotels", mock_llm.search_hotels)
     monkeypatch.setattr(reasoning, "plan_research", mock_llm.plan_research)
     monkeypatch.setattr(reasoning, "evaluate_research", mock_llm.evaluate_research)
-    monkeypatch.setattr(open_plans, "local_ground", lambda *_a, **_k: None)
+    monkeypatch.setattr(landing, "local_ground", lambda *_a, **_k: None)
 
     def trip_with_hotel_every_day(req):
         plans = []
@@ -281,7 +281,7 @@ def test_generate_open_plans_filters_malformed_items(monkeypatch):
     monkeypatch.setattr(tools, "search_hotels", mock_llm.search_hotels)
     monkeypatch.setattr(reasoning, "plan_research", mock_llm.plan_research)
     monkeypatch.setattr(reasoning, "evaluate_research", mock_llm.evaluate_research)
-    monkeypatch.setattr(open_plans, "local_ground", lambda *_a, **_k: None)
+    monkeypatch.setattr(landing, "local_ground", lambda *_a, **_k: None)
 
     def dirty_day(req, _used):
         return {

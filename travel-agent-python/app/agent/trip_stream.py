@@ -32,8 +32,8 @@ from app.agent.generation_core import (
     stay_nights,
 )
 from app.agent.generators import pick_hotels
-from app.agent.grounding import local_ground
 from app.agent.json_utils import parse_llm_json
+from app.agent.landing import filter_plan_items, ground_item
 from app.agent.narrative import sanitize_narrative
 from app.agent.reference_pool import ReferencePool
 from app.agent.suggestions import build_suggestions, fill_suggestion_gaps
@@ -244,7 +244,7 @@ def _prepare_day(
     plan = sanitize_narrative(raw_day)
     plan["day_no"] = day_no
     plan.setdefault("items", [])
-    plan["items"] = [it for it in plan["items"] if isinstance(it, dict) and str(it.get("poi_name") or "").strip()]
+    plan["items"] = filter_plan_items(plan["items"])
     kept_items: list[dict] = []
     for item in plan["items"]:
         name = str(item.get("poi_name") or "").strip()
@@ -252,8 +252,7 @@ def _prepare_day(
         if name and seen.is_duplicate(name, item_type):
             record_event("decision", "stream_duplicate_dropped", metadata={"day_no": day_no, "poi_name": name})
             continue
-        if not ref_pool.ground(item):
-            local_ground(item, req.city, ground_cache)
+        ground_item(item, city=req.city, ref_pool=ref_pool, ground_cache=ground_cache)
         if name and seen.is_duplicate(name, item_type, item.get("latitude"), item.get("longitude")):
             # 落地后坐标通道判重命中（名称变体指向同一地点）
             record_event(

@@ -25,7 +25,7 @@ from app.agent.generation_core import (
     spread_hotels,
     stay_nights,
 )
-from app.agent.grounding import local_ground
+from app.agent.landing import filter_plan_items, ground_item
 from app.agent.reference_pool import ReferencePool
 from app.agent.suggestions import activity_floor, floor_suggestions
 from app.agent.trace import record_event
@@ -130,14 +130,9 @@ def _generate_drafts(
         ground_cache: dict = {}
         # 结构校验：LLM 可能返回非 dict 项或无 poi_name 的脏项，必须在
         # 落地前过滤，否则 format_output 的 item.get / TripItem(**item) 崩溃。
-        plan["items"] = [
-            item
-            for item in (plan.get("items") or [])
-            if isinstance(item, dict) and str(item.get("poi_name") or "").strip()
-        ]
+        plan["items"] = filter_plan_items(plan.get("items"))
         for item in plan["items"]:
-            if not ref_pool.ground(item):
-                local_ground(item, req.city, ground_cache)
+            ground_item(item, city=req.city, ref_pool=ref_pool, ground_cache=ground_cache)
             if item.get("poi_name"):
                 used.add(str(item["poi_name"]))
         plans.append(

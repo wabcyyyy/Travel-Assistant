@@ -136,7 +136,7 @@ def _req(days: int = 3) -> GenerateDayRequest:
 def stream_env(monkeypatch):
     monkeypatch.setattr(settings, "llm_api_key", "test-key")
     monkeypatch.setattr(settings, "llm_generation_web_search", False)
-    monkeypatch.setattr("app.agent.trip_stream.local_ground", lambda item, city, cache: None)
+    monkeypatch.setattr("app.agent.landing.local_ground", lambda item, city, cache: None)
 
 
 class TestTripStreamCancel:

@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from app.agent import open_plans, tools, workflow
+from app.agent import landing, open_plans, tools, workflow
 from app.agent.research import reasoning
 from app.schemas.trip import GenerateRequest
 from tests.agent_eval import mock_llm
@@ -151,7 +151,7 @@ def test_unknown_destination_with_llm_is_researched(monkeypatch):
     monkeypatch.setattr(tools, "search_hotels", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(reasoning, "plan_research", mock_llm.plan_research)
     monkeypatch.setattr(reasoning, "evaluate_research", mock_llm.evaluate_research)
-    monkeypatch.setattr(open_plans, "local_ground", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(landing, "local_ground", lambda *_args, **_kwargs: None)
 
     def open_day(req, _used):
         return {
@@ -232,7 +232,7 @@ def test_open_result_kept_when_validation_exhausted_without_candidates(monkeypat
     monkeypatch.setattr(tools, "search_hotels", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(reasoning, "plan_research", mock_llm.plan_research)
     monkeypatch.setattr(reasoning, "evaluate_research", mock_llm.evaluate_research)
-    monkeypatch.setattr(open_plans, "local_ground", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(landing, "local_ground", lambda *_args, **_kwargs: None)
 
     def open_day(req, _used):
         # 只排酒店不排景点：制造"未安排任何景点"校验问题，且修复轮同样不过。
@@ -272,7 +272,7 @@ def test_open_result_with_attractions_kept_when_route_validation_exhausted(monke
     monkeypatch.setattr(tools, "search_hotels", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(reasoning, "plan_research", mock_llm.plan_research)
     monkeypatch.setattr(reasoning, "evaluate_research", mock_llm.evaluate_research)
-    monkeypatch.setattr(open_plans, "local_ground", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(landing, "local_ground", lambda *_args, **_kwargs: None)
 
     def open_day(req, _used):
         # 相邻两天各 1 景点+酒店；时间安排合法，制造路线类校验问题的 simplest 方式：

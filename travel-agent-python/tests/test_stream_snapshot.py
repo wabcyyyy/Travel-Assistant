@@ -32,7 +32,7 @@ import pathlib
 from contextlib import ExitStack
 from unittest.mock import patch
 
-from app.agent import day_stream, tools, trip_stream
+from app.agent import day_stream, landing, tools, trip_stream
 from app.agent.research import reasoning
 from app.agent.trace import trace_run
 from app.common.config import settings
@@ -99,7 +99,7 @@ def _patch_fixture_stack(stack, city: str) -> None:
     stack.enter_context(patch("app.agent.formatting.prices.query_live_price", _forbid_network_call))
     stack.enter_context(patch("app.agent.formatting.prices.query_live_food_price", _forbid_network_call))
     stack.enter_context(patch.object(trip_stream, "fill_suggestion_gaps", lambda rows, city, **kw: rows))
-    stack.enter_context(patch.object(trip_stream, "local_ground", lambda item, city, cache: None))
+    stack.enter_context(patch.object(landing, "local_ground", lambda item, city, cache: None))
     assert data  # 保持 fixture 数据被显式构造（城市名参与生成，非法城市会在此暴露）
 
 

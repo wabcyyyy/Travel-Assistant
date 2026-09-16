@@ -157,6 +157,7 @@ forbidden_modules = [
     "app.agent.generators",
     "app.agent.geo",
     "app.agent.intent",
+    "app.agent.landing",
     "app.agent.local_replan",
     "app.agent.memory",
     "app.agent.nl_edit",
