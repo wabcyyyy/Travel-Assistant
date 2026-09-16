@@ -14,11 +14,11 @@ Java 用 `@Scheduled(fixedDelay=60s, initialDelay=60s)` + `ApplicationReadyEvent
 from __future__ import annotations
 
 import logging
-import threading
 from datetime import datetime, timedelta
 
 from sqlalchemy import and_, or_, select, update
 
+from app.common import cron
 from app.db.models import ItineraryDay, ItineraryItem, ItineraryMain
 from app.db.session import session_scope
 from app.services import generation_gate, itinerary_generation, itinerary_query
@@ -159,33 +159,16 @@ def _resumable_failed_trip(days: list[ItineraryDay]) -> bool:
     )
 
 
-_stop = threading.Event()
+# 周期调度统一走 app.common.cron（G-3.3）：本模块只负责"扫什么"，不负责
+# "多久扫一次/怎么停"。pytest 环境由 cron 自动 no-op（不再自己判环境）。
+CRON_NAME = "generation-recovery"
 
 
-def _loop() -> None:
-    """启动后先扫一次（对应 Java 的 ApplicationReadyEvent 那趟），之后 fixedDelay=60s。
-
-    单次扫描失败不能退出循环：一次数据库抖动会让僵尸行程永远没人续跑。
-    """
-    logger.info(
-        "generation recovery loop starting (startup sweep in %ss, then every %ss)",
-        STARTUP_DELAY_SECONDS,
+def register_loop() -> None:
+    """把续跑扫描登记进周期任务表（幂等；main.py lifespan 调用）。"""
+    cron.register(
+        CRON_NAME,
         SCAN_INTERVAL_SECONDS,
+        recover,
+        startup_delay_seconds=STARTUP_DELAY_SECONDS,
     )
-    deadline = STARTUP_DELAY_SECONDS
-    while not _stop.wait(deadline):
-        deadline = SCAN_INTERVAL_SECONDS
-        try:
-            recover()
-        except Exception as exc:
-            logger.warning("generation recovery scan failed: %s", exc)
-
-
-def start_loop() -> threading.Thread:
-    thread = threading.Thread(target=_loop, name="generation-recovery", daemon=True)
-    thread.start()
-    return thread
-
-
-def stop_loop() -> None:
-    _stop.set()

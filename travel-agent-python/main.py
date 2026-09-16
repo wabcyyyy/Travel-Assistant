@@ -26,6 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.agent.usage_store import usage_store
 from app.api import agent
 from app.api.business import business_routers
+from app.common import cron
 from app.common.config import BASE_DIR, settings
 from app.common.envelope import install_exception_handlers
 from app.db import migrate as db_migrate
@@ -33,6 +34,15 @@ from app.rag.store import warmup_rag
 from app.services import export_service, generation_recovery, itinerary_chat, itinerary_generation
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+
+logger = logging.getLogger(__name__)
+
+
+def _cleanup_usage() -> None:
+    """清理保留期之外的 LLM 用量明细（默认保留 90 天）；失败只告警（cron 会记）。"""
+    removed = usage_store.cleanup(90 * 86400)
+    if removed:
+        logger.info("[usage] cleaned %d rows older than 90d", removed)
 
 
 @asynccontextmanager
@@ -42,23 +52,19 @@ async def lifespan(app: FastAPI):
     # uvicorn 以非 0 退出，避免"起来了但配置是坏的"。
     settings.validate_boot()
     warmup_rag()
-    # 清理保留期之外的 LLM 用量明细（默认保留 90 天）。
-    try:
-        removed = usage_store.cleanup(90 * 86400)
-        if removed:
-            logging.getLogger(__name__).info("[usage] cleaned %d rows older than 90d", removed)
-    except Exception as exc:
-        logging.getLogger(__name__).warning("[usage] cleanup failed: %s", exc)
+    # 周期任务统一登记（G-3.3）：usage 清理每天一次、生成续跑 60s 一轮。
+    # 两个任务都经 app.common.cron——pytest 环境自动 no-op，不再各写各的线程。
+    cron.register("usage-cleanup", 86400, _cleanup_usage)
+    generation_recovery.register_loop()
+    cron.start_all()
     with (BASE_DIR / "openapi.json").open("w", encoding="utf-8") as f:
         json.dump(app.openapi(), f, ensure_ascii=False, indent=2)
-    # 生成任务的自动续跑扫描（僵尸 GENERATING / 可续跑的 FAILED）
-    generation_recovery.start_loop()
     try:
         yield
     finally:
-        # 滚动发布时不先把在跑的生成切掉：先停扫描，再等在跑的任务收尾（上限 30s，同 Java
-        # 的 awaitTerminationSeconds），最后才关池。
-        generation_recovery.stop_loop()
+        # 滚动发布时不先把在跑的生成切掉：先停周期任务，再等在跑的任务收尾（上限 30s，
+        # 同 Java 的 awaitTerminationSeconds），最后才关池。
+        cron.stop_all()
         for pool in (
             itinerary_generation.generation_pool,
             itinerary_generation.enricher_pool,
