@@ -38,6 +38,7 @@ from app.schemas.stream_events import StreamEvent
 from app.schemas.trip import MAX_TRIP_DAYS, DailyPlan, GenerateDayRequest
 from app.services import (
     budget_engine,
+    cache_store,
     day_persistence,
     generation_events,
     generation_gate,
@@ -408,9 +409,44 @@ MAX_CITY_LENGTH = 32
 QUEUE_FULL_NOTE = "生成失败：系统繁忙，生成队列已满"
 
 
-def generate(user_id: int, body: GenerateTripRequest) -> dict[str, Any]:
-    """建壳 → 逐日异步生成 → 立即返回可轮询的初始详情（status=1）。"""
+IDEMPOTENCY_TTL_SECONDS = 600
+_IDEM_NAMESPACE = "idem_generate"
+
+
+def _reserve_idempotent(user_id: int, key: str | None) -> int | None:
+    """占幂等键；已占用时返回先前那次生成创建的 itinerary_id。
+
+    语义（backlog「被重复请求咬过」）：同一个 user 的同一个幂等键在 TTL 内
+    只会建壳一次——网络层重试 / 双击拿回的是**同一个行程**（可能仍在生成、
+    已完成或已失败），而不是第二份行程第二份 LLM 账单。想重新生成就不带键
+    或换键（那是用户的显式新意图）。
+    """
+    normalized = (key or "").strip()
+    if not normalized:
+        return None
+    cache_key = f"{user_id}:{normalized[:128]}"
+    if cache_store.reserve(_IDEM_NAMESPACE, cache_key, None, IDEMPOTENCY_TTL_SECONDS):
+        return None  # 首次占位（值在建壳成功后回填）
+    existing = cache_store.get_json(_IDEM_NAMESPACE, cache_key)
+    return int(existing) if isinstance(existing, int) else None
+
+
+def generate(user_id: int, body: GenerateTripRequest, idempotency_key: str | None = None) -> dict[str, Any]:
+    """建壳 → 逐日异步生成 → 立即返回可轮询的初始详情（status=1）。
+
+    `idempotency_key`（来自 X-Idempotency-Key 头，可选）：TTL 内同键重试
+    返回既有行程，不重复建壳（见 _reserve_idempotent）。
+    """
     command = _validate(body)
+    replay_id = _reserve_idempotent(user_id, idempotency_key)
+    if replay_id is not None:
+        # 占位值在首次建壳成功后回填；理论上此处读不到值只在「占位后进程
+        # 崩溃未回填」的窗口出现——降级为新一次生成（宁重复、不 500）。
+        with session_scope() as session:
+            exists = session.get(ItineraryMain, replay_id)
+        if exists is not None and exists.user_id == user_id:
+            return itinerary_query.detail(user_id, replay_id)
+        cache_store.delete(_IDEM_NAMESPACE, f"{user_id}:{(idempotency_key or '').strip()[:128]}")
     with session_scope() as session:
         main = ItineraryMain(
             user_id=user_id,
@@ -444,6 +480,11 @@ def generate(user_id: int, body: GenerateTripRequest) -> dict[str, Any]:
             )
     preferences_service.record_preferences(user_id, command.preferences)
     itinerary_version.create_snapshot(user_id, itinerary_id, "create", "创建行程草稿")
+    # 建壳成功后回填幂等占位值：此后同键重试拿回这个 itinerary_id
+    if idempotency_key and idempotency_key.strip():
+        cache_store.set_json(
+            _IDEM_NAMESPACE, f"{user_id}:{idempotency_key.strip()[:128]}", itinerary_id, IDEMPOTENCY_TTL_SECONDS
+        )
 
     try:
         submit_planning(user_id, itinerary_id, command)

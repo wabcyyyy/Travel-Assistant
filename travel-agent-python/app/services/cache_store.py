@@ -75,6 +75,35 @@ def set_json(namespace: str, key: str, value: Any, ttl_seconds: int) -> None:
         _local[full] = (time.time() + ttl_seconds, raw)
 
 
+def reserve(namespace: str, key: str, value: Any, ttl_seconds: int) -> bool:
+    """原子占位：key 不存在时写入并返回 True，已存在返回 False（不覆盖）。
+
+    幂等键的底层原语（G-3.x backlog：生成端点防重复建壳）。与 get+set 的
+    两步写不同，本操作在两种存储下都是原子的：
+    - Redis：`SET NX EX`（单命令原子）；
+    - 进程内降级：`dict.setdefault` 在 _lock 下执行（GIL + 锁，等效原子）。
+
+    值为 None 时存哨兵（与 set_json 同口径），调用方读到 None 也能区分
+    「占位成功」与「key 已存在」。
+    """
+    full = full_key(namespace, key)
+    raw = _EMPTY_SENTINEL if value is None else json.dumps(value, ensure_ascii=False, default=str)
+    try:
+        claimed = _get_client().set(full, raw, ex=int(ttl_seconds), nx=True)
+        return bool(claimed)
+    except Exception as exc:
+        redis_client.note_failure(exc)
+        logger.debug("cache redis reserve failed, fallback local (%s): %s", namespace, exc)
+    with _lock:
+        _expired = _local.get(full)
+        if _expired is not None and _expired[0] <= time.time():
+            _local.pop(full, None)  # 过期项先清，setdefault 才能占位
+        claimed = full not in _local
+        if claimed:
+            _local[full] = (time.time() + ttl_seconds, raw)
+    return claimed
+
+
 def delete(namespace: str, key: str) -> None:
     """精确失效一个键（写路径用；不做整片清空）。"""
     full = full_key(namespace, key)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, File, Path, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Header, Path, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -79,9 +79,17 @@ def post_poi_nearby(body: dict[str, Any]) -> dict:
 
 
 @router.post("/generate")
-def post_generate(body: GenerateTripRequest, user: AuthUser | None = Depends(enforce_business_auth)) -> dict:
-    """建壳 + 异步逐日生成，立即返回可轮询的初始详情（status=1）。"""
-    return ok(itinerary_generation.generate(user.id, body))
+def post_generate(
+    body: GenerateTripRequest,
+    user: AuthUser | None = Depends(enforce_business_auth),
+    x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
+) -> dict:
+    """建壳 + 异步逐日生成，立即返回可轮询的初始详情（status=1）。
+
+    `X-Idempotency-Key`（可选）：网络层重试 / 双击时带同一个键，TTL 内返回
+    同一个行程而不是重复建壳（backlog「被重复请求咬过」）。
+    """
+    return ok(itinerary_generation.generate(user.id, body, idempotency_key=x_idempotency_key))
 
 
 # ---- 偏好：字面量路径必须声明在 /{id} 之前，否则会被路径参数吞掉 ----
