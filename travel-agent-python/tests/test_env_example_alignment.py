@@ -25,7 +25,15 @@ _SECRET_MARKS = ("KEY", "SECRET", "TOKEN", "PASSWORD")
 
 
 def _extract_config_defaults(source: str) -> dict[str, tuple[str, Any, str | None]]:
-    """返回 {环境变量名: (包装类型, 默认值, 原始字面量)}；非字面量默认记为 None。"""
+    """返回 {环境变量名: (类型, 默认值, 原始字面量)}；非字面量默认记为 None。
+
+    G-1.5 起config.py 为 pydantic-settings 字段定义式：字段名小写即环境
+    变量名（大小写不敏感对应，agent_host <-> AGENT_HOST）；这里按注解取
+    类型（bool/int/float/str），按字面量取默认值；default_factory 等复杂
+    默认只做存在性校验（expected=None）。validation_alias（如
+    jwt_revocation_prefer_redis <- APP_JWT_REVOKE_PREFER_REDIS）优先于
+    字段名派生。
+    """
     tree = ast.parse(source)
     defaults: dict[str, tuple[str, Any, str | None]] = {}
     for node in ast.walk(tree):
@@ -34,26 +42,25 @@ def _extract_config_defaults(source: str) -> dict[str, tuple[str, Any, str | Non
         for stmt in node.body:
             if not (isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)):
                 continue
-            call = stmt.value
-            if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Name)):
+            field_name = stmt.target.id
+            annotation = getattr(stmt.annotation, "id", "")
+            if annotation not in ("str", "bool", "int", "float"):
                 continue
-            wrapper: str | None = None
-            if call.func.id in ("int", "float"):
-                wrapper = call.func.id
-                inner = call.args[0]
-                if not (isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name)):
-                    continue
-                call = inner
-            if call.func.id not in ("_get", "_get_bool"):
-                continue
-            env_name = call.args[0].value
-            second = call.args[1] if len(call.args) > 1 else None
-            if isinstance(second, ast.Constant):  # noqa: SIM108 -- 嵌套三元比 if/else 链更不可读，保持分支写法
-                raw = second.value
-            else:
-                raw = False if call.func.id == "_get_bool" else None
-            kind = "bool" if call.func.id == "_get_bool" else (wrapper or "str")
-            defaults[env_name] = (kind, raw, second.value if isinstance(second, ast.Constant) else None)
+            env_name = field_name.upper()
+            value = stmt.value
+            raw: Any = None
+            # Field(default=..., validation_alias="...")：别名即环境变量名
+            if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "Field":
+                for keyword in value.keywords:
+                    if keyword.arg == "validation_alias" and isinstance(keyword.value, ast.Constant):
+                        env_name = keyword.value.value
+                    if keyword.arg == "default" and isinstance(keyword.value, ast.Constant):
+                        raw = keyword.value.value
+            elif isinstance(value, ast.Constant):
+                raw = value.value
+            elif isinstance(value, ast.BinOp):
+                raw = None  # 5 * 1024 * 1024 之类的表达式默认不做值比对
+            defaults[env_name] = (annotation, raw, raw if isinstance(raw, (bool, int, float, str)) else None)
     return defaults
 
 

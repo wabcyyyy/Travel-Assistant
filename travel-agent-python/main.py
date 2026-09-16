@@ -35,26 +35,12 @@ from app.services import export_service, generation_recovery, itinerary_chat, it
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
 
-_LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 安全 fail-fast：generate/adjust 等端点每次调用消耗真实 LLM token。
-    # 绑定非回环地址却不配置内部令牌，等于匿名烧钱接口；启动即拒绝，
-    # 避免"默认空 token 静默放行"在部署改 host 后裸奔。
-    if settings.agent_host not in _LOCAL_HOSTS and not settings.agent_internal_token:
-        raise RuntimeError(
-            "AGENT_HOST 绑定非回环地址但未配置 AGENT_INTERNAL_TOKEN，"
-            "生成类端点将匿名暴露并消耗 LLM 配额；请设置令牌或改回 127.0.0.1"
-        )
-    # 会话签名密钥（切流量后本服务自己签发 TA_AUTH）：等价 Java `JwtProperties` 的
-    # @NotBlank @Size(min=32)。默认空串必须拦下——那等于任何人都能伪造登录票。
-    if len(settings.jwt_secret) < 32:
-        raise RuntimeError(
-            "JWT_SECRET 未配置或短于 32 字符：本服务负责签发会话票，弱密钥可被伪造登录；"
-            "请在 .env 里配置与（双跑期）Java 侧一致的密钥"
-        )
+    # 启动期配置校验（G-1.5）：安全 fail-fast（非回环绑定必须配内部令牌、
+    # JWT 密钥强度）收拢在 Settings.validate_boot；坏配置 RuntimeError →
+    # uvicorn 以非 0 退出，避免"起来了但配置是坏的"。
+    settings.validate_boot()
     warmup_rag()
     # 清理保留期之外的 LLM 用量明细（默认保留 90 天）。
     try:

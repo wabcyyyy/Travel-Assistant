@@ -36,6 +36,7 @@ dependencies = [
     # torch 显式列为直接依赖：tool.uv.sources 只对直接依赖生效，
     # 否则传递依赖会从 PyPI 解析出带 CUDA 的 Linux 构建（数 GB）
     "torch",
+    "pydantic-settings>=2.7,<3",
 ]
 
 [dependency-groups]
