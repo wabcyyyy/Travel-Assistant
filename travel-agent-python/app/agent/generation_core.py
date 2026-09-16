@@ -7,7 +7,7 @@
 | ``trip_graph`` | **唯一** LangGraph 编排图；``mode=day`` / ``mode=trip`` 分流 |
 | ``day_stream`` | 单次生成「事实层」：开放模式 Prompt、坐标/价格落地、ReferencePool |
 | ``workflow`` | 整段业务节点实现 + ``run_generate`` 门面 |
-| ``day_workflow`` | 逐日门面 + ``_generate_day_once`` 兼容再导出 |
+| ``day_workflow`` | 逐日门面 + ``generate_day_once`` 兼容再导出 |
 | ``generation_core`` | 产品口径（N-1 晚/草案/重试常量/摊铺） |
 
 改动产品规则只改本模块；改编排拓扑只改 ``trip_graph``。

@@ -4,7 +4,7 @@
 - app/schemas/trip.py：PhotoSpot/BackupRule/DayOption 子模型 + why_this/
   day_options/trip_theme 叙事字段（超长截断不抛错）；
 - app/prompts/open_generation.py：v1.1.narrative 契约升级；
-- app/agent/day_stream.py：_sanitize_narrative 轻量清洗 + max_tokens 上调；
+- app/agent/day_stream.py：sanitize_narrative 轻量清洗 + max_tokens 上调；
 - app/agent/workflow.py：叙事层装配透传。
 """
 
@@ -87,11 +87,11 @@ def test_oversized_narrative_input_is_clipped_not_rejected():
     assert response.trip_theme == "题" * 40
 
 
-# ---------- 2. 清洗函数：day_stream._sanitize_narrative ----------
+# ---------- 2. 清洗函数：day_stream.sanitize_narrative ----------
 
 
 def test_sanitize_narrative_clips_lengths_and_counts():
-    plan = day_stream._sanitize_narrative(
+    plan = day_stream.sanitize_narrative(
         {
             "theme": "长" * 50,
             "trip_theme": "题" * 60,
@@ -112,7 +112,7 @@ def test_sanitize_narrative_clips_lengths_and_counts():
 
 
 def test_sanitize_narrative_defaults_missing_keys_to_empty():
-    plan = day_stream._sanitize_narrative({"note": "只有概览"})
+    plan = day_stream.sanitize_narrative({"note": "只有概览"})
     assert plan["theme"] is None
     assert plan["trip_theme"] is None
     assert plan["practical_notes"] == []
@@ -122,7 +122,7 @@ def test_sanitize_narrative_defaults_missing_keys_to_empty():
 
 
 def test_sanitize_narrative_tolerates_invalid_types():
-    plan = day_stream._sanitize_narrative(
+    plan = day_stream.sanitize_narrative(
         {
             "theme": 123,
             "trip_theme": 456,
@@ -143,7 +143,7 @@ def test_sanitize_narrative_tolerates_invalid_types():
 
 
 def test_sanitize_narrative_coerces_string_photo_spot_and_numeric_notes():
-    plan = day_stream._sanitize_narrative(
+    plan = day_stream.sanitize_narrative(
         {
             "practical_notes": ["穿运动鞋", 42, {"bad": "dict"}],
             "photo_spots": ["清水寺舞台", {"name": "伏见稻荷"}],
@@ -154,7 +154,7 @@ def test_sanitize_narrative_coerces_string_photo_spot_and_numeric_notes():
 
 
 def test_sanitize_narrative_normalizes_camel_case_keys():
-    plan = day_stream._sanitize_narrative(
+    plan = day_stream.sanitize_narrative(
         {
             "tripTheme": "京都巡礼",
             "photoSpots": [{"name": "清水寺"}],
@@ -173,7 +173,7 @@ def test_sanitize_narrative_normalizes_camel_case_keys():
 
 
 def test_sanitize_narrative_keeps_why_this_of_non_attraction_items():
-    plan = day_stream._sanitize_narrative(
+    plan = day_stream.sanitize_narrative(
         {
             "items": [
                 {"item_type": "food", "poi_name": "一兰拉面", "why_this": "汤头口碑第一"},
@@ -276,7 +276,7 @@ def test_llm_open_day_returns_sanitized_narrative_fields(monkeypatch):
     )
     monkeypatch.setattr(day_stream, "get_llm_client", lambda: client)
     req = GenerateDayRequest(city="京都", day_no=1, days=3)
-    plan = day_stream._llm_open_day(req, set())
+    plan = day_stream.llm_open_day(req, set())
 
     # max_tokens 叙事增量：2400 → 3200
     assert client.kwargs[0]["max_tokens"] == 3200
@@ -294,10 +294,10 @@ def test_llm_open_day_day1_has_trip_theme_day2_not(monkeypatch):
     client = _CapturingClient({"theme": "花园漫步", "note": "第2天", "items": [], "suggestions": []})
     monkeypatch.setattr(day_stream, "get_llm_client", lambda: client)
 
-    day1 = day_stream._llm_open_day(GenerateDayRequest(city="京都", day_no=1, days=2), set())
+    day1 = day_stream.llm_open_day(GenerateDayRequest(city="京都", day_no=1, days=2), set())
     assert day1["trip_theme"] is None  # 模型未输出 → 缺省即空，不报错
 
-    day2 = day_stream._llm_open_day(GenerateDayRequest(city="京都", day_no=2, days=2), set())
+    day2 = day_stream.llm_open_day(GenerateDayRequest(city="京都", day_no=2, days=2), set())
     assert day2["trip_theme"] is None
     assert '"trip_theme":' in client.systems[0]  # 第 1 天契约携带
     assert '"trip_theme":' not in client.systems[1]  # 第 2 天契约省略
@@ -307,7 +307,7 @@ def test_generate_day_once_daily_plan_carries_all_narrative_fields(monkeypatch):
     monkeypatch.setattr(day_stream.settings, "llm_api_key", "configured")
     monkeypatch.setattr(
         day_stream,
-        "_llm_open_day",
+        "llm_open_day",
         lambda req, used: {
             "note": "第1天",
             "theme": "街区巡礼",
@@ -329,7 +329,7 @@ def test_generate_day_once_daily_plan_carries_all_narrative_fields(monkeypatch):
             "suggestions": [],
         },
     )
-    plan, source = day_stream._generate_day_once(GenerateDayRequest(city="京都", day_no=1, days=2, context={}))
+    plan, source = day_stream.generate_day_once(GenerateDayRequest(city="京都", day_no=1, days=2, context={}))
     assert source == "open"
     assert plan.theme == "街区巡礼"
     assert plan.trip_theme == "京都·千恋万花圣地巡礼"  # day_no=1 含 trip_theme
@@ -344,7 +344,7 @@ def test_generate_day_once_day2_has_no_trip_theme(monkeypatch):
     monkeypatch.setattr(day_stream.settings, "llm_api_key", "configured")
     monkeypatch.setattr(
         day_stream,
-        "_llm_open_day",
+        "llm_open_day",
         lambda req, used: {
             "note": "第2天",
             "theme": "岚山慢行",
@@ -354,7 +354,7 @@ def test_generate_day_once_day2_has_no_trip_theme(monkeypatch):
             "suggestions": [],
         },
     )
-    plan, _ = day_stream._generate_day_once(GenerateDayRequest(city="京都", day_no=2, days=2, context={}))
+    plan, _ = day_stream.generate_day_once(GenerateDayRequest(city="京都", day_no=2, days=2, context={}))
     assert plan.trip_theme is None  # day_no=2 无 trip_theme
 
 
@@ -371,7 +371,7 @@ def test_llm_open_trip_sanitizes_plans_and_injects_trip_theme(monkeypatch):
     )
     monkeypatch.setattr(day_stream, "get_llm_client", lambda: client)
     req = GenerateDayRequest(city="京都", day_no=1, days=2, needs_hotel=True)
-    plans, suggestions = day_stream._llm_open_trip(req)
+    plans, suggestions = day_stream.llm_open_trip(req)
 
     # max_tokens 叙事增量：days*1150+1100，上限 8000（2 天 → 3400）
     assert client.kwargs[0]["max_tokens"] == 2 * 1150 + 1100

@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
-from app.agent.day_stream import _has_coord
-from app.agent.generators import _has_valid_coords
+from app.agent.day_stream import has_coord
+from app.agent.generators import has_valid_coords
 from app.agent.reflect import parse_time
 from app.schemas.trip import SourceRecord
 
@@ -31,7 +31,7 @@ def apply_item_facts(item: dict, poi: dict | None, source_records: dict[str, Sou
     if poi:
         # 0/0 是缺失坐标的哨兵值（store._row_payload 会把 NULL 写成 0.0），
         # 不能作为权威坐标回填，否则幻觉坐标获得权威背书。
-        if not _has_coord(item.get("latitude")) and _has_valid_coords(poi):
+        if not has_coord(item.get("latitude")) and has_valid_coords(poi):
             item["latitude"] = float(poi["latitude"])
             item["longitude"] = float(poi["longitude"])
         if not item.get("poi_id"):
@@ -48,7 +48,7 @@ def apply_item_facts(item: dict, poi: dict | None, source_records: dict[str, Sou
         item["value_kind"] = "observed"
         item["freshness_status"] = "fresh" if source_updated_at else "unknown"
         item["review_requirement"] = "none" if source_updated_at else "before_departure"
-        if not _has_valid_coords(poi):
+        if not has_valid_coords(poi):
             # 权威行缺坐标：item 上残留的是模型自填坐标，不背书。
             item["verification_status"] = "unverified"
             item["value_kind"] = "estimated"

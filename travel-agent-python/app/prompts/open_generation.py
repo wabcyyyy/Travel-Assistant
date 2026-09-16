@@ -24,7 +24,7 @@ OPEN_TRIP_PROMPT_VERSION = "v1.1.narrative"
 def open_day_system_prompt(*, day_no: int = 1, pace: str, hotel_clause: str, hotel_hint: str, mem) -> str:
     """开放模式单日生成的 system prompt 基座（动态追加块由调用方拼接）。
 
-    参数与 _llm_open_day 中的局部变量同名：
+    参数与 llm_open_day 中的局部变量同名：
     - day_no：当天序号（1 起）。仅第 1 天在输出契约顶层携带 trip_theme
       （整趟主题标题，逐日编排下由第 1 天统一产出，其余天省略避免
       每天生成不一致的主题串）；
@@ -106,7 +106,7 @@ def open_day_system_prompt(*, day_no: int = 1, pace: str, hotel_clause: str, hot
 def open_trip_system_prompt(*, days: int, hotel_clause: str) -> str:
     """开放模式多日一次生成的 system prompt 基座（动态追加块由调用方拼接）。
 
-    参数与 _llm_open_trip 中的局部变量同名：
+    参数与 llm_open_trip 中的局部变量同名：
     - days：总天数（req.days 或 1）；
     - hotel_clause：住宿口径条款（hotel_prompt_clause 产出）。
     """

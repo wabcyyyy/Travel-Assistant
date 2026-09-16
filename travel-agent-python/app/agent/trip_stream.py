@@ -21,18 +21,18 @@ from app.agent.day_stream import (
     DAY_ATTRACTION_CONTEXT_LIMIT,
     DAY_FOOD_CONTEXT_LIMIT,
     GENERATION_TEMPERATURE,
-    _local_ground,
-    _open_trip_prompt,
-    _sanitize_narrative,
+    local_ground,
+    open_trip_prompt,
+    sanitize_narrative,
 )
 from app.agent.generation_core import PoiSeenRegistry, norm_poi_key, spread_hotels, stay_nights
 from app.agent.generators import (
     ReferencePool,
-    _budget_tier,
-    _parse_json,
-    _pick_hotels,
+    budget_tier,
     build_suggestions,
     fill_suggestion_gaps,
+    parse_json,
+    pick_hotels,
 )
 from app.agent.trace import record_event
 from app.common.config import settings
@@ -164,7 +164,7 @@ class DailyPlansStreamParser:
         trip_theme = None
         suggestions: list[dict] = []
         try:
-            data = _parse_json(self._text)
+            data = parse_json(self._text)
         except Exception:
             data = None
         if isinstance(data, dict) and isinstance(data.get("daily_plans"), list):
@@ -238,7 +238,7 @@ def _prepare_day(
     （"圣家堂" vs "圣家堂大教堂"）由坐标通道兜底。酒店不参与判重
     （全程同一家是摊铺语义），漏排的晚次由 spread_hotels 补齐。
     """
-    plan = _sanitize_narrative(raw_day)
+    plan = sanitize_narrative(raw_day)
     plan["day_no"] = day_no
     plan.setdefault("items", [])
     plan["items"] = [it for it in plan["items"] if isinstance(it, dict) and str(it.get("poi_name") or "").strip()]
@@ -250,7 +250,7 @@ def _prepare_day(
             record_event("decision", "stream_duplicate_dropped", metadata={"day_no": day_no, "poi_name": name})
             continue
         if not ref_pool.ground(item):
-            _local_ground(item, req.city, ground_cache)
+            local_ground(item, req.city, ground_cache)
         if name and seen.is_duplicate(name, item_type, item.get("latitude"), item.get("longitude")):
             # 落地后坐标通道判重命中（名称变体指向同一地点）
             record_event(
@@ -319,7 +319,7 @@ def run_generate_trip_stream(req: GenerateDayRequest, cancel: threading.Event | 
         raise ValueError("未配置 LLM，无法生成行程内容")
     client = get_llm_client()
     total_days = max(int(req.days or 1), 1)
-    system, user = _open_trip_prompt(req)
+    system, user = open_trip_prompt(req)
     ref_pool = ReferencePool(req.context)
     context = req.context or {}
     candidates = context.get("candidates") or []
@@ -360,7 +360,7 @@ def run_generate_trip_stream(req: GenerateDayRequest, cancel: threading.Event | 
             for raw_day in parser.feed(delta):
                 parse_failures = parser.parse_failures
                 if len(emitted_nos) >= total_days:
-                    # 模型输出超出天数：丢弃并遥测（与 _llm_open_trip [:days] 口径一致）
+                    # 模型输出超出天数：丢弃并遥测（与 llm_open_trip [:days] 口径一致）
                     record_event("decision", "stream_extra_day_dropped", metadata={"day_no": raw_day.get("day_no")})
                     continue
                 # day_no 修正：非法/越界/重复时顺位补齐
@@ -428,12 +428,12 @@ def run_generate_trip_stream(req: GenerateDayRequest, cancel: threading.Event | 
     if per_day_suggestions and final.get("suggestions"):
         raw_suggestions = final["suggestions"] + per_day_suggestions
     raw_suggestions = _filter_suggestions_by_city(raw_suggestions, req.city)
-    tier_label, _g, _ppd = _budget_tier(req.budget, req.persons or 1, total_days)
+    tier_label, _g, _ppd = budget_tier(req.budget, req.persons or 1, total_days)
     suggestion_rows = build_suggestions(
         plans,
         candidates[:DAY_ATTRACTION_CONTEXT_LIMIT],
         foods[:DAY_FOOD_CONTEXT_LIMIT],
-        _pick_hotels(hotels, req.hotel_tier, 3),
+        pick_hotels(hotels, req.hotel_tier, 3),
         raw_suggestions,
         allow_external=True,
     )

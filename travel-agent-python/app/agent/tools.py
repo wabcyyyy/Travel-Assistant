@@ -12,6 +12,8 @@
 - 酒店检索保留完整可枚举候选集（不纯靠向量，避免漏掉当前档次），是生成与编辑链路共用的数据面。
 
 依赖：poi_repository（权威本地库）、rag.store.poi_store（向量召回）。**无高德/Google/Nominatim**。
+
+跨模块 API（G-1.2 提级，供 day_stream 共用）：anchor_name_similar。
 """
 
 import logging
@@ -27,7 +29,7 @@ from app.rag.store import poi_store
 logger = logging.getLogger(__name__)
 
 
-def _anchor_name_similar(query: str, candidate: str) -> bool:
+def anchor_name_similar(query: str, candidate: str) -> bool:
     """附近推荐锚点解析的名称相似度门槛。
 
     向量/模糊 LIKE 对乱码或不存在名称也会召回；若候选名与查询几乎无关，
@@ -161,7 +163,7 @@ def search_local_poi(city: str, name: str, *, category: str | None = None) -> li
         return []
     # 向量召回对无关词也会给 top-k：必须过名称门槛，否则「池外新地点」会被
     # 无关 POI 顶替（既污染证据池，也让该走向联网补池的缺口被静默填平）。
-    return [row for row in hits if _anchor_name_similar(query, str(row.get("name") or ""))]
+    return [row for row in hits if anchor_name_similar(query, str(row.get("name") or ""))]
 
 
 @traced("tool", "poi.search_attractions")
@@ -236,7 +238,7 @@ def find_nearby_pois(
             poi_store.ensure_loaded()
             # 语义检索对乱名也会返回 top-k；必须过名称门槛，否则会错锚。
             for row in poi_store.search(str(name or ""), city=city, limit=5):
-                if _anchor_name_similar(str(name or ""), str(row.get("name") or "")):
+                if anchor_name_similar(str(name or ""), str(row.get("name") or "")):
                     anchor = row
                     break
         try:

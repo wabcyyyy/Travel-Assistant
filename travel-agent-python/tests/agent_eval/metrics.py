@@ -16,8 +16,8 @@ def _items(response) -> list[dict]:
     ]
 
 
-def _has_coord(value) -> bool:
-    """坐标有效：非 None 且非 0（0/0 是缺失哨兵，与生成链路 _has_coord 口径一致）。"""
+def has_coord(value) -> bool:
+    """坐标有效：非 None 且非 0（0/0 是缺失哨兵，与生成链路 has_coord 口径一致）。"""
     try:
         return value is not None and abs(float(value)) > 1e-6
     except (TypeError, ValueError):
@@ -51,7 +51,7 @@ def evaluate_narrative(response, case: dict) -> dict:
     theme_sentence_days = sum(1 for plan in plans if plan.theme and "→" not in plan.theme)
     practical_days = sum(1 for plan in plans if plan.practical_notes)
     why_filled = sum(1 for i in attractions if (i.get("why_this") or "").strip())
-    coord_ok = sum(1 for i in attractions if _has_coord(i.get("latitude")) and _has_coord(i.get("longitude")))
+    coord_ok = sum(1 for i in attractions if has_coord(i.get("latitude")) and has_coord(i.get("longitude")))
     pending_review = sum(1 for i in items if i.get("verification_status") == "unverified")
 
     theme_hit_rate = None

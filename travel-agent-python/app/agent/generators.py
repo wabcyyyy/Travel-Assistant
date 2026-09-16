@@ -1,5 +1,9 @@
 """行程内容的生成辅助工具。
 
+跨模块 API（G-1.2 提级，供 day_stream/trip_stream/workflow/formatting 共用）：
+budget_tier / parse_json / pick_hotels / has_valid_coords / is_authoritative_source /
+budget_clause / intent_clause / requirements_clause。
+
 职责边界（LLM-only 原则）：
 - 行程内容 100% 由 LLM 生成（day_stream 开放模式 / workflow 编排），
   本模块不再提供任何"直接用知识库候选拼装行程"的生产路径；
@@ -58,12 +62,12 @@ def normalize_poi_name(name: str | None) -> str:
     return _NAME_NORMALIZE_RE.sub("", str(name or "")).strip()
 
 
-def _is_authoritative_source(source: object) -> bool:
+def is_authoritative_source(source: object) -> bool:
     text = str(source or "").strip()
     return bool(text) and text.startswith(AUTHORITATIVE_SOURCE_PREFIXES)
 
 
-def _has_valid_coords(poi: dict) -> bool:
+def has_valid_coords(poi: dict) -> bool:
     """坐标存在且非 0/0（0/0 是缺失坐标的哨兵值，不是有效位置）。"""
     lat, lng = poi.get("latitude"), poi.get("longitude")
     if lat is None or lng is None:
@@ -159,7 +163,7 @@ _TIER_KEYWORDS = {
 }
 
 
-def _budget_tier(budget: float | None, persons: int, days: int) -> tuple[str, str, float]:
+def budget_tier(budget: float | None, persons: int, days: int) -> tuple[str, str, float]:
     """按人均每天预算划分消费档次。
 
     返回 (档次名, 预算指引, 人均每天金额)；预算缺失时返回空串，不进入 Prompt。
@@ -185,9 +189,9 @@ def _budget_tier(budget: float | None, persons: int, days: int) -> tuple[str, st
     return "节俭", "预算紧张：尽量选择免费或低价景点、平价餐饮与经济住宿，估算总花费不要超过预算。", ppd
 
 
-def _budget_clause(budget: float | None, persons: int, days: int) -> str:
+def budget_clause(budget: float | None, persons: int, days: int) -> str:
     """生成给 LLM 的预算约束句；无预算时返回空串。"""
-    label, guidance, ppd = _budget_tier(budget, persons, days)
+    label, guidance, ppd = budget_tier(budget, persons, days)
     if not label:
         return ""
     return (
@@ -199,7 +203,7 @@ def _budget_clause(budget: float | None, persons: int, days: int) -> str:
     )
 
 
-def _requirements_clause(requirements: str | None) -> str:
+def requirements_clause(requirements: str | None) -> str:
     """生成给 LLM 的客户特别要求句；为空时返回空串。
 
     用户输入用定界符包裹并声明"数据非指令"，降低 prompt 注入面：
@@ -260,7 +264,7 @@ def clear_distill_cache() -> None:
     _distill_cached.cache_clear()
 
 
-def _intent_clause(intent: str | None) -> str:
+def intent_clause(intent: str | None) -> str:
     """生成给 LLM 的用户旅行意图块（最高优先级信号）；为空时返回空串。
 
     intent 是用户一句话旅行愿景（M1 意图贯通：无 intent 时 Java 兜底
@@ -282,7 +286,7 @@ def _intent_clause(intent: str | None) -> str:
     return clause
 
 
-def _pick_hotels(hotels: list[dict] | None, tier: str | None, count: int) -> list[dict]:
+def pick_hotels(hotels: list[dict] | None, tier: str | None, count: int) -> list[dict]:
     """按档次关键词优先挑选（tier 可为「经济型、豪华型」多选拼接），凑不满则用其余补齐。"""
     if not hotels:
         return []
@@ -431,7 +435,7 @@ class ReferencePool:
         item["item_type"] = poi.get("category") or item.get("item_type") or "attraction"
         item["poi_id"] = str(poi.get("id") or "") or item.get("poi_id")
         item["address"] = poi.get("address")
-        if _has_valid_coords(poi):
+        if has_valid_coords(poi):
             item["latitude"] = float(poi["latitude"])
             item["longitude"] = float(poi["longitude"])
         if poi.get("duration_min"):
@@ -442,7 +446,7 @@ class ReferencePool:
             item["cost"] = float(poi["ticket_price"])
         source_name = str(poi.get("source") or "mysql.poi_knowledge")
         updated_at = str(poi.get("source_updated_at") or "") or None
-        if not _is_authoritative_source(source_name):
+        if not is_authoritative_source(source_name):
             # 参考资料来源不在权威值域内（例如客户端伪造的 context）：
             # 不背书，改写来源并降级为待复核的估算事实。
             item["source"] = UNTRUSTED_SOURCE
@@ -459,7 +463,7 @@ class ReferencePool:
         item["value_kind"] = "observed"
         item["freshness_status"] = "fresh" if updated_at else "unknown"
         item["review_requirement"] = "none" if updated_at else "before_departure"
-        if not _has_valid_coords(poi):
+        if not has_valid_coords(poi):
             # 权威行缺坐标：item 上残留的是模型自填坐标，不能随其它字段
             # 一起获得 observed 背书，整体降级为待复核估算。
             item["verification_status"] = "unverified"
@@ -527,7 +531,7 @@ def fallback_generate(
             # 没有任何换乘余量；放到午间空档，给下午/晚间景点留出路线缓冲。
             meal_start, meal_end = ("11:30", "12:30") if len(items) >= 3 else ("18:00", "19:00")
             items.append(_to_item(food, meal_start, meal_end))
-        tier_hotels = _pick_hotels(hotels, hotel_tier, 2)
+        tier_hotels = pick_hotels(hotels, hotel_tier, 2)
         items.append(_hotel_item(city, consumption, tier_hotels or hotels, day_no))
         daily_plans.append({"day_no": day_no, "note": f"{city}第{day_no}天行程", "items": items})
 
@@ -854,7 +858,7 @@ def dedupe_daily_plans(
     return plans
 
 
-def _parse_json(raw: str) -> dict:
+def parse_json(raw: str) -> dict:
     text = raw.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[-1]

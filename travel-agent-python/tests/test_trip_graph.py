@@ -54,7 +54,7 @@ def test_day_state_mode(monkeypatch):
             ],
         ), "llm"
 
-    monkeypatch.setattr(day_workflow, "_generate_day_once", fake_once)
+    monkeypatch.setattr(day_workflow, "generate_day_once", fake_once)
     plan = run_day(GenerateDayRequest(city="杭州"))
     assert plan.items[0].poi_name == "A"
 

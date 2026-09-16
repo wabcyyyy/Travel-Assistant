@@ -4,7 +4,7 @@
 - distill_intent：把用户一句话旅行意图提炼为结构化 IntentBrief（主题/必含/
   避免/基调/交通住宿），供生成 Prompt 追加一行「意图摘要」；
 - 这是"轻量提炼"而非研究：失败一律降级返回 None，原始 intent 文本仍由
-  generators._intent_clause 原样注入 Prompt，提炼只是锦上添花——绝不抛出、
+  generators.intent_clause 原样注入 Prompt，提炼只是锦上添花——绝不抛出、
   绝不阻断生成；
 - build_intent_keywords：M3-②（AD5）研究层消费——从 intent 纯规则抽取检索词
   （书名号/引号内容优先 + 切词去停用词），供 Supervisor 填充 ResearchTask 的
@@ -74,7 +74,7 @@ def distill_intent(intent: str) -> IntentBrief | None:
 
     - 空/超短（<4 字符）意图无提炼价值，直接返回 None；
     - 单次 json_mode 调用（llm_fast_model、temperature=0.2、max_tokens=300）；
-    - 解析失败/异常/字段缺失一律返回 None，调用方（_intent_clause）只注入
+    - 解析失败/异常/字段缺失一律返回 None，调用方（intent_clause）只注入
       原文块，生成链路不受影响。
     """
     text = str(intent or "").strip()

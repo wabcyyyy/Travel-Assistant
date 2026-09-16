@@ -53,7 +53,7 @@ def test_day_graph_retries_after_reflection(monkeypatch):
             ), "llm"
         return _plan(), "llm"
 
-    monkeypatch.setattr(day_workflow, "_generate_day_once", fake_once)
+    monkeypatch.setattr(day_workflow, "generate_day_once", fake_once)
     result = day_workflow.run_day_agent(GenerateDayRequest(city="杭州"))
 
     assert result.items[0].poi_name == "测试景点"
@@ -76,7 +76,7 @@ def test_day_graph_uses_deterministic_fallback_after_second_failure(monkeypatch)
         )
         return bad, "fallback" if force_fallback else "llm"
 
-    monkeypatch.setattr(day_workflow, "_generate_day_once", fake_once)
+    monkeypatch.setattr(day_workflow, "generate_day_once", fake_once)
     result = day_workflow.run_day_agent(GenerateDayRequest(city="杭州"))
 
     assert result.day_no == 1
@@ -112,7 +112,7 @@ def test_day_graph_retries_when_route_gap_is_too_short(monkeypatch):
             ), "llm"
         return _plan(), "llm"
 
-    monkeypatch.setattr(day_workflow, "_generate_day_once", fake_once)
+    monkeypatch.setattr(day_workflow, "generate_day_once", fake_once)
     result = day_workflow.run_day_agent(GenerateDayRequest(city="杭州"))
 
     assert result.items[0].poi_name == "测试景点"

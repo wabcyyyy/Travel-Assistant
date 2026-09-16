@@ -64,8 +64,8 @@ def run_case(case: dict) -> dict:
         patch.object(reasoning, "evaluate_research", mock_llm.evaluate_research),
         patch.object(tools, "attach_poi_images", mock_llm.attach_poi_images),
         patch.object(tools, "search_local_poi", mock_llm.search_local_poi),
-        patch.object(workflow, "_llm_open_day", mock_llm.fixture_open_day),
-        patch.object(workflow, "_llm_open_trip", mock_llm.fixture_open_trip),
+        patch.object(workflow, "llm_open_day", mock_llm.fixture_open_day),
+        patch.object(workflow, "llm_open_trip", mock_llm.fixture_open_trip),
         trace_run(f"fixture-{case['city']}-{case['days']}") as recorder,
     ):
         response = workflow.run_generate(build_generate_request(case))

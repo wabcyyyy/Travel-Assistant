@@ -11,7 +11,7 @@ dispatch ──mode=day──► day_generate ⇄ day.reflect/retry/fallback ─
 
 事实层（Prompt/坐标落地）仍在 ``day_stream``；产品口径在 ``generation_core``。
 ``workflow.run_generate`` / ``day_workflow.run_day_agent`` 变为本图的薄门面，
-HTTP 契约不变。测试可 monkeypatch ``day_workflow._generate_day_once``
+HTTP 契约不变。测试可 monkeypatch ``day_workflow.generate_day_once``
 （day 节点经该模块属性调用，保证补丁生效）。
 """
 
@@ -132,7 +132,7 @@ def day_generate(state: UnifiedAgentState) -> dict:
     if feedback and feedback != request.feedback:
         request = request.model_copy(update={"feedback": feedback})
     try:
-        plan, source = dw._generate_day_once(request, force_fallback=state.get("force_fallback", False))
+        plan, source = dw.generate_day_once(request, force_fallback=state.get("force_fallback", False))
         return {
             "day_request": request,
             "plan": plan,

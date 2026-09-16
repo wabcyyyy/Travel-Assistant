@@ -1,5 +1,7 @@
 """初次行程生成的工作流编排（LangGraph：生成 → 校验 → 修复 循环）。
 
+跨模块 API（G-1.2 提级，供 rag.evaluation_generation 复用）：generate_open_plans。
+
 职责：
 - run_generate：入口委托给 trip_graph 统一图（本模块提供其节点函数）；
 - generate_itinerary：LLM-only 生成——开放模式（LLM 知识 + 权威参考资料注入 +
@@ -26,7 +28,7 @@ import logging
 from typing import TypedDict
 
 from app.agent import poi_repository, research
-from app.agent.day_stream import _llm_open_day, _llm_open_trip, _local_ground
+from app.agent.day_stream import llm_open_day, llm_open_trip, local_ground
 from app.agent.formatting.facts import (
     apply_item_facts,
     build_lookup,
@@ -47,7 +49,7 @@ from app.agent.generation_core import (
 )
 from app.agent.generators import (
     ReferencePool,
-    _budget_tier,
+    budget_tier,
     build_suggestions,
     fill_suggestion_gaps,
 )
@@ -283,7 +285,7 @@ def research_pois(state: AgentState) -> dict:
     }
 
 
-def _generate_open_plans(
+def generate_open_plans(
     req: GenerateRequest,
     feedback: str,
     context_hotels: list[dict] | None,
@@ -328,7 +330,7 @@ def _generate_open_plans(
                 feedback=feedback,
             )
             try:
-                trip_plans, trip_suggestions = _llm_open_trip(trip_req)
+                trip_plans, trip_suggestions = llm_open_trip(trip_req)
                 # 模型可能返回重复/越界的 day_no；字典推导会静默后覆盖前，
                 # 保留首个并遥测丢弃项，缺的天在下方落成待研究草案。
                 plans_by_day: dict[int, dict] = {}
@@ -367,7 +369,7 @@ def _generate_open_plans(
                     feedback=feedback,
                 )
                 try:
-                    plan = _llm_open_day(day_req, used)
+                    plan = llm_open_day(day_req, used)
                     raw_suggestions.extend(plan.get("suggestions") or [])
                 except Exception as exc:
                     logger.warning("open research failed for %s day %s: %s", req.city, day_no, exc)
@@ -385,7 +387,7 @@ def _generate_open_plans(
             ]
             for item in plan["items"]:
                 if not ref_pool.ground(item):
-                    _local_ground(item, req.city, ground_cache)
+                    local_ground(item, req.city, ground_cache)
                 if item.get("poi_name"):
                     used.add(str(item["poi_name"]))
             plans.append(
@@ -399,7 +401,7 @@ def _generate_open_plans(
                     "practical_notes": plan.get("practical_notes") or plan.get("practicalNotes") or [],
                     # 叙事层透传：day_options（当日可选方案）与 trip_theme
                     # （整趟主题，open_trip 顶层/open_day 第 1 天产出，见
-                    # _llm_open_trip 的注入逻辑）；items 内 why_this 随 dict 原样携带。
+                    # llm_open_trip 的注入逻辑）；items 内 why_this 随 dict 原样携带。
                     "day_options": plan.get("day_options") or plan.get("dayOptions") or [],
                     "trip_theme": plan.get("trip_theme") or plan.get("tripTheme"),
                     "items": plan.get("items") or [],
@@ -473,7 +475,7 @@ def generate_itinerary(state: AgentState) -> dict:
     # 拼装行程。开放失败时记 error 走 fix 循环重试一次（与 days 无关），
     # 重试耗尽或未配置 LLM 则返回结构化待研究草案——如实降级，不冒充生成结果。
     if settings.llm_api_key and attempts < MAX_GENERATION_ATTEMPTS:
-        open_state = _generate_open_plans(
+        open_state = generate_open_plans(
             req,
             feedback,
             state.get("hotels"),
@@ -668,7 +670,7 @@ def format_output(state: AgentState) -> dict:
     activities = [
         {**row, "_authoritative": True} for row in poi_repository.search_pois(req.city, category="activity", limit=12)
     ]
-    tier_label, _tier_g, _tier_ppd = _budget_tier(req.budget, req.persons, req.days)
+    tier_label, _tier_g, _tier_ppd = budget_tier(req.budget, req.persons, req.days)
     suggestion_rows = fill_suggestion_gaps(
         build_suggestions(
             raw_plans,

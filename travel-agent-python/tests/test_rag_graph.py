@@ -179,10 +179,10 @@ def test_find_nearby_pois_rejects_unrelated_amap_fuzzy_hits(tmp_path, monkeypatc
 
 
 def test_anchor_name_similar_gates_fuzzy_matches():
-    assert tools._anchor_name_similar("西湖", "杭州西湖")
-    assert tools._anchor_name_similar("良渚古城", "良渚古城遗址公园")
-    assert not tools._anchor_name_similar("不存在的景点XYZ123", "湖滨大酒店")
-    assert not tools._anchor_name_similar("asdfghjkl", "灵隐寺")
+    assert tools.anchor_name_similar("西湖", "杭州西湖")
+    assert tools.anchor_name_similar("良渚古城", "良渚古城遗址公园")
+    assert not tools.anchor_name_similar("不存在的景点XYZ123", "湖滨大酒店")
+    assert not tools.anchor_name_similar("asdfghjkl", "灵隐寺")
 
 
 def test_registry_exposes_find_nearby_pois_schema():

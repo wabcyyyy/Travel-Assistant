@@ -18,7 +18,7 @@ def test_open_city_can_generate_after_workflow_enters_fallback(monkeypatch):
     monkeypatch.setattr(day_stream.settings, "llm_api_key", "configured")
     monkeypatch.setattr(
         day_stream,
-        "_llm_open_day",
+        "llm_open_day",
         lambda req, used: {
             "note": "苏州第2天行程",
             "theme": "园林慢游",
@@ -39,7 +39,7 @@ def test_open_city_can_generate_after_workflow_enters_fallback(monkeypatch):
         },
     )
 
-    plan, source = day_stream._generate_day_once(
+    plan, source = day_stream.generate_day_once(
         GenerateDayRequest(
             city="苏州",
             day_no=2,
@@ -69,7 +69,7 @@ def test_duration_min_follows_scheduled_window(monkeypatch):
     monkeypatch.setattr(day_stream.settings, "llm_api_key", "configured")
     monkeypatch.setattr(
         day_stream,
-        "_llm_open_day",
+        "llm_open_day",
         lambda req, used: {
             "note": "杭州第1天",
             "items": [
@@ -84,7 +84,7 @@ def test_duration_min_follows_scheduled_window(monkeypatch):
             ],
         },
     )
-    plan, _ = day_stream._generate_day_once(
+    plan, _ = day_stream.generate_day_once(
         GenerateDayRequest(
             city="杭州",
             day_no=1,

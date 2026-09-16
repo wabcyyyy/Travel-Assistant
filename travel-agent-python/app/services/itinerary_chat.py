@@ -23,8 +23,7 @@ from typing import Any
 from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
 
-from app.agent.chat_draft import run_chat_turn
-from app.agent.observability import observe_run, use_scene
+from app.agent import observe_run, run_chat_turn, use_scene
 from app.common import event_hub, event_publisher
 from app.common.envelope import ApiError
 from app.common.task_pool import SlotExecutor, TaskRejected

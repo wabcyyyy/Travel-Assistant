@@ -19,8 +19,7 @@ from typing import Any
 
 from sqlalchemy import select, update
 
-from app.agent.nl_edit import run_edit_ops
-from app.agent.schedule_optimizer import optimize_daily_plan
+from app.agent import optimize_daily_plan, run_edit_ops
 from app.common.config import settings
 from app.common.envelope import ApiError
 from app.common.vo_json import iso_time

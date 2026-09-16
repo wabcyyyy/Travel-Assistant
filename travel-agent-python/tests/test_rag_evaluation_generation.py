@@ -166,7 +166,7 @@ def test_open_day_prompt_includes_reference_block(monkeypatch):
         day_stream, "get_llm_client", lambda: fake_client({"note": "西湖一日", "items": [], "suggestions": []})
     )
     req = GenerateDayRequest(city="杭州", day_no=1, days=1, context=_context())
-    day_stream._llm_open_day(req, set())
+    day_stream.llm_open_day(req, set())
     system = captured["client"].calls[0]["system"]
     assert "[R1] 西湖风景名胜区" in system
     assert "refs" in system
@@ -184,7 +184,7 @@ def test_open_day_without_references_keeps_prompt_clean(monkeypatch):
         day_stream, "get_llm_client", lambda: fake_client({"note": "苏州一日", "items": [], "suggestions": []})
     )
     req = GenerateDayRequest(city="苏州", day_no=1, days=1, context={})
-    day_stream._llm_open_day(req, set())
+    day_stream.llm_open_day(req, set())
     system = captured["client"].calls[0]["system"]
     assert "[R1]" not in system
     assert "权威参考资料" not in system
@@ -201,7 +201,7 @@ def test_generate_day_once_grounds_reference_items(monkeypatch):
         amap_calls.append(item.get("poi_name"))
 
     monkeypatch.setattr(day_stream.settings, "llm_api_key", "test-key")
-    monkeypatch.setattr(day_stream, "_local_ground", fake_ground)
+    monkeypatch.setattr(day_stream, "local_ground", fake_ground)
     monkeypatch.setattr(
         day_stream,
         "get_llm_client",
@@ -229,7 +229,7 @@ def test_generate_day_once_grounds_reference_items(monkeypatch):
             }
         ),
     )
-    plan, source = day_stream._generate_day_once(
+    plan, source = day_stream.generate_day_once(
         GenerateDayRequest(city="杭州", day_no=1, days=1, context=_context()),
     )
 
@@ -255,7 +255,7 @@ def test_generate_day_once_external_item_falls_back_to_amap(monkeypatch):
         amap_calls.append(item.get("poi_name"))
 
     monkeypatch.setattr(day_stream.settings, "llm_api_key", "test-key")
-    monkeypatch.setattr(day_stream, "_local_ground", fake_ground)
+    monkeypatch.setattr(day_stream, "local_ground", fake_ground)
     monkeypatch.setattr(
         day_stream,
         "get_llm_client",
@@ -269,7 +269,7 @@ def test_generate_day_once_external_item_falls_back_to_amap(monkeypatch):
             }
         ),
     )
-    plan, source = day_stream._generate_day_once(
+    plan, source = day_stream.generate_day_once(
         GenerateDayRequest(city="苏州", day_no=1, days=1, context={}),
         force_fallback=True,
     )
@@ -353,9 +353,9 @@ def test_run_generation_case_offline_with_stubs(monkeypatch):
         return {"daily_plans": plans, "schedule_report": {"reference_stats": dict(pool.stats)}}
 
     monkeypatch.setattr(eg, "run_plan_context", fake_context)
-    # run_generation_case 在函数内 from app.agent.workflow import _generate_open_plans，
+    # run_generation_case 在函数内 from app.agent.workflow import generate_open_plans，
     # 因此替身必须打在 workflow 模块上。
-    monkeypatch.setattr(workflow, "_generate_open_plans", fake_open_plans)
+    monkeypatch.setattr(workflow, "generate_open_plans", fake_open_plans)
 
     def judge(reference_block, plans_json):
         return [{"text": "声明", "supported": True}]

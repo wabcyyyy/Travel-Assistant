@@ -1,5 +1,9 @@
 """分天流式生成：上下文一次构建，单日按需生成（供 Java 逐日编排）。
 
+跨模块 API（G-1.2 提级，供 workflow/trip_stream/day_workflow/formatting 共用）：
+llm_open_day / llm_open_trip / local_ground / open_trip_prompt / sanitize_narrative /
+has_coord / generate_day_once。
+
 所有城市统一走开放模式（LLM 知识 + 权威参考资料注入 + 高德落坐标）；
 知识库只作为证据引导生成，行程内容 100% 由 LLM 决定。
 """
@@ -18,17 +22,17 @@ from app.agent.generation_core import (
 )
 from app.agent.generators import (
     ReferencePool,
-    _budget_clause,
-    _budget_tier,
-    _has_valid_coords,
-    _intent_clause,
-    _is_authoritative_source,
-    _parse_json,
-    _pick_hotels,
-    _requirements_clause,
+    budget_clause,
+    budget_tier,
     build_suggestions,
     clamp_meal_cost,
     fill_suggestion_gaps,
+    has_valid_coords,
+    intent_clause,
+    is_authoritative_source,
+    parse_json,
+    pick_hotels,
+    requirements_clause,
 )
 from app.agent.memory import WorkingMemory
 from app.agent.research import run_research_context
@@ -169,7 +173,7 @@ def _parse_date(s: str | None) -> date | None:
 
 
 # 叙事字段规模上限：与 open_generation 契约、app/schemas/trip.py 的截断口径
-# 一一对应。LLM 偶尔无视条数/长度约束，在 _parse_json 之后做轻量清洗兜底——
+# 一一对应。LLM 偶尔无视条数/长度约束，在 parse_json 之后做轻量清洗兜底——
 # 超限截断、类型非法降级为空，绝不让单条脏叙事炸掉整日行程（骨架照常交付）。
 _NARRATIVE_THEME_MAX = 40
 _NARRATIVE_WHY_MAX = 120
@@ -226,8 +230,8 @@ def _dedupe_same_day_items(items: list):
     return out
 
 
-def _sanitize_narrative(plan: dict) -> dict:
-    """对开放模式 LLM 输出（_parse_json 结果）做叙事字段轻量清洗。
+def sanitize_narrative(plan: dict) -> dict:
+    """对开放模式 LLM 输出（parse_json 结果）做叙事字段轻量清洗。
 
     规则（方案 §4.1.2）：
     - theme/trip_theme 超长截 40 字；item.why_this 超长截 120 字
@@ -342,14 +346,14 @@ def _destination_line(req: GenerateDayRequest, *, suffix: str = "") -> str:
 
 
 @traced("llm", "llm.open_day")
-def _llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
+def llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
     """开放模式：LLM 凭自身知识 + 权威参考资料为任意城市/省份安排一天行程。"""
     client = get_llm_client()
     mem = WorkingMemory(used_names=set(used))
     # 引用式生成：把权威知识库候选作为带编号参考资料注入 Prompt，模型选点
     # 输出 refs 引用，生成后由 ReferencePool.ground 落地为权威字段。
     # 过滤 used_names：否则模型引用 [Rn] 命中"已去过"的 POI 时照样落地，
-    # 逐日编排下产生跨天重复景点。编号一致性由 _generate_day_once 用
+    # 逐日编排下产生跨天重复景点。编号一致性由 generate_day_once 用
     # 同一 exclude_names 重建池保证。
     pool = ReferencePool(req.context, exclude_names=mem.exclude_names())
     total_days = req.days or 1
@@ -364,7 +368,7 @@ def _llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
         "禁止一天安排两顿午餐；正餐优先一午一晚。"
     )
     # 预算分档决定酒店档次与消费水准指引
-    tier_label, _tier_guidance, tier_ppd = _budget_tier(req.budget, req.persons, total_days)
+    tier_label, _tier_guidance, tier_ppd = budget_tier(req.budget, req.persons, total_days)
     if req.chosen_hotel:
         hotel_hint = f"酒店必须沿用「{req.chosen_hotel}」，不得更换。"
     elif req.needs_hotel:
@@ -384,16 +388,16 @@ def _llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
     )
     # intent 注入点：用户旅行意图是最高优先级信号，必须排在 reference block
     # 之前，让选点与节奏优先围绕意图组织。
-    intent_text = _intent_clause(req.intent)
+    intent_text = intent_clause(req.intent)
     if intent_text:
         system += intent_text
     reference_block = pool.block()
     if reference_block:
         system += "\n" + reference_block
-    budget_text = _budget_clause(req.budget, req.persons, total_days)
+    budget_text = budget_clause(req.budget, req.persons, total_days)
     if budget_text:
         system += budget_text
-    requirements_text = _requirements_clause(req.requirements)
+    requirements_text = requirements_clause(req.requirements)
     if requirements_text:
         system += requirements_text
     if req.feedback:
@@ -417,7 +421,7 @@ def _llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
         enable_search=settings.llm_generation_web_search,
     )
     # 叙事字段轻量清洗（兜底）：超限截断/类型降级，骨架照常交付
-    plan = _sanitize_narrative(_parse_json(raw))
+    plan = sanitize_narrative(parse_json(raw))
     plan.setdefault("items", [])
     # 备选池（发现更多）与行程点位分开返回，避免混入 items 装配
     suggestions = plan.pop("suggestions", None)
@@ -425,8 +429,8 @@ def _llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
     return plan
 
 
-def _open_trip_prompt(req: GenerateDayRequest) -> tuple[str, str]:
-    """整段多日生成的 Prompt 组装（_llm_open_trip 与流式链路共用）。
+def open_trip_prompt(req: GenerateDayRequest) -> tuple[str, str]:
+    """整段多日生成的 Prompt 组装（llm_open_trip 与流式链路共用）。
 
     返回 (system, user)；追加块顺序与既有一致：intent → reference →
     budget → requirements → feedback。
@@ -437,18 +441,18 @@ def _open_trip_prompt(req: GenerateDayRequest) -> tuple[str, str]:
     hotel_clause = hotel_prompt_clause(req.needs_hotel, days)
     # system prompt 基座在 app/prompts/open_generation.py。
     system = open_trip_system_prompt(days=days, hotel_clause=hotel_clause)
-    # intent 注入点：置于 reference block 之前，口径与 _llm_open_day 一致——
+    # intent 注入点：置于 reference block 之前，口径与 llm_open_day 一致——
     # 意图是最高优先级信号。
-    intent_text = _intent_clause(req.intent)
+    intent_text = intent_clause(req.intent)
     if intent_text:
         system += intent_text
     reference_block = pool.block()
     if reference_block:
         system += "\n" + reference_block
-    budget_text = _budget_clause(req.budget, req.persons, days)
+    budget_text = budget_clause(req.budget, req.persons, days)
     if budget_text:
         system += budget_text
-    requirements_text = _requirements_clause(req.requirements)
+    requirements_text = requirements_clause(req.requirements)
     if requirements_text:
         system += requirements_text
     if req.feedback:
@@ -461,13 +465,13 @@ def _open_trip_prompt(req: GenerateDayRequest) -> tuple[str, str]:
 
 
 @traced("llm", "llm.open_trip")
-def _llm_open_trip(req: GenerateDayRequest) -> tuple[list[dict], list[dict]]:
+def llm_open_trip(req: GenerateDayRequest) -> tuple[list[dict], list[dict]]:
     """开放模式多日一次生成，避免未知目的地按天串行调用模型。
 
     返回 (每日行程列表, 行程级备选池 suggestions)。
     """
     client = get_llm_client()
-    system, user = _open_trip_prompt(req)
+    system, user = open_trip_prompt(req)
     days = req.days or 1
     raw = client.complete(
         user,
@@ -479,12 +483,12 @@ def _llm_open_trip(req: GenerateDayRequest) -> tuple[list[dict], list[dict]]:
         json_mode=True,
         enable_search=settings.llm_generation_web_search,
     )
-    data = _parse_json(raw)
+    data = parse_json(raw)
     plans = data.get("daily_plans") if isinstance(data, dict) else None
     if not isinstance(plans, list):
         raise ValueError("开放模式多日行程结构无效")
     suggestions = data.get("suggestions") if isinstance(data, dict) else None
-    cleaned_plans = [_sanitize_narrative(plan) for plan in plans if isinstance(plan, dict)][:days]
+    cleaned_plans = [sanitize_narrative(plan) for plan in plans if isinstance(plan, dict)][:days]
     # 整趟主题只由顶层输出一次：注入到每一天的 plan dict（第 1 天为权威来源，
     # 其余天兜底），随装配透传，避免改动本函数返回签名影响存量调用方。
     trip_theme = data.get("trip_theme") if isinstance(data, dict) else None
@@ -498,7 +502,7 @@ def _llm_open_trip(req: GenerateDayRequest) -> tuple[list[dict], list[dict]]:
     return cleaned_plans, [s for s in suggestions if isinstance(s, dict)] if isinstance(suggestions, list) else []
 
 
-def _has_coord(value) -> bool:
+def has_coord(value) -> bool:
     """坐标有效：非 None 且非 0.0（0/0 是缺失哨兵，与 find_nearby_pois 口径一致）。"""
     try:
         return value is not None and abs(float(value)) > 1e-6
@@ -506,15 +510,15 @@ def _has_coord(value) -> bool:
         return False
 
 
-def _local_ground(item: dict, city: str, cache: dict) -> None:
+def local_ground(item: dict, city: str, cache: dict) -> None:
     """用本地知识库落坐标与地址（去高德后：唯一的 grounding 源）。
 
     只查 `poi_knowledge`（名称精确 → LIKE → 向量召回），过名称相似度门槛后才
     采纳坐标/票价/图片——查不到就保持原样，由上层按「证据不足」降级。
     """
-    from app.agent.tools import _anchor_name_similar
+    from app.agent.tools import anchor_name_similar
 
-    if _has_coord(item.get("latitude")) and _has_coord(item.get("longitude")):
+    if has_coord(item.get("latitude")) and has_coord(item.get("longitude")):
         return
     key = f"{city}:{item.get('poi_name')}"
     if key in cache:
@@ -531,7 +535,7 @@ def _local_ground(item: dict, city: str, cache: dict) -> None:
         query_name = str(item.get("poi_name") or "")
         hit = None
         for poi in pois or []:
-            if _anchor_name_similar(query_name, str(poi.get("name") or "")):
+            if anchor_name_similar(query_name, str(poi.get("name") or "")):
                 hit = poi
                 break
         if hit and hit.get("longitude") is not None and hit.get("latitude") is not None:
@@ -555,7 +559,7 @@ def _local_ground(item: dict, city: str, cache: dict) -> None:
         cache[key] = None
 
 
-def _generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False) -> tuple[DailyPlan, str]:
+def generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False) -> tuple[DailyPlan, str]:
     """执行一次单日生成（LLM-only：知识库只作为参考资料证据注入）。
 
     该函数只负责一次候选生成和事实补水，反思/重试由 day_workflow 统一编排，
@@ -570,7 +574,7 @@ def _generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False)
     ctx = req.context or {}
     candidates = _filter_used(ctx.get("candidates") or [], set(req.used_names))[:DAY_ATTRACTION_CONTEXT_LIMIT]
     foods = _filter_used(ctx.get("foods") or [], set(req.used_names))[:DAY_FOOD_CONTEXT_LIMIT]
-    hotels = _pick_hotels(ctx.get("hotels") or [], req.hotel_tier, 3)
+    hotels = pick_hotels(ctx.get("hotels") or [], req.hotel_tier, 3)
     suggestion_rows: list[dict] = []
 
     if not settings.llm_api_key:
@@ -579,7 +583,7 @@ def _generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False)
     # 开放模式是唯一生成路径：LLM 凭自身知识选点 + 权威参考资料注入引导，
     # 命中项落地权威字段，未命中项由高德补真实坐标。
     try:
-        plan = _llm_open_day(req, set(req.used_names))
+        plan = llm_open_day(req, set(req.used_names))
         source = "open"
         suggestion_rows = build_suggestions(
             [plan],
@@ -589,7 +593,7 @@ def _generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False)
             plan.get("suggestions") or [],
             allow_external=True,
         )
-        tier_label, _g, _ppd = _budget_tier(req.budget, req.persons or 1, req.days or 1)
+        tier_label, _g, _ppd = budget_tier(req.budget, req.persons or 1, req.days or 1)
         suggestion_rows = fill_suggestion_gaps(suggestion_rows, req.city, budget_tier=tier_label or None)
     except Exception as e:
         logger.warning("day %s open llm failed: %s", req.day_no, e)
@@ -599,7 +603,7 @@ def _generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False)
     # Wikipedia/Unsplash 多个串行请求）。图片由前端懒加载
     # /api/poi-photo 获取；候选数据中已有的 image 仍会自然透传。
 
-    # 引用式生成：与 _llm_open_day 使用同一个权威参考资料池（同样按
+    # 引用式生成：与 llm_open_day 使用同一个权威参考资料池（同样按
     # used_names 过滤，保证 refs 编号与 Prompt 渲染一致），命中时直接落地
     # 权威字段并跳过本地落坐标（资料坐标已是真实采集值）。
     ref_pool = ReferencePool(ctx, exclude_names=set(req.used_names))
@@ -625,10 +629,10 @@ def _generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False)
         if source == "open" and ref_pool.ground(item):
             pass  # 权威背书：字段与来源已由参考资料落地
         elif source == "open":
-            _local_ground(item, req.city, ground_cache)
+            local_ground(item, req.city, ground_cache)
         poi = lookup.get(item.get("poi_name"))
         if poi:
-            if not _has_coord(item.get("latitude")) and _has_valid_coords(poi):
+            if not has_coord(item.get("latitude")) and has_valid_coords(poi):
                 item["latitude"] = float(poi["latitude"])
                 item["longitude"] = float(poi["longitude"])
             if not item.get("poi_id"):
@@ -652,7 +656,7 @@ def _generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False)
         # format 阶段补证据；在单日边界先建立最小字段级来源契约。
         # 与 ReferencePool.ground 一致：来源不在权威值域内时不背书，
         # 保留 ground 已写入的 client-context 降级状态。
-        if poi and _is_authoritative_source(str(poi.get("source") or "mysql.poi_knowledge")):
+        if poi and is_authoritative_source(str(poi.get("source") or "mysql.poi_knowledge")):
             source_name = str(poi.get("source") or "mysql.poi_knowledge")
             updated_at = str(poi.get("source_updated_at") or "") or None
             item["source"] = source_name
@@ -661,7 +665,7 @@ def _generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False)
             item["value_kind"] = "observed"
             item["freshness_status"] = "fresh" if updated_at else "unknown"
             item["review_requirement"] = "none" if updated_at else "before_departure"
-            if not _has_valid_coords(poi):
+            if not has_valid_coords(poi):
                 # 权威行缺坐标：item 上残留的是模型自填坐标，不背书。
                 item["verification_status"] = "unverified"
                 item["value_kind"] = "estimated"

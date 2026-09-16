@@ -20,7 +20,7 @@ from typing import Any
 
 from sqlalchemy import select, update
 
-from app.agent.butler import run_butler_note, run_poi_intros
+from app.agent import run_butler_note, run_poi_intros
 from app.db.models import ItineraryDay, ItineraryItem, ItineraryMain
 from app.db.session import session_scope
 from app.schemas.trip import Suggestion
