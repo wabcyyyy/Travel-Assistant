@@ -18,8 +18,8 @@ from app.agent.generation_core import (
     haversine_m,
     norm_poi_key,
 )
+from app.agent.stream_parser import DailyPlansStreamParser
 from app.agent.trip_stream import (
-    DailyPlansStreamParser,
     _filter_suggestions_by_city,
     run_generate_trip_stream,
 )

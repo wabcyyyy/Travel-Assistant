@@ -16,7 +16,7 @@ LLM-as-judge 指标：
   判断是否被支持（RAGAS faithfulness 的行程版单调用实现）。
 
 judge 与 generate_fn 均通过参数注入：离线测试注入假实现；真实评测使用
-LLMClient 与 workflow.generate_open_plans 主链路。命令行直接运行本模块
+LLMClient 与 graph_nodes.generate_open_plans 主链路。命令行直接运行本模块
 可对 6 个知识库城市执行真实评测并输出报告。
 """
 
@@ -28,8 +28,8 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from app.agent.day_stream import run_plan_context
-from app.agent.generators import ReferencePool
+from app.agent.plan_context import run_plan_context
+from app.agent.reference_pool import ReferencePool
 from app.agent.trace import record_event
 
 JudgeFn = Callable[[str, str], list[dict[str, Any]]]
@@ -125,7 +125,7 @@ def run_generation_case(
     judge: JudgeFn | None = None,
 ) -> dict[str, Any]:
     """对单个城市执行一次真实评测：检索上下文 → 开放模式引用式生成 → 指标。"""
-    from app.agent.workflow import generate_open_plans
+    from app.agent.graph_nodes import generate_open_plans
     from app.schemas.trip import GenerateRequest
 
     preferences = preferences or []

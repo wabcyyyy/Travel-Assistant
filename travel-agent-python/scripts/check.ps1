@@ -27,6 +27,10 @@ Step "import boundaries (import-linter, G-1.2)"
 uv run lint-imports
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+Step "code metrics (long functions / huge files ratchet)"
+uv run python scripts/code_metrics.py
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 Step "secret scan"
 $root = Split-Path -Parent $pkg
 $secrets = Join-Path $root "scripts\check-secrets.ps1"

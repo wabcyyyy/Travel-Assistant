@@ -137,6 +137,7 @@ forbidden_modules = [
     "app.agent.budget",
     "app.agent.reference_pool",
     "app.agent.suggestions",
+    "app.agent.stream_parser",
     "app.agent.chat_draft",
     "app.agent.city_guide",
     "app.agent.clarify",

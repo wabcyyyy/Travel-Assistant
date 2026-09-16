@@ -39,6 +39,9 @@ jobs:
       - name: Import boundaries (import-linter)
         # G-1.2：分层 api->services->agent + 门面唯一公开面；本地入口 check.ps1 同步
         run: uv run lint-imports
+      - name: Code metrics (long functions / huge files ratchet)
+        # G-2.6：存量长尾冻结在 scripts/code_metrics_limits.json，只减不增（INV-1）
+        run: uv run python scripts/code_metrics.py
       - name: Secret scan
         working-directory: .
         shell: pwsh
