@@ -37,6 +37,5 @@ git checkout <commit> -- travel-backend-java           # 或整体取回工作�
 
 ## 迁移记录
 
-- 完整决策史、16 条跨语言陷阱、"切流量才暴露的两个洞"：`docs/PLAN-后端统一到FastAPI-v3.md`
-- 端点对照的历史结论：50 个业务端点，49 个等价落地，1 个是刻意退役的内部探针 `/api/test/call-agent`。`travel-agent-python/scripts/check_endpoint_coverage.py` 在 Java 侧不存在时报告"已归档且无残留登记"（`EXPECTED_REMAINING` 已清空）
-- 迁移后的架构说明：根 `README.md`、`travel-agent-python/README.md`、`docs/项目介绍.md`
+- 端点对照的历史结论：50 个业务端点，49 个等价落地，1 个是刻意退役的内部探针 `/api/test/call-agent`。`travel-agent-python/scripts/check_endpoint_coverage.py` 在 Java 侧不存在时报告"端点对照不再适用且无残留登记"（`EXPECTED_REMAINING` 已清空）
+- 迁移后的架构说明：根 `README.md`、`travel-agent-python/README.md`、`travel-frontend-vue/README.md`（`docs/项目介绍/` 为本地内部文档，不入库）
