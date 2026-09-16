@@ -14,12 +14,12 @@
 （不得反向 import app.agent.generators——generators 依赖本模块。）
 """
 
-import json
 import logging
 import re
 
 from pydantic import Field
 
+from app.agent.json_utils import parse_llm_json_or_none
 from app.common.config import settings
 from app.common.llm_client import get_llm_client
 from app.schemas.common import WireModel
@@ -90,7 +90,7 @@ def distill_intent(intent: str) -> IntentBrief | None:
             model=settings.llm_fast_model or None,
             json_mode=True,
         )
-        data = _parse_json_object(raw)
+        data = parse_llm_json_or_none(raw)
         if data is None:
             return None
         # 字段缺失视为无效输出（system prompt 要求五字段全量给出），
@@ -107,23 +107,6 @@ def distill_intent(intent: str) -> IntentBrief | None:
     except Exception as exc:
         logger.warning("distill_intent 提炼失败，降级为原文透传：%s", exc)
         return None
-
-
-def _parse_json_object(raw: object) -> dict | None:
-    """解析 LLM 输出为 dict；容忍 markdown 代码栅栏包裹，其余一律 None。"""
-    text = str(raw or "").strip()
-    if not text:
-        return None
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text.startswith("json"):
-            text = text[4:]
-        text = text.strip()
-    try:
-        data = json.loads(text)
-    except (json.JSONDecodeError, ValueError):
-        return None
-    return data if isinstance(data, dict) else None
 
 
 # ---------- M3-②（AD5）：intent → 检索关键词（纯规则，零 LLM） ----------

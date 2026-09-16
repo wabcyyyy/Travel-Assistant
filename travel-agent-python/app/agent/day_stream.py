@@ -30,10 +30,10 @@ from app.agent.generators import (
     has_valid_coords,
     intent_clause,
     is_authoritative_source,
-    parse_json,
     pick_hotels,
     requirements_clause,
 )
+from app.agent.json_utils import parse_llm_json
 from app.agent.memory import WorkingMemory
 from app.agent.research import run_research_context
 from app.agent.trace import current_run_id, record_event, traced
@@ -173,7 +173,7 @@ def _parse_date(s: str | None) -> date | None:
 
 
 # 叙事字段规模上限：与 open_generation 契约、app/schemas/trip.py 的截断口径
-# 一一对应。LLM 偶尔无视条数/长度约束，在 parse_json 之后做轻量清洗兜底——
+# 一一对应。LLM 偶尔无视条数/长度约束，在 parse_llm_json 之后做轻量清洗兜底——
 # 超限截断、类型非法降级为空，绝不让单条脏叙事炸掉整日行程（骨架照常交付）。
 _NARRATIVE_THEME_MAX = 40
 _NARRATIVE_WHY_MAX = 120
@@ -231,7 +231,7 @@ def _dedupe_same_day_items(items: list):
 
 
 def sanitize_narrative(plan: dict) -> dict:
-    """对开放模式 LLM 输出（parse_json 结果）做叙事字段轻量清洗。
+    """对开放模式 LLM 输出（parse_llm_json 结果）做叙事字段轻量清洗。
 
     规则（方案 §4.1.2）：
     - theme/trip_theme 超长截 40 字；item.why_this 超长截 120 字
@@ -421,7 +421,7 @@ def llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
         enable_search=settings.llm_generation_web_search,
     )
     # 叙事字段轻量清洗（兜底）：超限截断/类型降级，骨架照常交付
-    plan = sanitize_narrative(parse_json(raw))
+    plan = sanitize_narrative(parse_llm_json(raw))
     plan.setdefault("items", [])
     # 备选池（发现更多）与行程点位分开返回，避免混入 items 装配
     suggestions = plan.pop("suggestions", None)
@@ -483,7 +483,7 @@ def llm_open_trip(req: GenerateDayRequest) -> tuple[list[dict], list[dict]]:
         json_mode=True,
         enable_search=settings.llm_generation_web_search,
     )
-    data = parse_json(raw)
+    data = parse_llm_json(raw)
     plans = data.get("daily_plans") if isinstance(data, dict) else None
     if not isinstance(plans, list):
         raise ValueError("开放模式多日行程结构无效")

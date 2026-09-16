@@ -62,7 +62,7 @@ from .validate import (
     DecisionJsonError,
     _decision_reply,
     _default_plan_update_reply,
-    _parse_json_object,
+    _parse_decision_json,
     _plan_conflict,
     _substantive_plan_signature,
 )
@@ -130,7 +130,7 @@ def _decide_plan_change(req: ChatTurnRequest, hotels: list[dict], feedback: str 
         json_mode=True,
     )
     try:
-        return _parse_json_object(raw)
+        return _parse_decision_json(raw)
     except DecisionJsonError:
         logger.warning("plan decision returned malformed JSON; requesting one repair")
         repaired = client.chat(
@@ -143,7 +143,7 @@ def _decide_plan_change(req: ChatTurnRequest, hotels: list[dict], feedback: str 
             model=settings.llm_fast_model or None,
             json_mode=True,
         )
-        return _parse_json_object(repaired)
+        return _parse_decision_json(repaired)
 
 
 def run_chat_turn(req: ChatTurnRequest) -> ChatTurnResponse:

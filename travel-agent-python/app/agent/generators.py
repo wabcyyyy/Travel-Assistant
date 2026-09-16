@@ -1,7 +1,7 @@
 """行程内容的生成辅助工具。
 
 跨模块 API（G-1.2 提级，供 day_stream/trip_stream/workflow/formatting 共用）：
-budget_tier / parse_json / pick_hotels / has_valid_coords / is_authoritative_source /
+budget_tier / pick_hotels / has_valid_coords / is_authoritative_source /
 budget_clause / intent_clause / requirements_clause。
 
 职责边界（LLM-only 原则）：
@@ -17,7 +17,6 @@ budget_clause / intent_clause / requirements_clause。
 """
 
 import decimal
-import json
 import logging
 import re
 from functools import lru_cache
@@ -856,18 +855,6 @@ def dedupe_daily_plans(
             kept.append(item)
         plan["items"] = kept
     return plans
-
-
-def parse_json(raw: str) -> dict:
-    text = raw.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[-1]
-        text = text.rsplit("```", 1)[0]
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1:
-        raise ValueError("LLM 输出中未找到 JSON")
-    return json.loads(text[start : end + 1])
 
 
 def _to_item(poi: dict, start: str, end: str) -> dict:

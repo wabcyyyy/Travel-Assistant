@@ -75,7 +75,7 @@ from .validate import (
     _decision_reply,
     _default_plan_update_reply,
     _format_clock,
-    _parse_json_object,
+    _parse_decision_json,
     _plan_conflict,
     _reschedule_moved_item,
     _substantive_plan_signature,

@@ -2,7 +2,7 @@
 
 职责：
 - 时间冲突检测（_plan_conflict）、实质变更签名（_substantive_plan_signature）；
-- 模型 JSON 的解析与修复（_parse_json_object / DecisionJsonError）；
+- 模型 JSON 的解析与修复（_parse_decision_json / DecisionJsonError）；
 - 时钟字符串与分钟数互转（_clock_minutes / _format_clock）；
 - 回复文案兜底（_decision_reply / _default_plan_update_reply）。
 
@@ -10,14 +10,14 @@
 - 全部为无副作用的确定性函数，只做“检查/转换”，绝不修改行程；
 - 上层（decide / plan_edit）在落地前后调用这里做校验，是安全边界的一部分。
 
-依赖：无内部依赖（叶子模块）。
+依赖：app.agent.json_utils（解析唯一实现）；re、itertools。
 """
 
-import json
 import logging
 import re
 from itertools import pairwise
 
+from app.agent.json_utils import LlmJsonError, parse_llm_json
 from app.schemas.trip import (
     ChatTurnRequest,
 )
@@ -29,20 +29,13 @@ class DecisionJsonError(ValueError):
     """模型决策不是可安全执行的 JSON；避免把解析器英文异常暴露给用户。"""
 
 
-def _parse_json_object(raw: str) -> dict:
-    text = raw.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[-1].rsplit("```", 1)[0]
-    start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end < start:
-        raise ValueError("LLM 未返回 JSON 对象")
+def _parse_decision_json(raw: str) -> dict:
+    """解析失败（含缺大括号/非 dict）一律映射 DecisionJsonError：decide 层
+    统一走「修复重试 → 文本降级」，不再区分失败形态。"""
     try:
-        data = json.loads(text[start : end + 1])
-    except json.JSONDecodeError as exc:
+        return parse_llm_json(raw)
+    except LlmJsonError as exc:
         raise DecisionJsonError("模型返回的结构化结果不完整") from exc
-    if not isinstance(data, dict):
-        raise ValueError("LLM 决策不是 JSON 对象")
-    return data
 
 
 def _clock_minutes(value: object) -> int | None:

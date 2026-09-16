@@ -273,8 +273,8 @@
         ],
         "tools": [
           "fixture.search_attractions",
-          "fixture.search_hotels",
           "fixture.search_foods",
+          "fixture.search_hotels",
           "fixture.get_consumption"
         ],
         "routes": [

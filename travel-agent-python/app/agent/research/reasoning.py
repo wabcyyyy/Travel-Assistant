@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 
+from app.agent.json_utils import parse_llm_json_or_none
 from app.agent.research.evidence import ResearchTask
 from app.common.config import settings
 from app.common.llm_client import get_llm_client
@@ -48,20 +48,6 @@ def _default_extra_keywords(task: ResearchTask) -> list[str]:
     return [f"{task.city} {p}" for p in prefs] or [f"{task.city} 景点"]
 
 
-def _parse_json(text: str) -> dict | None:
-    text = (text or "").strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[-1].rsplit("```", 1)[0]
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        return None
-    try:
-        data = json.loads(match.group(0))
-        return data if isinstance(data, dict) else None
-    except json.JSONDecodeError:
-        return None
-
-
 def plan_research(task: ResearchTask) -> dict:
     """输出检索计划 {preferences, extra_keywords, limit}；失败/未配置 LLM 返回空计划。
 
@@ -79,7 +65,7 @@ def plan_research(task: ResearchTask) -> dict:
             model=settings.llm_fast_model or None,
             json_mode=True,
         )
-        data = _parse_json(raw) or {}
+        data = parse_llm_json_or_none(raw) or {}
         return {
             "preferences": [str(x) for x in (data.get("preferences") or []) if x],
             "extra_keywords": [str(x) for x in (data.get("extra_keywords") or []) if x],
@@ -134,7 +120,7 @@ def evaluate_research(task: ResearchTask, items: list[dict], round_no: int) -> d
             model=settings.llm_fast_model or None,
             json_mode=True,
         )
-        data = _parse_json(raw) or {}
+        data = parse_llm_json_or_none(raw) or {}
         return {
             "sufficient": bool(data.get("sufficient", True)),
             "extra_keywords": [str(x) for x in (data.get("extra_keywords") or []) if x],

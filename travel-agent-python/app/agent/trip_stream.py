@@ -31,9 +31,9 @@ from app.agent.generators import (
     budget_tier,
     build_suggestions,
     fill_suggestion_gaps,
-    parse_json,
     pick_hotels,
 )
+from app.agent.json_utils import parse_llm_json
 from app.agent.trace import record_event
 from app.common.config import settings
 from app.common.llm_client import StreamCancelled, get_llm_client
@@ -164,7 +164,7 @@ class DailyPlansStreamParser:
         trip_theme = None
         suggestions: list[dict] = []
         try:
-            data = parse_json(self._text)
+            data = parse_llm_json(self._text)
         except Exception:
             data = None
         if isinstance(data, dict) and isinstance(data.get("daily_plans"), list):
