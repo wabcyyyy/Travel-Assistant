@@ -26,7 +26,7 @@ cd travel-frontend-vue && npm run build && npm run theme:lint && npm run ep:lint
 
 ## 跨仓约定
 
-- **契约单一源**：SSE 事件模型定义在 `travel-agent-python/app/schemas/stream_events.py`，`scripts/export_contracts.py` 导出 `contracts/*.schema.json`（前端消费）。改 schema → 重新导出 → 产物随同一 commit 入仓；CI 有 drift 门禁，手改 `contracts/` 必红。
+- **契约单一源**：跨端线级模型全部定义在 `travel-agent-python/app/schemas/**`（登记表 `app/schemas/contracts.py` 的 CONTRACT_GROUPS：agent_api + business_api；事件在 `stream_events.py`），`scripts/export_contracts.py` 据此导出 `contracts/*.schema.json` + `contracts/openapi.json` + 前端生成类型 `travel-frontend-vue/src/types/generated/contracts.ts`（前端契约类型只准引它）。改 schema → 重新导出 → 产物随同一 commit 入仓；CI 与本地 check.ps1 都有 drift 门禁，手改 `contracts/` 或生成类型必红。
 - **Java 已退役**：`travel-backend-java/` 已删除，FastAPI 是唯一后端。不要以任何形式复活第二份后端实现；历史与恢复步骤只看 `ARCHIVED.md`。业务端点的行为基准是 `tests/api` 契约与 `tests/test_cutover_contract.py`。
 - **数据库迁移 append-only**：SQL 真相源是 `travel-agent-python/app/db/migrations/sql/V*.sql`，已入库的迁移文件禁止修改/重排，新变更只能追加新版本。
 
