@@ -8,10 +8,14 @@ AI 旅行规划 Agent：输入城市/天数/偏好/一句话意图，LangGraph �
 
 ## 命令（在指明的目录下执行）
 
+装了 [just](https://github.com/casey/just)（`uv tool install rust-just`）后，根目录的
+`just dev / just test / just check / just eval / just snapshot / just fe-check` 是入口；
+没装 just 时下面这些原命令照旧有效。
+
 ```bash
 # 一键门禁（改任何 Python 代码后跑这个）：ruff check → ruff format --check →
 # pyright 基线 ratchet → import-linter 边界 → 代码规模 ratchet → secret scan →
-# 离线测试 → 契约漂移；与 CI preflight 同序同果
+# 离线测试(+覆盖率) → diff-cover 变更行覆盖率 → 契约漂移；与 CI preflight 同序同果
 cd travel-agent-python && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
 
 # 契约导出（改了 app/schemas/ 后必须跑，产物入仓，CI 校验漂移）

@@ -44,6 +44,8 @@
 
 ## 命令
 
+根目录 `just check` 等价于下面第一条（justfile 的配方只做委托，不重复步骤）。
+
 ```bash
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1  # 一键门禁（= CI preflight + 离线测试）
 # 单项（check.ps1 的组成，同序）：ruff check . / ruff format --check . /
