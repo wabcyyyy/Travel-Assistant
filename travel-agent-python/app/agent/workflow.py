@@ -99,6 +99,14 @@ def _draft_state(req: GenerateRequest, reason: str, schedule_report: dict | None
     }
 
 
+def _activity_floor(city: str) -> list[dict]:
+    """体验类不在 Supervisor 三域研究里：从知识库补入，保证「发现更多-体验」有地板。
+
+    唯一实现（G-1.3 ④）：原在 _generate_open_plans 后处理与建议装配两处逐字重复。
+    """
+    return [{**row, "_authoritative": True} for row in poi_repository.search_pois(city, category="activity", limit=12)]
+
+
 def _floor_suggestions(raw: list[dict], extra_pool: list[dict]) -> list[dict]:
     """备选池数量地板：主类尽量 ≥4、每类 ≤20；shopping=商城/名店。
 
@@ -395,10 +403,7 @@ def generate_open_plans(
                 price_lookup[name] = poi
         filled_costs = fill_zero_costs(plans, price_lookup)
         # 备选池补全必须看到酒店/体验候选，否则对应 tab 会空
-        activities = [
-            {**row, "_authoritative": True}
-            for row in poi_repository.search_pois(req.city, category="activity", limit=12)
-        ]
+        activities = _activity_floor(req.city)
         extra_pool = (candidates or []) + (foods or []) + (context_hotels or []) + activities
         raw_suggestions = _floor_suggestions(raw_suggestions, extra_pool)
         if hotels_added or filled_costs:
@@ -635,10 +640,7 @@ def format_output(state: AgentState) -> dict:
     # 开放模式下模型建议可来自候选池之外（allow_external）：坐标留空的
     # 条目由前端在加入行程前经高德补齐；候选池保底链路仍保持池内过滤。
     open_research = bool((state.get("schedule_report") or {}).get("open_research"))
-    # 体验类不在 Supervisor 三域研究里：从知识库补入，保证「发现更多-体验」有地板
-    activities = [
-        {**row, "_authoritative": True} for row in poi_repository.search_pois(req.city, category="activity", limit=12)
-    ]
+    activities = _activity_floor(req.city)
     tier_label, _tier_g, _tier_ppd = budget_tier(req.budget, req.persons, req.days)
     suggestion_rows = fill_suggestion_gaps(
         build_suggestions(
