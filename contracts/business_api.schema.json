@@ -1,0 +1,991 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "LoginBody": {
+      "properties": {
+        "username": {
+          "title": "Username",
+          "type": "string"
+        },
+        "password": {
+          "title": "Password",
+          "type": "string"
+        }
+      },
+      "required": [
+        "username",
+        "password"
+      ],
+      "title": "LoginBody",
+      "type": "object"
+    },
+    "RegisterBody": {
+      "properties": {
+        "username": {
+          "title": "Username",
+          "type": "string"
+        },
+        "password": {
+          "title": "Password",
+          "type": "string"
+        },
+        "nickname": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nickname"
+        }
+      },
+      "required": [
+        "username",
+        "password",
+        "nickname"
+      ],
+      "title": "RegisterBody",
+      "type": "object"
+    },
+    "UserInfoVO": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "username": {
+          "title": "Username",
+          "type": "string"
+        },
+        "nickname": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Nickname"
+        },
+        "phone": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Phone"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Role"
+        }
+      },
+      "required": [
+        "id",
+        "username",
+        "nickname",
+        "phone",
+        "role"
+      ],
+      "title": "UserInfoVO",
+      "type": "object"
+    },
+    "LoginData": {
+      "properties": {
+        "user": {
+          "$ref": "#/$defs/UserInfoVO"
+        }
+      },
+      "required": [
+        "user"
+      ],
+      "title": "LoginData",
+      "type": "object"
+    },
+    "GenerateTripRequest": {
+      "properties": {
+        "city": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "City"
+        },
+        "days": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Days"
+        },
+        "persons": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 1,
+          "title": "Persons"
+        },
+        "stayNights": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Staynights"
+        },
+        "startDate": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Startdate"
+        },
+        "endDate": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Enddate"
+        },
+        "budget": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Budget"
+        },
+        "preferences": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preferences"
+        },
+        "hotelTier": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hoteltier"
+        },
+        "regionHint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Regionhint"
+        },
+        "requirements": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requirements"
+        },
+        "intent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Intent"
+        }
+      },
+      "title": "GenerateTripRequest",
+      "type": "object",
+      "required": [
+        "city",
+        "days",
+        "persons",
+        "stayNights",
+        "startDate",
+        "endDate",
+        "budget",
+        "preferences",
+        "hotelTier",
+        "regionHint",
+        "requirements",
+        "intent"
+      ]
+    },
+    "ItemUpsertRequest": {
+      "properties": {
+        "dayId": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dayid"
+        },
+        "itemType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Itemtype"
+        },
+        "poiName": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Poiname"
+        },
+        "poiId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Poiid"
+        },
+        "address": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Address"
+        },
+        "latitude": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latitude"
+        },
+        "longitude": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Longitude"
+        },
+        "startTime": {
+          "anyOf": [
+            {
+              "format": "time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Starttime"
+        },
+        "endTime": {
+          "anyOf": [
+            {
+              "format": "time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Endtime"
+        },
+        "durationMin": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Durationmin"
+        },
+        "cost": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost"
+        },
+        "tag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tag"
+        },
+        "remark": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Remark"
+        },
+        "openTime": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Opentime"
+        },
+        "imageUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Imageurl"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "sourceUpdatedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sourceupdatedat"
+        },
+        "verificationStatus": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verificationstatus"
+        },
+        "valueKind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valuekind"
+        },
+        "freshnessStatus": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Freshnessstatus"
+        },
+        "reviewRequirement": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reviewrequirement"
+        },
+        "factEvidenceJson": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Factevidencejson"
+        }
+      },
+      "title": "ItemUpsertRequest",
+      "type": "object",
+      "required": [
+        "dayId",
+        "itemType",
+        "poiName",
+        "poiId",
+        "address",
+        "latitude",
+        "longitude",
+        "startTime",
+        "endTime",
+        "durationMin",
+        "cost",
+        "tag",
+        "remark",
+        "openTime",
+        "imageUrl",
+        "source",
+        "sourceUpdatedAt",
+        "verificationStatus",
+        "valueKind",
+        "freshnessStatus",
+        "reviewRequirement",
+        "factEvidenceJson"
+      ]
+    },
+    "HotelOptionRequest": {
+      "properties": {
+        "hotelName": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hotelname"
+        },
+        "tier": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier"
+        },
+        "roomType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Roomtype"
+        },
+        "dayNos": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Daynos"
+        },
+        "actionMessageId": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actionmessageid"
+        },
+        "baseRevision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baserevision"
+        }
+      },
+      "title": "HotelOptionRequest",
+      "type": "object",
+      "required": [
+        "hotelName",
+        "tier",
+        "roomType",
+        "dayNos",
+        "actionMessageId",
+        "baseRevision"
+      ]
+    },
+    "PreferenceSignalsBody": {
+      "properties": {
+        "explicitPreferences": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Explicitpreferences"
+        },
+        "hardConstraints": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hardconstraints"
+        },
+        "negativePreferences": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negativepreferences"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        }
+      },
+      "title": "PreferenceSignalsBody",
+      "type": "object",
+      "required": [
+        "explicitPreferences",
+        "hardConstraints",
+        "negativePreferences",
+        "source",
+        "confidence"
+      ]
+    },
+    "VersionBody": {
+      "properties": {
+        "operation": {
+          "default": "snapshot",
+          "title": "Operation",
+          "type": "string"
+        },
+        "summary": {
+          "default": "行程快照",
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "title": "VersionBody",
+      "type": "object",
+      "required": [
+        "operation",
+        "summary"
+      ]
+    },
+    "OptimizeDayBody": {
+      "properties": {
+        "dayId": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dayid"
+        }
+      },
+      "title": "OptimizeDayBody",
+      "type": "object",
+      "required": [
+        "dayId"
+      ]
+    },
+    "UpdateDayBody": {
+      "properties": {
+        "theme": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Theme"
+        }
+      },
+      "title": "UpdateDayBody",
+      "type": "object",
+      "required": [
+        "theme"
+      ]
+    },
+    "NlEditBody": {
+      "properties": {
+        "instruction": {
+          "default": "",
+          "title": "Instruction",
+          "type": "string"
+        }
+      },
+      "title": "NlEditBody",
+      "type": "object",
+      "required": [
+        "instruction"
+      ]
+    },
+    "ApplyPlansBody": {
+      "properties": {
+        "plans": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plans"
+        },
+        "actionMessageId": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actionmessageid"
+        },
+        "baseRevision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baserevision"
+        }
+      },
+      "title": "ApplyPlansBody",
+      "type": "object",
+      "required": [
+        "plans",
+        "actionMessageId",
+        "baseRevision"
+      ]
+    },
+    "ChatEditBody": {
+      "properties": {
+        "message": {
+          "default": "",
+          "title": "Message",
+          "type": "string"
+        },
+        "history": {
+          "default": [],
+          "items": {
+            "type": "object"
+          },
+          "title": "History",
+          "type": "array"
+        }
+      },
+      "title": "ChatEditBody",
+      "type": "object",
+      "required": [
+        "message",
+        "history"
+      ]
+    },
+    "CoverBody": {
+      "properties": {
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "unsplashId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unsplashid"
+        }
+      },
+      "required": [
+        "source",
+        "unsplashId"
+      ],
+      "title": "CoverBody",
+      "type": "object"
+    },
+    "FavoriteBody": {
+      "properties": {
+        "favorite": {
+          "title": "Favorite",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "favorite"
+      ],
+      "title": "FavoriteBody",
+      "type": "object"
+    },
+    "ArchiveBody": {
+      "properties": {
+        "archived": {
+          "title": "Archived",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "archived"
+      ],
+      "title": "ArchiveBody",
+      "type": "object"
+    },
+    "ShareCreateBody": {
+      "properties": {
+        "expireDays": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expiredays"
+        }
+      },
+      "title": "ShareCreateBody",
+      "type": "object",
+      "required": [
+        "expireDays"
+      ]
+    }
+  }
+}

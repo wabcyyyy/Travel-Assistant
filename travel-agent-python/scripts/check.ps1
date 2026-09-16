@@ -36,5 +36,12 @@ $env:RAG_EMBEDDING_PROVIDER = "hashed"
 uv run pytest tests/ -q --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+Step "contract export drift"
+# CI python-agent job 同款检查：重跑导出后与入仓产物逐字节比对（G-1.1）
+uv run python scripts/export_contracts.py
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+git diff --exit-code -- ../contracts ../travel-frontend-vue/src/types/generated
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 Write-Host ""
 Write-Host "ALL GREEN" -ForegroundColor Green

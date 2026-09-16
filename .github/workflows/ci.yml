@@ -63,10 +63,13 @@ jobs:
           RAG_EMBEDDING_PROVIDER: hashed
         run: uv run pytest tests/ --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval -q
       - name: Contract schema drift check
-        # 事件契约唯一源是 app/schemas/stream_events.py；入仓 schema 与模型不同步即红
+        # 契约唯一源是 app/schemas/**（登记表 app/schemas/contracts.py）；入仓导出物
+        # （事件/分组 schema + openapi.json + 前端生成类型）与模型不同步即红
+        env:
+          RAG_EMBEDDING_PROVIDER: hashed
         run: |
           uv run python scripts/export_contracts.py
-          git diff --exit-code -- ../contracts/
+          git diff --exit-code -- ../contracts/ ../travel-frontend-vue/src/types/generated/
       - name: Endpoint coverage gate
         # Java 退役后报告「已归档且无残留登记」：残留端点必须逐条登记在 EXPECTED_REMAINING
         run: uv run python scripts/check_endpoint_coverage.py
