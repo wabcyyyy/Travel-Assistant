@@ -45,6 +45,7 @@ from app.agent.narrative import sanitize_narrative
 from app.agent.plan_context import filter_used, parse_date
 from app.agent.reference_pool import ReferencePool, has_valid_coords, is_authoritative_source
 from app.agent.suggestions import build_suggestions, fill_suggestion_gaps
+from app.common.addons import addons
 from app.common.config import settings
 from app.common.llm_client import get_llm_client
 from app.common.season import season_factor, season_label
@@ -309,7 +310,7 @@ def generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False) 
         if item.get("item_type") == "food":
             meal_price = float((ctx.get("consumption") or {}).get("meal_price") or 0) or None
             cost_now = item.get("cost")
-            if settings.live_food_price_search and settings.llm_api_key:
+            if settings.live_food_price_search and addons.is_enabled("live_price") and settings.llm_api_key:
                 try:
                     live = live_pricing.query_live_food_price(req.city, str(item.get("poi_name") or ""))
                 except Exception:

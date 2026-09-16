@@ -331,3 +331,28 @@ class ExportTask(Base, SoftDelete):
     error_msg: Mapped[str | None] = mapped_column(String(512))
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class AddonState(Base):
+    """运行时功能开关状态（G-3.1）：无行 = 走 env 默认值（INV-6）。"""
+
+    __tablename__ = "addon_state"
+
+    addon_key: Mapped[str] = mapped_column(String(48), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    updated_by: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class AddonAudit(Base):
+    """功能开关切换审计（append-only）：只插入，不更新不删除。"""
+
+    __tablename__ = "addon_audit"
+
+    id: Mapped[int] = mapped_column(PkBigInt, primary_key=True, autoincrement=True)
+    addon_key: Mapped[str] = mapped_column(String(48), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    changed_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())

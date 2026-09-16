@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, Path, Query
 
 from app.api.deps import AuthUser
 from app.api.security import enforce_business_auth
-from app.common.envelope import ok
+from app.common.addons import ADDONS, addons
+from app.common.envelope import ApiError, ok
 from app.services import admin_service
 
 router = APIRouter(
@@ -19,6 +20,33 @@ router = APIRouter(
     tags=["admin"],
     dependencies=[Depends(enforce_business_auth)],
 )
+
+
+@router.get("/addons")
+def list_addons() -> dict:
+    """能力开关列表（G-3.1）：键/标签/当前状态。"""
+    return ok({"addons": addons.snapshot()})
+
+
+@router.get("/addons/{key}/audit")
+def addon_audit(key: str = Path(...)) -> dict:
+    """切换审计（append-only，新在前）。"""
+    if key not in ADDONS:
+        raise ApiError(404, "Not Found")
+    return ok({"audit": addons.audit_log(key)})
+
+
+@router.put("/addons/{key}")
+def set_addon(key: str = Path(...), body: dict | None = None, user: AuthUser = Depends(enforce_business_auth)) -> dict:
+    """切换能力开关（G-3.1）：落状态行 + 审计 + 本进程缓存即失效。
+
+    请求体 {"enabled": bool}；未登记的 key 返回 404（与 addon 门控同话术）。
+    """
+    if key not in ADDONS:
+        raise ApiError(404, "Not Found")
+    enabled = bool((body or {}).get("enabled"))
+    addons.set_enabled(key, enabled, changed_by=user.username)
+    return ok({"key": key, "enabled": addons.is_enabled(key)})
 
 
 @router.get("/stats")

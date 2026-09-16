@@ -28,6 +28,7 @@ from app.agent.reflect import build_feedback, validate_plans
 from app.agent.research.evidence import ResearchDomain
 from app.agent.route_matrix import route_matrix_for_plans
 from app.agent.trace import record_event, traced
+from app.common.addons import addons
 from app.common.config import settings
 from app.schemas.trip import GenerateRequest
 
@@ -110,7 +111,7 @@ def reflect(state: AgentState) -> dict:
         return {"validation_issues": issues, "validation_log": log, "fix_count": state.get("fix_count", 0)}
     if plans:
         route_matrix = None
-        if settings.route_service_enabled:
+        if settings.route_service_enabled and addons.is_enabled("route_service"):
             route_matrix = route_matrix_for_plans(plans)
         req = state.get("request")
         budget = getattr(req, "budget", None) if req is not None else None

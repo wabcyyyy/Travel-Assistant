@@ -15,6 +15,7 @@ from app.agent.reflect import validate_plans
 from app.agent.route_matrix import route_matrix_for_plans
 from app.agent.route_service import is_estimated
 from app.agent.trace import record_event
+from app.common.addons import addons
 from app.common.config import settings
 from app.schemas.trip import (
     DailyPlan,
@@ -66,7 +67,7 @@ def run_final_validation(
         for plan in daily_plans
     ]
     final_route_matrix = None
-    if settings.route_service_enabled:
+    if settings.route_service_enabled and addons.is_enabled("route_service"):
         final_route_matrix = route_matrix_for_plans(final_raw_plans)
         route_sources = [str(route.get("source") or "unknown") for route in final_route_matrix.values()]
         if route_sources:

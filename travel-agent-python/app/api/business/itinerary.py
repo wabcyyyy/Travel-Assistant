@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 from app.api.deps import AuthUser
 from app.api.security import enforce_business_auth
 from app.common import event_hub, event_publisher
+from app.common.addons import require_addon
 from app.common.config import settings
 from app.common.envelope import ApiError, ok
 from app.schemas.business.itinerary import (
@@ -159,8 +160,12 @@ def post_optimize(
     body: OptimizeDayBody,
     id: int = Path(..., ge=1),
     user: AuthUser | None = Depends(enforce_business_auth),
+    _addon: None = Depends(require_addon("schedule_optimizer")),
 ) -> dict:
-    """按路线重排某天（v2.6 W3）：确定性优化器，全量重排、不做锁定项、不删除点位。"""
+    """按路线重排某天（v2.6 W3）：确定性优化器，全量重排、不做锁定项、不删除点位。
+
+    G-3.1：schedule_optimizer addon 停用时本端点 404（require_addon，隐藏而非 403）。
+    """
     if body.dayId is None:
         raise ApiError(400, "dayId 必填")
     return ok(itinerary_command.optimize_day(user.id, id, body.dayId))

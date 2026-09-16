@@ -10,6 +10,7 @@ import json
 import logging
 
 from app.agent.run_limits import current_limits
+from app.common.addons import addons
 from app.common.config import settings
 from app.common.llm_client import get_llm_client
 
@@ -17,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 
 def web_search_enabled() -> bool:
-    return bool(settings.web_search_enabled and settings.llm_api_key)
+    # G-3.1：env 是默认值来源，addon 是运行时开关（管理端可关）
+    return bool(settings.web_search_enabled and settings.llm_api_key and addons.is_enabled("web_search"))
 
 
 def _check_budget() -> bool:

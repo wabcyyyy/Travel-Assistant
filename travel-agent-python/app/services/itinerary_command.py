@@ -20,6 +20,7 @@ from typing import Any
 from sqlalchemy import select, update
 
 from app.agent import optimize_daily_plan, run_edit_ops
+from app.common.addons import addons
 from app.common.config import settings
 from app.common.envelope import ApiError
 from app.common.vo_json import iso_time
@@ -224,6 +225,8 @@ def optimize_day(user_id: int, itinerary_id: int, day_id: int) -> dict[str, Any]
     这里**只重排、不落删**——被移除的候选留在原相对位置，用户数据不静默丢失。
     模型/计算在事务外（与 nl_edit 同纪律）；路线矩阵缺省走坐标估算（degraded 由上游如实标记）。
     """
+    if not addons.is_enabled("schedule_optimizer"):  # addon 停用：端点层已返 404，这里兜底（G-3.1）
+        raise ApiError(404, "Not Found")
     with session_scope() as session:
         _require_main(session, user_id, itinerary_id)
         day = session.execute(

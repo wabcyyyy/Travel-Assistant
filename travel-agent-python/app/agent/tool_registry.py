@@ -21,6 +21,7 @@ from typing import Any
 
 from app.agent.run_limits import current_limits
 from app.agent.trace import record_event, registry_tool_call, trace_span
+from app.common.addons import addons
 from app.common.config import settings
 from app.schemas.trip import MAX_TRIP_DAYS
 
@@ -133,10 +134,16 @@ class ToolRegistry:
             raise ToolInvocationError(f"未注册工具：{name}") from exc
 
     def list_specs(self) -> list[ToolSpec]:
-        return list(self._specs.values())
+        """当前可用的工具（when 门控关闭的不列——工具面随能力收起，G-3.1）。"""
+        return [spec for spec in self._specs.values() if self._visible(spec)]
+
+    @staticmethod
+    def _visible(spec: ToolSpec) -> bool:
+        return spec.when is None or spec.when(RunContext(name=spec.name))
 
     def function_schemas(self) -> list[dict[str, Any]]:
-        return [spec.function_schema() for spec in self._specs.values()]
+        """Function Calling schema：同样只列 when 门控放行的工具（LLM 不见被关能力）。"""
+        return [spec.function_schema() for spec in self.list_specs()]
 
     def public_specs(self) -> list[dict[str, Any]]:
         """供内部审计/调试使用，不暴露 Python handler。"""
@@ -154,7 +161,7 @@ class ToolRegistry:
                 "requires_confirmation": spec.requires_confirmation,
                 "idempotent": spec.idempotent,
             }
-            for spec in self._specs.values()
+            for spec in self.list_specs()
         ]
 
     def invoke(
@@ -321,6 +328,20 @@ def _attach_poi_images_handler(**params: Any) -> list[dict]:
     from app.agent import tools
 
     return tools.attach_poi_images(params["plan"], params["city"])
+
+
+def _web_search_places_handler(**params: Any) -> list[dict]:
+    # INV-9：外部调用必须有超时与响应上限——search_places_via_web 走 llm_client
+    # （自带超时/上限/预算检查 _check_budget），非裸 httpx。
+    from app.agent.web_search import search_places_via_web
+
+    return search_places_via_web(
+        params["city"],
+        params["category"],
+        limit=params.get("limit", 4),
+        budget_tier=params.get("budget_tier"),
+        intent_keywords=params.get("intent_keywords") or [],
+    )
 
 
 registry = ToolRegistry()
@@ -614,5 +635,33 @@ registry.register(
         requires_confirmation=False,
         idempotent=True,
         handler=_attach_poi_images_handler,
+    )
+)
+registry.register(
+    ToolSpec(
+        name="web_search_places",
+        version="1.0",
+        description="联网补充真实地点名（证据不足时的补池通道；addon=web_search 门控）",
+        parameters={
+            "type": "object",
+            "properties": {
+                "city": {"type": "string"},
+                "category": {"type": "string"},
+                "limit": {"type": "integer"},
+                "intent_keywords": {"type": "array"},
+            },
+            "required": ["city", "category"],
+            "additionalProperties": False,
+        },
+        read_only=True,
+        risk_level="medium",
+        timeout_seconds=15,
+        max_calls=6,
+        retry_policy={"max_retries": 0},
+        requires_confirmation=False,
+        idempotent=True,
+        handler=_web_search_places_handler,
+        # G-1.4 的 when 钩子在此接线：addon 关闭 → 不列入工具面、invoke 报未注册
+        when=lambda _ctx: addons.is_enabled("web_search"),
     )
 )

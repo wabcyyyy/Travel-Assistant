@@ -14,6 +14,7 @@ from typing import Any
 
 from app.agent.budget import clamp_meal_cost
 from app.agent.pricing import query_live_food_price, query_live_price
+from app.common.addons import addons
 from app.common.config import settings
 from app.common.season import season_factor, season_label
 from app.schemas.trip import GenerateRequest
@@ -51,8 +52,14 @@ class PriceStage:
             trip_date=trip_date,
             factor=season_factor(trip_date),
             label=season_label(trip_date),
-            live_budget=settings.max_live_queries if settings.live_price_search else 0,
-            food_live_budget=settings.max_live_food_queries if settings.live_food_price_search else 0,
+            live_budget=(
+                settings.max_live_queries if settings.live_price_search and addons.is_enabled("live_price") else 0
+            ),
+            food_live_budget=(
+                settings.max_live_food_queries
+                if settings.live_food_price_search and addons.is_enabled("live_price")
+                else 0
+            ),
         )
 
     def price_hotel(self, item: dict[str, Any]) -> None:
