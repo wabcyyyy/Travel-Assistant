@@ -326,28 +326,38 @@ import draggable from 'vuedraggable'
 import { storeToRefs } from 'pinia'
 import {
   ArrowRightLeft,
-  BedDouble,
-  Camera,
   Car,
   ChevronDown,
   Clock,
   ExternalLink,
   Footprints,
   Lightbulb,
-  MapPin,
   Pencil,
   Plus,
   Route,
   StickyNote,
-  TrainFront,
   Trash2,
-  UtensilsCrossed,
 } from 'lucide-vue-next'
 
 import { useItineraryStore, type StreamState } from '../../store/itinerary'
 import { useItineraryActions } from '../../composables/useItineraryActions'
+import {
+  cleanBackupRules,
+  cleanPhotoSpots,
+  cleanPracticalNotes,
+  dayMetaText,
+  dayTitle,
+  dayTotalAmountOf,
+  dayTintVar,
+  formatTime,
+  hasAnyTips,
+  ruleIf,
+  spotName,
+  typeIcon,
+  typeLabel,
+} from './day-card/shared'
 import { useItemPhoto } from '../../composables/useItemPhoto'
-import type { BackupPlanEntry, DayOption, DayPlan, PhotoSpotEntry, TripItem } from '../../types/itinerary'
+import type { DayOption, DayPlan, TripItem } from '../../types/itinerary'
 import { isForeignCity, externalMapLink } from '../../utils/geo'
 import { estimateLeg, legText, type TravelLeg } from '../../utils/travelEstimate'
 import DayNarrativePanel from './DayNarrativePanel.vue'
@@ -403,52 +413,18 @@ const { detail } = storeToRefs(store)
 const detailForeign = computed(() => isForeignCity(detail.value?.city ?? ''))
 const mapLinkLabel = computed(() => (detailForeign.value ? '谷歌地图' : '高德地图'))
 
-/* day-tint 消费（v2.6 §19.4）：D1–D8 循环取色，日头/编号徽按档位上色 */
 const dayTintStyle = computed(() => ({
-  '--day-color': `var(--lp-day-${((props.day.dayNo - 1) % 8) + 1})`,
+  '--day-color': dayTintVar(props.day.dayNo),
 }))
 
-const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-
-/** 日头副行：M月D日 · 周X（travelDate 缺省/非法时回落「第 N 天」） */
-function dayMetaText(day: DayPlan) {
-  if (day.travelDate) {
-    const date = new Date(day.travelDate)
-    if (!Number.isNaN(date.getTime())) {
-      return `${date.getMonth() + 1}月${date.getDate()}日 · ${WEEKDAYS[date.getDay()]}`
-    }
-  }
-  return `第 ${day.dayNo} 天`
-}
-
-/* ---------- 内联提示卡数据（从 DayNarrativePanel 拆出，v2.6 §19.3） ---------- */
-const practicalNotes = computed(() =>
-  (props.day.practicalNotes || []).map((n) => n.trim()).filter(Boolean),
-)
-
-const photoSpots = computed(() =>
-  (props.day.photoSpots || []).filter((s) => (s.name || s.title || '').trim()),
-)
-
-const backupRules = computed(() =>
-  (props.day.backupPlan || []).filter(
-    (r) => (r.if || r.name || r.title || '').trim() || (r.action || '').trim(),
-  ),
-)
-
-const hasTips = computed(
-  () => practicalNotes.value.length > 0 || photoSpots.value.length > 0 || backupRules.value.length > 0,
-)
-
-function spotName(s: PhotoSpotEntry) {
-  return (s.name || s.title || '').trim()
-}
-
-function ruleIf(r: BackupPlanEntry) {
-  return (r.if || '').trim()
-}
-
+/* day-tint 消费（v2.6 §19.4）：D1–D8 循环取色，日头/编号徽按档位上色 */
 const { imgLevel, imgSrc, onImgError } = useItemPhoto()
+
+const practicalNotes = computed(() => cleanPracticalNotes(props.day.practicalNotes))
+const photoSpots = computed(() => cleanPhotoSpots(props.day.photoSpots))
+const backupRules = computed(() => cleanBackupRules(props.day.backupPlan))
+const hasTips = computed(() => hasAnyTips(practicalNotes.value, photoSpots.value, backupRules.value))
+const dayTotalAmount = computed(() => dayTotalAmountOf(props.day.items, detail.value?.persons ?? 1))
 
 /* ---------- 站间交通片（v2.7 §20 R3）：本地直线估算，界面带「≈」与估算说明 ---------- */
 const LEG_HINT = '本地直线估算（含路网折算，非实时路况）'
@@ -508,59 +484,12 @@ function onItemClick(item: TripItem) {
   emit('item-select', item)
 }
 
-function dayTitle(d: DayPlan) {
-  if (d.theme) return d.theme
-  const items = d.items || []
-  if (!items.length) return '暂无安排'
-  const first = items[0]?.poiName || ''
-  const last = items.length > 1 ? items[items.length - 1]?.poiName || '' : ''
-  return last && last !== first ? `${first} → ${last}` : first
-}
-
-/** 天级小计（原预算看板「每日费用」的落点）：餐饮/景点按人数，酒店按房间数 */
-const dayTotalAmount = computed(() => {
-  const persons = detail.value?.persons ?? 1
-  const roomCount = Math.max(Math.ceil(persons / 2), 1)
-  return (props.day.items || []).reduce((sum, item) => {
-    if (item.cost == null) return sum
-    return sum + item.cost * (item.itemType === 'hotel' ? roomCount : persons)
-  }, 0)
-})
-
 /** 地图外链：统一口径在 utils/geo（国内高德搜索 / 海外 Google Maps，有坐标优先） */
 function mapLinkOf(item: TripItem) {
   return externalMapLink(
     { name: item.poiName, latitude: item.latitude, longitude: item.longitude },
     detail.value?.city,
   )
-}
-
-const TYPE_LABEL: Record<string, string> = {
-  attraction: '景点',
-  food: '美食',
-  hotel: '酒店',
-  transport: '交通',
-}
-
-// 行内分类小图标（TREK 行解剖：名称前 10px 分类图标，替代原先的彩色 tag 块）
-const TYPE_ICON: Record<string, unknown> = {
-  attraction: Camera,
-  food: UtensilsCrossed,
-  hotel: BedDouble,
-  transport: TrainFront,
-}
-
-function typeLabel(type: string) {
-  return TYPE_LABEL[type] || type
-}
-
-function typeIcon(type: string): unknown {
-  return TYPE_ICON[type] || MapPin
-}
-
-/** 时间展示统一 HH:mm（数据侧为 HH:mm:ss） */
-function formatTime(value?: string | null) {
-  return typeof value === 'string' ? value.slice(0, 5) : ''
 }
 
 async function onDeleteItem(item: TripItem) {
