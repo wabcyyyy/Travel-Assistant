@@ -17,6 +17,7 @@ import re
 import threading
 from collections.abc import Iterator
 
+from app.agent.budget import budget_tier
 from app.agent.day_prompts import (
     DAY_ATTRACTION_CONTEXT_LIMIT,
     DAY_FOOD_CONTEXT_LIMIT,
@@ -30,16 +31,12 @@ from app.agent.generation_core import (
     spread_hotels,
     stay_nights,
 )
-from app.agent.generators import (
-    ReferencePool,
-    budget_tier,
-    build_suggestions,
-    fill_suggestion_gaps,
-    pick_hotels,
-)
+from app.agent.generators import pick_hotels
 from app.agent.grounding import local_ground
 from app.agent.json_utils import parse_llm_json
 from app.agent.narrative import sanitize_narrative
+from app.agent.reference_pool import ReferencePool
+from app.agent.suggestions import build_suggestions, fill_suggestion_gaps
 from app.agent.trace import record_event
 from app.common.config import settings
 from app.common.llm_client import StreamCancelled, get_llm_client

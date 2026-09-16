@@ -1,12 +1,13 @@
 """预算硬约束、餐饮钳制、餐次与备选池补全的回归测试。"""
 
+from app.agent.budget import clamp_meal_cost
 from app.agent.generation_core import (
     estimate_plans_total,
     has_double_lunch,
     meal_slot_of,
 )
-from app.agent.generators import clamp_meal_cost, fill_suggestion_gaps
 from app.agent.reflect import validate_plans
+from app.agent.suggestions import fill_suggestion_gaps
 
 
 def _plan(day_no=1, items=None):

@@ -12,7 +12,7 @@ from datetime import date
 from math import ceil
 from typing import Any
 
-from app.agent.generators import clamp_meal_cost
+from app.agent.budget import clamp_meal_cost
 from app.agent.pricing import query_live_food_price, query_live_price
 from app.common.config import settings
 from app.common.season import season_factor, season_label

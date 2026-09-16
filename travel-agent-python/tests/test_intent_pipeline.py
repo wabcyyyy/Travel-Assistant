@@ -17,7 +17,7 @@ from pydantic import ValidationError
 
 from app.agent import day_prompts, day_stream
 from app.agent import intent as intent_module
-from app.agent.generators import (
+from app.agent.day_prompts import (
     _distill_cached,
     clear_distill_cache,
     intent_clause,

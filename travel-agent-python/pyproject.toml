@@ -134,6 +134,9 @@ ignore_imports = [
 ]
 forbidden_modules = [
     "app.agent.butler",
+    "app.agent.budget",
+    "app.agent.reference_pool",
+    "app.agent.suggestions",
     "app.agent.chat_draft",
     "app.agent.city_guide",
     "app.agent.clarify",

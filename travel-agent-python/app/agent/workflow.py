@@ -28,6 +28,7 @@ import logging
 from typing import TypedDict
 
 from app.agent import poi_repository, research
+from app.agent.budget import budget_tier
 from app.agent.day_prompts import llm_open_trip
 from app.agent.day_stream import llm_open_day
 from app.agent.formatting.facts import (
@@ -49,16 +50,12 @@ from app.agent.generation_core import (
     spread_hotels,
     stay_nights,
 )
-from app.agent.generators import (
-    ReferencePool,
-    budget_tier,
-    build_suggestions,
-    fill_suggestion_gaps,
-)
 from app.agent.grounding import local_ground
 from app.agent.observability import metrics
+from app.agent.reference_pool import ReferencePool
 from app.agent.reflect import build_feedback, validate_plans
 from app.agent.route_matrix import route_matrix_for_plans
+from app.agent.suggestions import build_suggestions, fill_suggestion_gaps
 from app.agent.tools import search_attractions, search_foods
 from app.agent.trace import record_event, traced
 from app.common.config import settings

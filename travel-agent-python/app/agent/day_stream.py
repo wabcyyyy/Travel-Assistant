@@ -24,34 +24,27 @@ generation_core、formatting、common.*、schemas.trip。
 import logging
 
 from app.agent import pricing as live_pricing
+from app.agent.budget import budget_clause, budget_tier, clamp_meal_cost
 from app.agent.day_prompts import (
     DAY_ATTRACTION_CONTEXT_LIMIT,
     DAY_FOOD_CONTEXT_LIMIT,
     GENERATION_TEMPERATURE,
     destination_line,
+    intent_clause,
+    requirements_clause,
 )
 from app.agent.generation_core import (
     day_hotel_clause,
     sanitize_itinerary_items,
 )
-from app.agent.generators import (
-    ReferencePool,
-    budget_clause,
-    budget_tier,
-    build_suggestions,
-    clamp_meal_cost,
-    fill_suggestion_gaps,
-    has_valid_coords,
-    intent_clause,
-    is_authoritative_source,
-    pick_hotels,
-    requirements_clause,
-)
+from app.agent.generators import pick_hotels
 from app.agent.grounding import has_coord, local_ground
 from app.agent.json_utils import parse_llm_json
 from app.agent.memory import WorkingMemory
 from app.agent.narrative import sanitize_narrative
 from app.agent.plan_context import filter_used, parse_date
+from app.agent.reference_pool import ReferencePool, has_valid_coords, is_authoritative_source
+from app.agent.suggestions import build_suggestions, fill_suggestion_gaps
 from app.common.config import settings
 from app.common.llm_client import get_llm_client
 from app.common.season import season_factor, season_label

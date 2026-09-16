@@ -8,7 +8,10 @@ Prompt 注入、单日生成引用落地集成、生成评测指标与聚合。
 import json
 
 from app.agent import day_stream
-from app.agent.generators import ReferencePool, normalize_poi_name
+from app.agent.reference_pool import (
+    ReferencePool,
+    normalize_poi_name,
+)
 from app.rag import evaluation_generation as eg
 from app.schemas.trip import GenerateDayRequest
 
