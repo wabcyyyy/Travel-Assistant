@@ -1,8 +1,13 @@
-"""受控工具目录。
+"""受控工具目录（唯一注册表，G-1.4）。
 
 工具只能通过显式注册后执行，目录同时提供 Function Calling schema、参数校验、
 调用预算和脱敏审计事件。写入型工具默认不注册，避免模型或不可信工具结果
-绕过 Java 业务服务直接改变行程状态。
+绕过业务服务直接改变行程状态。全部工具面（含 research 三域检索）统一从
+本注册表派发，禁止 getattr 字符串派发散落各处。
+
+handler 约定：经 `from app.agent import tools` 后**调用期**读模块属性
+（`tools.search_attractions(...)`），保证 mock.patch.object(tools, ...) 零
+修改生效；不得在注册期绑定函数对象。
 """
 
 from __future__ import annotations
@@ -11,7 +16,7 @@ import contextvars
 import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.agent.run_limits import current_limits
@@ -22,6 +27,18 @@ from app.schemas.trip import MAX_TRIP_DAYS
 
 class ToolInvocationError(ValueError):
     """工具不存在、参数不合法、未确认或超过预算。"""
+
+
+@dataclass(frozen=True)
+class RunContext:
+    """工具门控的评估上下文。
+
+    G-1.4 只建立机制（ToolSpec.when + 本上下文），消费方（addon/feature-flag
+    体系）在 G-3.1 接线；当前所有 spec 的 when 均为 None，行为零变化。
+    """
+
+    name: str
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -38,6 +55,9 @@ class ToolSpec:
     requires_confirmation: bool
     idempotent: bool
     handler: Callable[..., Any]
+    # 运行时门控钩子：返回 False 时该工具按「未注册」处理（隐藏而非报错）。
+    # None 表示无条件可用。评估入参见 RunContext。
+    when: Callable[[RunContext], bool] | None = None
 
     def function_schema(self) -> dict[str, Any]:
         return {
@@ -142,6 +162,10 @@ class ToolRegistry:
     ) -> Any:
         spec = self.get(name)
         params = params or {}
+        # 门控钩子（G-1.4 机制，G-3.1 接消费方）：关闭的工具与未注册工具同话术，
+        # 不暴露「存在但被禁用」；先于参数校验，被禁用即不存在。
+        if spec.when is not None and not spec.when(RunContext(name=name, params=dict(params))):
+            raise ToolInvocationError(f"未注册工具：{name}")
         _validate_parameters(spec, params)
         if spec.requires_confirmation and not confirmed:
             raise ToolInvocationError(f"工具 {name} 需要用户确认")
@@ -239,6 +263,64 @@ def _find_nearby_pois(**params: Any) -> list[dict]:
         radius_m=params.get("radius_m"),
         category=params.get("category"),
     )
+
+
+# ---- G-1.4：tools.py 全部工具函数入册（handler 一律调用期经 tools 模块属性
+# 解析真实函数——`tools.xxx(...)` 晚绑定，mock.patch.object 零修改生效）----
+
+
+def _search_local_poi_handler(**params: Any) -> list[dict]:
+    from app.agent import tools
+
+    return tools.search_local_poi(params["city"], params["name"], category=params.get("category"))
+
+
+def _search_attractions_handler(**params: Any) -> list[dict]:
+    from app.agent import tools
+
+    return tools.search_attractions(params["city"], params.get("preferences") or [], params.get("limit", 30))
+
+
+def _search_foods_handler(**params: Any) -> list[dict]:
+    from app.agent import tools
+
+    return tools.search_foods(params["city"], params.get("limit", 10))
+
+
+def _search_hotels_handler(**params: Any) -> list[dict]:
+    from app.agent import tools
+
+    return tools.search_hotels(params["city"], params.get("limit", 6))
+
+
+def _get_poi_detail_handler(**params: Any) -> dict | None:
+    from app.agent import tools
+
+    return tools.get_poi_detail(params["city"], params["name"])
+
+
+def _get_consumption_handler(**params: Any) -> dict | None:
+    from app.agent import tools
+
+    return tools.get_consumption(params["city"])
+
+
+def _search_hotel_room_types_handler(**params: Any) -> list[dict]:
+    from app.agent import tools
+
+    return tools.search_hotel_room_types(params["poi_ids"])
+
+
+def _poi_image_handler(**params: Any) -> str | None:
+    from app.agent import tools
+
+    return tools.poi_image(params.get("name"), params["city"])
+
+
+def _attach_poi_images_handler(**params: Any) -> list[dict]:
+    from app.agent import tools
+
+    return tools.attach_poi_images(params["plan"], params["city"])
 
 
 registry = ToolRegistry()
@@ -341,5 +423,196 @@ registry.register(
         requires_confirmation=False,
         idempotent=True,
         handler=_find_nearby_pois,
+    )
+)
+
+
+registry.register(
+    ToolSpec(
+        name="search_local_poi",
+        version="1.0",
+        description="按名称在权威知识库解析单个本地 POI（补查/grounding 用）",
+        parameters={
+            "type": "object",
+            "properties": {"city": {"type": "string"}, "name": {"type": "string"}, "category": {"type": "string"}},
+            "required": ["city", "name"],
+            "additionalProperties": False,
+        },
+        read_only=True,
+        risk_level="low",
+        timeout_seconds=5,
+        max_calls=16,
+        retry_policy={"max_retries": 0},
+        requires_confirmation=False,
+        idempotent=True,
+        handler=_search_local_poi_handler,
+    )
+)
+registry.register(
+    ToolSpec(
+        name="search_attractions",
+        version="1.0",
+        description="检索目的地景点候选（RAG 向量召回 + 权威库回退）",
+        parameters={
+            "type": "object",
+            "properties": {"city": {"type": "string"}, "preferences": {"type": "array"}, "limit": {"type": "integer"}},
+            "required": ["city"],
+            "additionalProperties": False,
+        },
+        read_only=True,
+        risk_level="low",
+        timeout_seconds=15,
+        max_calls=8,
+        retry_policy={"max_retries": 0},
+        requires_confirmation=False,
+        idempotent=True,
+        handler=_search_attractions_handler,
+    )
+)
+registry.register(
+    ToolSpec(
+        name="search_foods",
+        version="1.0",
+        description="检索目的地餐饮候选",
+        parameters={
+            "type": "object",
+            "properties": {"city": {"type": "string"}, "limit": {"type": "integer"}},
+            "required": ["city"],
+            "additionalProperties": False,
+        },
+        read_only=True,
+        risk_level="low",
+        timeout_seconds=10,
+        max_calls=8,
+        retry_policy={"max_retries": 0},
+        requires_confirmation=False,
+        idempotent=True,
+        handler=_search_foods_handler,
+    )
+)
+registry.register(
+    ToolSpec(
+        name="search_hotels",
+        version="1.0",
+        description="检索目的地酒店候选（保留完整可枚举集）",
+        parameters={
+            "type": "object",
+            "properties": {"city": {"type": "string"}, "limit": {"type": "integer"}},
+            "required": ["city"],
+            "additionalProperties": False,
+        },
+        read_only=True,
+        risk_level="low",
+        timeout_seconds=10,
+        max_calls=8,
+        retry_policy={"max_retries": 0},
+        requires_confirmation=False,
+        idempotent=True,
+        handler=_search_hotels_handler,
+    )
+)
+registry.register(
+    ToolSpec(
+        name="get_poi_detail",
+        version="1.0",
+        description="查询单个 POI 的知识库详情",
+        parameters={
+            "type": "object",
+            "properties": {"city": {"type": "string"}, "name": {"type": "string"}},
+            "required": ["city", "name"],
+            "additionalProperties": False,
+        },
+        read_only=True,
+        max_calls=8,
+        risk_level="low",
+        timeout_seconds=5,
+        retry_policy={"max_retries": 0},
+        requires_confirmation=False,
+        idempotent=True,
+        handler=_get_poi_detail_handler,
+    )
+)
+registry.register(
+    ToolSpec(
+        name="get_consumption",
+        version="1.0",
+        description="查询目的地人均消费水位",
+        parameters={
+            "type": "object",
+            "properties": {"city": {"type": "string"}},
+            "required": ["city"],
+            "additionalProperties": False,
+        },
+        max_calls=8,
+        read_only=True,
+        risk_level="low",
+        timeout_seconds=5,
+        retry_policy={"max_retries": 0},
+        requires_confirmation=False,
+        idempotent=True,
+        handler=_get_consumption_handler,
+    )
+)
+registry.register(
+    ToolSpec(
+        name="search_hotel_room_types",
+        version="1.0",
+        description="按 POI id 列表查询酒店房型与价格",
+        parameters={
+            "type": "object",
+            "properties": {"poi_ids": {"type": "array"}},
+            "required": ["poi_ids"],
+            "additionalProperties": False,
+        },
+        read_only=True,
+        risk_level="low",
+        timeout_seconds=5,
+        max_calls=4,
+        retry_policy={"max_retries": 0},
+        requires_confirmation=False,
+        idempotent=True,
+        handler=_search_hotel_room_types_handler,
+    )
+)
+registry.register(
+    ToolSpec(
+        name="poi_image",
+        version="1.0",
+        description="查询单个 POI 的配图 URL（本地快照优先）",
+        parameters={
+            "type": "object",
+            "properties": {"name": {"type": "string"}, "city": {"type": "string"}},
+            "required": ["city"],
+            "additionalProperties": False,
+        },
+        read_only=True,
+        risk_level="low",
+        timeout_seconds=10,
+        max_calls=16,
+        retry_policy={"max_retries": 0},
+        requires_confirmation=False,
+        idempotent=True,
+        handler=_poi_image_handler,
+    )
+)
+registry.register(
+    ToolSpec(
+        name="attach_poi_images",
+        version="1.0",
+        description="为整份行程点位批量补图",
+        parameters={
+            "type": "object",
+            "properties": {"plan": {"type": "array"}, "city": {"type": "string"}},
+            "required": ["plan", "city"],
+            "additionalProperties": False,
+        },
+        read_only=True,
+        risk_level="low",
+        timeout_seconds=15,
+        max_calls=4,
+        retry_policy={"max_retries": 0},
+        requires_confirmation=False,
+        idempotent=True,
+        handler=_attach_poi_images_handler,
     )
 )

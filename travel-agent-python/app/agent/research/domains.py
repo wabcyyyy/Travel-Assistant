@@ -2,11 +2,11 @@
 
 职责：
 - DomainConfig 描述一个研究域的全部差异：检索工具名、任务→检索参数映射、缺口判定；
-- 检索函数**只存属性名、运行时经 tools 模块解析**（getattr），保证单测
+- 检索函数**只存注册表工具名、经 registry 派发**（G-1.4），保证单测
   patch.object(tools, "search_*") 持续生效——这也是既有测试注入契约的一部分。
 
 实现要点：
-- 不在这里直接 import search_* 函数对象，否则 patch 会被 import 时绑定的引用绕开；
+- handler 调用期才读 tools 模块属性，直接 import 函数对象会让 patch 被 import 时绑定绕开；
 - 缺口判定是纯规则（演示级），阶段二升级为 LLM 评估时只替换 finalize 节点。
 """
 

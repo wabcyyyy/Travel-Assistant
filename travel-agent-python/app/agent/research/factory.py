@@ -7,7 +7,8 @@
 
 实现要点：
 - 三域共用同一张图结构，差异全部收在 DomainConfig（检索工具/参数/缺口判定）；
-- 检索函数运行时经 tools 模块属性解析，单测 patch.object(tools, ...) 持续生效；
+- 检索经工具注册表统一派发（G-1.4），registry handler 调用期解析 tools 模块属性，
+  单测 patch.object(tools, ...) 持续生效；
 - LLM 规划/评估在 research.reasoning 模块级函数内实现，测试直接 patch 该模块；
 - 补查轮次上限 RESEARCH_LLM_ROUNDS=2：规划+检索为第 1 轮，评估不足时再补 1 轮；
 - 补充检索词经高德查询并按名称去重并入证据，不改变权威主路径。
@@ -30,6 +31,7 @@ from app.agent.research.evidence import (
     ResearchTask,
 )
 from app.agent.run_limits import current_limits
+from app.agent.tool_registry import registry
 from app.agent.trace import record_event, trace_span
 
 logger = logging.getLogger(__name__)
@@ -81,8 +83,9 @@ def _run_search(state: ResearchAgentState) -> dict:
         params = {**params, "preferences": prefs}
     if plan.get("limit"):
         params = {**params, "limit": int(plan["limit"])}
-    fn = getattr(tools, config.tool_name)
-    items = fn(**params) or []
+    # 统一经注册表派发（G-1.4）：预算/审计/校验全覆盖；handler 调用期读
+    # tools 模块属性，patch.object(tools, "search_*") 注入持续生效。
+    items = registry.invoke(config.tool_name, params) or []
     limits = current_limits()
     if limits:
         limits.record_retrieval(1)
