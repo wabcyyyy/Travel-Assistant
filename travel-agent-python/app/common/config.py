@@ -142,6 +142,8 @@ class Settings(BaseSettings):
     # 分享匿名访问限流（SPEC v2.3 §6.6 / E14）：按 IP 滑动窗口，每分钟上限
     share_rate_limit_per_minute: int = 60
     schedule_optimizer_enabled: bool = True
+    # MCP 出口（G-3.6）：默认关闭，管理员在后台开启后 /mcp 才可用
+    mcp_enabled: bool = False
 
     # ---- 图片源 ----
     unsplash_access_key: str = ""

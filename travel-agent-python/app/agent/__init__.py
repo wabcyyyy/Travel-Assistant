@@ -22,13 +22,15 @@ from app.agent.nl_edit import run_edit_ops
 from app.agent.observability import metrics, observe_run, scene, use_scene
 from app.agent.plan_context import run_plan_context
 from app.agent.schedule_optimizer import optimize_daily_plan
-from app.agent.tool_registry import registry
+from app.agent.tool_registry import ToolInvocationError, ToolSpec, registry
 from app.agent.tools import find_nearby_pois
 from app.agent.trip_stream import run_generate_trip_stream
 from app.agent.usage_store import usage_store
 from app.agent.workflow import run_adjust, run_generate
 
 __all__ = [
+    "ToolInvocationError",
+    "ToolSpec",
     "find_nearby_pois",
     "metrics",
     "observe_run",

@@ -24,7 +24,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agent.usage_store import usage_store
-from app.api import agent
+from app.api import agent, mcp
 from app.api.business import business_routers
 from app.common import cron
 from app.common.config import BASE_DIR, settings
@@ -92,6 +92,9 @@ app.add_middleware(
 install_exception_handlers(app)
 
 app.include_router(agent.router, prefix="/api/agent", tags=["agent"])
+# MCP 只读工具出口（G-3.6）：addon 门控（默认关）+ AGENT_INTERNAL_TOKEN 鉴权，
+# 两者都在 McpGate 里按请求实时判定——addon 关闭时整个前缀 404。
+app.mount("/mcp", mcp.mcp_asgi_app())
 # 迁移自 Java 的业务域：router 自带完整 /api/... 前缀，便于按路径前缀灰度切流
 for business_router in business_routers:
     app.include_router(business_router)

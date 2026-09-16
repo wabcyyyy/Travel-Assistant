@@ -36,6 +36,8 @@ ADDONS: dict[str, dict[str, str]] = {
     "live_price": {"env": "live_price_search", "label": "实时价格查询"},
     "schedule_optimizer": {"env": "schedule_optimizer_enabled", "label": "路线优化重排"},
     "route_service": {"env": "route_service_enabled", "label": "路线矩阵校验"},
+    # MCP 出口（G-3.6）：默认关闭——对外暴露能力必须由管理员显式打开
+    "mcp": {"env": "mcp_enabled", "label": "MCP 只读工具出口"},
 }
 
 #: 进程内缓存 TTL（秒）：管理切换会就地失效，TTL 只兜多进程部署的最终一致。
