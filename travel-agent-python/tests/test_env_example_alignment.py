@@ -24,7 +24,7 @@ EXAMPLE_PATH = Path(__file__).resolve().parent.parent / ".env.example"
 _SECRET_MARKS = ("KEY", "SECRET", "TOKEN", "PASSWORD")
 
 
-def _extract_config_defaults(source: str) -> dict[str, tuple[str, Any, str | None]]:
+def _extract_config_defaults(source: str) -> dict[str, tuple[str, Any, Any]]:
     """返回 {环境变量名: (类型, 默认值, 原始字面量)}；非字面量默认记为 None。
 
     G-1.5 起config.py 为 pydantic-settings 字段定义式：字段名小写即环境
@@ -35,7 +35,7 @@ def _extract_config_defaults(source: str) -> dict[str, tuple[str, Any, str | Non
     字段名派生。
     """
     tree = ast.parse(source)
-    defaults: dict[str, tuple[str, Any, str | None]] = {}
+    defaults: dict[str, tuple[str, Any, Any]] = {}
     for node in ast.walk(tree):
         if not (isinstance(node, ast.ClassDef) and node.name == "Settings"):
             continue
@@ -53,7 +53,7 @@ def _extract_config_defaults(source: str) -> dict[str, tuple[str, Any, str | Non
             if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "Field":
                 for keyword in value.keywords:
                     if keyword.arg == "validation_alias" and isinstance(keyword.value, ast.Constant):
-                        env_name = keyword.value.value
+                        env_name = str(keyword.value.value)
                     if keyword.arg == "default" and isinstance(keyword.value, ast.Constant):
                         raw = keyword.value.value
             elif isinstance(value, ast.Constant):

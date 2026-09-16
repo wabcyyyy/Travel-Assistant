@@ -630,7 +630,7 @@ def generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False) 
             pass  # 权威背书：字段与来源已由参考资料落地
         elif source == "open":
             local_ground(item, req.city, ground_cache)
-        poi = lookup.get(item.get("poi_name"))
+        poi = lookup.get(str(item.get("poi_name") or ""))
         if poi:
             if not has_coord(item.get("latitude")) and has_valid_coords(poi):
                 item["latitude"] = float(poi["latitude"])
@@ -638,8 +638,9 @@ def generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False) 
             if not item.get("poi_id"):
                 item["poi_id"] = str(poi.get("id") or "")
             # 模型常把未知餐饮/酒店价写成 0；权威价存在时覆盖，避免预算失效。
+            raw_cost = item.get("cost")
             try:
-                cost_val = float(item.get("cost")) if item.get("cost") is not None else None
+                cost_val = float(raw_cost) if raw_cost is not None else None
             except (TypeError, ValueError):
                 cost_val = None
             need_price = cost_val is None or (item.get("item_type") in ("food", "hotel") and cost_val == 0)

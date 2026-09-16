@@ -605,7 +605,7 @@ def format_output(state: AgentState) -> dict:
         items = []
         # LLM 可能输出 souvenir/activity 等扩展类型：归一到 TripItem 契约，避免 Pydantic 500
         for item in sanitize_itinerary_items(plan.get("items")):
-            apply_item_facts(item, lookup.get(item.get("poi_name")), source_records)
+            apply_item_facts(item, lookup.get(str(item.get("poi_name") or "")), source_records)
             if item.get("item_type") == "hotel":
                 prices.price_hotel(item)
                 if count_hotel_nights_in_budget(plan["day_no"], req.days, "hotel"):

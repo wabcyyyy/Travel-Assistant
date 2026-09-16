@@ -90,8 +90,8 @@ def test_normalize_item_type_and_sanitize():
             {"item_type": "attraction"},
         ]
     )
-    assert [r["item_type"] for r in rows] == ["attraction", "food"]
-    assert rows[0]["poi_name"] == "浅草寺"
+    assert [r.get("item_type") for r in rows] == ["attraction", "food"]
+    assert rows[0].get("poi_name") == "浅草寺"
 
 
 def test_day_hotel_clause():

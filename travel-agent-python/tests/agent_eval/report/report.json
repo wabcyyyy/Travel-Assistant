@@ -54,9 +54,9 @@
           "format"
         ],
         "tools": [
-          "fixture.search_attractions",
-          "fixture.search_foods",
-          "fixture.search_hotels",
+          "search_attractions",
+          "search_foods",
+          "search_hotels",
           "fixture.get_consumption"
         ],
         "routes": [
@@ -107,9 +107,9 @@
           "format"
         ],
         "tools": [
-          "fixture.search_attractions",
-          "fixture.search_foods",
-          "fixture.search_hotels",
+          "search_attractions",
+          "search_foods",
+          "search_hotels",
           "fixture.get_consumption"
         ],
         "routes": [
@@ -162,9 +162,9 @@
           "format"
         ],
         "tools": [
-          "fixture.search_attractions",
-          "fixture.search_foods",
-          "fixture.search_hotels",
+          "search_attractions",
+          "search_foods",
+          "search_hotels",
           "fixture.get_consumption"
         ],
         "routes": [
@@ -217,9 +217,9 @@
           "format"
         ],
         "tools": [
-          "fixture.search_attractions",
-          "fixture.search_foods",
-          "fixture.search_hotels",
+          "search_attractions",
+          "search_foods",
+          "search_hotels",
           "fixture.get_consumption"
         ],
         "routes": [
@@ -272,9 +272,9 @@
           "format"
         ],
         "tools": [
-          "fixture.search_foods",
-          "fixture.search_attractions",
-          "fixture.search_hotels",
+          "search_attractions",
+          "search_foods",
+          "search_hotels",
           "fixture.get_consumption"
         ],
         "routes": [
@@ -327,9 +327,9 @@
           "format"
         ],
         "tools": [
-          "fixture.search_attractions",
-          "fixture.search_hotels",
-          "fixture.search_foods",
+          "search_attractions",
+          "search_foods",
+          "search_hotels",
           "fixture.get_consumption"
         ],
         "routes": [

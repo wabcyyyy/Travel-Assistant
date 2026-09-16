@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from math import ceil
+from typing import Any
 
 from app.agent.generators import clamp_meal_cost
 from app.agent.pricing import query_live_food_price, query_live_price
@@ -18,7 +19,7 @@ from app.common.season import season_factor, season_label
 from app.schemas.trip import GenerateRequest
 
 
-def _append_remark(item: dict, note: str) -> None:
+def _append_remark(item: dict[str, Any], note: str) -> None:
     item["remark"] = f"{item['remark']}；{note}" if item.get("remark") else note
 
 
@@ -54,7 +55,7 @@ class PriceStage:
             food_live_budget=settings.max_live_food_queries if settings.live_food_price_search else 0,
         )
 
-    def price_hotel(self, item: dict) -> None:
+    def price_hotel(self, item: dict[str, Any]) -> None:
         if item.get("item_type") != "hotel":
             return
         name = item.get("poi_name") or ""
@@ -65,8 +66,9 @@ class PriceStage:
             else:
                 self.live_cache[name] = None
         live = self.live_cache.get(name)
+        raw_cost = item.get("cost")
         try:
-            base = float(item.get("cost")) if item.get("cost") is not None else None
+            base = float(raw_cost) if raw_cost is not None else None
         except (TypeError, ValueError):
             base = None
         if base is not None and base == 0:
@@ -86,7 +88,7 @@ class PriceStage:
             # 无实时价且无基准价：保持缺省，由预算引擎/知识库回落
             return
 
-    def price_food(self, item: dict, meal_price: float | None) -> None:
+    def price_food(self, item: dict[str, Any], meal_price: float | None) -> None:
         food_name = str(item.get("poi_name") or "")
         if settings.live_food_price_search and settings.llm_api_key:
             if food_name not in self.food_live_cache:

@@ -19,8 +19,10 @@ budget_clause / intent_clause / requirements_clause。
 import decimal
 import logging
 import re
+from collections.abc import Mapping
 from functools import lru_cache
 from math import ceil
+from typing import Any
 
 from app.agent import tools
 from app.agent.geo import nearest_neighbor_order
@@ -66,8 +68,12 @@ def is_authoritative_source(source: object) -> bool:
     return bool(text) and text.startswith(AUTHORITATIVE_SOURCE_PREFIXES)
 
 
-def has_valid_coords(poi: dict) -> bool:
-    """坐标存在且非 0/0（0/0 是缺失坐标的哨兵值，不是有效位置）。"""
+def has_valid_coords(poi: Mapping[str, Any]) -> bool:
+    """坐标存在且非 0/0（0/0 是缺失坐标的哨兵值，不是有效位置）。
+
+    参数用 Mapping 而非 dict：调用方既有开放 dict（落地草稿），也有
+    TypedDict（PoiFactRow 权威行）——TypedDict 可赋给 Mapping，不可赋给 dict。
+    """
     lat, lng = poi.get("latitude"), poi.get("longitude")
     if lat is None or lng is None:
         return False
@@ -191,7 +197,7 @@ def budget_tier(budget: float | None, persons: int, days: int) -> tuple[str, str
 def budget_clause(budget: float | None, persons: int, days: int) -> str:
     """生成给 LLM 的预算约束句；无预算时返回空串。"""
     label, guidance, ppd = budget_tier(budget, persons, days)
-    if not label:
+    if not label or budget is None:
         return ""
     return (
         f"预算要求（硬性）：总预算 ¥{float(budget):g}，{persons} 人 {days} 天，人均每天约 ¥{ppd:.0f}，"

@@ -18,7 +18,7 @@ from __future__ import annotations
 import copy
 import re
 from math import asin, cos, radians, sin, sqrt
-from typing import Any
+from typing import Any, TypedDict
 
 # 单日/兼容路径的校验修复次数
 MAX_FIX_ATTEMPTS = 2
@@ -71,9 +71,34 @@ def normalize_item_type(raw: Any) -> str:
     return _ITEM_TYPE_ALIASES.get(t, "attraction")
 
 
-def sanitize_itinerary_items(items: list[Any] | None) -> list[dict]:
-    """过滤脏项并归一 item_type，供 format_output / day_stream 构造 TripItem 前调用。"""
-    out: list[dict] = []
+class PoiFactRow(TypedDict, total=False):
+    """知识库权威行（候选快照/lookup）在落地边界的已知键形状（G-1.6）。"""
+
+    id: int | str
+    name: str
+    latitude: float
+    longitude: float
+    ticket_price: float
+    open_time: str
+    duration_min: int
+    address: str
+    rating: float
+    tags: str
+    image: str
+    source: str
+    source_updated_at: str
+    source_fetched_at: str
+    avg_cost: float
+
+
+def sanitize_itinerary_items(items: list[Any] | None) -> list[dict[str, Any]]:
+    """过滤脏项并归一 item_type，供 format_output / day_stream 构造 TripItem 前调用。
+
+    返回 dict[str, Any] 而非 TypedDict：落地链上每一步都允许缺键/写 None
+    （可变开放草稿），TypedDict(total=False) 的读写严格度会在这条链上处处
+    报错；键类型推断的收益放在只读的 PoiFactRow 上（facts 落地查询）。
+    """
+    out: list[dict[str, Any]] = []
     for item in filter_dirty_items(items):
         row = dict(item)
         row["item_type"] = normalize_item_type(row.get("item_type"))
@@ -320,7 +345,7 @@ def haversine_m(lat1, lng1, lat2, lng2) -> float:
         return f if abs(f) > 1e-6 else None
 
     a, b, c, d = _v(lat1), _v(lng1), _v(lat2), _v(lng2)
-    if None in (a, b, c, d):
+    if a is None or b is None or c is None or d is None:
         return float("inf")
     p1, p2 = radians(a), radians(c)
     dp = radians(c - a)
@@ -356,12 +381,16 @@ class PoiSeenRegistry:
         )
         return dist < self.max_proximity_m
 
-    def register(self, name, item_type, latitude=None, longitude=None) -> None:
+    def register(
+        self, name: str, item_type: str | None, latitude: float | None = None, longitude: float | None = None
+    ) -> None:
         if str(item_type or "") == "hotel":
             return
         key = norm_poi_key(name)
         if key:
             self._keys.add(key)
+        if latitude is None or longitude is None:
+            return
         try:
             lat, lng = float(latitude), float(longitude)
         except (TypeError, ValueError):
