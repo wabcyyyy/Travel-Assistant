@@ -43,6 +43,7 @@ from app.agent.generation_core import (
     count_hotel_nights_in_budget,
     draft_day_plans,
     drop_cross_day_duplicates,
+    fill_zero_costs,
     sanitize_itinerary_items,
     spread_hotels,
     stay_nights,
@@ -96,38 +97,6 @@ def _draft_state(req: GenerateRequest, reason: str, schedule_report: dict | None
         "schedule_report": report,
         "degraded_reason": reason,
     }
-
-
-def _fill_zero_costs(plans: list[dict], lookup: dict[str, dict]) -> int:
-    """餐饮/酒店 cost=0 时用知识库权威价覆盖（模型常把未知价写成 0）。
-
-    注意：RAG/知识库中的 ticket_price=0 与 None 含义不同——None 表示未知，
-    0 对景点表示免费；对 food/hotel 的 0 一律视为未知并回落 avg_cost。
-    """
-    filled = 0
-    for plan in plans:
-        for item in plan.get("items") or []:
-            if item.get("item_type") not in ("food", "hotel"):
-                continue
-            try:
-                cost = float(item.get("cost")) if item.get("cost") is not None else None
-            except (TypeError, ValueError):
-                cost = None
-            if cost not in (0, 0.0, None):
-                continue
-            name = str(item.get("poi_name") or "").strip()
-            poi = lookup.get(name) or {}
-            price = poi.get("ticket_price")
-            if price is None or price == 0:
-                price = poi.get("avg_cost")
-            if price is None or price == 0:
-                continue
-            try:
-                item["cost"] = float(price)
-                filled += 1
-            except (TypeError, ValueError):
-                continue
-    return filled
 
 
 def _floor_suggestions(raw: list[dict], extra_pool: list[dict]) -> list[dict]:
@@ -424,7 +393,7 @@ def generate_open_plans(
             name = str(poi.get("name") or "").strip()
             if name:
                 price_lookup[name] = poi
-        filled_costs = _fill_zero_costs(plans, price_lookup)
+        filled_costs = fill_zero_costs(plans, price_lookup)
         # 备选池补全必须看到酒店/体验候选，否则对应 tab 会空
         activities = [
             {**row, "_authoritative": True}

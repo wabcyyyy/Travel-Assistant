@@ -25,7 +25,13 @@ from app.agent.day_stream import (
     open_trip_prompt,
     sanitize_narrative,
 )
-from app.agent.generation_core import PoiSeenRegistry, norm_poi_key, spread_hotels, stay_nights
+from app.agent.generation_core import (
+    PoiSeenRegistry,
+    fill_zero_costs,
+    norm_poi_key,
+    spread_hotels,
+    stay_nights,
+)
 from app.agent.generators import (
     ReferencePool,
     budget_tier,
@@ -261,26 +267,8 @@ def _prepare_day(
             seen.register(name, item_type, item.get("latitude"), item.get("longitude"))
         kept_items.append(item)
     plan["items"] = kept_items
-    # 0 价补水：餐饮/酒店 cost=0 时用权威价覆盖（模型常把未知价写成 0）
-    for item in plan["items"]:
-        if item.get("item_type") not in ("food", "hotel"):
-            continue
-        try:
-            cost = float(item.get("cost")) if item.get("cost") is not None else None
-        except (TypeError, ValueError):
-            cost = None
-        if cost not in (0, 0.0, None):
-            continue
-        poi = price_lookup.get(str(item.get("poi_name") or "").strip()) or {}
-        price = poi.get("ticket_price")
-        if price is None or price == 0:
-            price = poi.get("avg_cost")
-        if price is None or price == 0:
-            continue
-        try:
-            item["cost"] = float(price)
-        except (TypeError, ValueError):
-            continue
+    # 0 价补水：餐饮/酒店 cost=0 用权威价覆盖（唯一实现在 generation_core，G-1.3 ③）
+    fill_zero_costs([plan], price_lookup)
     return plan
 
 

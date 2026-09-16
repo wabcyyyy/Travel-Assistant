@@ -189,6 +189,41 @@ def has_double_lunch(foods: list[dict]) -> bool:
     return len(lunches) >= 2
 
 
+def fill_zero_costs(plans: list[dict], lookup: dict[str, dict]) -> int:
+    """餐饮/酒店 cost=0 时用知识库权威价覆盖（模型常把未知价写成 0）。
+
+    0 价补水的唯一实现（G-1.3 ③：原 workflow 与 trip_stream._prepare_day 双份
+    内联收敛于此；治因——图/流式双生成链路本身——归 G-2.5）。
+
+    注意：RAG/知识库中的 ticket_price=0 与 None 含义不同——None 表示未知，
+    0 对景点表示免费；对 food/hotel 的 0 一律视为未知并回落 avg_cost。
+    """
+    filled = 0
+    for plan in plans:
+        for item in plan.get("items") or []:
+            if item.get("item_type") not in ("food", "hotel"):
+                continue
+            try:
+                cost = float(item.get("cost")) if item.get("cost") is not None else None
+            except (TypeError, ValueError):
+                cost = None
+            if cost not in (0, 0.0, None):
+                continue
+            name = str(item.get("poi_name") or "").strip()
+            poi = lookup.get(name) or {}
+            price = poi.get("ticket_price")
+            if price is None or price == 0:
+                price = poi.get("avg_cost")
+            if price is None or price == 0:
+                continue
+            try:
+                item["cost"] = float(price)
+                filled += 1
+            except (TypeError, ValueError):
+                continue
+    return filled
+
+
 def estimate_plans_total(
     plans: list[dict], persons: int, days: int | None, consumption: dict | None = None, rooms: int | None = None
 ) -> dict:
