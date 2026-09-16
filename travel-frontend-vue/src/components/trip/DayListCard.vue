@@ -317,6 +317,7 @@ import { useItineraryActions } from '../../composables/useItineraryActions'
 import { dayMetaText, dayTitle, dayTotalAmountOf, dayTintVar, formatTime, typeIcon, typeLabel } from './day-card/shared'
 import DayInlineTips from './day-card/DayInlineTips.vue'
 import { useItemPhoto } from '../../composables/useItemPhoto'
+import { useQuickEdit } from './day-card/useQuickEdit'
 import type { DayOption, DayPlan, TripItem } from '../../types/itinerary'
 import { isForeignCity, externalMapLink } from '../../utils/geo'
 import { estimateLeg, legText, type TravelLeg } from '../../utils/travelEstimate'
@@ -367,6 +368,7 @@ const emit = defineEmits<{
 
 const store = useItineraryStore()
 const actions = useItineraryActions()
+const { quickEdit, timeDraft, durDraft, costDraft, syncQuick, saveTime, saveCost } = useQuickEdit(actions)
 const { detail } = storeToRefs(store)
 
 const detailForeign = computed(() => isForeignCity(detail.value?.city ?? ''))
@@ -521,69 +523,6 @@ function onDrop(event: DragEvent) {
 }
 
 // ---------- 行内快捷编辑（时间 / 费用）：AppPopover + updateItem 单点写（v2.6 §19.3） ----------
-const quickEdit = ref<{ id: number; field: 'time' | 'cost' } | null>(null)
-const timeDraft = ref('')
-const durDraft = ref<number | null>(null)
-const costDraft = ref<number | null>(null)
-
-/** 同一时刻只允许一个行内 popover：打开时登记目标（并回填草稿），关闭时清除 */
-function syncQuick(item: TripItem, field: 'time' | 'cost', open: boolean) {
-  if (!open) {
-    const current = quickEdit.value
-    if (current && current.id === item.id && current.field === field) quickEdit.value = null
-    return
-  }
-  quickEdit.value = { id: item.id!, field }
-  if (field === 'time') {
-    timeDraft.value = item.startTime ? item.startTime.slice(0, 5) : ''
-    durDraft.value = item.durationMin ?? null
-  } else {
-    costDraft.value = item.cost ?? null
-  }
-}
-
-/** 完整字段载荷：与 ItemEditDialog 同口径（后端 PUT 为全量语义，避免部分更新丢坐标） */
-function baseUpdatePayload(item: TripItem) {
-  return {
-    itemType: item.itemType,
-    poiName: item.poiName,
-    poiId: item.poiId,
-    address: item.address,
-    latitude: item.latitude,
-    longitude: item.longitude,
-    startTime: item.startTime || undefined,
-    endTime: item.endTime,
-    durationMin: item.durationMin ?? undefined,
-    cost: item.cost ?? undefined,
-    tag: item.tag || undefined,
-    remark: item.remark || undefined,
-  }
-}
-
-async function saveTime(item: TripItem) {
-  // 原生 time 输入为 HH:mm；后端契约为 HH:mm:ss
-  const normalized = timeDraft.value
-    ? timeDraft.value.length === 5
-      ? `${timeDraft.value}:00`
-      : timeDraft.value
-    : undefined
-  await actions.updateItem(item.id!, {
-    ...baseUpdatePayload(item),
-    startTime: normalized,
-    durationMin: durDraft.value ?? undefined,
-  })
-  quickEdit.value = null
-  toast.success('时间已更新')
-}
-
-async function saveCost(item: TripItem) {
-  await actions.updateItem(item.id!, {
-    ...baseUpdatePayload(item),
-    cost: costDraft.value ?? undefined,
-  })
-  quickEdit.value = null
-  toast.success('费用已更新')
-}
 </script>
 
 <style scoped>
