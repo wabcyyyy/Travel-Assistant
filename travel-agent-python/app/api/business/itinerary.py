@@ -37,6 +37,7 @@ from app.services import (
     itinerary_city,
     itinerary_command,
     itinerary_generation,
+    itinerary_nl_edit,
     itinerary_plan_apply,
     itinerary_query,
     itinerary_version,
@@ -189,7 +190,7 @@ def post_nl_edit(
     user: AuthUser | None = Depends(enforce_business_auth),
 ) -> dict:
     """自然语言编辑：解析并**直接落库**（chat-edit 只出草稿，两者职责不同）。"""
-    return ok(itinerary_command.nl_edit(user.id, id, body.instruction))
+    return ok(itinerary_nl_edit.nl_edit(user.id, id, body.instruction))
 
 
 @router.post("/{id}/apply-plans")

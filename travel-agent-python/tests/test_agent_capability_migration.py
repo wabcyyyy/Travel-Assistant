@@ -33,7 +33,7 @@ from app.db.models import (
     PoiKnowledge,
     SysUser,
 )
-from app.services import cache_store, itinerary_city, itinerary_command, user_service
+from app.services import cache_store, itinerary_city, itinerary_nl_edit, user_service
 
 JWT_MATERIAL = "example-only-hs256-test-signing-material"
 PASSWORD = "example123"
@@ -146,7 +146,7 @@ def _trip_id(client: TestClient) -> int:
 
 
 def _ops(monkeypatch, *ops: EditOp) -> None:
-    monkeypatch.setattr(itinerary_command, "run_edit_ops", lambda _req: list(ops))
+    monkeypatch.setattr(itinerary_nl_edit, "run_edit_ops", lambda _req: list(ops))
 
 
 def _items(trip_id: int) -> dict[str, list[dict]]:
@@ -305,7 +305,7 @@ def test_agent_business_failure_keeps_request_failed_prefix(client: TestClient, 
     def refuse(_req):
         raise ValueError("没能理解这条修改指令，请换种说法")
 
-    monkeypatch.setattr(itinerary_command, "run_edit_ops", refuse)
+    monkeypatch.setattr(itinerary_nl_edit, "run_edit_ops", refuse)
     body = client.post(f"/api/itinerary/{_trip_id(client)}/nl-edit", json={"instruction": "随便改改"}).json()
     assert body["code"] == 502 and body["message"] == "请求失败：没能理解这条修改指令，请换种说法"
 
@@ -318,7 +318,7 @@ def test_agent_unparseable_input_maps_to_unavailable_message(client: TestClient)
 
 def test_missing_itinerary_is_404_before_calling_the_model(client: TestClient, monkeypatch) -> None:
     called = []
-    monkeypatch.setattr(itinerary_command, "run_edit_ops", lambda req: called.append(req) or [])
+    monkeypatch.setattr(itinerary_nl_edit, "run_edit_ops", lambda req: called.append(req) or [])
     assert client.post("/api/itinerary/999999/nl-edit", json={"instruction": "改"}).json()["code"] == 404
     assert called == [], "鉴权/归属失败时不该花钱调模型"
 
