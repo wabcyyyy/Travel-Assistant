@@ -71,3 +71,22 @@ def _clear_external_client_caches():
     yield
     for client in clients:
         client.clear_cache()
+
+
+@pytest.fixture(autouse=True)
+def _reset_addon_state_cache():
+    """addons.is_enabled 的进程内 TTL 缓存（5s）同样跨用例污染。
+
+    前序用例在它自己的 settings 补丁下读到的布尔值会被缓存住；后续用例改回
+    settings 也拿不到重读——实测：test_research_agents 在 live_price_search=False
+    下触发一次 is_enabled("live_price")，紧随其后的 test_format_output_golden
+    把开关钉回 True 仍读到缓存的 False，实时价预算归零，golden 快照 10 处 diff
+    （只有把两个文件换个顺序或走全量字母序才不红）。每个用例前后各 reset 一次，
+    让 is_enabled 在当前用例的 settings 口径下重新解析；专门测缓存/TTL 语义的
+    用例（test_addons）都在单用例内自洽，不受影响。
+    """
+    from app.common import addons
+
+    addons.reset_cache()
+    yield
+    addons.reset_cache()
