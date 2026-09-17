@@ -36,12 +36,16 @@ from app.db.models import (
 )
 from app.db.session import session_scope
 from app.schemas.trip import ChatTurnRequest
-from app.services import itinerary_city, itinerary_query
+from app.services import expense_service, itinerary_city, itinerary_query
 
 logger = logging.getLogger(__name__)
 
 # agent 侧 history 上限（ChatTurnRequest.max_length=20），与 Java 的 subList 同式
 HISTORY_WINDOW = 20
+
+# 预算口径币种：全站预算与 BudgetDetail 均为 CNY；账目可记其他币种，但不与预算
+# 直接比较（C3.4 只聚合 CNY 进对话上下文，其他币种仅列币种码提示用户）。
+BUDGET_CURRENCY = "CNY"
 
 
 def _escape(value: str) -> str:
@@ -346,11 +350,31 @@ class ChatTurnContext:
     base_revision: str
 
 
+def _spent_summary(user_id: int, itinerary_id: int) -> tuple[float | None, dict[str, float] | None, list[str] | None]:
+    """实际花费聚合（C3.4）：只汇总与预算同币种的账目，跨币种不换算不相加。
+
+    无任何账目时三个值全空——chat_body 不带 spent 字段，prompt 与历史行为零漂移。
+    """
+    totals = expense_service.list_expenses(user_id, itinerary_id)["totals"]
+    if not totals:
+        return None, None, None
+    domestic = [item for item in totals if item["currency"] == BUDGET_CURRENCY]
+    others = sorted({item["currency"] for item in totals if item["currency"] != BUDGET_CURRENCY})
+    by_category: dict[str, float] = {}
+    for item in domestic:
+        by_category[item["category"]] = round(by_category.get(item["category"], 0.0) + float(item["amount"]), 2)
+    return (
+        round(sum(float(item["amount"]) for item in domestic), 2),
+        by_category or None,
+        others or None,
+    )
+
+
 def build_chat_turn_context(
     user_id: int, itinerary_id: int, message: str, history: list[dict[str, Any]] | None
 ) -> ChatTurnContext:
     """构建发给 agent 的请求体——阻塞版与流式版的「同参构造」入口，两条路径输入必须一致。"""
-    main = itinerary_query.find_owned_main(user_id, itinerary_id)
+    main = itinerary_query.find_writable_main(user_id, itinerary_id)
     persisted = chat_history(user_id, itinerary_id)
     if persisted:
         # 库里已有记忆时以它为准，并压成 {role, content} 两键；只有空历史才用客户端传的
@@ -365,6 +389,7 @@ def build_chat_turn_context(
         budgets = session.execute(select(BudgetDetail).where(BudgetDetail.itinerary_id == itinerary_id)).scalars().all()
         current_total = float(sum((b.amount or Decimal("0") for b in budgets), Decimal("0")))
         hotel_total = float(sum((b.amount or Decimal("0") for b in budgets if b.category == "酒店"), Decimal("0")))
+    spent_total, spent_by_category, spent_other_currencies = _spent_summary(user_id, itinerary_id)
     return ChatTurnContext(
         {
             "city": main.city,
@@ -373,6 +398,9 @@ def build_chat_turn_context(
             "budget": None if main.budget is None else float(main.budget),
             "current_total": current_total,
             "current_hotel_total": hotel_total,
+            "spent_total": spent_total,
+            "spent_by_category": spent_by_category,
+            "spent_other_currencies": spent_other_currencies,
             "start_date": None if main.start_date is None else str(main.start_date),
             "end_date": None if main.end_date is None else str(main.end_date),
             "preferences": [] if not main.preferences else main.preferences.split(","),

@@ -26,8 +26,7 @@ jobs:
           python-version: '3.12'
           enable-cache: true
       - name: Sync deps (lockfile-driven)
-        # 依赖一律由 uv.lock 驱动，禁止手写 pin 列表：此前 CI 装 chromadb、
-        # 运行时用 qdrant-client 的漂移即由此而来
+        # 依赖一律由 uv.lock 驱动，禁止手写 pin 列表
         run: uv sync --frozen
       - name: Ruff check
         run: uv run ruff check .
@@ -66,10 +65,9 @@ jobs:
         run: uv sync --frozen
       - name: Offline unit tests (+ coverage for diff gate)
         env:
-          # 单测不依赖真实密钥；固定 hashed 向量（零模型加载，离线确定性）
+          # 单测不依赖真实密钥
           AGENT_INTERNAL_TOKEN: ''
           LLM_API_KEY: ''
-          RAG_EMBEDDING_PROVIDER: hashed
         # coverage.xml 供下一步 diff-cover 用；全量覆盖率不设阈值（存量面有历史
         # 包袱），只对**本次变更行**设门槛——这是 G-3.4 的口径。
         run: |
@@ -81,8 +79,6 @@ jobs:
       - name: Contract schema drift check
         # 契约唯一源是 app/schemas/**（登记表 app/schemas/contracts.py）；入仓导出物
         # （事件/分组 schema + openapi.json + 前端生成类型）与模型不同步即红
-        env:
-          RAG_EMBEDDING_PROVIDER: hashed
         run: |
           uv run python scripts/export_contracts.py
           git diff --exit-code -- ../contracts/ ../travel-frontend-vue/src/types/generated/
@@ -115,7 +111,6 @@ jobs:
         # trip 的 NDJSON 事件序列 + day 链路 plan/trace 逐字节比对 golden；
         # 有意改口径须 GOLDEN_REGENERATE=1 重生成并人工复核 diff
         env:
-          RAG_EMBEDDING_PROVIDER: hashed
           LLM_API_KEY: ''
         run: uv run pytest tests/test_stream_snapshot.py -q
       - name: Offline eval (agent + research)
@@ -125,7 +120,6 @@ jobs:
         # 并随同一 commit 入仓（人工复核 diff）。
         env:
           LLM_API_KEY: ''
-          RAG_EMBEDDING_PROVIDER: hashed
         run: |
           uv run python tests/agent_eval/eval_agent.py
           uv run python tests/agent_eval/eval_research.py

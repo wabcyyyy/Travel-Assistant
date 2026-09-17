@@ -23,6 +23,7 @@
               @keydown.enter.prevent="emit('item-select', item)"
             >
               <input
+                v-if="readOnly !== true"
                 type="checkbox"
                 class="row-check"
                 :checked="selected"
@@ -63,6 +64,7 @@
                     aria-hidden="true"
                   />
                   <span class="row-name">{{ item.poiName }}</span>
+                  <EvidenceBadge :item="item" />
                   <span class="qe-wrap" @click.stop>
                     <AppPopover
                       :open="quickEdit?.id === item.id && quickEdit?.field === 'time'"
@@ -130,13 +132,15 @@
                   :href="mapLinkOf(item)"
                   target="_blank"
                   rel="noopener"
-                  :title="mapLinkLabel"
-                  :aria-label="mapLinkLabel"
+                  :title="mapLinkLabel(item)"
+                  :aria-label="mapLinkLabel(item)"
+                  @keydown.stop
                   @click.stop
                 >
                   <ExternalLink :size="16" />
                 </a>
                 <button
+                  v-if="readOnly !== true"
                   type="button"
                   class="row-icon"
                   title="移至其他天"
@@ -146,6 +150,7 @@
                   <ArrowRightLeft :size="16" />
                 </button>
                 <button
+                  v-if="readOnly !== true"
                   type="button"
                   class="row-icon"
                   title="编辑详情"
@@ -155,6 +160,7 @@
                   <Pencil :size="16" />
                 </button>
                 <button
+                  v-if="readOnly !== true"
                   type="button"
                   class="row-icon is-danger"
                   title="删除"
@@ -188,12 +194,13 @@ import AppPopover from '../../ui/AppPopover.vue'
 import { confirmDialog } from '../../ui/confirm'
 import { toast } from '../../ui/toast'
 import DragSortHandle from '../DragSortHandle.vue'
+import EvidenceBadge from '../EvidenceBadge.vue'
 import { formatTime, typeIcon, typeLabel } from './shared'
 import { useQuickEdit } from './useQuickEdit'
 import { useItineraryActions } from '../../../composables/useItineraryActions'
 import { useItemPhoto } from '../../../composables/useItemPhoto'
 import { useItineraryStore } from '../../../store/itinerary'
-import { externalMapLink, isForeignCity } from '../../../utils/geo'
+import { externalMapLink, hasValidCoordinates, isForeignCity } from '../../../utils/geo'
 import { legText, type TravelLeg } from '../../../utils/travelEstimate'
 import type { DayPlan, TripItem } from '../../../types/itinerary'
 
@@ -204,6 +211,8 @@ defineProps<{
   leg: TravelLeg | null
   selected: boolean
   highlighted: boolean
+  /** 协作（C2.3）：viewer 只读——隐藏勾选/移动/编辑/删除（后端闸门为准） */
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -222,7 +231,12 @@ const { quickEdit, timeDraft, durDraft, costDraft, syncQuick, saveTime, saveCost
 const LEG_HINT = '本地直线估算（含路网折算，非实时路况）'
 
 const detailForeign = computed(() => isForeignCity(detail.value?.city ?? ''))
-const mapLinkLabel = computed(() => (detailForeign.value ? '谷歌地图' : '高德地图'))
+function mapLinkLabel(item: TripItem): string {
+  const provider = detailForeign.value ? '谷歌地图' : '高德地图'
+  return hasValidCoordinates(item) && detailForeign.value
+    ? `地图核实（${provider}）`
+    : `按名称核实（${provider}）`
+}
 
 /** 地图外链：统一口径在 utils/geo（国内高德搜索 / 海外 Google Maps，有坐标优先） */
 function mapLinkOf(item: TripItem) {

@@ -144,6 +144,10 @@ class Settings(BaseSettings):
     schedule_optimizer_enabled: bool = True
     # MCP 出口（G-3.6）：默认关闭，管理员在后台开启后 /mcp 才可用
     mcp_enabled: bool = False
+    # MCP 行程写入（C3.3）：默认关闭——查行程/重排一天/记账写工具单独显式打开
+    mcp_write_enabled: bool = False
+    # 模板广场（C2.4）：默认关闭，自托管私有部署不默认开放社区面
+    template_community_enabled: bool = False
 
     # ---- 图片源 ----
     unsplash_access_key: str = ""
@@ -152,46 +156,22 @@ class Settings(BaseSettings):
     pexels_access_key: str = ""
     poi_image_wiki: bool = True
 
-    # ---- RAG 检索 ----
-    # 默认 semantic：本地 bge-small-zh-v1.5 真语义向量（需先跑
-    # scripts/fetch_rag_model.py 预置模型；服务不隐式联网下载）。
-    # 依赖或模型不可用时由检索层降级到 hashed 哈希向量，并记录 fallback 遥测
-    # 与显式告警（不静默）。
-    rag_embedding_provider: str = "semantic"
-    rag_embedding_model: str = "BAAI/bge-small-zh-v1.5"
-    # 语义模型本地缓存目录（fetch_rag_model.py 下载到此；相对路径按进程 cwd 解析）
-    rag_model_cache_dir: str = Field(default_factory=lambda: str(BASE_DIR / "models"))
-    rag_top_k: int = 20
-    rag_rrf_k: int = 60
-    rag_document_version: str = "poi-fields-v2"
-    # 精排（P0②）：cross-encoder 对融合候选做语义精排；默认 none 保持零依赖，
-    # 部署时通过 .env 开启；模型不可用时检索层自动降级为仅融合排序。
-    rag_rerank_provider: str = "none"
-    rag_rerank_model: str = "BAAI/bge-reranker-v2-m3"
-    rag_rerank_candidates: int = 24
-    # 查询路由（P2）：仅含城市/品类泛词的查询走评分枚举、精确地名走词法直查，
-    # 减少无意图查询的向量与精排开销；路由只改执行路径，不改变权威数据边界。
-    rag_router_enabled: bool = True
-    # 语义缓存（P2）：检索结果按精确键与语义近似键复用；降级结果与空结果不缓存。
-    rag_cache_enabled: bool = True
-    rag_cache_ttl_seconds: int = 300
-    rag_cache_max_entries: int = 512
-    rag_cache_similarity: float = 0.95
-    # 轻量 GraphRAG（P2）：同城坐标网格近邻 + 标签相邻，支撑"附近推荐"类查询。
-    rag_graph_radius_m: int = 2000
-    rag_graph_nearby_limit: int = 5
-    # 索引新鲜度：加载后超过该秒数，下一次检索请求会惰性触发一次增量同步
-    # （指纹比对，未变化的行不重新 embedding）。0 表示关闭、仅启动/force 时同步。
-    # 解决"数据管线跑完后必须重启服务"的运维缺口。
-    rag_refresh_seconds: int = 60
-
-    # ---- 向量库（Qdrant） ----
-    # url 非空走独立服务（生产共享/多实例可读）；默认本地嵌入式持久化模式
-    # （数据可随时由 MySQL 全量重建，持久化只为加速启动）。
-    qdrant_url: str = ""
-    qdrant_path: str = Field(default_factory=lambda: str(BASE_DIR / "data" / "qdrant"))
-    qdrant_collection: str = "poi_knowledge"
-    qdrant_timeout: float = 10
+    # ---- 外部地点层（POI 权威库退役后的坐标/分类/图片来源） ----
+    # OpenTripMap（OSM+Wikidata 加工的旅游切片）：景点半径检索与详情；免费 key
+    # 在 https://opentripmap.io 注册。仅 en/ru 语言，返回名称为英文，中文名由
+    # LLM 对齐。key 为空时整层禁用，生成链路降级为纯 LLM + 联网搜索。
+    otm_api_key: str = ""
+    # 景点半径检索范围与上限（城市尺度）
+    otm_radius_m: int = 12000
+    otm_limit: int = 40
+    # OTM/Nominatim 单次调用超时（秒）；数据源失败一律静默降级，不阻断生成
+    places_timeout_seconds: float = 8.0
+    # Nominatim（OSM 官方地理编码）兜底：OTM 无法按"点名"解析，缺坐标的
+    # LLM 自选点位经它补真实坐标；公共实例政策 1 rps。
+    nominatim_enabled: bool = True
+    # Open-Meteo 免 key 天气（C3.1）：研究证据与行程页逐日预报；失败静默，
+    # 关掉即整体停用（与 Nominatim 同类的免费数据源，走 env 开关不入 addon）。
+    weather_enabled: bool = True
 
     # ---- MySQL ----
     db_host: str = "localhost"
@@ -275,7 +255,9 @@ _NUMERIC_RULES: tuple[tuple[str, str, float, float], ...] = (
     ("max_replans", "必须 >= 0", -1, float("inf")),
     ("jwt_expire_hours", "必须 >= 1", 0, float("inf")),
     ("cover_upload_max_bytes", "必须 > 0", 0, float("inf")),
-    ("rag_top_k", "必须 >= 1", 0, float("inf")),
+    ("otm_radius_m", "必须 > 0", 0, float("inf")),
+    ("otm_limit", "必须 >= 1", 0, float("inf")),
+    ("places_timeout_seconds", "必须 > 0", 0, float("inf")),
     ("share_rate_limit_per_minute", "必须 >= 1", 0, float("inf")),
 )
 _RANGES = {key: (low, high) for key, _req, low, high in _NUMERIC_RULES}

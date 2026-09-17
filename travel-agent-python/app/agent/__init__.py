@@ -23,15 +23,18 @@ from app.agent.observability import metrics, observe_run, scene, use_scene
 from app.agent.plan_context import run_plan_context
 from app.agent.schedule_optimizer import optimize_daily_plan
 from app.agent.tool_registry import ToolInvocationError, ToolSpec, registry
-from app.agent.tools import find_nearby_pois
+from app.agent.tools import find_nearby_pois, get_poi_detail, search_hotels, workbench_search
 from app.agent.trip_stream import run_generate_trip_stream
 from app.agent.usage_store import usage_store
+from app.agent.weather import get_weather_forecast
 from app.agent.workflow import run_adjust, run_generate
 
 __all__ = [
     "ToolInvocationError",
     "ToolSpec",
     "find_nearby_pois",
+    "get_poi_detail",
+    "get_weather_forecast",
     "metrics",
     "observe_run",
     "optimize_daily_plan",
@@ -49,6 +52,8 @@ __all__ = [
     "run_plan_context",
     "run_poi_intros",
     "scene",
+    "search_hotels",
     "usage_store",
     "use_scene",
+    "workbench_search",
 ]

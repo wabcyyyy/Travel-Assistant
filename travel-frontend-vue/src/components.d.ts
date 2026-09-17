@@ -25,6 +25,7 @@ declare module 'vue' {
     ButlerStrip: typeof import('./components/trip/ButlerStrip.vue')['default']
     ChatEditPanel: typeof import('./components/trip/ChatEditPanel.vue')['default']
     Chip: typeof import('./components/ui/Chip.vue')['default']
+    CollabPanel: typeof import('./components/trip/CollabPanel.vue')['default']
     CoverDialog: typeof import('./components/trip/CoverDialog.vue')['default']
     DayInlineTips: typeof import('./components/trip/day-card/DayInlineTips.vue')['default']
     DayItemRow: typeof import('./components/trip/day-card/DayItemRow.vue')['default']
@@ -74,6 +75,8 @@ declare module 'vue' {
     ElTag: typeof import('element-plus/es')['ElTag']
     ElTimePicker: typeof import('element-plus/es')['ElTimePicker']
     EmptyState: typeof import('./components/ui/EmptyState.vue')['default']
+    EvidenceBadge: typeof import('./components/trip/EvidenceBadge.vue')['default']
+    ExpensePanel: typeof import('./components/trip/ExpensePanel.vue')['default']
     ExportBar: typeof import('./components/trip/ExportBar.vue')['default']
     HeadStatusPanel: typeof import('./components/trip/HeadStatusPanel.vue')['default']
     HotelOptionsDialog: typeof import('./components/HotelOptionsDialog.vue')['default']
@@ -89,8 +92,10 @@ declare module 'vue' {
     Sheet: typeof import('./components/ui/Sheet.vue')['default']
     SkeletonCard: typeof import('./components/ui/SkeletonCard.vue')['default']
     StatTile: typeof import('./components/ui/StatTile.vue')['default']
+    TemplatePublishDialog: typeof import('./components/trip/TemplatePublishDialog.vue')['default']
     Toolbar: typeof import('./components/ui/Toolbar.vue')['default']
     TripMapPanel: typeof import('./components/trip/TripMapPanel.vue')['default']
+    VerificationNotice: typeof import('./components/trip/VerificationNotice.vue')['default']
     VersionHistoryDrawer: typeof import('./components/trip/VersionHistoryDrawer.vue')['default']
   }
   export interface ComponentCustomProperties {

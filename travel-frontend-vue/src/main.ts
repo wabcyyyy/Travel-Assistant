@@ -24,3 +24,11 @@ app.use(router)
 app.use(ElLoading)
 
 app.mount('#app')
+
+// PWA（C2.5）：SW 只管应用壳 precache + 离线导航回退；私有数据快照在
+// utils/offlineSnapshots（按账号 IndexedDB），与 SW 缓存职责互不重叠。
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  import('virtual:pwa-register').then(({ registerSW }) => registerSW({ immediate: true })).catch(() => {
+    /* SW 注册失败不影响线上功能 */
+  })
+}

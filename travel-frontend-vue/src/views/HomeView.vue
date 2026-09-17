@@ -387,7 +387,7 @@ onMounted(load)
 
 .dash-rail {
   position: sticky;
-  top: 76px;
+  top: 80px;
   display: flex;
   flex-direction: column;
   gap: var(--lp-space-3);
@@ -399,7 +399,8 @@ onMounted(load)
   gap: var(--lp-space-3);
 }
 
-/* ---------- 海报式登机牌：整张卡就是首屏主角（高度按视口给） ---------- */
+/* ---------- 海报式登机牌：整张卡就是首屏主角（高度按视口给；trek .hero-trip：
+   r32 + 微近影/大氛围影） ---------- */
 .hero {
   position: relative;
   display: flex;
@@ -408,7 +409,8 @@ onMounted(load)
   gap: var(--lp-space-6);
   min-height: clamp(520px, 68vh, 760px);
   padding: var(--lp-space-5);
-  border-radius: var(--lp-radius-xl);
+  border-radius: var(--lp-radius-hero);
+  box-shadow: var(--lp-shadow-hero);
   overflow: hidden;
   background: var(--lp-cover-gradient);
   cursor: pointer;
@@ -495,10 +497,12 @@ onMounted(load)
 
 .hero-title {
   margin: 0;
-  font-size: clamp(42px, 6.6vw, 108px);
-  font-weight: 700;
-  line-height: 1.02;
-  letter-spacing: -0.015em;
+  /* trek .hero-title 实测 104px/600/lh0.9/ls-0.045em；中文标题按 CJK 字形把行距与
+     字距放宽两档（0.98/-0.03em），拉丁文仍落在 Poppins 原版节奏上 */
+  font-size: clamp(42px, 7.2vw, 104px);
+  font-weight: 600;
+  line-height: 0.98;
+  letter-spacing: -0.03em;
   text-wrap: balance;
   color: var(--lp-text-inverse);
   text-shadow: 0 4px 32px var(--lp-overlay);
@@ -582,17 +586,19 @@ onMounted(load)
   gap: var(--lp-space-3);
 }
 
-/* ---------- 右栏卡：白卡 + 发丝边（TREK dashboard 的克制做法） ---------- */
+/* ---------- 右栏卡（v2.8 对表 trek .tool 实测）：暖玻璃渐变 + 28px 圆角 + 内高光 ---------- */
 .rail-card {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--lp-space-2);
-  padding: var(--lp-space-4);
-  border: 1px solid var(--lp-edge-1);
-  border-radius: var(--lp-radius-card-lg);
-  background: var(--lp-surface-card);
-  box-shadow: var(--lp-shadow-xs);
+  padding: var(--lp-space-5) var(--lp-space-5) var(--lp-space-4);
+  border: 1px solid var(--lp-glass-border);
+  border-radius: var(--lp-radius-xl);
+  background: var(--lp-glass-bg);
+  backdrop-filter: var(--lp-glass-blur);
+  -webkit-backdrop-filter: var(--lp-glass-blur);
+  box-shadow: var(--lp-glass-shadow), var(--lp-glass-highlight);
 }
 
 .rail-caption {

@@ -22,7 +22,7 @@ from typing import Any
 from sqlalchemy import select
 
 from app.common.envelope import ApiError
-from app.db.models import HotelRoomType, ItineraryDay, ItineraryItem, PoiKnowledge
+from app.db.models import ItineraryDay, ItineraryItem
 from app.db.session import session_scope
 from app.schemas.business.itinerary import HotelOptionRequest
 from app.schemas.trip import MAX_TRIP_DAYS
@@ -41,7 +41,6 @@ MAX_ITEMS_PER_DAY = 20
 MAX_POI_NAME = 128
 DEFAULT_NEW_DAY_NOTE = "宽松安排"
 HOTEL_START_TIME = time(20, 0)
-BASIC_ROOM_TYPE = "基础房型"
 
 
 # ---------- 应用 AI 草稿 ----------
@@ -51,7 +50,7 @@ def apply_plans(
     user_id: int, itinerary_id: int, action_message_id: int | None, base_revision: str | None
 ) -> dict[str, Any]:
     with session_scope() as session:
-        main = itinerary_query.require_main(session, user_id, itinerary_id)
+        main = itinerary_query.require_writable_main(session, user_id, itinerary_id)
         message = itinerary_chat.require_pending_action(
             session, user_id, itinerary_id, action_message_id, base_revision, False
         )
@@ -104,7 +103,7 @@ def apply_plans(
                 if not name.strip() or name == "null":
                     continue
                 sort_no = _apply_plan_item(
-                    session, raw_item, name, main.city, itinerary_id, day.id, existing_items, retained_item_ids, sort_no
+                    session, raw_item, name, itinerary_id, day.id, existing_items, retained_item_ids, sort_no
                 )
 
         for item_id, item in existing_items.items():
@@ -131,17 +130,12 @@ def _apply_plan_item(
     session,
     raw_item: dict[str, Any],
     name: str,
-    city: str | None,
     itinerary_id: int,
     day_id: int,
     existing_items: dict[int, ItineraryItem],
     retained: set[int],
     sort_no: int,
 ) -> int:
-    poi = session.execute(
-        select(PoiKnowledge).where(PoiKnowledge.city == city, PoiKnowledge.name == name).limit(1)
-    ).scalar_one_or_none()
-
     existing: ItineraryItem | None = None
     item_id = raw_item.get("id")
     if _is_number(item_id):
@@ -149,9 +143,9 @@ def _apply_plan_item(
         if existing is None or name != existing.poi_name:
             raise ApiError(400, "行程项身份校验失败，未应用任何修改")
 
-    item_type = _str_or(raw_item.get("item_type"), poi.category if poi is not None else "attraction")
-    if poi is None and existing is None and item_type != "transport":
-        raise ApiError(400, "行程项不属于当前城市候选 POI，未应用任何修改")
+    # 语料库退役：候选事实（坐标/地址/估价）以生成期富化后的草稿字段为准，
+    # 不再回查 poi_knowledge。poi_id 存外部地点 ID（OTM xid 等）。
+    item_type = _str_or(raw_item.get("item_type"), "attraction")
 
     # existing 与 entity 是同一个对象：Java 里紧随其后的 `setCost(existing.getCost())`
     # 是自赋值空操作（成本已被候选 POI 覆盖），这里同样不做保留，别"顺手修好"。
@@ -160,21 +154,14 @@ def _apply_plan_item(
     entity.itinerary_id = itinerary_id
     entity.item_type = item_type
     entity.poi_name = name
-    if poi is not None:
-        entity.poi_id = str(poi.id)
-        entity.address = poi.address
-        entity.latitude = poi.latitude
-        entity.longitude = poi.longitude
-        entity.cost = poi.ticket_price
-        entity.duration_min = poi.duration_min
-        entity.open_time = poi.open_time
-        entity.source = poi.source
-        entity.source_updated_at = poi.source_updated_at
-        entity.verification_status = "unverified" if poi.source_updated_at is None else "partially_verified"
-        entity.value_kind = "observed"
-        entity.freshness_status = "unknown" if poi.source_updated_at is None else "fresh"
-        entity.review_requirement = "before_departure" if poi.source_updated_at is None else "none"
-        entity.tag = poi.tags
+    entity.poi_id = _str_or(raw_item.get("poi_id"), None) or _str_or(raw_item.get("id"), None)
+    entity.address = _str_or(raw_item.get("address"), entity.address)
+    if _is_number(raw_item.get("latitude")):
+        entity.latitude = Decimal(str(raw_item["latitude"]))
+    if _is_number(raw_item.get("longitude")):
+        entity.longitude = Decimal(str(raw_item["longitude"]))
+    if _is_number(raw_item.get("cost")):
+        entity.cost = Decimal(str(raw_item["cost"]))
 
     entity.start_time = _parse_time(raw_item.get("start_time"))
     entity.end_time = _parse_time(raw_item.get("end_time"))
@@ -213,7 +200,7 @@ def apply_hotel_option(user_id: int, itinerary_id: int, request: HotelOptionRequ
     request = request or HotelOptionRequest()
     _validate_hotel_request(request)
     with session_scope() as session:
-        main = itinerary_query.require_main(session, user_id, itinerary_id)
+        main = itinerary_query.require_writable_main(session, user_id, itinerary_id)
         message = itinerary_chat.require_pending_action(
             session, user_id, itinerary_id, request.actionMessageId, request.baseRevision, True
         )
@@ -221,17 +208,17 @@ def apply_hotel_option(user_id: int, itinerary_id: int, request: HotelOptionRequ
         if not hotel_name.strip() or len(hotel_name) > MAX_POI_NAME:
             raise ApiError(400, "酒店名称不合法")
 
-        hotel = session.execute(
-            select(PoiKnowledge)
-            .where(PoiKnowledge.city == main.city, PoiKnowledge.category == "hotel", PoiKnowledge.name == hotel_name)
-            .limit(1)
-        ).scalar_one_or_none()
-        # 省级目的地的酒店候选来自省内具体城市，按名称兜底解析。
-        if hotel is None:
-            hotel = session.execute(
-                select(PoiKnowledge).where(PoiKnowledge.category == "hotel", PoiKnowledge.name == hotel_name).limit(1)
-            ).scalar_one_or_none()
-        if hotel is None:
+        # 语料库退役：酒店事实与房价一律以**待确认消息里的候选卡片**为准
+        # （卡片由 chat_draft 生成时写入 hotel_options_json），不回查 poi_knowledge。
+        option = next(
+            (
+                option
+                for option in itinerary_chat.read_json_list(message.hotel_options_json)
+                if isinstance(option, dict) and str(option.get("hotelName")) == hotel_name
+            ),
+            None,
+        )
+        if option is None:
             raise ApiError(404, "未找到该城市的酒店候选")
         itinerary_chat.validate_hotel_choice(message, hotel_name, request.roomType or "")
 
@@ -258,17 +245,17 @@ def apply_hotel_option(user_id: int, itinerary_id: int, request: HotelOptionRequ
         if not selected_day_nos or not day_by_no.keys() >= set(selected_day_nos):
             raise ApiError(400, "选择的入住晚次不在当前行程中")
 
-        room = session.execute(
-            select(HotelRoomType)
-            .where(HotelRoomType.poi_id == hotel.id, HotelRoomType.room_name == request.roomType)
-            .limit(1)
-        ).scalar_one_or_none()
-        if room is not None:
-            room_base_price, room_description = room.base_price, room.description
-        elif request.roomType == BASIC_ROOM_TYPE:
-            room_base_price, room_description = hotel.ticket_price, "知识库酒店基础房型参考价"
-        else:
+        # 房型价从候选卡片解析：card.roomTypes[].basePrice —— 卡片即报价单，
+        # 不存在"回退知识库价"的路径（校验已保证所选项必须出现在卡片里）。
+        rooms = [room for room in option.get("roomTypes") or [] if isinstance(room, dict)]
+        room = next(
+            (room for room in rooms if str(room.get("roomName")) == request.roomType),
+            None,
+        )
+        if room is None:
             raise ApiError(400, "该酒店不存在所选房型")
+        room_base_price = _to_decimal(room.get("basePrice"))
+        room_description = _str_or(room.get("description"), None)
         if room_base_price is None or room_base_price <= 0:
             raise ApiError(400, "所选房型暂无有效参考价")
 
@@ -286,14 +273,10 @@ def apply_hotel_option(user_id: int, itinerary_id: int, request: HotelOptionRequ
                 )
                 session.add(item)
             stay_date = day.travel_date or main.start_date
-            item.poi_id = str(hotel.id)
-            item.poi_name = hotel.name
-            item.address = hotel.address
-            item.latitude = hotel.latitude
-            item.longitude = hotel.longitude
+            item.poi_id = _str_or(option.get("id"), hotel_name)
+            item.poi_name = hotel_name
+            item.address = _str_or(option.get("address"), None)
             item.cost = season_price.apply(room_base_price, stay_date)
-            item.duration_min = hotel.duration_min
-            item.tag = hotel.tags
             item.remark = _hotel_price_remark(request.roomType, room_base_price, stay_date, room_description)
 
         if set(selected_day_nos) >= existing_hotel_day_nos and request.tier and request.tier.strip():
@@ -406,6 +389,13 @@ def _is_number(value: Any) -> bool:
 
 def _as_int(value: Any) -> int | None:
     return int(value) if _is_number(value) else None
+
+
+def _to_decimal(value: Any) -> Decimal | None:
+    """候选卡片里的价格 → 两位小数 Decimal；缺失/非法返回 None（按无参考价拒绝）。"""
+    if _is_number(value) and float(value) > 0:
+        return Decimal(str(value)).quantize(Decimal("0.01"))
+    return None
 
 
 def _str_or(value: Any, fallback: str | None) -> str | None:

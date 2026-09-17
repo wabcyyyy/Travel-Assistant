@@ -1,38 +1,41 @@
 <template>
   <div class="shell">
-    <!-- 同一组件树：≥768px 是左侧常驻 NavRail，<768px 折为底部 BottomBar（CSS 切布局，不做第二套 shell） -->
-    <nav class="nav" aria-label="主导航">
-      <router-link
-        v-for="item in navItems"
-        :key="item.path"
-        :to="item.path"
-        class="nav-item"
-        :class="{ active: isActive(item.path) }"
-      >
-        <el-icon :size="22"><component :is="item.icon" /></el-icon>
-        <span class="nav-label">{{ item.label }}</span>
-      </router-link>
-    </nav>
-
     <div class="shell-main">
+      <!-- trek 形态（v2.8 复刻）：全宽顶栏 + 居中胶囊导航；同一份 nav DOM 在
+           <768px 折为底部 BottomBar（CSS 切布局，不做第二套 shell） -->
       <header class="topbar lp-header">
-        <div class="crumbs" aria-label="面包屑">
-          <span class="crumb-brand">旅行助手</span>
-          <template v-if="currentTitle">
-            <span class="crumb-sep" aria-hidden="true">/</span>
-            <span class="crumb-current">{{ currentTitle }}</span>
-          </template>
+        <div class="topbar-left">
+          <div class="crumbs" aria-label="面包屑">
+            <span class="crumb-brand">旅行助手</span>
+            <template v-if="currentTitle">
+              <span class="crumb-sep" aria-hidden="true">/</span>
+              <span class="crumb-current">{{ currentTitle }}</span>
+            </template>
+          </div>
+
+          <form class="global-search" role="search" @submit.prevent="submitSearch">
+            <el-input
+              v-model="keyword"
+              placeholder="搜索行程…（回车）"
+              clearable
+              :prefix-icon="Search"
+              aria-label="搜索行程"
+            />
+          </form>
         </div>
 
-        <form class="global-search" role="search" @submit.prevent="submitSearch">
-          <el-input
-            v-model="keyword"
-            placeholder="搜索行程…（回车）"
-            clearable
-            :prefix-icon="Search"
-            aria-label="搜索行程"
-          />
-        </form>
+        <nav class="nav" aria-label="主导航">
+          <router-link
+            v-for="item in navItems"
+            :key="item.path"
+            :to="item.path"
+            class="nav-item"
+            :class="{ active: isActive(item.path) }"
+          >
+            <el-icon :size="17"><component :is="item.icon" /></el-icon>
+            <span class="nav-label">{{ item.label }}</span>
+          </router-link>
+        </nav>
 
         <div class="topbar-end">
           <AppearancePopover />
@@ -61,11 +64,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Compass, HomeFilled, MagicStick, MapLocation, Search, Setting } from '@element-plus/icons-vue'
+import { Compass, Files, HomeFilled, MagicStick, MapLocation, Search, Setting } from '@element-plus/icons-vue'
 
 import { logoutApi } from '../../api'
+import { getTemplateCapability } from '../../api/templates'
 import { useUserStore } from '../../store/user'
 import AppearancePopover from './AppearancePopover.vue'
 
@@ -74,6 +78,17 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const keyword = ref('')
+// 模板广场可见性：登录后探测一次（探测端点恒 200，addon 关时 enabled=false）
+const templateEnabled = ref(false)
+
+onMounted(async () => {
+  if (!userStore.username) return
+  try {
+    templateEnabled.value = (await getTemplateCapability()).data.enabled
+  } catch {
+    templateEnabled.value = false
+  }
+})
 
 interface NavItem {
   path: string
@@ -88,6 +103,10 @@ const navItems = computed<NavItem[]>(() => {
     { path: '/atlas', label: '图鉴', icon: MapLocation },
     { path: '/generate', label: '生成', icon: MagicStick },
   ]
+  // 模板广场（C2.4）：addon 开启时才出现在导航（自托管默认关）
+  if (templateEnabled.value) {
+    items.push({ path: '/templates', label: '模板', icon: Files })
+  }
   // 沿用现状判定源（store/user.ts 读同一 localStorage role）
   if (userStore.role === 'admin') {
     items.push({ path: '/admin', label: '管理端', icon: Setting })
@@ -99,6 +118,7 @@ const ROUTE_TITLES: Record<string, string> = {
   home: '今日',
   trips: '旅程',
   atlas: '图鉴',
+  templates: '模板广场',
   'trip-detail': '行程详情',
   generate: '生成',
   login: '登录',
@@ -134,38 +154,53 @@ async function onLogout(): Promise<void> {
 
 <style scoped>
 .shell {
-  display: grid;
-  grid-template-columns: 84px minmax(0, 1fr);
+  display: block;
   min-height: 100vh;
 }
 
-/* ---------- 导航（桌面 = 左栏；移动 = 底栏，见媒体查询） ---------- */
-.nav {
+/* ---------- 顶栏（v2.8 trek 复刻）：全宽白玻璃条 h64，三段 grid（左线索/中导航/右操作），
+   中列放同一份 nav DOM；<768px 该 nav 折为底部 BottomBar ---------- */
+.topbar {
   position: sticky;
   top: 0;
-  height: 100vh;
+  z-index: var(--lp-z-bar);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--lp-space-4);
+  height: 64px;
+  padding: 0 var(--lp-space-4);
+}
+
+.topbar-left {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: var(--lp-space-4);
+  min-width: 0;
+}
+
+/* ---------- 居中胶囊导航（trek 实测：浅灰轨道 14px 圆角，active 项白胶囊浮起） ---------- */
+.nav {
+  display: flex;
+  align-items: center;
   gap: 2px;
-  padding: var(--lp-space-4) var(--lp-space-2);
-  /* 容器用「浅面」而不是描边分层（TREK 的做法）：选中项才是浮起的白胶囊 */
-  background: var(--lp-surface-2);
+  padding: 4px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--lp-text-1) 4%, transparent);
 }
 
 .nav-item {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: var(--lp-space-2) 4px;
-  border-radius: var(--lp-radius-sm);
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 10px;
   color: var(--lp-text-muted);
   text-decoration: none;
   transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .nav-item:hover {
-  background: color-mix(in srgb, var(--lp-text-1) 6%, transparent);
   color: var(--lp-text-1);
 }
 
@@ -176,25 +211,9 @@ async function onLogout(): Promise<void> {
 }
 
 .nav-label {
-  font-size: 11px;
-  font-weight: 600;
-}
-
-/* ---------- 顶栏：居中悬浮胶囊（v2.6 §19.4；玻璃视觉来自 .lp-header，此处只调形） ----------
-   v2.7 §20 R1 垂直压缩：56→48 高、12→8 上距（TREK 的导航行更矮，详情页要把它让给工作台） */
-.topbar {
-  position: sticky;
-  top: 8px;
-  z-index: var(--lp-z-bar);
-  display: flex;
-  align-items: center;
-  gap: var(--lp-space-4);
-  height: 48px;
-  padding: 0 var(--lp-space-5);
-  width: calc(100% - 32px);
-  max-width: var(--lp-content-wide);
-  margin: 8px auto 0;
-  border-radius: var(--lp-radius-lg);
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .crumbs {
@@ -222,14 +241,14 @@ async function onLogout(): Promise<void> {
 
 .global-search {
   flex: 1;
-  max-width: 360px;
+  max-width: 280px;
 }
 
 .topbar-end {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--lp-space-2);
-  margin-left: auto;
 }
 
 .user-name {
@@ -288,10 +307,24 @@ async function onLogout(): Promise<void> {
   margin: 0;
 }
 
-/* ---------- <768px：NavRail 折为 BottomBar（同一 DOM） ---------- */
+/* ---------- <768px：顶栏压缩，居中 nav 折为底部 BottomBar（同一 DOM） ---------- */
 @media (max-width: 767px) {
-  .shell {
-    display: block;
+  .topbar {
+    height: 48px;
+    gap: var(--lp-space-2);
+    padding: 0 var(--lp-space-3);
+  }
+
+  .topbar-left {
+    gap: var(--lp-space-2);
+  }
+
+  .global-search {
+    display: none;
+  }
+
+  .user-name {
+    display: none;
   }
 
   .nav {
@@ -305,39 +338,42 @@ async function onLogout(): Promise<void> {
     /* 底栏有内容从下方流过 → 玻璃是这里唯一被动机支撑的用法 */
     background: var(--lp-glass-bg);
     backdrop-filter: var(--lp-glass-blur);
+    border-radius: 0;
     border-top: 1px solid var(--lp-glass-border);
-    box-shadow: var(--lp-glass-shadow), var(--lp-glass-highlight);
+    box-shadow: var(--lp-glass-shadow);
     z-index: var(--lp-z-nav);
   }
 
   .nav-item {
     flex: 0 1 auto;
+    flex-direction: column;
+    gap: 4px;
     padding: 6px var(--lp-space-3);
+    border-radius: var(--lp-radius-sm);
+  }
+
+  .nav-item.active {
+    box-shadow: none;
+  }
+
+  .nav-label {
+    font-size: 11px;
+    font-weight: 600;
   }
 
   .shell-main {
     padding-bottom: 64px;
   }
 
-  .topbar {
-    top: 0;
-    width: 100%;
-    margin: 0;
-    border-radius: 0;
-    gap: var(--lp-space-2);
-    padding: 0 var(--lp-space-3);
-  }
-
-  .global-search {
-    display: none;
-  }
-
-  .user-name {
-    display: none;
-  }
-
   .content {
     padding: var(--lp-space-4) var(--lp-space-3);
+  }
+}
+
+/* ---------- 中窄屏（768-1199）：顶栏放不下搜索，藏之（移动壳另有入口） ---------- */
+@media (min-width: 768px) and (max-width: 1199px) {
+  .global-search {
+    display: none;
   }
 }
 </style>

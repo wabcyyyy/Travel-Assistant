@@ -40,7 +40,12 @@ if (Test-Path $secrets) {
 }
 
 Step "offline tests (+ coverage)"
-$env:RAG_EMBEDDING_PROVIDER = "hashed"
+# Windows: pytest tmp_path factory scans legacy pytest-of-* dirs under the system
+# TEMP and can hit permission errors (WinError 5). Redirect into the repo.
+$tmp = Join-Path $pkg ".tmp-pytest"
+New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+$env:TEMP = $tmp
+$env:TMP = $tmp
 uv run pytest tests/ -q --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval --cov=app --cov-report=xml --cov-report=
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

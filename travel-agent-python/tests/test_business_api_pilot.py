@@ -19,7 +19,7 @@ from app.common import token_revocation
 from app.common.envelope import ApiError, install_exception_handlers, ok
 from app.common.jwt_compat import encode_token
 from app.db import session as db_session
-from app.db.models import Base, PoiKnowledge
+from app.db.models import Base, CityGeo
 
 SIGNING_MATERIAL = "example-only-hs256-signing-material-32b"  # 测试占位串，非真实凭据
 
@@ -30,14 +30,13 @@ def client(tmp_path, monkeypatch) -> TestClient:
     Base.metadata.create_all(engine)
     db_session.init_engine(engine, sessionmaker(bind=engine, expire_on_commit=False))
     with db_session.session_scope() as s:
+        # supported-cities 现以 city_geo 字典为源（V4 退役 poi_knowledge）
         s.add_all(
             [
-                PoiKnowledge(city="杭州", name="西湖", category="attraction"),
-                PoiKnowledge(city="北京", name="故宫", category="attraction"),
-                PoiKnowledge(city="杭州", name="灵隐寺", category="attraction"),
+                CityGeo(city_name="北京", country="中国", country_code="CN", is_domestic=True),
+                CityGeo(city_name="杭州", country="中国", country_code="CN", is_domestic=True),
             ]
         )
-
     monkeypatch.setattr(deps.settings, "jwt_secret", SIGNING_MATERIAL)
     monkeypatch.setattr(deps.token_revocation, "is_revoked", lambda _t: False)
     monkeypatch.setattr(

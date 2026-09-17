@@ -105,12 +105,6 @@ def _get_consumption_handler(**params: Any) -> dict | None:
     return tools.get_consumption(params["city"])
 
 
-def _search_hotel_room_types_handler(**params: Any) -> list[dict]:
-    from app.agent import tools
-
-    return tools.search_hotel_room_types(params["poi_ids"])
-
-
 def _poi_image_handler(**params: Any) -> str | None:
     from app.agent import tools
 
@@ -364,27 +358,6 @@ registry.register(
         requires_confirmation=False,
         idempotent=True,
         handler=_get_consumption_handler,
-    )
-)
-registry.register(
-    ToolSpec(
-        name="search_hotel_room_types",
-        version="1.0",
-        description="按 POI id 列表查询酒店房型与价格",
-        parameters={
-            "type": "object",
-            "properties": {"poi_ids": {"type": "array"}},
-            "required": ["poi_ids"],
-            "additionalProperties": False,
-        },
-        read_only=True,
-        risk_level="low",
-        timeout_seconds=5,
-        max_calls=4,
-        retry_policy={"max_retries": 0},
-        requires_confirmation=False,
-        idempotent=True,
-        handler=_search_hotel_room_types_handler,
     )
 )
 registry.register(

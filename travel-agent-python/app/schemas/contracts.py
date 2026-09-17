@@ -47,6 +47,35 @@ from app.schemas.business.itinerary import (
     UpdateDayBody,
     VersionBody,
 )
+from app.schemas.collaboration import (
+    InvitationAcceptRequest,
+    InvitationAcceptVO,
+    InvitationCreate,
+    InvitationCreatedVO,
+    InvitationListVO,
+    InvitationVO,
+    MemberListVO,
+    MemberRoleUpdate,
+    MemberVO,
+)
+from app.schemas.expense import (
+    ExpenseCategoryTotal,
+    ExpenseCreate,
+    ExpenseListVO,
+    ExpenseUpdate,
+    ExpenseVO,
+)
+from app.schemas.template import (
+    TemplateCardVO,
+    TemplateCostTier,
+    TemplateDayVO,
+    TemplateDetailVO,
+    TemplateForkVO,
+    TemplateItemVO,
+    TemplateListVO,
+    TemplatePublishVO,
+    TemplateSummaryVO,
+)
 from app.schemas.trip import (
     AdjustRequest,
     AdjustResponse,
@@ -64,6 +93,7 @@ from app.schemas.trip import (
     LocalReplanRequest,
     PlanContextRequest,
 )
+from app.schemas.weather import WeatherDay, WeatherVO
 
 #: 契约组 → 该端面的全部线级模型（声明顺序即导出顺序；嵌套模型无需重复登记，
 #: 由 $defs 递归收集）。
@@ -116,6 +146,31 @@ CONTRACT_GROUPS: dict[str, tuple[type[BaseModel], ...]] = {
         FavoriteBody,
         ArchiveBody,
         ShareCreateBody,
+        ExpenseCreate,
+        ExpenseUpdate,
+        ExpenseVO,
+        ExpenseCategoryTotal,
+        ExpenseListVO,
+        InvitationCreate,
+        InvitationVO,
+        InvitationCreatedVO,
+        InvitationListVO,
+        MemberVO,
+        MemberListVO,
+        MemberRoleUpdate,
+        InvitationAcceptRequest,
+        InvitationAcceptVO,
+        TemplateCostTier,
+        TemplateItemVO,
+        TemplateDayVO,
+        TemplateSummaryVO,
+        TemplatePublishVO,
+        TemplateCardVO,
+        TemplateDetailVO,
+        TemplateListVO,
+        TemplateForkVO,
+        WeatherDay,
+        WeatherVO,
     ),
 }
 

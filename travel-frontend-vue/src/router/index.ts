@@ -37,6 +37,11 @@ const router = createRouter({
       component: () => import('../views/AtlasView.vue'),
     },
     {
+      path: '/templates',
+      name: 'templates',
+      component: () => import('../views/TemplateSquareView.vue'),
+    },
+    {
       path: '/s/:token',
       name: 'share',
       component: () => import('../views/ShareView.vue'),

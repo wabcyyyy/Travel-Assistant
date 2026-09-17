@@ -258,7 +258,7 @@ async def events(
 ) -> StreamingResponse:
     """订阅生成进度事件流（进程内 SSE；取代 Java 的「Redis pub/sub → SseEmitter」转发桥）。"""
     # 归属查询进线程池，登记订阅必须在事件循环里做（要捕获 loop 才能跨线程投递）
-    await run_in_threadpool(itinerary_query.find_owned_main, user.id, id)
+    await run_in_threadpool(itinerary_query.find_readable_main, user.id, id)
     subscription, _rejected = event_hub.subscribe(id, event_publisher.too_many_connections_envelope(id))
     return _sse(_event_frames(id, subscription))
 
@@ -290,7 +290,7 @@ async def chat_edit_stream(
     id: int = Path(..., ge=1), body: ChatEditBody = Body(...), user: AuthUser | None = Depends(enforce_business_auth)
 ) -> StreamingResponse:
     """对话编辑的 SSE 变体：与非阻塞版同参构造、同一条落库收尾路径。"""
-    await run_in_threadpool(itinerary_query.find_owned_main, user.id, id)
+    await run_in_threadpool(itinerary_query.find_writable_main, user.id, id)
     return _sse(_sse_frames(itinerary_chat.chat_edit_stream(user.id, id, body.message, body.history)))
 
 

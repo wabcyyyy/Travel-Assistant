@@ -7,7 +7,7 @@
   键按 user 隔离、入队被拒（429）后键仍指向同一个失败壳；
 - API 层：X-Idempotency-Key 头透传，两次同键请求 data.id 一致。
 
-基建同 test_generation_migration：sqlite 内存库 + Redis 指向不可达端口
+基建：临时 SQLite 库 + 显式禁用 Redis 客户端
 （cache_store 走进程内降级，确定性不依赖外部 Redis）。
 """
 
@@ -25,6 +25,15 @@ from app.common.task_pool import TaskRejected
 from app.db import session as db_session
 from app.db.models import Base
 from app.services import cache_store, itinerary_generation
+
+
+@pytest.fixture(autouse=True)
+def _local_cache_only(monkeypatch):
+    def _unavailable():
+        raise ConnectionError("Redis disabled for offline idempotency tests")
+
+    monkeypatch.setattr(cache_store, "_get_client", _unavailable)
+    cache_store.reset_for_tests()
 
 
 def _setup_db(tmp_path) -> None:

@@ -116,8 +116,15 @@ def plan_days(user_id: int, itinerary_id: int, command: GenerateCommand, context
         first_day_suggestions: list[Any] | None = None
         fingerprint = generation_gate.request_fingerprint(command)
         if context is None:
-            # 不包 observe_run：与迁移前的 /v1/plan-context 口径一致（研究事件不带 runId）
-            context = run_plan_context(command.city, command.preferences, itinerary_id=itinerary_id)
+            # 不包 observe_run：与迁移前的 /v1/plan-context 口径一致（研究事件不带 runId）。
+            # start_date+days 供城市级天气一次取整趟预报窗（C3.1）；无日期自然为 None。
+            context = run_plan_context(
+                command.city,
+                command.preferences,
+                itinerary_id=itinerary_id,
+                start_date=command.start_date.isoformat() if command.start_date else None,
+                days=command.days,
+            )
 
         suggestions_persisted = False
         unfinished = day_persistence.unfinished_day_nos(itinerary_id)

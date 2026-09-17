@@ -17,16 +17,12 @@ from sqlalchemy import delete, select
 from app.db.models import (
     BudgetDetail,
     CityConsumption,
-    HotelRoomType,
     ItineraryItem,
     ItineraryMain,
-    PoiKnowledge,
 )
 from app.db.session import session_scope
-from app.services import season_price
 
 DEFAULT_TRANSPORT_PER_DAY = Decimal("35.00")
-ROOM_TYPE_MARKER = "房型："
 ZERO = Decimal("0")
 
 
@@ -45,17 +41,11 @@ def recalculate(itinerary_id: int) -> list[BudgetDetail]:
 
         ticket = meal = hotel = ZERO
         ticket_count = meal_count = hotel_count = 0
-        hotel_from_poi_fallback = False
 
         for item in items:
             item_type = item.item_type
-            if item.cost is not None and not _is_zero_cost_for(item_type, item.cost):
-                unit = Decimal(item.cost)
-            else:
-                unit = _poi_unit_cost(session, item, main.city)
-                if unit is not None and item_type == "hotel":
-                    unit = season_price.apply(unit, main.start_date)
-                    hotel_from_poi_fallback = True
+            # 语料库退役后无"知识库权威价"回落：条目成本缺失或为 0 即不计入，如实缺省
+            unit = Decimal(item.cost) if item.cost is not None and not _is_zero_cost_for(item_type, item.cost) else None
             if unit is None:
                 continue
             if item_type == "attraction":
@@ -65,8 +55,8 @@ def recalculate(itinerary_id: int) -> list[BudgetDetail]:
                 meal += unit
                 meal_count += 1
             elif item_type == "hotel":
-                capacity = _hotel_capacity(session, item)
-                rooms = math.ceil(persons / capacity)
+                # 房型表已退役：容量统一按每间 2 人计
+                rooms = math.ceil(persons / 2)
                 hotel += unit * Decimal(rooms)
                 hotel_count += 1
 
@@ -81,10 +71,6 @@ def recalculate(itinerary_id: int) -> list[BudgetDetail]:
         meal *= Decimal(persons)
 
         hotel_remark = "按每晚房费×房间数合计"
-        if hotel_from_poi_fallback and hotel_count > 0:
-            hotel_remark = (
-                f"知识库基准价已按{season_price.label(main.start_date)}系数×{season_price.factor(main.start_date)}调整"
-            )
 
         session.execute(delete(BudgetDetail).where(BudgetDetail.itinerary_id == itinerary_id))
         created: list[BudgetDetail] = []
@@ -113,35 +99,4 @@ def _is_zero_cost_for(item_type: str | None, cost: Decimal) -> bool:
     return cost == ZERO
 
 
-def _poi_unit_cost(session, item: ItineraryItem, city: str) -> Decimal | None:
-    poi = None
-    if item.poi_id and item.poi_id.strip() and item.poi_id.isdigit():
-        poi = session.get(PoiKnowledge, int(item.poi_id))
-    if poi is None and item.poi_name and item.poi_name.strip():
-        poi = session.execute(
-            select(PoiKnowledge).where(PoiKnowledge.city == city, PoiKnowledge.name == item.poi_name).limit(1)
-        ).scalar_one_or_none()
-    if poi is None:
-        return None
-    return poi.ticket_price if poi.ticket_price is not None else poi.avg_cost
-
-
-def _hotel_capacity(session, item: ItineraryItem) -> int:
-    if not item.poi_id or not item.remark:
-        return 2
-    start = item.remark.find(ROOM_TYPE_MARKER)
-    if start < 0:
-        return 2
-    start += len(ROOM_TYPE_MARKER)
-    end = item.remark.find("；", start)
-    room_name = (item.remark[start:] if end < 0 else item.remark[start:end]).strip()
-    if not item.poi_id.isdigit():
-        return 2
-    room = session.execute(
-        select(HotelRoomType)
-        .where(HotelRoomType.poi_id == int(item.poi_id), HotelRoomType.room_name == room_name)
-        .limit(1)
-    ).scalar_one_or_none()
-    if room is None or room.capacity is None:
-        return 2
-    return max(room.capacity, 1)
+# 房型表已退役：酒店容量统一按每间 2 人计。

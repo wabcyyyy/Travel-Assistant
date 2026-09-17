@@ -160,46 +160,6 @@ def test_route_matrix_skips_days_with_single_item(monkeypatch):
 # ---------- H4：store.search 必须把 embedding_provider 接进缓存 ----------
 
 
-def test_store_search_wires_embedding_provider_for_semantic_hit(tmp_path, monkeypatch):
-    from unittest.mock import patch
-
-    from app.agent import poi_repository
-    from app.common.config import settings
-    from app.rag.retriever import HashedEmbeddingProvider
-    from app.rag.store import PoIKnowledgeStore
-
-    monkeypatch.setattr(settings, "rag_cache_enabled", True)
-    # 不依赖可选 sentence-transformers；否则永久 fallback 会跳过缓存写入。
-    monkeypatch.setattr(settings, "rag_rerank_provider", "none")
-    poi = {
-        "id": 1,
-        "city": "杭州",
-        "name": "西湖",
-        "category": "attraction",
-        "address": "西湖区",
-        "latitude": 30.24,
-        "longitude": 120.15,
-        "ticket_price": 0,
-        "duration_min": 120,
-        "open_time": "08:00-18:00",
-        "tags": "自然",
-        "rating": 4.9,
-        "description": "适合休闲游览",
-        "source": "mysql.poi_knowledge",
-        "source_updated_at": "2026-09-01 10:00:00",
-    }
-    with patch.object(poi_repository, "list_all_pois_with_status", return_value=([poi], True)):
-        store = PoIKnowledgeStore(tmp_path, embedding_provider=HashedEmbeddingProvider())
-        store.search("西湖 景点 杭州", city="杭州", category="attraction", limit=1)
-        # 词序重写的同义查询：哈希词袋 cosine=1.0，近似命中必须生效
-        store.search("杭州 景点 西湖", city="杭州", category="attraction", limit=1)
-        stats = store.cache_stats()
-        assert stats["semantic_hits"] == 1
-
-
-# ---------- H7：引用落地信任边界 ----------
-
-
 def _poi_row(**overrides):
     row = {
         "id": 1,
@@ -400,38 +360,6 @@ def test_local_ground_treats_zero_coords_as_missing(monkeypatch):
 # ---------- #12：graph 空间层拒绝单轴为 0 的坏坐标 ----------
 
 
-def test_graph_excludes_single_axis_zero_coords():
-    from app.rag.graph import PoiGraph
-
-    def meta(pid, name, lat, lng):
-        return {
-            "metadata": {
-                "id": pid,
-                "name": name,
-                "city": "杭州",
-                "category": "attraction",
-                "latitude": lat,
-                "longitude": lng,
-                "tags": "",
-                "rating": 4.0,
-                "address": "",
-                "ticket_price": 0,
-            }
-        }
-
-    docs = {
-        "1": meta(1, "西湖", 30.24, 120.15),
-        "2": meta(2, "坏行", 0.0, 120.16),  # lat=0 单轴零：缺失而非位置
-    }
-    graph = PoiGraph()
-    graph.rebuild(docs)
-    assert [row["name"] for row in graph.neighbors(1)] == []
-    assert graph.neighbors(2) == []
-
-
-# ---------- #21：reflect 时间规则 ----------
-
-
 def test_parse_time_rejects_invalid_clock_values():
     assert parse_time("99:99") is None
     assert parse_time("24:00") is None
@@ -566,93 +494,3 @@ def test_business_value_error_still_surfaces_readably(monkeypatch):
 
 
 # ---------- #13：索引惰性刷新 ----------
-
-
-def test_ensure_loaded_refreshes_after_ttl(tmp_path, monkeypatch):
-    from unittest.mock import patch
-
-    from app.agent import poi_repository
-    from app.common.config import settings
-    from app.rag.retriever import HashedEmbeddingProvider
-    from app.rag.store import PoIKnowledgeStore
-
-    def poi(pid, name):
-        return {
-            "id": pid,
-            "city": "杭州",
-            "name": name,
-            "category": "attraction",
-            "address": "x",
-            "latitude": 30.2,
-            "longitude": 120.1,
-            "ticket_price": 0,
-            "duration_min": 60,
-            "open_time": "",
-            "tags": "",
-            "rating": 4.0,
-            "description": "",
-            "source": "mysql.poi_knowledge",
-            "source_updated_at": "",
-        }
-
-    monkeypatch.setattr(settings, "rag_refresh_seconds", 1)
-    calls = {"n": 0}
-
-    def fake_list():
-        calls["n"] += 1
-        return ([poi(1, "西湖"), poi(2, f"新增{calls['n']}")], True)
-
-    with patch.object(poi_repository, "list_all_pois_with_status", fake_list):
-        store = PoIKnowledgeStore(tmp_path, embedding_provider=HashedEmbeddingProvider())
-        store.ensure_loaded()
-        assert calls["n"] == 1
-        store.ensure_loaded()  # TTL 内不重复拉全表
-        assert calls["n"] == 1
-        store._last_load_at -= 2  # 模拟 TTL 过期
-        store.ensure_loaded()
-        assert calls["n"] == 2  # 过期后惰性增量同步
-        assert "新增2" in store._documents or any(d["metadata"]["name"] == "新增2" for d in store._documents.values())
-
-
-def test_sync_failure_keeps_serving_old_index(tmp_path, monkeypatch):
-    from unittest.mock import patch
-
-    from app.agent import poi_repository
-    from app.common.config import settings
-    from app.rag.retriever import HashedEmbeddingProvider
-    from app.rag.store import PoIKnowledgeStore
-
-    monkeypatch.setattr(settings, "rag_refresh_seconds", 0)
-    good = [
-        {
-            "id": 1,
-            "city": "杭州",
-            "name": "西湖",
-            "category": "attraction",
-            "address": "",
-            "latitude": 30.2,
-            "longitude": 120.1,
-            "ticket_price": 0,
-            "duration_min": 60,
-            "open_time": "",
-            "tags": "",
-            "rating": 4.0,
-            "description": "",
-            "source": "mysql.poi_knowledge",
-            "source_updated_at": "",
-        }
-    ]
-    with patch.object(poi_repository, "list_all_pois_with_status", return_value=(good, True)):
-        store = PoIKnowledgeStore(tmp_path, embedding_provider=HashedEmbeddingProvider())
-        store.ensure_loaded()
-        assert store._loaded
-
-    # 二次同步抛错（如 embedding 崩溃）：保留旧目录、纳入退避，不冒泡。
-    with (
-        patch.object(store, "_sync", side_effect=RuntimeError("vector store down")),
-        patch.object(poi_repository, "list_all_pois_with_status", return_value=(good, True)),
-    ):
-        store._loaded = False
-        store._last_source_retry_at = 0.0
-        store.ensure_loaded()  # 不抛异常
-        assert store._source_unavailable is True

@@ -6,7 +6,7 @@
 依赖：仅 schemas.trip 的契约模型。
 """
 
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 from app.schemas.trip import GenerateRequest, GenerateResponse
 
@@ -18,6 +18,9 @@ class AgentState(TypedDict):
     foods: list[dict]
     hotels: list[dict]
     consumption: dict | None
+    # 城市级天气（C3.1）：仅 research 节点写入；NotRequired 因为图节点返回的是
+    # 部分状态增量，其他节点/测试构造的部分 state 不必携带该键。
+    weather: NotRequired[list[dict] | None]
     daily_plans: list[dict]
     budget_estimate: dict
     raw_suggestions: list[dict]

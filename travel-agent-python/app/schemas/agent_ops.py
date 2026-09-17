@@ -11,7 +11,7 @@
 - Pydantic 默认 lax 模式：字符串数字（"39.9"）可转 float，兼容前端透传，不加 strict；
 - LLM 直通的响应字段（intros 值、city-guide 的 city）用 before 校验器兜底转 str：
   改造前这些值原样透传，若模型偶发非字符串输出，严格类型会把原本 200 的响应打成 500；
-- poi-nearby 行结构由 app/rag/store.py:_row_payload 构造（原生 str/float/int/None），
+- poi-nearby 行结构由 app/agent/tools.find_nearby_pois 构造（原生 str/float/int/None），
   PoiNearbyItem extra="allow" 保留未知键（经纬度、票价等），_distance_m 用显式
   serialization_alias 固定 wire 键（Java @JsonProperty 依赖 "_distance_m"）。
 
@@ -82,7 +82,7 @@ class PoiNearbyRequest(WireModel):
 
 
 class PoiNearbyItem(WireModel):
-    """近邻 POI 行；行结构见 app/rag/store.py:_row_payload（原生类型）。
+    """近邻 POI 行；行结构见 app/agent/tools.find_nearby_pois（原生类型）。
 
     extra="allow"：不丢未知键（经纬度、票价等），序列化时原键保留。
     distance_m 的 wire 键必须是 "_distance_m"（Java @JsonProperty 依赖），

@@ -28,12 +28,19 @@
     "@vitejs/plugin-vue": "^5.0.4",
     "@vue/test-utils": "^2.5.0",
     "happy-dom": "^20.14.5",
+    "pixelmatch": "^7.2.0",
+    "playwright-core": "^1.63.0",
+    "pngjs": "^7.0.0",
     "sharp": "^0.35.4",
     "typescript": "~5.4.5",
     "unplugin-auto-import": "0.18.6",
     "unplugin-vue-components": "0.27.5",
     "vite": "^5.2.11",
+    "vite-plugin-pwa": "^0.20.5",
     "vitest": "^2.1.9",
-    "vue-tsc": "^2.0.21"
+    "vue-tsc": "^2.0.21",
+    "workbox-core": "^7.1.0",
+    "workbox-precaching": "^7.1.0",
+    "workbox-routing": "^7.1.0"
   }
 }

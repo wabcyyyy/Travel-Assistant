@@ -18,7 +18,6 @@ from datetime import timedelta
 from difflib import SequenceMatcher
 from math import ceil
 
-from app.agent import tools
 from app.common.season import season_factor, season_label
 from app.schemas.trip import (
     ChatTurnRequest,
@@ -44,6 +43,14 @@ from .hotel_intent import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _hotel_base_price(hotel: dict) -> float | None:
+    """酒店基准价：ticket_price 优先，回落 avg_cost（联网补池行的 LLM 估价）。"""
+    price = hotel.get("ticket_price")
+    if price is None:
+        price = hotel.get("avg_cost")
+    return price
 
 
 def _hotel_options(req: ChatTurnRequest, hotels: list[dict], intent: HotelIntent) -> list[HotelOption]:
@@ -93,20 +100,15 @@ def _hotel_options(req: ChatTurnRequest, hotels: list[dict], intent: HotelIntent
             sum(current_cost_by_day.values()) / max(len(available_day_nos), 1) * intent.requested_nights
         )
 
-    hotel_ids = [int(hotel["id"]) for hotel in hotels if hotel.get("id") is not None]
-    room_rows = tools.search_hotel_room_types(hotel_ids)
+    # 房型表已随 POI 库退役：一律走"基础房型"合成，价格取酒店基准价（估价口径）
     rooms_by_hotel: dict[int, list[dict]] = {}
-    for room in room_rows:
-        rooms_by_hotel.setdefault(int(room["poi_id"]), []).append(room)
     priced_day_nos = list(intent.requested_day_nos) or available_day_nos[: intent.requested_nights]
     # 泛化“换个酒店”优先保持当前档次；若该档次没有除当前酒店外的可报价候选，
     # 自动退到最近档次，避免只返回一段没有卡片的空话。
     non_current_tiers = set()
     for hotel in hotels:
-        try:
-            has_price = float(hotel.get("ticket_price") or 0) > 0
-        except (TypeError, ValueError):
-            has_price = False
+        base = _hotel_base_price(hotel)
+        has_price = base is not None and float(base) > 0
         if (
             has_price
             and hotel.get("name") not in current_names
@@ -121,7 +123,9 @@ def _hotel_options(req: ChatTurnRequest, hotels: list[dict], intent: HotelIntent
             allowed_tiers.add(nearest[0])
     candidates = []
     for hotel in hotels:
-        base = hotel.get("ticket_price")
+        base = _hotel_base_price(hotel)
+        if base is None:
+            continue
         try:
             base_price = float(base)
         except (TypeError, ValueError):

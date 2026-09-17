@@ -208,6 +208,7 @@ def generate_open_plans(
     context_hotels: list[dict] | None,
     candidates: list[dict] | None = None,
     foods: list[dict] | None = None,
+    weather: list[dict] | None = None,
 ) -> dict | None:
     """开放模式生成（三段编排：草案生成 → 后处理 → 失败即降级）。
 
@@ -223,6 +224,7 @@ def generate_open_plans(
             "hotels": context_hotels or [],
             "candidates": candidates or [],
             "foods": foods or [],
+            "weather": weather or [],
         }
         ref_pool = ReferencePool(context)
         plans, raw_suggestions, research_errors = _generate_drafts(req, feedback, context, ref_pool)

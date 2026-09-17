@@ -1,9 +1,5 @@
-// 目的地国内/国外判定：用于地图外链选择（国内 uri.amap.com / 海外 Google Maps）、
-// 点位图降级（staticmap 仅国内可用）与加点检索（海外城市暂禁用高德）。
-// 判定基于内置中国城市/省份集合；未命中且不含中国省份名的城市视为国外。
-// 城市/省份表维护入口见 constants/geo.ts（本文件仅保留判定函数导出，调用方 import 路径不变）。
-
 import { DOMESTIC_CITIES, DOMESTIC_PROVINCES } from '../constants/geo'
+import { toGcj02 } from './coordinates'
 
 const CITY_SET = new Set(DOMESTIC_CITIES)
 const PROVINCE_SET = new Set(DOMESTIC_PROVINCES)
@@ -12,26 +8,56 @@ export function isForeignCity(city: string | null | undefined): boolean {
   const name = (city || '').trim()
   if (!name) return false
   if (CITY_SET.has(name) || PROVINCE_SET.has(name)) return false
-  // 形如"云南丽江"：含中国省份名 → 国内
   for (const province of PROVINCE_SET) {
     if (name.includes(province)) return false
   }
   return true
 }
 
-/**
- * 点位地图外链（v2.6 W2 统一口径，日卡/详情卡/发现面板共用）：
- * 国内 = 高德搜索（城市+名称关键词）；海外 = Google Maps（有真实坐标优先按坐标打开）。
- */
-export function externalMapLink(
-  target: { name: string; latitude?: number | null; longitude?: number | null },
-  city: string | null | undefined,
-): string {
+type Coordinates = { latitude?: number | null; longitude?: number | null }
+type MapStop = Coordinates & { name: string }
+
+export function hasValidCoordinates(stop: Coordinates): boolean {
+  const { latitude, longitude } = stop
+  return typeof latitude === 'number' && typeof longitude === 'number'
+    && Number.isFinite(latitude) && Number.isFinite(longitude)
+    && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180
+    && !(latitude === 0 && longitude === 0)
+}
+
+export function externalMapLink(target: MapStop, city: string | null | undefined): string {
+  const keyword = `${city?.trim() ?? ''}${target.name.trim()}`
   if (isForeignCity(city)) {
-    if (target.latitude != null && target.longitude != null) {
-      return `https://www.google.com/maps/search/?api=1&query=${target.latitude},${target.longitude}`
-    }
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${city ?? ''}${target.name}`)}`
+    const query = hasValidCoordinates(target) ? `${target.latitude},${target.longitude}` : keyword
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
   }
-  return `https://uri.amap.com/search?keyword=${encodeURIComponent(`${city ?? ''}${target.name}`)}`
+  // OTM/Nominatim 提供 WGS84，不能把原始坐标当高德 GCJ-02 标记；国内按名称核实。
+  return `https://uri.amap.com/search?keyword=${encodeURIComponent(keyword)}`
+}
+
+export function mapDirectionsUrl(stops: MapStop[], city: string | null | undefined): string | null {
+  const points = stops.filter(hasValidCoordinates)
+  if (points.length < 2) return null
+  const first = points[0]!
+  const last = points[points.length - 1]!
+  const middle = points.slice(1, -1)
+  if (isForeignCity(city)) {
+    // 移动浏览器最多支持 3 个途经点；不静默截断而冒充全天路线。
+    if (middle.length > 3) return null
+    const format = (p: MapStop) => `${p.latitude},${p.longitude}`
+    const params = new URLSearchParams({ api: '1', origin: format(first), destination: format(last) })
+    if (middle.length) params.set('waypoints', middle.map(format).join('|'))
+    return `https://www.google.com/maps/dir/?${params}`
+  }
+  // 高德驾车 URI 最多支持一个途经点，超过上限时由界面提示分段核实。
+  if (middle.length > 1) return null
+  const format = (p: MapStop) => {
+    const [lat, lon] = toGcj02(p.latitude!, p.longitude!)
+    return `${lon},${lat}`
+  }
+  const params = new URLSearchParams({
+    from: format(first), to: format(last), mode: 'car', callnative: '0',
+  })
+  if (middle.length) params.set('via', format(middle[0]!))
+  return `https://uri.amap.com/navigation?${params}`
 }

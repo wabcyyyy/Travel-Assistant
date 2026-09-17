@@ -23,10 +23,10 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.agent import run_edit_ops
+from app.agent import get_poi_detail, run_edit_ops, search_hotels
 from app.common.envelope import ApiError
 from app.common.vo_json import iso_time
-from app.db.models import ItineraryDay, ItineraryItem, PoiKnowledge
+from app.db.models import ItineraryDay, ItineraryItem
 from app.db.session import session_scope
 from app.schemas.trip import EditOpRequest
 from app.services import budget_engine, itinerary_chat, itinerary_city, itinerary_query, itinerary_version
@@ -160,30 +160,24 @@ def _apply_edit_op(session, op, itinerary_id: int, city: str | None, day_ids_by_
         return f"「{poi_name}」移到第{dest_no}天"
 
     if action == "add":
-        poi = session.execute(
-            select(PoiKnowledge).where(PoiKnowledge.city == city, PoiKnowledge.name == poi_name).limit(1)
-        ).scalar_one_or_none()
+        # 语料库退役：新加点位经外部地点层（Nominatim）按名解析真实坐标，
+        # 票价/时长/营业时间不再有权威来源，由预算侧按估价口径处理。
+        poi = get_poi_detail(city or "", poi_name)
         entity = ItineraryItem(
             day_id=target_day_id,
             itinerary_id=itinerary_id,
-            item_type=poi.category if poi else "attraction",
+            item_type="attraction",
             poi_name=poi_name,
         )
         if poi is not None:
-            entity.poi_id = str(poi.id)
-            entity.address = poi.address
-            entity.latitude = poi.latitude
-            entity.longitude = poi.longitude
-            entity.cost = poi.ticket_price
-            entity.duration_min = poi.duration_min
-            entity.open_time = poi.open_time
-            entity.source = poi.source
-            entity.source_updated_at = poi.source_updated_at
-            entity.verification_status = "unverified" if poi.source_updated_at is None else "partially_verified"
+            entity.poi_id = str(poi.get("id") or "") or None
+            entity.address = poi.get("address")
+            entity.latitude = poi.get("latitude")
+            entity.longitude = poi.get("longitude")
+            entity.source = poi.get("source") or "nominatim"
+            entity.verification_status = "partially_verified"
             entity.value_kind = "observed"
-            entity.freshness_status = "unknown" if poi.source_updated_at is None else "fresh"
-            entity.review_requirement = "before_departure" if poi.source_updated_at is None else "none"
-            entity.tag = poi.tags
+            entity.review_requirement = "before_departure"
         if start_time is not None:
             entity.start_time = _parse_required_time(start_time)
         entity.sort_no = itinerary_query.next_sort(session, target_day_id)
@@ -194,7 +188,7 @@ def _apply_edit_op(session, op, itinerary_id: int, city: str | None, day_ids_by_
 
 
 def _upgrade_hotel(session, itinerary_id: int, city: str | None, day_no: int | None, tier: str | None) -> str | None:
-    """换酒店：按档次关键词在同城权威库里挑一家，挑不到就退而求其次换一家同类的。"""
+    """换酒店：从外部/联网候选池里挑一家，按档次关键词排序，挑不到就换一家同类的。"""
     if day_no is not None:
         day_id = session.execute(
             select(ItineraryDay.id).where(ItineraryDay.itinerary_id == itinerary_id, ItineraryDay.day_no == day_no)
@@ -205,28 +199,32 @@ def _upgrade_hotel(session, itinerary_id: int, city: str | None, day_no: int | N
     current = next((item for item in scope if item.item_type == "hotel"), None)
     if current is None:
         return None
-    hotels = (
-        session.execute(select(PoiKnowledge).where(PoiKnowledge.city == city, PoiKnowledge.category == "hotel"))
-        .scalars()
-        .all()
-    )
-    if not hotels:
-        return None
+    candidates = search_hotels(city or "", limit=8)
     keywords = _hotel_keywords(tier)
-    others = [hotel for hotel in hotels if str(hotel.id) != current.poi_id]
+    others = [hotel for hotel in candidates if str(hotel.get("name") or "") != str(current.poi_name or "")]
+    if not others:
+        return None
     ranked = next(
-        (hotel for hotel in others if _contains_any((hotel.description or "") + (hotel.tags or ""), keywords)), None
+        (
+            hotel
+            for hotel in others
+            if _contains_any(
+                str(hotel.get("description") or "") + str(hotel.get("kinds") or "") + str(hotel.get("intro") or ""),
+                keywords,
+            )
+        ),
+        None,
     )
-    selected = ranked or (others[0] if others else hotels[0])
-    current.poi_id = str(selected.id)
-    current.poi_name = selected.name
-    current.address = selected.address
-    current.latitude = selected.latitude
-    current.longitude = selected.longitude
-    current.cost = selected.ticket_price
-    current.duration_min = selected.duration_min
-    current.tag = selected.tags
-    current.remark = selected.description
+    selected = ranked or others[0]
+    current.poi_id = str(selected.get("id") or "") or None
+    current.poi_name = str(selected.get("name") or "")
+    current.address = selected.get("address")
+    current.latitude = selected.get("latitude")
+    current.longitude = selected.get("longitude")
+    price = selected.get("ticket_price")
+    current.cost = price if price is not None else selected.get("avg_cost")
+    current.tag = selected.get("kinds")
+    current.remark = selected.get("description")
     return "酒店已调整为" + (tier if tier and tier.strip() else "推荐档次")
 
 

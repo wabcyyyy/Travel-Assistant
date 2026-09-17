@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections import Counter
+from typing import Any
 
 from app.agent.intent import build_intent_keywords
+from app.agent.places import map_directions_url
 from app.agent.reflect import _item_end, _item_start, estimate_transfer_minutes
 
 
@@ -22,6 +24,49 @@ def has_coord(value) -> bool:
         return value is not None and abs(float(value)) > 1e-6
     except (TypeError, ValueError):
         return False
+
+
+def evaluate_depth(response, case: dict) -> dict[str, Any]:
+    """C3.2 深度指标：坐标有效率 / 深链可解析率 / 类目合理率。
+
+    - coord_valid_rate：attraction/food/hotel 项 lat/lng 均有效（has_coord，
+      非 None 非 0——0/0 是缺失哨兵）的比例；
+    - deeplink_resolvable_rate：按"天"计——当天有效坐标停靠点 ≥2 时必须能
+      生成全天路线深链（places.map_directions_url 非 None），不足 2 点的天
+      按"无路线承诺"自动通过。用后端 places 语义评测；前端 geo.ts 另有
+      90/180 范围校验与 waypoints 上限，口径差异由前端 geo.test.ts 单测覆盖；
+    - category_reasonable_rate：item_type 落四值白名单且 poi_name 非空。
+      TripItem schema 已约束 pattern，此指标是生成产物的回归绊线。
+    """
+    items = _items(response)
+    poi_items = [i for i in items if i.get("item_type") in ("attraction", "food", "hotel")]
+
+    coord_ok = sum(1 for i in poi_items if has_coord(i.get("latitude")) and has_coord(i.get("longitude")))
+    category_ok = sum(
+        1
+        for i in items
+        if i.get("item_type") in ("attraction", "food", "hotel", "transport") and str(i.get("poi_name") or "").strip()
+    )
+
+    days_total = 0
+    days_route_ok = 0
+    for plan in response.daily_plans:
+        days_total += 1
+        stops = [
+            item.model_dump() if hasattr(item, "model_dump") else dict(item)
+            for item in plan.items
+            if item.item_type in ("attraction", "food")
+        ]
+        valid_stops = sum(1 for s in stops if has_coord(s.get("latitude")) and has_coord(s.get("longitude")))
+        # ≥2 个有效停靠点的天承诺了路线深链（必须可解析）；不足 2 点的天
+        # 按"无路线承诺"自动通过——无坐标行程不因此计红。
+        days_route_ok += valid_stops < 2 or map_directions_url(stops) is not None
+
+    return {
+        "coord_valid_rate": round(coord_ok / max(len(poi_items), 1), 4),
+        "deeplink_resolvable_rate": round(days_route_ok / max(days_total, 1), 4),
+        "category_reasonable_rate": round(category_ok / max(len(items), 1), 4),
+    }
 
 
 def evaluate_narrative(response, case: dict) -> dict:

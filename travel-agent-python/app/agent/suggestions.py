@@ -10,7 +10,6 @@
 
 import logging
 
-from app.agent import poi_repository
 from app.agent.trace import record_event
 
 logger = logging.getLogger(__name__)
@@ -61,11 +60,18 @@ def _daily_attraction_target(days: int) -> int:
 
 
 def activity_floor(city: str) -> list[dict]:
-    """体验类不在 Supervisor 三域研究里：从知识库补入，保证「发现更多-体验」有地板。
+    """体验类不在 Supervisor 三域研究里：联网搜索补入，保证「发现更多-体验」有地板。
 
     唯一实现（G-1.3 ④）：原在 _generate_open_plans 后处理与建议装配两处逐字重复。
+    POI 库退役后体验类无本地池，走联网搜索取真实项目名（不保证坐标）。
     """
-    return [{**row, "_authoritative": True} for row in poi_repository.search_pois(city, category="activity", limit=12)]
+    from app.agent.web_search import search_places_via_web
+
+    rows = search_places_via_web(city, "activity", limit=12)
+    for row in rows:
+        row.setdefault("id", row.get("name"))
+        row["_authoritative"] = True
+    return rows
 
 
 def floor_suggestions(raw: list[dict], extra_pool: list[dict]) -> list[dict]:

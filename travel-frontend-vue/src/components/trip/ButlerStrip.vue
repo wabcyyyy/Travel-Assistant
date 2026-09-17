@@ -3,6 +3,9 @@
     <div class="strip-row">
       <span class="strip-label">AI 管家说</span>
       <p class="strip-preview">{{ preview }}</p>
+      <span v-if="weatherChip" class="strip-chip weather-chip" title="出发前天气预报，出发前请以实际天气为准">
+        {{ weatherChip }}
+      </span>
       <span class="strip-chip" :class="`tone-${statusChip.tone}`">{{ statusChip.text }}</span>
       <div class="strip-actions">
         <button
@@ -14,7 +17,7 @@
           {{ expanded ? '收起' : '展开' }}
           <ChevronDown :size="15" class="chev" :class="{ 'is-open': expanded }" />
         </button>
-        <button type="button" class="strip-btn" @click="emit('chat')">
+        <button v-if="canEdit !== true" type="button" class="strip-btn" @click="emit('chat')">
           <MessageCircle :size="14" /> 对话
         </button>
         <button type="button" class="strip-btn" @click="emit('versions')">版本历史</button>
@@ -25,6 +28,7 @@
         :detail="detail"
         :done-days="doneDays"
         :stream-state="streamState"
+        :weather="weather"
         @retry="emit('retry')"
       />
       <ButlerNoteCard
@@ -37,11 +41,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ChevronDown, MessageCircle } from 'lucide-vue-next'
 
+import { fetchItineraryWeather } from '../../api/weather'
 import type { StreamState } from '../../store/itinerary'
 import type { ItineraryDetail } from '../../types/itinerary'
+import type { WeatherVO } from '../../types/generated/contracts'
 import ButlerNoteCard from './ButlerNoteCard.vue'
 import HeadStatusPanel from './HeadStatusPanel.vue'
 
@@ -52,6 +58,8 @@ const props = defineProps<{
   detail: ItineraryDetail
   doneDays: number
   streamState: StreamState
+  /** 协作（C2.3）：viewer 隐藏「对话」写入口（后端闸门为准，这里只藏入口） */
+  canEdit?: boolean
 }>()
 const emit = defineEmits<{
   retry: []
@@ -60,6 +68,33 @@ const emit = defineEmits<{
 }>()
 
 const expanded = ref(false)
+
+// ---------- 出发前天气（C3.1）----------
+// 免 key 预报属增强信息：取不到（超 16 天窗/无坐标/上游失败）一律静默隐藏，
+// 不进 statusChip 的状态语义，也不触发错误提示（接口侧 skipErrorMessage）。
+const weather = ref<WeatherVO | null>(null)
+
+onMounted(async () => {
+  try {
+    const res = await fetchItineraryWeather(props.detail.id)
+    weather.value = res.data
+  } catch {
+    weather.value = null
+  }
+})
+
+function shortDay(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? iso : `${d.getMonth() + 1}/${d.getDate()}`
+}
+
+const weatherChip = computed(() => {
+  const first = weather.value?.daily?.[0]
+  if (!first) return null
+  const temp
+    = first.tMin != null && first.tMax != null ? ` ${Math.round(first.tMin)}~${Math.round(first.tMax)}°C` : ''
+  return `${shortDay(first.date)} ${first.text}${temp}`
+})
 
 /** 摘要 = 手记首个非空、非预约提醒行；无手记时给生成态/空态文案 */
 const preview = computed(() => {
@@ -172,6 +207,13 @@ watch(
 .tone-danger {
   background: var(--lp-danger-soft);
   color: var(--lp-danger);
+}
+
+/* 天气 chip（C3.1）：中性底色，与状态 chip 的语义色区分 */
+.weather-chip {
+  background: var(--lp-sand);
+  border: 1px solid var(--lp-border);
+  color: var(--lp-ink-soft);
 }
 
 .strip-actions {

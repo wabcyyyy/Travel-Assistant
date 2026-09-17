@@ -234,6 +234,7 @@ export interface LocalReplanRequest {
   failureReasons: string[]
   plans: (Record<string, unknown>)[]
   budget: number | null
+  spent: number | null
   requestId: string | null
   actionId: string | null
 }
@@ -245,6 +246,9 @@ export interface ChatTurnRequest {
   budget: number | null
   currentTotal: number | null
   currentHotelTotal: number | null
+  spentTotal: number | null
+  spentByCategory: Record<string, number> | null
+  spentOtherCurrencies: string[] | null
   startDate: string | null
   endDate: string | null
   preferences: string[]
@@ -502,6 +506,195 @@ export interface ArchiveBody {
 
 export interface ShareCreateBody {
   expireDays: number | null
+}
+
+export interface ExpenseCreate {
+  category: "attraction" | "food" | "hotel" | "transport" | "shopping" | "other"
+  amount: number | string
+  currency: string
+  dayNo: number | null
+  itemId: number | null
+  spentAt: string | null
+  paymentMethod: string | null
+  note: string | null
+}
+
+export interface ExpenseUpdate {
+  category: "attraction" | "food" | "hotel" | "transport" | "shopping" | "other" | null
+  amount: number | string | null
+  currency: string | null
+  dayNo: number | null
+  itemId: number | null
+  spentAt: string | null
+  paymentMethod: string | null
+  note: string | null
+}
+
+export interface ExpenseVO {
+  id: number
+  itineraryId: number
+  userId: number
+  category: "attraction" | "food" | "hotel" | "transport" | "shopping" | "other"
+  amount: string
+  currency: string
+  dayNo: number | null
+  itemId: number | null
+  spentAt: string | null
+  paymentMethod: string | null
+  note: string | null
+  createdAt: string
+}
+
+export interface ExpenseCategoryTotal {
+  category: "attraction" | "food" | "hotel" | "transport" | "shopping" | "other"
+  currency: string
+  amount: string
+}
+
+export interface ExpenseListVO {
+  expenses: ExpenseVO[]
+  totals: ExpenseCategoryTotal[]
+}
+
+export interface InvitationCreate {
+  role: "editor" | "viewer"
+}
+
+export interface InvitationVO {
+  id: number
+  itineraryId: number
+  role: "editor" | "viewer"
+  expiresAt: string | null
+  createdAt: string
+  acceptedAt: string | null
+  acceptedBy: number | null
+  revokedAt: string | null
+  status: "pending" | "accepted" | "revoked" | "expired"
+}
+
+export interface InvitationCreatedVO {
+  id: number
+  itineraryId: number
+  role: "editor" | "viewer"
+  expiresAt: string | null
+  createdAt: string
+  acceptedAt: string | null
+  acceptedBy: number | null
+  revokedAt: string | null
+  status: "pending" | "accepted" | "revoked" | "expired"
+  token: string
+}
+
+export interface InvitationListVO {
+  invitations: InvitationVO[]
+}
+
+export interface MemberVO {
+  id: number
+  itineraryId: number
+  userId: number
+  username: string | null
+  role: "editor" | "viewer"
+  createdAt: string
+}
+
+export interface MemberListVO {
+  members: MemberVO[]
+}
+
+export interface MemberRoleUpdate {
+  role: "editor" | "viewer"
+}
+
+export interface InvitationAcceptRequest {
+  token: string
+}
+
+export interface InvitationAcceptVO {
+  itineraryId: number
+  role: "editor" | "viewer"
+  title: string
+}
+
+export interface TemplateCostTier {
+  category: "门票" | "餐饮" | "交通" | "酒店"
+  amountRangeText: string
+}
+
+export interface TemplateItemVO {
+  poiName: string
+  itemType: string | null
+  startTime: string | null
+  endTime: string | null
+  latitude: number | null
+  longitude: number | null
+}
+
+export interface TemplateDayVO {
+  dayNo: number
+  theme: string | null
+  items: TemplateItemVO[]
+}
+
+export interface TemplateSummaryVO {
+  title: string
+  city: string
+  days: number
+  persons: number
+  intro: string
+  costTiers: TemplateCostTier[]
+  dayList: TemplateDayVO[]
+}
+
+export interface TemplatePublishVO {
+  itineraryId: number
+  publishedAt: string
+  summary: TemplateSummaryVO
+}
+
+export interface TemplateCardVO {
+  id: number
+  title: string
+  city: string
+  days: number
+  coverUrl: string | null
+  costTiers: TemplateCostTier[]
+  publishedAt: string
+}
+
+export interface TemplateDetailVO {
+  id: number
+  title: string
+  city: string
+  days: number
+  coverUrl: string | null
+  costTiers: TemplateCostTier[]
+  publishedAt: string
+  summary: TemplateSummaryVO
+}
+
+export interface TemplateListVO {
+  templates: TemplateCardVO[]
+}
+
+export interface TemplateForkVO {
+  itineraryId: number
+  title: string
+}
+
+export interface WeatherDay {
+  date: string
+  code: number | null
+  text: string
+  tMax: number | null
+  tMin: number | null
+  precipProb: number | null
+}
+
+export interface WeatherVO {
+  city: string
+  source: string
+  daily: WeatherDay[] | null
 }
 
 // ===== stream_events（JSON Lines 事件）=====

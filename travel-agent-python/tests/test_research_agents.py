@@ -169,18 +169,20 @@ def test_research_planner_expands_attraction_preferences(monkeypatch):
 
 
 def test_research_evaluate_insufficient_triggers_refine_round(monkeypatch):
-    """评估不足 → 补查一轮：补充关键词经高德并入证据，轮次=2。"""
+    """评估不足 → 补查一轮：补充关键词经联网补池并入证据，轮次=2。"""
     calls = {"n": 0}
 
     def fake_search(city, preferences, limit=30):
         calls["n"] += 1
         return [{"name": f"{city}景点{calls['n']}", "latitude": 30.0, "longitude": 120.0}]
 
-    def fake_amap(city, keyword, *, category=None):
-        return [{"name": f"{city}补充点", "latitude": 30.1, "longitude": 120.1}]
+    import app.agent.web_search as web_search_mod
+
+    def fake_web(city, category, limit=4, intent_keywords=None):
+        return [{"name": f"{kw}补充点", "latitude": 30.1, "longitude": 120.1} for kw in (intent_keywords or [])]
 
     monkeypatch.setattr(tools, "search_attractions", fake_search)
-    monkeypatch.setattr(tools, "search_local_poi", fake_amap)
+    monkeypatch.setattr(web_search_mod, "search_places_via_web", fake_web)
     monkeypatch.setattr(reasoning, "plan_research", lambda task: {})
     monkeypatch.setattr(
         reasoning,
@@ -191,7 +193,7 @@ def test_research_evaluate_insufficient_triggers_refine_round(monkeypatch):
     pack = run_research(ResearchTask(domain="attraction", city="杭州"))
     assert pack.rounds == 2
     names = {p["name"] for p in pack.items}
-    assert "杭州补充点" in names  # 补充关键词的检索结果已并入证据
+    assert "杭州 西湖补充点" in names  # 补充关键词的联网检索结果已并入证据
 
 
 def test_reasoning_evaluate_empty_is_deterministic_insufficient(monkeypatch):

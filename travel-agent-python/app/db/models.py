@@ -19,6 +19,7 @@ from datetime import date, datetime, time
 from decimal import Decimal
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     Date,
@@ -146,6 +147,9 @@ class ItineraryMain(Base, SoftDelete):
     archived: Mapped[int] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     share_token: Mapped[str | None] = mapped_column(String(48))
     share_expires_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # V7（template）：发布快照物化列；published_at NULL = 未发布
+    template_published_at: Mapped[datetime | None] = mapped_column(DateTime)
+    template_summary: Mapped[dict | None] = mapped_column(JSON, comment="脱敏投影快照（模板广场/fork 数据源）")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
@@ -250,43 +254,59 @@ class BudgetDetail(Base, SoftDelete):
     )
 
 
-class PoiKnowledge(Base):
-    __tablename__ = "poi_knowledge"
-    __table_args__ = (UniqueConstraint("city", "name", "category", name="uk_city_name_category"),)
+class Expense(Base, SoftDelete):
+    __tablename__ = "expense"
 
     id: Mapped[int] = mapped_column(PkBigInt, primary_key=True, autoincrement=True)
-    city: Mapped[str] = mapped_column(String(64), nullable=False)
-    name: Mapped[str] = mapped_column(String(128), nullable=False)
-    category: Mapped[str] = mapped_column(String(16), nullable=False, default="attraction", server_default="attraction")
-    address: Mapped[str | None] = mapped_column(String(255))
-    latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 6))
-    longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 6))
-    ticket_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-    avg_cost: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-    duration_min: Mapped[int | None] = mapped_column(Integer)
-    open_time: Mapped[str | None] = mapped_column(String(64))
-    tags: Mapped[str | None] = mapped_column(String(128))
-    rating: Mapped[Decimal | None] = mapped_column(Numeric(2, 1))
-    description: Mapped[str | None] = mapped_column(String(512))
-    source: Mapped[str] = mapped_column(
-        String(128), nullable=False, default="mysql.poi_knowledge", server_default="mysql.poi_knowledge"
-    )
-    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    itinerary_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    category: Mapped[str] = mapped_column(String(16), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="CNY", server_default="CNY")
+    day_no: Mapped[int | None] = mapped_column(Integer)
+    item_id: Mapped[int | None] = mapped_column(BigInteger)
+    spent_at: Mapped[date | None] = mapped_column(Date)
+    payment_method: Mapped[str | None] = mapped_column(String(24))
+    note: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
 
-class HotelRoomType(Base):
-    __tablename__ = "hotel_room_type"
-    __table_args__ = (UniqueConstraint("poi_id", "room_name", name="uk_hotel_room"),)
+class ItineraryMember(Base):
+    """协作成员（SPEC C2.3）。**硬删**：移除后可重新邀请，故不继承 SoftDelete。
+
+    owner 不在此表——owner 永远由 `itinerary_main.user_id` 判定，成员行只放
+    editor/viewer，避免「owner 行 + 主表 user_id」双真相。
+    """
+
+    __tablename__ = "itinerary_member"
+    __table_args__ = (UniqueConstraint("itinerary_id", "user_id", name="uk_itinerary_member"),)
 
     id: Mapped[int] = mapped_column(PkBigInt, primary_key=True, autoincrement=True)
-    poi_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    room_name: Mapped[str] = mapped_column(String(128), nullable=False)
-    base_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
-    capacity: Mapped[int] = mapped_column(Integer, nullable=False, default=2, server_default="2")
-    bed_type: Mapped[str | None] = mapped_column(String(64))
-    breakfast: Mapped[str | None] = mapped_column(String(64))
-    description: Mapped[str | None] = mapped_column(String(512))
-    is_default: Mapped[int] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    itinerary_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    role: Mapped[str] = mapped_column(String(12), nullable=False, comment="editor/viewer")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+
+
+class ItineraryInvitation(Base):
+    """邀请（SPEC C2.3）：单次兑换、默认 7 天、owner 可撤销。
+
+    明文 token 只在创建响应里出现一次，库内仅存 sha256 摘要；无受邀
+    user_id——兑换时才定人，兑换人写进 accepted_by。
+    """
+
+    __tablename__ = "itinerary_invitation"
+    __table_args__ = (UniqueConstraint("token_hash", name="uk_invitation_token_hash"),)
+
+    id: Mapped[int] = mapped_column(PkBigInt, primary_key=True, autoincrement=True)
+    itinerary_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    role: Mapped[str] = mapped_column(String(12), nullable=False, comment="editor/viewer")
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    accepted_by: Mapped[int | None] = mapped_column(BigInteger)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class CityConsumption(Base):

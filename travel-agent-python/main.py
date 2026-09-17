@@ -4,14 +4,14 @@
 - 组装 FastAPI 应用、挂载 CORS 与路由、定义启动生命周期。
 
 实现要点：
-- 启动时通过 lifespan 预热 RAG 索引（warmup_rag）并导出 openapi.json；
+- 启动时通过 lifespan 导出 openapi.json；
 - 生成任务的自动续跑扫描与两个有界池的优雅关闭也挂在同一个 lifespan 上；
 - 按 settings.agent_cors_origins 配置跨域来源；
 - 把 app.api.agent.router 挂载到 /api/agent 前缀；
 - 本地以 uvicorn 运行 main:app（端口 8000，支持热重载）。
 
 依赖：
-- fastapi/uvicorn；app.api.agent；app.rag.store；app.common.config；
+- fastapi/uvicorn；app.api.agent；app.common.config；
   app.services.generation_recovery / itinerary_generation。
 """
 
@@ -30,7 +30,6 @@ from app.common import cron
 from app.common.config import BASE_DIR, settings
 from app.common.envelope import install_exception_handlers
 from app.db import migrate as db_migrate
-from app.rag.store import warmup_rag
 from app.services import export_service, generation_recovery, itinerary_chat, itinerary_generation
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -51,7 +50,6 @@ async def lifespan(app: FastAPI):
     # JWT 密钥强度）收拢在 Settings.validate_boot；坏配置 RuntimeError →
     # uvicorn 以非 0 退出，避免"起来了但配置是坏的"。
     settings.validate_boot()
-    warmup_rag()
     # 周期任务统一登记（G-3.3）：usage 清理每天一次、生成续跑 60s 一轮。
     # 两个任务都经 app.common.cron——pytest 环境自动 no-op，不再各写各的线程。
     cron.register("usage-cleanup", 86400, _cleanup_usage)

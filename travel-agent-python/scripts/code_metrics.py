@@ -31,10 +31,7 @@ FUNCTION_LINES = 70
 FILE_LINES = 400
 
 # 算法/数据文件豁免名额（PLAN G-2.6：rag/retriever 等算法文件豁免 2 个）
-EXEMPT_FILES = (
-    "app/rag/retriever.py",
-    "app/schemas/trip.py",
-)
+EXEMPT_FILES = ("app/schemas/trip.py",)
 
 LIMITS_PATH = pathlib.Path(__file__).with_name("code_metrics_limits.json")
 

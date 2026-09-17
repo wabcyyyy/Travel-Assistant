@@ -22,11 +22,11 @@ from collections.abc import Callable
 from typing import Any, TypeVar
 
 from pydantic import ValidationError
-from sqlalchemy import distinct, select
+from sqlalchemy import select
 
 from app.agent import find_nearby_pois, run_city_guide, run_clarify
 from app.common.envelope import ApiError
-from app.db.models import PoiKnowledge
+from app.db.models import CityGeo
 from app.db.session import session_scope
 from app.schemas.agent_ops import CityGuideRequest, PoiNearbyItem, PoiNearbyRequest
 from app.schemas.trip import ClarifyRequest
@@ -39,14 +39,14 @@ DEFAULT_GUIDE_MESSAGE = "想去哪里玩？说说你的想法～"
 
 
 def supported_cities() -> list[str]:
-    """知识库里有 POI 数据的城市（= 可作为目的地生成的城市）。
+    """受支持的目的地城市 = city_geo 字典全量。
 
-    这是「能不能生成」的权威源，与 Atlas 的「城市属于哪国」（`city_geo`）职责不同，
-    两份清单不可混用（v2.2 §5.2）。
+    POI 库退役后，「能不能生成」不再受本地语料限制，字典即城市清单；
+    与 Atlas 的「城市属于哪国」天然同源，不再是两份清单。
     """
     with session_scope() as session:
-        stmt = select(distinct(PoiKnowledge.city)).where(PoiKnowledge.city.is_not(None)).order_by(PoiKnowledge.city)
-        return [city for city in session.execute(stmt).scalars().all() if city]
+        stmt = select(CityGeo.city_name).order_by(CityGeo.city_name)
+        return [str(city) for city in session.execute(stmt).scalars().all() if city]
 
 
 def guard_agent_call(unavailable_message: str, invoke: Callable[[], T]) -> T:

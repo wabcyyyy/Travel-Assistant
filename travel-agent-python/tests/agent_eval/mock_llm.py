@@ -4,6 +4,11 @@ LLM-only 口径下生产链路不再有确定性 fallback，因此离线评测�
 mock 开放模式的模型输出（fixture_open_day / fixture_open_trip）：
 从固定 fixture 目录按序取点生成合法行程 JSON，不依赖真实 LLM，
 但走真实的编排/落地/反思/格式化链路。
+
+C3.2 坐标参数化：fixture 坐标按城市名生成——汉字城市落在国内国界框内
+（杭州附近），非汉字城市落海外（巴塞罗那附近，_in_china 框外），
+使国内外分流语义在离线评测可观测；`coords=False` 变体剥掉坐标，
+覆盖「无坐标项」边界（深链降级/未核实标记）。
 """
 
 from __future__ import annotations
@@ -13,15 +18,25 @@ from copy import deepcopy
 from app.agent.trace import traced
 
 
-def _attractions(city: str) -> list[dict]:
+def _has_cjk(text: str) -> bool:
+    return any("\u4e00" <= ch <= "\u9fff" for ch in str(text or ""))
+
+
+def _base_coords(city: str) -> tuple[float, float]:
+    """汉字城市 → 国内框内基准（30, 120）；非汉字 → 海外基准（41.39, 2.17）。"""
+    return (30.0, 120.0) if _has_cjk(city) else (41.39, 2.17)
+
+
+def _attractions(city: str, *, coords: bool = True) -> list[dict]:
+    base_lat, base_lng = _base_coords(city)
     return [
         {
             "id": i,
             "name": f"{city}景点{i}",
             "category": "attraction",
             "address": f"{city}示例区{i}",
-            "latitude": 30.0 + i / 100,
-            "longitude": 120.0 + i / 100,
+            "latitude": base_lat + i / 100 if coords else None,
+            "longitude": base_lng + i / 100 if coords else None,
             "ticket_price": 20 + i * 5,
             "duration_min": 90,
             "open_time": "08:00-18:00",
@@ -32,15 +47,16 @@ def _attractions(city: str) -> list[dict]:
     ]
 
 
-def _foods(city: str) -> list[dict]:
+def _foods(city: str, *, coords: bool = True) -> list[dict]:
+    base_lat, base_lng = _base_coords(city)
     return [
         {
             "id": 100 + i,
             "name": f"{city}本地餐厅{i}",
             "category": "food",
             "address": f"{city}美食街{i}",
-            "latitude": 30.02 + i / 100,
-            "longitude": 120.02 + i / 100,
+            "latitude": base_lat + 0.02 + i / 100 if coords else None,
+            "longitude": base_lng + 0.02 + i / 100 if coords else None,
             "ticket_price": 60 + i * 10,
             "duration_min": 60,
             "open_time": "10:00-22:00",
@@ -50,7 +66,7 @@ def _foods(city: str) -> list[dict]:
     ]
 
 
-def _hotels(city: str) -> list[dict]:
+def _hotels(city: str, *, coords: bool = True) -> list[dict]:
     return [
         {
             "id": 200 + i,
@@ -65,28 +81,28 @@ def _hotels(city: str) -> list[dict]:
     ]
 
 
-def catalog(city: str) -> dict:
+def catalog(city: str, *, coords: bool = True) -> dict:
     return {
-        "attractions": _attractions(city),
-        "foods": _foods(city),
-        "hotels": _hotels(city),
+        "attractions": _attractions(city, coords=coords),
+        "foods": _foods(city, coords=coords),
+        "hotels": _hotels(city, coords=coords),
         "consumption": {"city": city, "meal_price": 60, "transport_price": 35, "hotel_price": 300},
     }
 
 
 @traced("tool", "fixture.search_attractions")
-def search_attractions(city: str, preferences: list[str], limit: int = 30) -> list[dict]:
-    return deepcopy(catalog(city)["attractions"][:limit])
+def search_attractions(city: str, preferences: list[str], limit: int = 30, *, coords: bool = True) -> list[dict]:
+    return deepcopy(catalog(city, coords=coords)["attractions"][:limit])
 
 
 @traced("tool", "fixture.search_foods")
-def search_foods(city: str, limit: int = 10) -> list[dict]:
-    return deepcopy(catalog(city)["foods"][:limit])
+def search_foods(city: str, limit: int = 10, *, coords: bool = True) -> list[dict]:
+    return deepcopy(catalog(city, coords=coords)["foods"][:limit])
 
 
 @traced("tool", "fixture.search_hotels")
-def search_hotels(city: str, limit: int = 6) -> list[dict]:
-    return deepcopy(catalog(city)["hotels"][:limit])
+def search_hotels(city: str, limit: int = 6, *, coords: bool = True) -> list[dict]:
+    return deepcopy(catalog(city, coords=coords)["hotels"][:limit])
 
 
 @traced("tool", "fixture.get_consumption")
@@ -99,9 +115,9 @@ def attach_poi_images(plan: list[dict], city: str) -> list[dict]:
 
 
 @traced("tool", "fixture.search_local_poi")
-def search_local_poi(city: str, name: str, *, category: str | None = None) -> list[dict]:
+def search_local_poi(city: str, name: str, *, category: str | None = None, coords: bool = True) -> list[dict]:
     """按名称回放 fixture 坐标，供开放模式的 local_ground 离线落点。"""
-    for group in (_attractions(city), _foods(city), _hotels(city)):
+    for group in (_attractions(city, coords=coords), _foods(city, coords=coords), _hotels(city, coords=coords)):
         for poi in group:
             if poi["name"] == name:
                 return [deepcopy(poi)]

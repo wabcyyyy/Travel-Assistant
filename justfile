@@ -52,6 +52,11 @@ fe-check:
     cd {{fe}}; npm run ep:lint
     cd {{fe}}; npm run test:unit
 
+# trek 双站像素对照（v2.8 视觉复刻验收）：本地 dev server 与 demo.liketrek.com 同视口截图 +
+# 并排图 + pixelmatch 差异热图，产物落 travel-frontend-vue/.tmp-vdiff/。先起 just dev-fe 再跑
+vdiff:
+    cd {{fe}}; node scripts/vdiff.mjs
+
 # ---- 开发 ----
 
 # 起后端（需本机 MySQL/Redis，见 README）
@@ -62,6 +67,22 @@ dev:
 dev-fe:
     cd {{fe}}; npm run dev
 
-# 起本地基础设施（MySQL/Redis/Qdrant）
+# 起本地基础设施（MySQL/Redis；语料库退役后不再需要 Qdrant）
 dev-infra:
-    docker compose up -d mysql redis qdrant
+    docker compose up -d mysql redis
+
+# ---- P0 backup / restore ----
+# Caller MUST stop all writers first and keep MySQL running; these recipes never stop services.
+# Bundles contain content/dump.sql + content/data/ (all backend files, including empty dirs).
+# Output parent must exist. Restore needs an existing EMPTY DB, an ABSENT data dir,
+# a trusted bundle and explicit --yes; partial SQL failures are NOT rolled back.
+# Pass arguments as one quoted string when paths contain spaces, e.g.
+# just backup '--out "D:/backups/travel-20260917"'
+# Isolated rehearsal: use --compose-file, --project-name AND --data-dir together;
+# the alternate compose file must use separate containers/volumes/ports.
+# Defaults only show help; restore never supplies confirmation automatically.
+backup *args='--help':
+    uv run --project {{py}} python {{py}}/scripts/backup_restore.py backup {{args}}; exit $LASTEXITCODE
+
+restore *args='--help':
+    uv run --project {{py}} python {{py}}/scripts/backup_restore.py restore {{args}}; exit $LASTEXITCODE

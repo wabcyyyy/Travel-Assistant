@@ -1834,6 +1834,18 @@
           "default": null,
           "title": "Budget"
         },
+        "spent": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Spent"
+        },
         "requestId": {
           "anyOf": [
             {
@@ -1869,6 +1881,7 @@
         "failureReasons",
         "plans",
         "budget",
+        "spent",
         "requestId",
         "actionId"
       ],
@@ -1931,6 +1944,48 @@
           ],
           "default": null,
           "title": "Currenthoteltotal"
+        },
+        "spentTotal": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Spenttotal"
+        },
+        "spentByCategory": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Spentbycategory"
+        },
+        "spentOtherCurrencies": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Spentothercurrencies"
         },
         "startDate": {
           "anyOf": [
@@ -2006,6 +2061,9 @@
         "budget",
         "currentTotal",
         "currentHotelTotal",
+        "spentTotal",
+        "spentByCategory",
+        "spentOtherCurrencies",
         "startDate",
         "endDate",
         "preferences",

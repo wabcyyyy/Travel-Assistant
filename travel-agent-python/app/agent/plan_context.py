@@ -64,11 +64,22 @@ def _research_event_stats(context: dict) -> tuple[int, bool, list[dict], str | N
     return evidence_count, degraded, domains, reason
 
 
-def run_plan_context(city: str, preferences: list[str], itinerary_id: int | None = None) -> dict:
+def run_plan_context(
+    city: str,
+    preferences: list[str],
+    itinerary_id: int | None = None,
+    *,
+    start_date: str | None = None,
+    days: int = 1,
+) -> dict:
     """构建单日生成上下文：Supervisor 并行派发三个研究 Agent 产出证据。
 
     与整段生成的 search 节点共用同一条研究链路（多 Agent 编排），
-    返回形状保持 {candidates, foods, hotels, consumption} 不变。
+    返回形状保持 {candidates, foods, hotels, consumption, weather} 不变。
+
+    start_date（行程首日）+ days（总天数）用于城市级天气（C3.1）：一次取
+    整趟预报窗，逐日消费按 day_no 挑行；缺省（调试端点、chat 重排）不带
+    日期则无天气。
 
     itinerary_id 可选：携带时向 Redis 发布研究进度事件（research_start /
     research_done / degraded），由 Java SSE 网关转发前端；事件是尽力而为
@@ -81,7 +92,7 @@ def run_plan_context(city: str, preferences: list[str], itinerary_id: int | None
     run_id = current_run_id()
     publish_research_start(itinerary_id, list(_RESEARCH_EVENT_DOMAINS), run_id=run_id)
     try:
-        req = GenerateRequest(city=city, days=1, persons=1, preferences=preferences)
+        req = GenerateRequest(city=city, days=max(days, 1), persons=1, preferences=preferences, start_date=start_date)
         context = run_research_context(req)
     except Exception as exc:
         # 兜底口径：研究失败时 HTTP 层会转错误信封，由编排器决定重试
@@ -100,6 +111,7 @@ def run_plan_context(city: str, preferences: list[str], itinerary_id: int | None
         "foods": context["foods"],
         "hotels": context["hotels"],
         "consumption": context["consumption"],
+        "weather": context.get("weather"),
     }
 
 

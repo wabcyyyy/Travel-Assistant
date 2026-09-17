@@ -65,6 +65,7 @@ class UnifiedAgentState(BaseModel):
     foods: list[dict] = Field(default_factory=list)
     hotels: list[dict] = Field(default_factory=list)
     consumption: dict | None = None
+    weather: list[dict] | None = None
     daily_plans: list[dict] = Field(default_factory=list)
     budget_estimate: dict = Field(default_factory=dict)
     raw_suggestions: list[dict] = Field(default_factory=list)
@@ -334,6 +335,7 @@ def empty_trip_state(req: GenerateRequest) -> dict:
         "foods": [],
         "hotels": [],
         "consumption": None,
+        "weather": None,
         "daily_plans": [],
         "budget_estimate": {},
         "attempts": 0,

@@ -27,10 +27,10 @@ from app.common.envelope import install_exception_handlers
 from app.db import session as db_session
 from app.db.models import (
     Base,
+    CityGeo,
     ItineraryDay,
     ItineraryItem,
     ItineraryMain,
-    PoiKnowledge,
     SysUser,
 )
 from app.services import cache_store, itinerary_city, itinerary_nl_edit, user_service
@@ -47,6 +47,9 @@ def db(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "jwt_secret", JWT_MATERIAL)
     monkeypatch.setattr(settings, "redis_url", "redis://127.0.0.1:1/0")
     cache_store.reset_for_tests()
+    # 语料库退役：nl-edit 的外部地点解析/酒店候选默认给空（用例按需覆盖）
+    monkeypatch.setattr(itinerary_nl_edit, "get_poi_detail", lambda city, name: None)
+    monkeypatch.setattr(itinerary_nl_edit, "search_hotels", lambda city, limit=8: [])
     _seed()
     yield
     db_session.init_engine(None, None)
@@ -56,6 +59,7 @@ def db(monkeypatch, tmp_path):
 def _seed() -> None:
     with db_session.session_scope() as session:
         session.add(SysUser(username="alice", password=user_service.hash_password(PASSWORD), status=1, role="user"))
+        session.add(CityGeo(city_name="杭州", country="中国", country_code="CN", is_domestic=True))
         trip = ItineraryMain(
             user_id=1,
             title="杭州2日游",
@@ -100,31 +104,6 @@ def _seed() -> None:
                     poi_id="1",
                     cost=Decimal("200.00"),
                     sort_no=0,
-                ),
-            ]
-        )
-        session.add_all(
-            [
-                PoiKnowledge(
-                    city="杭州",
-                    name="灵隐寺",
-                    category="attraction",
-                    ticket_price=Decimal("45.00"),
-                    duration_min=120,
-                    open_time="07:00-18:00",
-                    tags="古迹,佛教",
-                    source="mysql.poi_knowledge",
-                    source_updated_at=None,
-                ),
-                PoiKnowledge(
-                    city="杭州",
-                    name="杭州国际酒店",
-                    category="hotel",
-                    ticket_price=Decimal("880.00"),
-                    tags="五星,地标",
-                    description="城市地标酒店",
-                    source="mysql.poi_knowledge",
-                    source_updated_at=None,
                 ),
             ]
         )
@@ -195,19 +174,31 @@ def test_nl_edit_delete_and_add_report_in_java_wording(client: TestClient, monke
     assert added["sort"] == 1 and added["start"] == time(14, 0)
 
 
-def test_add_op_copies_authoritative_facts_and_marks_them_pending(client: TestClient, monkeypatch) -> None:
-    """知识库命中的点位要带来源字段，并按 Java 口径标记为「未核验/行前复核」。"""
+def test_add_op_resolves_external_place_and_marks_coords_verified(client: TestClient, monkeypatch) -> None:
+    """外部地点层命中的点位要带真实坐标与来源，坐标按 observed、票价留白走估价。"""
     trip_id = _trip_id(client)
+
+    def _hit(city, name):
+        return {
+            "id": "N123",
+            "name": name,
+            "latitude": 30.2407,
+            "longitude": 120.1315,
+            "address": "浙江省杭州市 法云弄1号",
+            "source": "nominatim",
+        }
+
+    monkeypatch.setattr(itinerary_nl_edit, "get_poi_detail", _hit)
     _ops(monkeypatch, EditOp(action="add", day_no=2, poi_name="灵隐寺"))
     client.post(f"/api/itinerary/{trip_id}/nl-edit", json={"instruction": "第二天加灵隐寺"})
 
     with db_session.session_scope() as session:
         item = session.execute(select(ItineraryItem).where(ItineraryItem.poi_name == "灵隐寺")).scalar_one()
-        assert item.item_type == "attraction" and item.cost == Decimal("45.00")
-        assert item.duration_min == 120 and item.open_time == "07:00-18:00" and item.tag == "古迹,佛教"
-        assert item.verification_status == "unverified"
-        assert item.freshness_status == "unknown" and item.review_requirement == "before_departure"
-        assert item.source == "mysql.poi_knowledge" and item.source_updated_at is None
+        assert item.item_type == "attraction" and item.cost is None
+        assert float(item.latitude or 0) == 30.2407 and float(item.longitude or 0) == 120.1315
+        assert item.poi_id == "N123" and item.address == "浙江省杭州市 法云弄1号"
+        assert item.source == "nominatim" and item.verification_status == "partially_verified"
+        assert item.value_kind == "observed" and item.review_requirement == "before_departure"
 
 
 def test_add_op_without_knowledge_hit_falls_back_to_plain_attraction(client: TestClient, monkeypatch) -> None:
@@ -245,13 +236,21 @@ def test_move_day_on_last_day_is_capped_and_adds_nothing(client: TestClient, mon
 
 def test_upgrade_hotel_matches_tier_keywords(client: TestClient, monkeypatch) -> None:
     trip_id = _trip_id(client)
+    monkeypatch.setattr(
+        itinerary_nl_edit,
+        "search_hotels",
+        lambda city, limit=8: [
+            {"id": "H1", "name": "杭州国际酒店", "avg_cost": 880.0, "description": "城市地标酒店", "kinds": ""},
+            {"id": "H2", "name": "西湖宾馆", "avg_cost": 400.0, "description": "湖景", "kinds": ""},
+        ],
+    )
     _ops(monkeypatch, EditOp(action="upgrade_hotel", day_no=None, poi_name=None, tier="豪华型"))
     body = client.post(f"/api/itinerary/{trip_id}/nl-edit", json={"instruction": "酒店换成豪华点的"}).json()
     assert body["data"]["applied"] == ["酒店已调整为豪华型"]
     with db_session.session_scope() as session:
         hotel = session.execute(select(ItineraryItem).where(ItineraryItem.item_type == "hotel")).scalar_one()
-        assert hotel.poi_name == "杭州国际酒店" and hotel.cost == Decimal("880.00")
-        assert hotel.remark == "城市地标酒店", "档次关键词命中描述/标签"
+        assert hotel.poi_name == "杭州国际酒店" and hotel.cost == Decimal("880.0")
+        assert hotel.remark == "城市地标酒店", "档次关键词命中描述"
 
 
 def test_delete_without_day_no_spans_whole_trip(client: TestClient, monkeypatch) -> None:

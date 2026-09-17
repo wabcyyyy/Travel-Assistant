@@ -1,8 +1,11 @@
 <template>
-  <div class="butler-letter" :class="{ 'is-streaming': streaming }">
+  <div class="butler-letter" :class="{ 'is-streaming': streaming, 'is-clamped': clamped && isLong }">
     <div class="letter-head">
       <span class="letter-kicker">AI 管家说</span>
       <span class="letter-rule" aria-hidden="true"></span>
+      <button v-if="isLong" type="button" class="letter-toggle" @click="clamped = !clamped">
+        {{ clamped ? '展开全文' : '收起' }}
+      </button>
     </div>
 
     <div class="letter-body">
@@ -11,7 +14,7 @@
     </div>
 
     <!-- 预约提醒不属于信件正文：独立提示行，避免混入叙事 -->
-    <ul v-if="reminders.length" class="letter-reminders">
+    <ul v-if="reminders.length && !(clamped && isLong)" class="letter-reminders">
       <li v-for="(r, i) in reminders" :key="i">{{ r }}</li>
     </ul>
 
@@ -20,11 +23,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 // 「AI 管家说」卡：butler_note 相位以 streaming 驱动淡入
 // （reduce 下静态呈现）。信件按段落渲染；【预约提醒】行为系统追加条目，
 // 拆出正文单独成行，避免污染叙事与首字下沉。
+// 长信默认限高 ~4 行（简报化）：展开才看全文，避免顶成一大面墙。
 const props = withDefaults(
   defineProps<{
     /** 管家讲解原文（detail.planNote） */
@@ -52,13 +56,19 @@ const reminders = computed(() => {
     .map((s) => s.trim())
     .filter((s) => s.startsWith(RESERVATION_MARKER))
 })
+
+/** 超过 2 段或 160 字视为长信，默认限高 */
+const isLong = computed(
+  () => letterParas.value.length > 2 || letterParas.value.join('').length > 160,
+)
+const clamped = ref(true)
 </script>
 
 <style scoped>
 /* 暖纸底为管家叙事专属契约：--lp-paper 只用于刊物语段（管家说 / 核查附录） */
 .butler-letter {
   margin-bottom: 16px;
-  padding: 18px 22px 14px;
+  padding: 14px 16px 12px;
   border-left: 3px solid var(--lp-accent-warm);
   border-radius: 0 12px 12px 0;
   background: var(--lp-paper);
@@ -91,7 +101,7 @@ const reminders = computed(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .letter-kicker {
@@ -100,6 +110,23 @@ const reminders = computed(() => {
   color: var(--lp-accent-warm);
   font-size: 12.5px;
   letter-spacing: 0.14em;
+}
+
+.letter-toggle {
+  flex: none;
+  padding: 2px 8px;
+  border: none;
+  border-radius: var(--lp-radius-pill);
+  background: transparent;
+  color: var(--lp-accent);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.letter-toggle:hover {
+  background: var(--lp-accent-subtle);
 }
 
 .letter-rule {
@@ -114,14 +141,22 @@ const reminders = computed(() => {
 }
 
 .letter-para {
-  margin: 0 0 10px;
-  line-height: 1.9;
+  margin: 0 0 8px;
+  line-height: 1.75;
   color: var(--lp-ink-soft);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .letter-para:last-child {
   margin-bottom: 0;
+}
+
+/* 长信简报化：默认只露前 ~4 行 + 底部渐隐，展开才看全文（mask 只取 alpha，色值用令牌） */
+.butler-letter.is-clamped .letter-body {
+  max-height: 7.2em;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, var(--lp-ink) 70%, transparent);
+  mask-image: linear-gradient(to bottom, var(--lp-ink) 70%, transparent);
 }
 
 /* 首段首字下沉：衬线 + 青绿，两行高度（斜体规则不适用，非斜体） */

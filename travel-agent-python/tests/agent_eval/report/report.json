@@ -1,6 +1,6 @@
 {
   "mode": "offline-fixture-fallback",
-  "case_count": 6,
+  "case_count": 13,
   "metrics": {
     "poi_authority_rate": 1.0,
     "field_reference_rate": 1.0,
@@ -14,7 +14,10 @@
     "fallback_success_rate": 1.0,
     "trace_complete_rate": 1.0,
     "research_rounds_avg": 3.0,
-    "research_pack_avg": 18.0
+    "research_pack_avg": 18.0,
+    "coord_valid_rate": 0.5898,
+    "deeplink_resolvable_rate": 1.0,
+    "category_reasonable_rate": 1.0
   },
   "details": [
     {
@@ -64,7 +67,10 @@
         ]
       },
       "research_rounds": 3,
-      "research_pack": 18
+      "research_pack": 18,
+      "coord_valid_rate": 1.0,
+      "deeplink_resolvable_rate": 1.0,
+      "category_reasonable_rate": 1.0
     },
     {
       "case": {
@@ -119,7 +125,10 @@
         ]
       },
       "research_rounds": 3,
-      "research_pack": 18
+      "research_pack": 18,
+      "coord_valid_rate": 0.6667,
+      "deeplink_resolvable_rate": 1.0,
+      "category_reasonable_rate": 1.0
     },
     {
       "case": {
@@ -174,7 +183,10 @@
         ]
       },
       "research_rounds": 3,
-      "research_pack": 18
+      "research_pack": 18,
+      "coord_valid_rate": 0.6667,
+      "deeplink_resolvable_rate": 1.0,
+      "category_reasonable_rate": 1.0
     },
     {
       "case": {
@@ -229,7 +241,10 @@
         ]
       },
       "research_rounds": 3,
-      "research_pack": 18
+      "research_pack": 18,
+      "coord_valid_rate": 0.6667,
+      "deeplink_resolvable_rate": 1.0,
+      "category_reasonable_rate": 1.0
     },
     {
       "case": {
@@ -284,7 +299,10 @@
         ]
       },
       "research_rounds": 3,
-      "research_pack": 18
+      "research_pack": 18,
+      "coord_valid_rate": 0.6667,
+      "deeplink_resolvable_rate": 1.0,
+      "category_reasonable_rate": 1.0
     },
     {
       "case": {
@@ -339,7 +357,406 @@
         ]
       },
       "research_rounds": 3,
-      "research_pack": 18
+      "research_pack": 18,
+      "coord_valid_rate": 0.6667,
+      "deeplink_resolvable_rate": 1.0,
+      "category_reasonable_rate": 1.0
+    },
+    {
+      "case": {
+        "city": "广州",
+        "days": 2,
+        "persons": 2,
+        "preferences": [
+          "美食"
+        ],
+        "prompt_version": "v1.1.narrative/v1.1.narrative"
+      },
+      "status": "degraded",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核；开放模式结果未通过全部约束校验（见校验日志），已保留但请复核当日时间安排；达到重试上限后仍存在行程约束问题",
+      "days": 2,
+      "total_items": 6,
+      "poi_authority_rate": 1.0,
+      "field_reference_rate": 1.0,
+      "time_conflict_rate": 0.0,
+      "route_violation_rate": 0.0,
+      "attraction_duplicate_rate": 0.0,
+      "budget_deviation_rate": 0.0,
+      "fallback_success": true,
+      "trace": {
+        "node_count": 14,
+        "tool_count": 4,
+        "nodes": [
+          "format",
+          "format",
+          "generate",
+          "generate",
+          "generate",
+          "generate",
+          "parse",
+          "parse",
+          "reflect",
+          "reflect",
+          "reflect",
+          "reflect",
+          "research",
+          "research"
+        ],
+        "tools": [
+          "fixture.get_consumption",
+          "search_attractions",
+          "search_foods",
+          "search_hotels"
+        ],
+        "routes": [
+          "fix",
+          "pass",
+          "keep_llm_result"
+        ]
+      },
+      "research_rounds": 3,
+      "research_pack": 18,
+      "coord_valid_rate": 0.6667,
+      "deeplink_resolvable_rate": 1.0,
+      "category_reasonable_rate": 1.0
+    },
+    {
+      "case": {
+        "city": "厦门",
+        "days": 3,
+        "persons": 2,
+        "preferences": [
+          "海滨"
+        ],
+        "prompt_version": "v1.1.narrative/v1.1.narrative"
+      },
+      "status": "degraded",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核；开放模式结果未通过全部约束校验（见校验日志），已保留但请复核当日时间安排；达到重试上限后仍存在行程约束问题",
+      "days": 3,
+      "total_items": 9,
+      "poi_authority_rate": 1.0,
+      "field_reference_rate": 1.0,
+      "time_conflict_rate": 0.0,
+      "route_violation_rate": 0.0,
+      "attraction_duplicate_rate": 0.0,
+      "budget_deviation_rate": 0.0,
+      "fallback_success": true,
+      "trace": {
+        "node_count": 14,
+        "tool_count": 4,
+        "nodes": [
+          "format",
+          "format",
+          "generate",
+          "generate",
+          "generate",
+          "generate",
+          "parse",
+          "parse",
+          "reflect",
+          "reflect",
+          "reflect",
+          "reflect",
+          "research",
+          "research"
+        ],
+        "tools": [
+          "fixture.get_consumption",
+          "search_attractions",
+          "search_foods",
+          "search_hotels"
+        ],
+        "routes": [
+          "fix",
+          "pass",
+          "keep_llm_result"
+        ]
+      },
+      "research_rounds": 3,
+      "research_pack": 18,
+      "coord_valid_rate": 0.6667,
+      "deeplink_resolvable_rate": 1.0,
+      "category_reasonable_rate": 1.0
+    },
+    {
+      "case": {
+        "city": "Barcelona",
+        "days": 3,
+        "persons": 2,
+        "preferences": [
+          "高迪建筑"
+        ],
+        "prompt_version": "v1.1.narrative/v1.1.narrative"
+      },
+      "status": "degraded",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核；开放模式结果未通过全部约束校验（见校验日志），已保留但请复核当日时间安排；达到重试上限后仍存在行程约束问题",
+      "days": 3,
+      "total_items": 9,
+      "poi_authority_rate": 1.0,
+      "field_reference_rate": 1.0,
+      "time_conflict_rate": 0.0,
+      "route_violation_rate": 0.0,
+      "attraction_duplicate_rate": 0.0,
+      "budget_deviation_rate": 0.0,
+      "fallback_success": true,
+      "trace": {
+        "node_count": 14,
+        "tool_count": 4,
+        "nodes": [
+          "format",
+          "format",
+          "generate",
+          "generate",
+          "generate",
+          "generate",
+          "parse",
+          "parse",
+          "reflect",
+          "reflect",
+          "reflect",
+          "reflect",
+          "research",
+          "research"
+        ],
+        "tools": [
+          "fixture.get_consumption",
+          "search_attractions",
+          "search_foods",
+          "search_hotels"
+        ],
+        "routes": [
+          "fix",
+          "pass",
+          "keep_llm_result"
+        ]
+      },
+      "research_rounds": 3,
+      "research_pack": 18,
+      "coord_valid_rate": 0.6667,
+      "deeplink_resolvable_rate": 1.0,
+      "category_reasonable_rate": 1.0
+    },
+    {
+      "case": {
+        "city": "Tokyo",
+        "days": 2,
+        "persons": 2,
+        "preferences": [
+          "城市观察"
+        ],
+        "prompt_version": "v1.1.narrative/v1.1.narrative"
+      },
+      "status": "degraded",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核；开放模式结果未通过全部约束校验（见校验日志），已保留但请复核当日时间安排；达到重试上限后仍存在行程约束问题",
+      "days": 2,
+      "total_items": 6,
+      "poi_authority_rate": 1.0,
+      "field_reference_rate": 1.0,
+      "time_conflict_rate": 0.0,
+      "route_violation_rate": 0.0,
+      "attraction_duplicate_rate": 0.0,
+      "budget_deviation_rate": 0.0,
+      "fallback_success": true,
+      "trace": {
+        "node_count": 14,
+        "tool_count": 4,
+        "nodes": [
+          "format",
+          "format",
+          "generate",
+          "generate",
+          "generate",
+          "generate",
+          "parse",
+          "parse",
+          "reflect",
+          "reflect",
+          "reflect",
+          "reflect",
+          "research",
+          "research"
+        ],
+        "tools": [
+          "fixture.get_consumption",
+          "search_attractions",
+          "search_foods",
+          "search_hotels"
+        ],
+        "routes": [
+          "fix",
+          "pass",
+          "keep_llm_result"
+        ]
+      },
+      "research_rounds": 3,
+      "research_pack": 18,
+      "coord_valid_rate": 0.6667,
+      "deeplink_resolvable_rate": 1.0,
+      "category_reasonable_rate": 1.0
+    },
+    {
+      "case": {
+        "city": "Bali",
+        "days": 4,
+        "persons": 2,
+        "preferences": [
+          "海岛"
+        ],
+        "prompt_version": "v1.1.narrative/v1.1.narrative"
+      },
+      "status": "degraded",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核；开放模式结果未通过全部约束校验（见校验日志），已保留但请复核当日时间安排；达到重试上限后仍存在行程约束问题",
+      "days": 4,
+      "total_items": 12,
+      "poi_authority_rate": 1.0,
+      "field_reference_rate": 1.0,
+      "time_conflict_rate": 0.0,
+      "route_violation_rate": 0.0,
+      "attraction_duplicate_rate": 0.0,
+      "budget_deviation_rate": 0.0,
+      "fallback_success": true,
+      "trace": {
+        "node_count": 14,
+        "tool_count": 4,
+        "nodes": [
+          "format",
+          "format",
+          "generate",
+          "generate",
+          "generate",
+          "generate",
+          "parse",
+          "parse",
+          "reflect",
+          "reflect",
+          "reflect",
+          "reflect",
+          "research",
+          "research"
+        ],
+        "tools": [
+          "fixture.get_consumption",
+          "search_attractions",
+          "search_foods",
+          "search_hotels"
+        ],
+        "routes": [
+          "fix",
+          "pass",
+          "keep_llm_result"
+        ]
+      },
+      "research_rounds": 3,
+      "research_pack": 18,
+      "coord_valid_rate": 0.6667,
+      "deeplink_resolvable_rate": 1.0,
+      "category_reasonable_rate": 1.0
+    },
+    {
+      "case": {
+        "city": "昆明",
+        "days": 2,
+        "persons": 2,
+        "preferences": [
+          "无坐标边界"
+        ],
+        "coords": false,
+        "prompt_version": "v1.1.narrative/v1.1.narrative"
+      },
+      "status": "degraded",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
+      "days": 2,
+      "total_items": 8,
+      "poi_authority_rate": 1.0,
+      "field_reference_rate": 1.0,
+      "time_conflict_rate": 0.0,
+      "route_violation_rate": 0.0,
+      "attraction_duplicate_rate": 0.0,
+      "budget_deviation_rate": 0.0,
+      "fallback_success": true,
+      "trace": {
+        "node_count": 10,
+        "tool_count": 4,
+        "nodes": [
+          "format",
+          "format",
+          "generate",
+          "generate",
+          "parse",
+          "parse",
+          "reflect",
+          "reflect",
+          "research",
+          "research"
+        ],
+        "tools": [
+          "fixture.get_consumption",
+          "search_attractions",
+          "search_foods",
+          "search_hotels"
+        ],
+        "routes": [
+          "pass"
+        ]
+      },
+      "research_rounds": 3,
+      "research_pack": 18,
+      "coord_valid_rate": 0.0,
+      "deeplink_resolvable_rate": 1.0,
+      "category_reasonable_rate": 1.0
+    },
+    {
+      "case": {
+        "city": "Paris",
+        "days": 2,
+        "persons": 2,
+        "preferences": [
+          "博物馆"
+        ],
+        "coords": false,
+        "prompt_version": "v1.1.narrative/v1.1.narrative"
+      },
+      "status": "degraded",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
+      "days": 2,
+      "total_items": 8,
+      "poi_authority_rate": 1.0,
+      "field_reference_rate": 1.0,
+      "time_conflict_rate": 0.0,
+      "route_violation_rate": 0.0,
+      "attraction_duplicate_rate": 0.0,
+      "budget_deviation_rate": 0.0,
+      "fallback_success": true,
+      "trace": {
+        "node_count": 10,
+        "tool_count": 4,
+        "nodes": [
+          "format",
+          "format",
+          "generate",
+          "generate",
+          "parse",
+          "parse",
+          "reflect",
+          "reflect",
+          "research",
+          "research"
+        ],
+        "tools": [
+          "fixture.get_consumption",
+          "search_attractions",
+          "search_foods",
+          "search_hotels"
+        ],
+        "routes": [
+          "pass"
+        ]
+      },
+      "research_rounds": 3,
+      "research_pack": 18,
+      "coord_valid_rate": 0.0,
+      "deeplink_resolvable_rate": 1.0,
+      "category_reasonable_rate": 1.0
     }
   ]
 }

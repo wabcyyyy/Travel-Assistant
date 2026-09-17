@@ -126,7 +126,8 @@ def _fake_agents(monkeypatch, per_day: list[DailyPlan], stream_events: list[dict
     monkeypatch.setattr(
         itinerary_generation,
         "run_plan_context",
-        lambda city, prefs, itinerary_id=None: (
+        # start_date/days 为 C3.1 天气新增的可选入参，替身用 **kwargs 兼容
+        lambda city, prefs, itinerary_id=None, **kwargs: (
             calls.__setitem__("context", calls["context"] + 1),
             {"candidates": [], "foods": [], "hotels": [], "consumption": None},
         )[1],

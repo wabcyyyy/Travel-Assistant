@@ -65,6 +65,7 @@ def research_pois(state: AgentState) -> dict:
         "foods": context["foods"],
         "hotels": context["hotels"],
         "consumption": context["consumption"],
+        "weather": context.get("weather"),
         "research_report": context["research_report"],
     }
 
@@ -87,6 +88,7 @@ def generate_itinerary(state: AgentState) -> dict:
             state.get("hotels"),
             candidates=state.get("candidates"),
             foods=state.get("foods"),
+            weather=state.get("weather"),
         )
         if open_state is not None:
             return open_state

@@ -71,7 +71,7 @@ const activeMenu = computed(() => route.path)
   padding: 16px 0;
   height: fit-content;
   position: sticky;
-  top: 76px;
+  top: 80px;
 }
 
 /* 后台标识：复用主站 logo 结构，尺寸更收敛 */

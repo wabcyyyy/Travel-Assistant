@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { clearUserSnapshots } from '../utils/offlineSnapshots'
 
 interface UserState {
   /** 仅内存中的 token（兼容脚本/联调）；浏览器主凭据是 HttpOnly Cookie */
@@ -39,6 +40,9 @@ export const useUserStore = defineStore('user', {
       }
     },
     logout() {
+      // 离线快照（C2.5）：退出即清本账号私有快照（按 username 隔离，异步尽力而为）
+      const name = this.username
+      if (name) void clearUserSnapshots(name).catch(() => {})
       this.token = ''
       this.username = ''
       this.role = ''

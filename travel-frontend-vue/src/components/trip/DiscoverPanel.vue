@@ -1,120 +1,102 @@
 <template>
   <section class="discover-panel" aria-label="发现">
-    <h2 class="panel-title">发现</h2>
+    <div class="discover-head">
+      <h2 class="panel-title">发现</h2>
 
-    <AppInput
-      v-model="query"
-      class="panel-search"
-      placeholder="搜索地点，回车检索"
-      aria-label="搜索地点"
-      @enter="runSearch"
-    >
-      <template #prefix><Search :size="15" /></template>
-    </AppInput>
-
-    <Segmented v-model="scope" class="scope" :items="scopeItems" aria-label="点位范围" />
-
-    <div class="cat-row" role="group" aria-label="分类筛选">
-      <button
-        v-for="chip in CATEGORY_CHIPS"
-        :key="chip.value"
-        type="button"
-        class="cat-chip"
-        :class="{ 'is-active': category === chip.value }"
-        :aria-pressed="category === chip.value ? 'true' : 'false'"
-        @click="category = chip.value"
+      <AppInput
+        v-model="query"
+        class="panel-search"
+        placeholder="搜索地点，回车检索"
+        aria-label="搜索地点"
+        @enter="runSearch"
       >
-        {{ chip.label }}
-      </button>
+        <template #prefix><Search :size="15" /></template>
+      </AppInput>
+
+      <Segmented v-model="scope" class="scope" :items="scopeItems" aria-label="点位范围" />
+
+      <div class="cat-row" role="group" aria-label="分类筛选">
+        <button
+          v-for="chip in CATEGORY_CHIPS"
+          :key="chip.value"
+          type="button"
+          class="cat-chip"
+          :class="{ 'is-active': category === chip.value }"
+          :aria-pressed="category === chip.value ? 'true' : 'false'"
+          @click="category = chip.value"
+        >
+          {{ chip.label }}
+        </button>
+      </div>
+
+      <p v-if="presetDayNo" class="preset-hint">
+        排入目标：第 {{ presetDayNo }} 天（点卡片上的 ＋ 直接加入）
+        <button type="button" class="caption-btn" @click="emit('clearPreset')">取消</button>
+      </p>
     </div>
 
-    <p v-if="presetDayNo" class="preset-hint">
-      排入目标：第 {{ presetDayNo }} 天（点卡片上的 ＋ 直接加入）
-      <button type="button" class="caption-btn" @click="emit('clearPreset')">取消</button>
-    </p>
+    <!-- 头部钉在面板顶，只有列表滚（面板高度固定，超出必须走内滚而不是被裁掉） -->
+    <div class="discover-scroll">
+      <p class="list-caption">
+        <template v-if="searching">检索中…</template>
+        <template v-else-if="searchMode">
+          「{{ activeQuery }}」结果 {{ entries.length }} 条
+          <button type="button" class="caption-btn" @click="clearSearch">清除</button>
+        </template>
+        <template v-else>未排 {{ unplannedCount }} · 已排 {{ plannedCount }}</template>
+      </p>
 
-    <p class="list-caption">
-      <template v-if="searching">检索中…</template>
-      <template v-else-if="searchMode">
-        「{{ activeQuery }}」结果 {{ entries.length }} 条
-        <button type="button" class="caption-btn" @click="clearSearch">清除</button>
-      </template>
-      <template v-else>未排 {{ unplannedCount }} · 已排 {{ plannedCount }}</template>
-    </p>
-
-    <!-- 就近推荐（W2）：按首个带坐标的点位取同城近邻；拖卡片到左栏某天也可直接排入 -->
-    <div v-if="!searchMode && nearbyItems.length" class="nearby">
-      <p class="nearby-title">就近推荐</p>
-      <ul class="nearby-list">
+      <ul v-if="entries.length" class="poi-list">
         <li
-          v-for="n in nearbyItems"
-          :key="n.name"
-          class="nearby-row"
+          v-for="entry in entries"
+          :key="entry.key"
+          class="poi-card"
+          :class="{ 'is-planned': entry.kind === 'planned' }"
           draggable="true"
-          @dragstart="onNearbyDragStart(n, $event)"
+          :role="entry.kind === 'planned' ? 'button' : undefined"
+          :tabindex="entry.kind === 'planned' ? 0 : undefined"
+          :aria-label="entry.kind === 'planned' ? `查看「${entry.name}」详情` : undefined"
+          @dragstart="onDragStart(entry, $event)"
+          @click="entry.kind === 'planned' && entry.item && emit('select', entry.item)"
+          @keydown.enter.prevent="entry.kind === 'planned' && entry.item && emit('select', entry.item)"
         >
-          <span class="nearby-name" :title="n.name">{{ n.name }}</span>
-          <span class="nearby-meta">
-            <template v-if="n.distanceText">{{ n.distanceText }}</template>
-            <template v-if="n.address"> · {{ n.address }}</template>
-          </span>
+          <div class="poi-thumb">
+            <img
+              v-if="!thumbFailed[entry.key]"
+              :src="thumbUrl(entry)"
+              :alt="entry.name"
+              loading="lazy"
+              @error="thumbFailed[entry.key] = true"
+            />
+            <span v-else class="thumb-fallback">{{ categoryLabel(entry.category) }}</span>
+          </div>
+          <div class="poi-body">
+            <p class="poi-name" :title="entry.name">{{ entry.name }}</p>
+            <p v-if="entry.note" class="poi-note" :title="entry.note">{{ entry.note }}</p>
+          </div>
           <button
+            v-if="entry.kind === 'planned'"
             type="button"
-            class="poi-add is-small"
-            :aria-label="`排入「${n.name}」`"
-            title="排入某天"
-            @click="onNearbyAdd(n)"
+            class="poi-day"
+            :title="`第 ${entry.dayNo} 天，点击定位`"
+            @click.stop="entry.item && emit('select', entry.item)"
           >
-            <Plus :size="13" />
+            D{{ String(entry.dayNo).padStart(2, '0') }}
+          </button>
+          <button
+            v-else
+            type="button"
+            class="poi-add"
+            :aria-label="`排入「${entry.name}」`"
+            title="排入某天"
+            @click.stop="openAdd(entry)"
+          >
+            <Plus :size="15" />
           </button>
         </li>
       </ul>
+      <p v-else class="panel-empty">{{ emptyText }}</p>
     </div>
-
-    <ul v-if="entries.length" class="poi-list">
-      <li
-        v-for="entry in entries"
-        :key="entry.key"
-        class="poi-card"
-        draggable="true"
-        @dragstart="onDragStart(entry, $event)"
-      >
-        <div class="poi-thumb">
-          <img
-            v-if="!thumbFailed[entry.key]"
-            :src="thumbUrl(entry)"
-            :alt="entry.name"
-            loading="lazy"
-            @error="thumbFailed[entry.key] = true"
-          />
-          <span v-else class="thumb-fallback">{{ categoryLabel(entry.category) }}</span>
-        </div>
-        <div class="poi-body">
-          <p class="poi-name" :title="entry.name">{{ entry.name }}</p>
-          <p v-if="entry.note" class="poi-note" :title="entry.note">{{ entry.note }}</p>
-        </div>
-        <button
-          v-if="entry.kind === 'planned'"
-          type="button"
-          class="poi-day"
-          :title="`第 ${entry.dayNo} 天，点击定位`"
-          @click="entry.item && emit('select', entry.item)"
-        >
-          D{{ String(entry.dayNo).padStart(2, '0') }}
-        </button>
-        <button
-          v-else
-          type="button"
-          class="poi-add"
-          :aria-label="`排入「${entry.name}」`"
-          title="排入某天"
-          @click="openAdd(entry)"
-        >
-          <Plus :size="15" />
-        </button>
-      </li>
-    </ul>
-    <p v-else class="panel-empty">{{ emptyText }}</p>
 
     <!-- 排入某天（自研弹窗；写作入口仍是 useItineraryActions.addItem 单点） -->
     <AppDialog v-model="addVisible" title="排入某天" width="min(360px, calc(100vw - 32px))">
@@ -140,11 +122,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Plus, Search } from 'lucide-vue-next'
 
-import { getPoiNearby, type NearbyPoi } from '../../api/itinerary'
 import { searchLocalPois, type LocalPoi } from '../../api/pois'
 import { useItineraryStore } from '../../store/itinerary'
 import { useDiscoverAdd } from '../../composables/useDiscoverAdd'
@@ -156,8 +137,9 @@ import Segmented from '../ui/Segmented.vue'
 import { toast } from '../ui/toast'
 
 // 「发现」面板（v2.6 §19.3，右栏常驻）：搜索加点（本地点位库）+ 全部/未排/已排过滤 + 分类
-// + 卡片（未排/搜索结果「＋排入」，已排「D01 定位」，任意卡片可**拖拽到左栏某天**排入/移动）
-// + 就近推荐（poi-nearby）。写入口统一在 useDiscoverAdd（与拖拽入天共用同一条 payload 口径）。
+// + 卡片（未排/搜索结果「＋排入」，已排卡整卡可点→中央详情卡，任意卡片可**拖拽到左栏某天**排入/移动）。
+// 写入口统一在 useDiscoverAdd（与拖拽入天共用同一条 payload 口径）。
+// （就近推荐已移除：poi-nearby 的 OTM 近邻与行程相关度太低，产品口径下不展示。）
 const props = defineProps<{
   /** 日尾「添加地点」预设的目标天：＋ 点击即直排该天（不再弹选天框） */
   presetDayId?: number | null
@@ -317,73 +299,6 @@ function clearSearch(): void {
   coveredCities.value = []
 }
 
-/* ---------- 就近推荐（poi-nearby：按首个带坐标的点位取同城近邻） ---------- */
-const nearbyItems = ref<NearbyRow[]>([])
-
-const nearbyAnchor = computed(() => {
-  for (const day of detail.value?.dayList ?? []) {
-    for (const item of day.items || []) {
-      if (item.latitude != null && item.longitude != null && !(item.latitude === 0 && item.longitude === 0)) {
-        return item
-      }
-    }
-  }
-  return null
-})
-
-function distanceText(meters: number | null): string {
-  if (meters == null) return ''
-  return meters >= 1000 ? `${(meters / 1000).toFixed(1)} 公里` : `${Math.round(meters)} 米`
-}
-
-function toSuggestion(n: { name: string; category: Category; address: string }): Suggestion {
-  // FE 品类 chip（含 other）收窄为契约品类：other 归 attraction（下游 itemTypeOf 对二者同样归 attraction，落库行为不变）
-  const category: Suggestion['category'] =
-    n.category === 'food' || n.category === 'hotel' || n.category === 'shopping' ? n.category : 'attraction'
-  return { name: n.name, category, address: n.address || null } as Suggestion
-}
-
-async function loadNearby(): Promise<void> {
-  const anchor = nearbyAnchor.value
-  const city = detail.value?.city
-  if (!anchor || !city) {
-    nearbyItems.value = []
-    return
-  }
-  try {
-    const res = await getPoiNearby({
-      city,
-      latitude: Number(anchor.latitude),
-      longitude: Number(anchor.longitude),
-      limit: 8,
-    })
-    const taken = new Set<string>([
-      ...usedPoiNames.value,
-      ...unplannedEntries.value.map((entry) => entry.name.replace(/\s+/g, '')),
-    ])
-    nearbyItems.value = (res.data.items || [])
-      .filter((nearby: NearbyPoi) => nearby.name && !taken.has(nearby.name.replace(/\s+/g, '')))
-      .map((nearby: NearbyPoi) => ({
-        name: nearby.name,
-        category: normalizeCategory(nearby.category || 'attraction'),
-        address: nearby.address || '',
-        distanceText: distanceText(nearby.distanceM),
-      }))
-  } catch {
-    // 就近推荐是增益项：失败静默隐藏（后端契约本身也已降级为空列表）
-    nearbyItems.value = []
-  }
-}
-
-watch(
-  () => {
-    const anchor = nearbyAnchor.value
-    return `${detail.value?.id ?? ''}#${anchor?.id ?? ''}`
-  },
-  () => void loadNearby(),
-  { immediate: true },
-)
-
 /* ---------- 列表合成（搜索模式覆盖范围；分类筛选两模式都生效） ---------- */
 const entries = computed<PanelEntry[]>(() => {
   let list: PanelEntry[]
@@ -414,35 +329,6 @@ function thumbUrl(entry: PanelEntry): string {
 
 /* ---------- 拖拽入天（HTML5 DnD）：载荷经 dataTransfer 交给左栏日卡，壳负责落库 ---------- */
 type DragSource = PanelEntry | { kind: 'suggestion'; suggestion: Suggestion }
-
-interface NearbyRow {
-  name: string
-  category: Category
-  address: string
-  distanceText: string
-}
-
-/** 近邻行 → 完整卡片模型（复用排入弹窗与直排路径） */
-function nearbyEntry(row: NearbyRow): PanelEntry {
-  return {
-    key: `n${row.name}`,
-    kind: 'suggestion',
-    name: row.name,
-    note: row.address || row.distanceText,
-    category: row.category,
-    suggestion: toSuggestion(row),
-  }
-}
-
-/** 近邻行「＋」：预设天直排 / 否则开选天框（模板里内联对象字面量过不了联合类型推断，包一层） */
-function onNearbyAdd(row: NearbyRow): void {
-  openAdd(nearbyEntry(row))
-}
-
-/** 近邻行拖拽：包一层方法（模板里内联对象字面量与联合类型推断不兼容） */
-function onNearbyDragStart(row: NearbyRow, event: DragEvent): void {
-  onDragStart({ kind: 'suggestion', suggestion: toSuggestion(row) }, event)
-}
 
 function onDragStart(source: DragSource, event: DragEvent): void {
   if (!event.dataTransfer) return
@@ -504,11 +390,32 @@ async function confirmAdd(dayId: number): Promise<void> {
 </script>
 
 <style scoped>
+/* 面板本体撑满 .panel-fill 并受其高度约束：头部钉死，列表内滚（否则内容超高会被面板裁掉） */
 .discover-panel {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+  min-height: 0;
+}
+
+.discover-head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.discover-scroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
 .panel-title {
@@ -584,61 +491,6 @@ async function confirmAdd(dayId: number): Promise<void> {
   text-underline-offset: 3px;
 }
 
-/* ---------- 就近推荐 ---------- */
-.nearby {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.nearby-title {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  color: var(--lp-text-muted);
-}
-
-.nearby-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.nearby-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
-  border: 1px dashed var(--lp-edge-1);
-  border-radius: var(--lp-radius-xs);
-  cursor: grab;
-}
-
-.nearby-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--lp-text-2);
-}
-
-.nearby-meta {
-  flex: none;
-  max-width: 46%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
-  color: var(--lp-text-muted);
-}
-
 /* ---------- 卡片列表 ---------- */
 .poi-list {
   display: flex;
@@ -659,6 +511,16 @@ async function confirmAdd(dayId: number): Promise<void> {
   background: var(--lp-surface-card);
   cursor: grab;
   transition: border-color 0.15s ease;
+}
+
+/* 已排卡整卡可点（出中央详情卡），不再是只有 D01 小徽章可点 */
+.poi-card.is-planned {
+  cursor: pointer;
+}
+
+.poi-card.is-planned:focus-visible {
+  outline: 2px solid var(--lp-accent);
+  outline-offset: -2px;
 }
 
 .poi-card:hover {

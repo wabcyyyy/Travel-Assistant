@@ -12,6 +12,7 @@
         <p class="name-row">
           <span class="name">{{ item.poiName }}</span>
           <span class="type-chip">{{ typeLabel }}</span>
+          <EvidenceBadge :item="item" />
         </p>
         <p class="addr">{{ item.address || '暂无地址' }}</p>
         <p v-if="hasCoord" class="coords">{{ coordText }}</p>
@@ -23,7 +24,7 @@
         时间 {{ formatTime(item.startTime) }}<template v-if="item.endTime"> - {{ formatTime(item.endTime) }}</template>
       </span>
       <span v-if="item.durationMin" class="meta-item">约 {{ item.durationMin }} 分钟</span>
-      <span class="meta-item">费用 {{ costText }}</span>
+      <span class="meta-item">参考费用 {{ costText }}</span>
       <span v-if="item.tag" class="meta-item">{{ item.tag }}</span>
     </div>
 
@@ -50,7 +51,8 @@ import { ExternalLink, X } from 'lucide-vue-next'
 
 import { useItineraryStore } from '../../store/itinerary'
 import { useItemPhoto } from '../../composables/useItemPhoto'
-import { externalMapLink } from '../../utils/geo'
+import { externalMapLink, hasValidCoordinates } from '../../utils/geo'
+import EvidenceBadge from './EvidenceBadge.vue'
 import type { TripItem } from '../../types/itinerary'
 
 // 贴底浮层详情卡（v2.6 §19.3，TREK 式）：选中站点/图钉 → 悬浮于中栏地图上。
@@ -78,11 +80,7 @@ const TYPE_LABEL: Record<string, string> = {
 
 const typeLabel = computed(() => TYPE_LABEL[props.item?.itemType ?? ''] ?? '点位')
 
-const hasCoord = computed(() => {
-  const it = props.item
-  if (!it || it.latitude == null || it.longitude == null) return false
-  return !(Number(it.latitude) === 0 && Number(it.longitude) === 0)
-})
+const hasCoord = computed(() => !!props.item && hasValidCoordinates(props.item))
 
 const coordText = computed(() => {
   const it = props.item

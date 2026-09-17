@@ -37,7 +37,7 @@ def image_client() -> httpx.Client:
 
 
 def api_client() -> httpx.Client:
-    """高德 Web 服务 API 通道。"""
+    """外部数据 API 通道（OpenTripMap/Nominatim 等结构化 JSON 接口）。"""
     global _api_client
     if _api_client is None:
         _api_client = httpx.Client(timeout=API_TIMEOUT, follow_redirects=False)

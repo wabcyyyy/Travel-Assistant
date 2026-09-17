@@ -182,6 +182,7 @@
         </template>
         <span v-else class="brief-empty">选定目的地后，这里会实时汇总你的行程安排</span>
       </div>
+      <VerificationNotice />
       <div class="submit-row">
         <el-alert
           v-if="errorMsg"
@@ -232,6 +233,7 @@ import {
 } from '@element-plus/icons-vue'
 
 import { generateItinerary, cityGuide, newIdempotencyKey } from '../api'
+import VerificationNotice from '../components/trip/VerificationNotice.vue'
 
 const router = useRouter()
 const route = useRoute()

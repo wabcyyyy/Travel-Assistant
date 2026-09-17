@@ -38,6 +38,10 @@ ADDONS: dict[str, dict[str, str]] = {
     "route_service": {"env": "route_service_enabled", "label": "路线矩阵校验"},
     # MCP 出口（G-3.6）：默认关闭——对外暴露能力必须由管理员显式打开
     "mcp": {"env": "mcp_enabled", "label": "MCP 只读工具出口"},
+    # MCP 行程写入（C3.3）：默认关闭——读面开不足以写行程，写面单独显式打开
+    "mcp_write": {"env": "mcp_write_enabled", "label": "MCP 行程写入"},
+    # 模板广场（C2.4）：默认关闭——自托管私有部署不默认开放社区面
+    "template_community": {"env": "template_community_enabled", "label": "模板广场"},
 }
 
 #: 进程内缓存 TTL（秒）：管理切换会就地失效，TTL 只兜多进程部署的最终一致。

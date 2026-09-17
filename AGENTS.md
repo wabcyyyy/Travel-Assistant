@@ -2,8 +2,8 @@
 
 ## 项目是什么（3 句话）
 
-AI 旅行规划 Agent：输入城市/天数/偏好/一句话意图，LangGraph 工作流（parse→research→generate→reflect→format）生成带事实溯源的每日行程，SSE 实时推送进度。
-后端是**单一 FastAPI 进程**（`travel-agent-python/`，Python 3.12 + uv）：业务面 `/api/**` 与 Agent 面 `/api/agent/v1/**` 同进程直调；POI 证据来自本地 MySQL 权威库 + Qdrant 向量召回，**运行时除 LLM 外零第三方 API**。
+AI 旅行规划 Agent：输入城市/天数/偏好/一句话意图，LangGraph 工作流（parse→research→generate→reflect→format）生成 AI 规划的每日行程（关键事实标 estimated，前端挂地图深链引导出发前核实），SSE 实时推送进度。
+后端是**单一 FastAPI 进程**（`travel-agent-python/`，Python 3.12 + uv）：业务面 `/api/**` 与 Agent 面 `/api/agent/v1/**` 同进程直调；**AI-NATIVE 数据面（2026-09-17）**：本地不存景点语料（V4 已退役 `poi_knowledge`），地点事实 = LLM 世界知识 + 联网搜索 + OpenTripMap（坐标/分类/图片）+ Nominatim（点名→坐标兜底），数据库只存用户数据与城市级字典/消费基准。
 前端是 Vue3 + Vite + TS（`travel-frontend-vue/`），MapLibre + OpenFreeMap 免 key 底图。
 
 ## 命令（在指明的目录下执行）

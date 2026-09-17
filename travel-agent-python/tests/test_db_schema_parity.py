@@ -19,13 +19,20 @@ _CREATE_TABLE_RE = re.compile(r"CREATE TABLE (?:IF NOT EXISTS )?(\w+)\s*\((.*?)\
 _ADD_COLUMN_RE = re.compile(r"\bADD\s+COLUMN\s+`?(\w+)`?", re.I)
 
 
+_DROP_TABLE_RE = re.compile(r"DROP TABLE (?:IF EXISTS )+`?(\w+)`?", re.I)
+
+
 def ddl_columns() -> dict[str, set[str]]:
+    """迁移全量并集；DROP TABLE 会移除整表（V4 退役 poi_knowledge 后必须跟上，
+    否则已退役的表会被误判为「尚无 ORM 模型」。）"""
     tables: dict[str, set[str]] = {}
     for _name, sql in read_all():
         for m in _CREATE_TABLE_RE.finditer(sql):
             tables.setdefault(m.group(1).lower(), set()).update(c.lower() for c in _COLUMN_RE.findall(m.group(2)))
         for m in re.finditer(r"ALTER TABLE\s+`?(\w+)`?([^;]*)", sql, re.S | re.I):
             tables.setdefault(m.group(1).lower(), set()).update(c.lower() for c in _ADD_COLUMN_RE.findall(m.group(2)))
+        for m in _DROP_TABLE_RE.finditer(sql):
+            tables.pop(m.group(1).lower(), None)
     return tables
 
 

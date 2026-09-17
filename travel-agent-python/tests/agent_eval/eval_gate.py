@@ -38,6 +38,18 @@ EXPECTED_OPEN_TRIP_PROMPT_VERSION = "v1.1.narrative"
 # 一致性基线：记录现值 16.67%（themed_report.md / themed_report.json）。语义 = 防倒退。
 CONSISTENCY_BASELINE = 0.1667
 
+# C3.2 深度指标下限（防倒退，非达标线；nightly 真实 LLM 样本仅 3 例，阈值从宽，
+# 超过下限的现值也不代表"够好"，只代表不比记录时更差——作者按现值人工认账）。
+COORD_VALID_BASELINE = 0.80
+DEEPLINK_RESOLVABLE_BASELINE = 0.80
+CATEGORY_REASONABLE_BASELINE = 0.95
+
+_DEPTH_BASELINES = {
+    "coord_valid_rate": COORD_VALID_BASELINE,
+    "deeplink_resolvable_rate": DEEPLINK_RESOLVABLE_BASELINE,
+    "category_reasonable_rate": CATEGORY_REASONABLE_BASELINE,
+}
+
 
 def check(report: dict) -> list[str]:
     """返回问题清单（空列表 = 通过）。纯函数，便于离线单测与变异验证。"""
@@ -62,6 +74,14 @@ def check(report: dict) -> list[str]:
         problems.append(f"consistency_rate 缺失或非数值：{rate!r}")
     elif rate < CONSISTENCY_BASELINE:
         problems.append(f"两遍一致率 {rate:.2%} < 基线 {CONSISTENCY_BASELINE:.2%}（防倒退）")
+
+    depth_metrics = report.get("depth_metrics") or {}
+    for key, baseline in _DEPTH_BASELINES.items():
+        value = depth_metrics.get(key)
+        if not isinstance(value, (int, float)):
+            problems.append(f"depth_metrics.{key} 缺失或非数值：{value!r}（先重跑 llm_eval.py）")
+        elif value < baseline:
+            problems.append(f"depth_metrics.{key} {value:.2%} < 基线 {baseline:.2%}（防倒退）")
 
     # 刻意不检查 degraded：如实呈现是本项目纪律（见模块 docstring）
     return problems

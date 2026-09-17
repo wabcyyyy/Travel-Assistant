@@ -21,7 +21,7 @@
         </template>
         <template v-else>
           <span class="day-meta">{{ dayMetaText(day) }}</span>
-          <span class="qe-wrap day-title-wrap" @click.stop>
+          <span v-if="readOnly !== true" class="qe-wrap day-title-wrap" @click.stop>
             <AppPopover
               :open="subtitleOpen"
               label="编辑日标题"
@@ -52,7 +52,11 @@
             <span v-else-if="isPendingDay" class="day-state">待排版</span>
           </span>
           <!-- 日头工作台（W3）：建议方案（day_options 只读）/ 优化路线（确定性重排，可回滚） -->
-          <span v-if="dayOptions.length || activeCount >= 2" class="day-tools" @click.stop>
+          <span v-if="dayOptions.length || activeCount >= 2 || routeStops.length >= 2" class="day-tools" @click.stop>
+            <a v-if="directionsUrl" class="diy-tool" :href="directionsUrl" target="_blank" rel="noopener noreferrer">
+              <Route :size="14" /> {{ routeStops.length === (day.items || []).length ? '全天路线' : '有坐标点路线' }}
+            </a>
+            <span v-else-if="routeStops.length >= 2" class="route-hint">点位超出地图途经点上限，请逐项核实</span>
             <span v-if="dayOptions.length" class="qe-wrap">
               <AppPopover
                 :open="optionsOpen"
@@ -80,7 +84,7 @@
               </AppPopover>
             </span>
             <button
-              v-if="activeCount >= 2"
+              v-if="activeCount >= 2 && readOnly !== true"
               type="button"
               class="diy-tool"
               :disabled="optimizing"
@@ -112,181 +116,31 @@
         :animation="150"
         :group="{ name: 'trip-items' }"
         :data-day-id="day.dayId"
+        :disabled="readOnly === true"
         @end="onDragEnd"
       >
+        <!-- 行解剖已抽到 DayItemRow（bc58c82 收尾）：勾选/抓手/头像/行内编辑/hover 操作均在其内部。
+             draggable 的 item 插槽只允许一个根子节点，注释也不能放里面 -->
         <template #item="{ element, index }">
-          <div :id="`item-${element.id}`" :data-item-id="element.id" class="row-wrap">
-            <!-- 站间分隔条（v2.7 §20 R3，TREK 的「6h5min · 27.5km」等价物）：
-                 本地直线估算 + 明确标注，缺坐标不画 -->
-            <div v-if="legAt(index)" class="leg-row" :title="LEG_HINT">
-              <span class="leg-line" aria-hidden="true"></span>
-              <component
-                :is="legAt(index)?.mode === 'walk' ? Footprints : Car"
-                :size="10"
-                :stroke-width="2"
-                aria-hidden="true"
-              />
-              <span class="leg-text">{{ legLabel(index) }}</span>
-              <span class="leg-line" aria-hidden="true"></span>
-            </div>
-            <div
-              class="route-row"
-              :class="{ highlighted: element.id === highlightId }"
-              role="button"
-              tabindex="0"
-              :aria-label="`行程点位：${element.poiName}`"
-              @click="onItemClick(element)"
-              @keydown.enter.prevent="onItemClick(element)"
-            >
-              <input
-                type="checkbox"
-                class="row-check"
-                :checked="selectedIds.includes(element.id!)"
-                :aria-label="`选择「${element.poiName}」`"
-                @click.stop
-                @change="emit('toggle-select', element)"
-              />
-              <DragSortHandle
-                class="row-grip"
-                :day="day"
-                :item="element"
-                :index="index"
-                :total="(day.items || []).length"
-                @moved="emit('item-drop', $event)"
-              />
-              <!-- 28px 圆头像（TREK 行解剖）：缩略图失败落分类字块；左上角压天内序号 -->
-              <span class="row-avatar">
-                <img
-                  v-if="imgLevel(element) < 2 && imgSrc(element)"
-                  :src="imgSrc(element)"
-                  :alt="element.poiName"
-                  loading="lazy"
-                  @error="onImgError(element)"
-                />
-                <span v-else class="row-avatar-fallback" aria-hidden="true">
-                  {{ typeLabel(element.itemType).slice(0, 1) }}
-                </span>
-                <i class="stop-badge" aria-hidden="true">{{ index + 1 }}</i>
-              </span>
-              <div class="row-main">
-                <div class="row-top">
-                  <!-- 分类小图标 10px + 名称 12.5px/500 + 时间 10px 文本（点开即改，不再常显 chip） -->
-                  <component
-                    :is="typeIcon(element.itemType)"
-                    class="row-type-icon"
-                    :size="10"
-                    :stroke-width="2"
-                    aria-hidden="true"
-                  />
-                  <span class="row-name">{{ element.poiName }}</span>
-                  <span class="qe-wrap" @click.stop>
-                    <AppPopover
-                      :open="quickEdit?.id === element.id && quickEdit?.field === 'time'"
-                      :label="`编辑「${element.poiName}」的时间`"
-                      align="start"
-                      @update:open="(open) => syncQuick(element, 'time', open)"
-                    >
-                      <template #trigger>
-                        <button v-if="element.startTime" type="button" class="row-time" title="编辑时间">
-                          <Clock :size="9" :stroke-width="2" />
-                          {{ formatTime(element.startTime) }}<template v-if="element.endTime"> – {{ formatTime(element.endTime) }}</template>
-                        </button>
-                        <button v-else type="button" class="row-time is-empty" title="添加时间">加时间</button>
-                      </template>
-                      <div class="qe-body">
-                        <label class="qe-label">
-                          开始时间
-                          <AppInput v-model="timeDraft" type="time" aria-label="开始时间" />
-                        </label>
-                        <label class="qe-label">
-                          时长（分钟）
-                          <AppNumberInput v-model="durDraft" :min="0" aria-label="时长" />
-                        </label>
-                        <button type="button" class="qe-save" @click="saveTime(element)">保存</button>
-                      </div>
-                    </AppPopover>
-                  </span>
-                </div>
-                <!-- 描述行：10px 单行省略（全文见贴底详情卡）；无描述落地址 -->
-                <p v-if="element.intro || element.description || element.address" class="row-desc">
-                  {{ element.intro || element.description || element.address }}
-                </p>
-                <!-- 备注行：10px + StickyNote 9px 单行 -->
-                <p v-if="element.remark" class="row-remark">
-                  <StickyNote :size="9" :stroke-width="2" aria-hidden="true" />
-                  <span>{{ element.remark }}</span>
-                </p>
-              </div>
-              <span class="qe-wrap row-cost-wrap" @click.stop>
-                <AppPopover
-                  :open="quickEdit?.id === element.id && quickEdit?.field === 'cost'"
-                  :label="`编辑「${element.poiName}」的费用`"
-                  align="end"
-                  @update:open="(open) => syncQuick(element, 'cost', open)"
-                >
-                  <template #trigger>
-                    <button v-if="element.cost != null" type="button" class="row-cost" title="编辑费用">
-                      ￥{{ element.cost }}
-                    </button>
-                    <button v-else type="button" class="row-cost is-empty" title="添加费用">￥—</button>
-                  </template>
-                  <div class="qe-body">
-                    <label class="qe-label">
-                      费用（￥{{ element.itemType === 'hotel' ? '每晚每间' : '每人' }}）
-                      <AppNumberInput v-model="costDraft" :min="0" :precision="2" aria-label="费用" />
-                    </label>
-                    <button type="button" class="qe-save" @click="saveCost(element)">保存</button>
-                  </div>
-                </AppPopover>
-              </span>
-              <!-- 行操作：hover/聚焦才现身（TREK 的「悬停出操作」语义），图标 16px -->
-              <div class="row-actions">
-                <a
-                  class="row-icon"
-                  :href="mapLinkOf(element)"
-                  target="_blank"
-                  rel="noopener"
-                  :title="mapLinkLabel"
-                  :aria-label="mapLinkLabel"
-                  @click.stop
-                >
-                  <ExternalLink :size="16" />
-                </a>
-                <button
-                  type="button"
-                  class="row-icon"
-                  title="移至其他天"
-                  aria-label="移至其他天"
-                  @click.stop="emit('move-request', element)"
-                >
-                  <ArrowRightLeft :size="16" />
-                </button>
-                <button
-                  type="button"
-                  class="row-icon"
-                  title="编辑详情"
-                  aria-label="编辑详情"
-                  @click.stop="emit('edit-request', element)"
-                >
-                  <Pencil :size="16" />
-                </button>
-                <button
-                  type="button"
-                  class="row-icon is-danger"
-                  title="删除"
-                  aria-label="删除"
-                  @click.stop="onDeleteItem(element)"
-                >
-                  <Trash2 :size="16" />
-                </button>
-              </div>
-            </div>
-          </div>
+          <DayItemRow
+            :item="element"
+            :index="index"
+            :day="day"
+            :leg="legAt(index)"
+            :selected="selectedIds.includes(element.id!)"
+            :highlighted="element.id === highlightId"
+            :read-only="readOnly === true"
+            @item-drop="(d) => emit('item-drop', d)"
+            @item-select="(item) => emit('item-select', item)"
+            @toggle-select="(item) => emit('toggle-select', item)"
+            @move-request="(item) => emit('move-request', item)"
+            @edit-request="(item) => emit('edit-request', item)"
+          />
         </template>
       </draggable>
 
       <!-- 日尾：添加地点（整行虚线钮；打开右栏「发现」并预设本天为目标天，W2） -->
-      <button type="button" class="quick-add" @click="emit('add-request', day.dayId)">
+      <button v-if="readOnly !== true" type="button" class="quick-add" @click="emit('add-request', day.dayId)">
         <Plus :size="16" /> 添加地点
       </button>
     </div>
@@ -297,36 +151,21 @@
 import { computed, ref } from 'vue'
 import draggable from 'vuedraggable'
 import { storeToRefs } from 'pinia'
-import {
-  ArrowRightLeft,
-  Car,
-  ChevronDown,
-  Clock,
-  ExternalLink,
-  Footprints,
-  Lightbulb,
-  Pencil,
-  Plus,
-  Route,
-  StickyNote,
-  Trash2,
-} from 'lucide-vue-next'
+import { ChevronDown, Lightbulb, Plus, Route } from 'lucide-vue-next'
 
 import { useItineraryStore, type StreamState } from '../../store/itinerary'
 import { useItineraryActions } from '../../composables/useItineraryActions'
-import { dayMetaText, dayTitle, dayTotalAmountOf, dayTintVar, formatTime, typeIcon, typeLabel } from './day-card/shared'
+import { dayMetaText, dayTitle, dayTotalAmountOf, dayTintVar } from './day-card/shared'
+// DayItemRow 必须显式导入：依赖 unplugin 自动按名解析时，其 scoped 样式模块会被
+// 整体丢出打包（dev/build 皆然），行会退回无样式的巨图+全宽文本（2026-09-17 实测）。
+import DayItemRow from './day-card/DayItemRow.vue'
 import DayInlineTips from './day-card/DayInlineTips.vue'
-import { useItemPhoto } from '../../composables/useItemPhoto'
-import { useQuickEdit } from './day-card/useQuickEdit'
 import type { DayOption, DayPlan, TripItem } from '../../types/itinerary'
-import { isForeignCity, externalMapLink } from '../../utils/geo'
-import { estimateLeg, legText, type TravelLeg } from '../../utils/travelEstimate'
+import { estimateLeg, type TravelLeg } from '../../utils/travelEstimate'
+import { hasValidCoordinates, mapDirectionsUrl } from '../../utils/geo'
 import DayNarrativePanel from './DayNarrativePanel.vue'
-import DragSortHandle from './DragSortHandle.vue'
 import AppInput from '../ui/AppInput.vue'
-import AppNumberInput from '../ui/AppNumberInput.vue'
 import AppPopover from '../ui/AppPopover.vue'
-import { confirmDialog } from '../ui/confirm'
 import { toast } from '../ui/toast'
 
 // 单日卡（M4-②a §5.4 / M4-②b §5.3；v2.6 §19.3 天平铺重排）：
@@ -346,6 +185,8 @@ const props = defineProps<{
   highlightId: number | null
   /** 选择态（W2 批量）：被勾选的行程项 id 集合 */
   selectedIds: number[]
+  /** 协作（C2.3）：viewer 只读——隐藏添加/勾选/编辑入口并禁拖拽（后端闸门为准） */
+  readOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -368,23 +209,18 @@ const emit = defineEmits<{
 
 const store = useItineraryStore()
 const actions = useItineraryActions()
-const { quickEdit, timeDraft, durDraft, costDraft, syncQuick, saveTime, saveCost } = useQuickEdit(actions)
 const { detail } = storeToRefs(store)
-
-const detailForeign = computed(() => isForeignCity(detail.value?.city ?? ''))
-const mapLinkLabel = computed(() => (detailForeign.value ? '谷歌地图' : '高德地图'))
 
 const dayTintStyle = computed(() => ({
   '--day-color': dayTintVar(props.day.dayNo),
 }))
 
-/* day-tint 消费（v2.6 §19.4）：D1–D8 循环取色，日头/编号徽按档位上色 */
-const { imgLevel, imgSrc, onImgError } = useItemPhoto()
-
 const dayTotalAmount = computed(() => dayTotalAmountOf(props.day.items, detail.value?.persons ?? 1))
+const routeStops = computed(() => (props.day.items || []).filter(hasValidCoordinates)
+  .map((item) => ({ name: item.poiName, latitude: item.latitude, longitude: item.longitude })))
+const directionsUrl = computed(() => mapDirectionsUrl(routeStops.value, detail.value?.city))
 
-/* ---------- 站间交通片（v2.7 §20 R3）：本地直线估算，界面带「≈」与估算说明 ---------- */
-const LEG_HINT = '本地直线估算（含路网折算，非实时路况）'
+/* ---------- 站间交通片（v2.7 §20 R3）：本地直线估算，leg 文案在 DayItemRow 内渲染 ---------- */
 const legs = computed<(TravelLeg | null)[]>(() => {
   const items = props.day.items || []
   return items.map((item, i) => (i === 0 ? null : estimateLeg(items[i - 1], item)))
@@ -392,11 +228,6 @@ const legs = computed<(TravelLeg | null)[]>(() => {
 
 function legAt(index: number): TravelLeg | null {
   return legs.value[index] ?? null
-}
-
-function legLabel(index: number): string {
-  const leg = legs.value[index]
-  return leg ? legText(leg) : ''
 }
 
 // ---------- 流式生成状态（§5.3.5）：store.streamState 驱动 ----------
@@ -435,25 +266,6 @@ function onSummaryClick(event: MouseEvent) {
   // 折叠态由壳的 collapsedDays 单一受控：拦截 summary 原生 toggle，只发意图
   event.preventDefault()
   emit('toggle', props.day.dayNo)
-}
-
-function onItemClick(item: TripItem) {
-  emit('item-select', item)
-}
-
-/** 地图外链：统一口径在 utils/geo（国内高德搜索 / 海外 Google Maps，有坐标优先） */
-function mapLinkOf(item: TripItem) {
-  return externalMapLink(
-    { name: item.poiName, latitude: item.latitude, longitude: item.longitude },
-    detail.value?.city,
-  )
-}
-
-async function onDeleteItem(item: TripItem) {
-  const ok = await confirmDialog(`确认删除「${item.poiName}」？`, { title: '删除确认', confirmText: '删除' })
-  if (!ok) return
-  await actions.deleteItem(item.id!)
-  toast.success('已删除')
 }
 
 // ---------- 日头工作台（W3）：副标题编辑 / 建议方案（只读）/ 优化路线 ----------

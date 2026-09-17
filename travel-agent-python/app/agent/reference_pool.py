@@ -32,17 +32,14 @@ _NAME_NORMALIZE_RE = re.compile(r"[\s（）()【】\[\]·]")
 # 权威来源值域：只有这些前缀的 source 才允许为行程项背书
 # （verification_status=partially_verified / value_kind=observed）。
 # /v1/generate-day 的 context 由 HTTP 调用方传入，属于不可信输入；若不做
-# 值域校验，调用方可伪造 "mysql.poi_knowledge" 让幻觉事实获得权威背书。
-# 注意：值域含**历史来源**（amap/amap.poi/nominatim）——库里存量行仍带这些
-# source，删掉它们会让老行程的事实被降级为不可信；新写入只会有
-# mysql.poi_knowledge / wikivoyage（本地采集管线）。
+# 值域校验，调用方可伪造 "opentripmap" 让幻觉事实获得外部背书。
+# POI 库退役后，外部来源即 OpenTripMap / Nominatim（真实坐标与分类）与
+# 联网搜索（真实店名）；llm 保留——模型自选点位落 ref 时按 llm 记账。
 AUTHORITATIVE_SOURCE_PREFIXES = (
-    "mysql.poi_knowledge",
-    "amap.poi",
-    "amap",
-    "wikivoyage",
-    "llm",
+    "opentripmap",
     "nominatim",
+    "web.search",
+    "llm",
 )
 # 非权威来源统一改写为该标记，并降级为 unverified/estimated。
 UNTRUSTED_SOURCE = "client-context"

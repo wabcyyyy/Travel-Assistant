@@ -1,5 +1,4 @@
 from app.agent.reflect import build_feedback, estimate_transfer_minutes, parse_time, validate_plans
-from app.rag.embeddings import embed
 
 
 def test_parse_time():
@@ -160,15 +159,6 @@ def test_validate_saturation_hotel_excluded():
     ]
     issues, _ = validate_plans(plans)
     assert issues == []
-
-
-def test_embed_deterministic_and_normalized():
-    v1 = embed("北京 故宫 人文")
-    v2 = embed("北京 故宫 人文")
-    assert v1 == v2
-    assert len(v1) == 256
-    norm = sum(x * x for x in v1) ** 0.5
-    assert abs(norm - 1.0) < 1e-4
 
 
 def test_build_feedback():

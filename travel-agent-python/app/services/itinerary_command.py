@@ -331,6 +331,9 @@ def _parse_metadata(raw: str | None) -> dict[str, Any]:
 
 
 def delete_itinerary(user_id: int, itinerary_id: int) -> None:
+    # 删行程是 owner 专属（SPEC C2.3）：create_snapshot 已放宽为 owner/editor，这里显式收口
+    with session_scope() as session:
+        itinerary_query.require_owned_main(session, user_id, itinerary_id)
     itinerary_version.create_snapshot(user_id, itinerary_id, "delete", "删除行程前快照")
     delete_cascade(user_id, itinerary_id)
 
@@ -396,7 +399,8 @@ def _apply_suggestion_used(session, itinerary_id: int, poi_id: str | None, poi_n
 
 
 def _require_main(session, user_id: int, itinerary_id: int) -> ItineraryMain:
-    return itinerary_query.require_main(session, user_id, itinerary_id)
+    """内容写路径（增删改/重排/优化/日主题）统一 owner/editor 闸门（SPEC C2.3）。"""
+    return itinerary_query.require_writable_main(session, user_id, itinerary_id)
 
 
 def _require_item(session, user_id: int, item_id: int) -> ItineraryItem:

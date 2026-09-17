@@ -12,7 +12,7 @@
 - **INV-6** 新增 env 键必须同步 `.env.example` 与 `tests/test_env_example_alignment.py`。
 - **INV-7** 环境变量只准在 `app/common/config.py` 读取，业务代码禁裸读 `os.environ`。
 - **INV-8** 后台任务禁裸 `asyncio.create_task`/`threading.Thread`，必须走 `app/common/task_pool.py`。
-- **INV-9** 工具默认只读本地知识库；任何外部网络调用必须带超时与响应上限。
+- **INV-9** 工具默认只读、无副作用；任何外部网络调用必须带超时与响应上限（G-3.2：走 `ExternalClient` 缓存+节流通道）。
 - **INV-10** 新增依赖必须在 commit message 中给出理由。
 
 ## 参考实现（新代码先抄谁）
@@ -32,12 +32,12 @@
 - **分层**：`app.api → app.services → app.agent`，禁反向与跨层（import-linter 契约 1）。
 - **agent 门面**：api/services 只准 `from app.agent import X` 用 `app/agent/__init__.py` 的导出面；深路径 import agent 子模块即红（契约 2）。新增对外能力 = 在 `__init__.py` 登记 re-export + `__all__`。
 - **跨模块共用符号**：agent 层内多模块共用的内部函数由所属模块去下划线提级为「跨模块 API」并在模块 docstring 登记（见 generators/day_stream/tools/workflow）；不搞第二份实现，也不靠门面转发内部符号。
-- **工具面**：全部工具经 `app/agent/tool_registry.py` 注册表派发（预算/参数校验/审计全覆盖），禁 `getattr(tools, name)` 字符串派发。注册 handler 一律调用期读 `tools` 模块属性（晚绑定），保 `patch.object(tools, ...)` 可 mock。
+- **工具面**：全部工具经 `app/agent/tool_registry/` 注册表包派发（预算/参数校验/审计全覆盖），禁 `getattr(tools, name)` 字符串派发。注册 handler 一律调用期读 `tools` 模块属性（晚绑定），保 `patch.object(tools, ...)` 可 mock。
 
 ## 数据访问选址（新增读写先选对门）
 
 - **业务写**（行程/用户状态的写路径）→ `app/services/`（版本快照、缓存失效在 service 层做）。
-- **agent 读**（POI/知识证据查询）→ `app/agent/poi_repository.py`，只读列白名单。
+- **agent 读**（地点事实查询）→ `app/agent/places.py`（OTM 半径池/点名兜底/地图深链）与 `app/agent/web_search.py`（联网补池）；本地知识库（原 `poi_repository.py`）已随 AI-NATIVE 数据面退役，勿再引用。
 - **用户域** → `app/common/user_repository.py`。
 - **缓存**（Redis / 进程内）→ `app/services/cache_store.py`（键命名与 TTL 对齐既有约定）。
 - 不在路由、图节点、生成器里裸写 SQL。
@@ -61,10 +61,23 @@ uv run pytest tests/api -q                       # 活栈契约（需先起服�
 
 - **流式快照**：`uv run pytest tests/test_stream_snapshot.py`——trip/day 两条链路的
   事件序列/DailyPlan 与 `tests/golden/stream_*.json` 逐字节比对。有意改口径：
-  `GOLDEN_REGENERATE=1 uv run pytest tests/test_stream_snapshot.py`，**人工复核 diff 后**入库。
+  `GOLDEN_REGENERATE=1 uv run pytest tests/test_stream_snapshot.py`，**人工复核 diff 后**入库
+  （同法适用于 `GOLDEN_REGENERATE=1 uv run pytest tests/test_format_output_golden.py`
+  重写 `tests/golden/format_output.json`）。
 - **eval ratchet**：跑 `eval_agent.py` + `eval_research.py` 后
   `git diff --exit-code tests/agent_eval/report/`。离线护栏（实时价/联网入口哨兵）保证
   报告确定可复现，故报告字节即基线；指标口径见 `report/report.md`。
+  **报告重生成流程**（eval 报告没有 GOLDEN_REGENERATE 等价开关）：改用例
+  （`cases.json`）/改指标口径后直接重跑两个脚本，`report/report.json|md` 与
+  `report/research_report.json|md` 就地重写，**人工复核 diff 后与代码同一 commit 入库**
+  （CI agent-eval job 按字节比对）。cases 可带 `"coords": false` 走无坐标边界变体
+  （C3.2；海外城市直接用非汉字名，mock 坐标按城市名落国内框内/海外）。
+  深度指标口径（C3.2）：`coord_valid_rate`=attraction/food/hotel 项坐标有效率
+  （0/0 与 None 为缺失哨兵）；`deeplink_resolvable_rate`=按天计的全天路线深链可解析率
+  （≥2 个有效坐标停靠点的天必须可解析，不足 2 点自动通过；后端 places 语义，前端
+  geo.ts 另有范围校验由 geo.test.ts 覆盖）；`category_reasonable_rate`=item_type
+  白名单 + poi_name 非空。真实 LLM 侧同名指标进 `eval_gate.py` 防倒退下限
+  （`depth_metrics`，仅 nightly 生效）。
 - 改 P2 拆分时先跑这两条：单测断言单点字段，它们断言**端到端行为与事件序列**。
 
 配置：`app/common/config.py` 是 **pydantic-settings 字段定义式**（键名小写即环境变量名，如 `agent_host` ↔ `AGENT_HOST`）；新增键 = 加字段 + 同 PR 更新 `.env.example`（`tests/test_env_example_alignment.py` 会验）。启动校验在 `Settings.validate_boot()`（main.py lifespan 调）；依赖运行语境的安全检查（密钥强度、绑定地址）只放这里，不放 import 期。

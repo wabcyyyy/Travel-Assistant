@@ -26,13 +26,11 @@ from app.common.envelope import install_exception_handlers
 from app.db import session as db_session
 from app.db.models import (
     Base,
-    HotelRoomType,
     ItineraryChatMessage,
     ItineraryDay,
     ItineraryItem,
     ItineraryMain,
     ItineraryVersion,
-    PoiKnowledge,
     SysUser,
 )
 from app.services import cache_store, itinerary_chat, user_service
@@ -116,38 +114,6 @@ def _seed() -> None:
                     sort_no=0,
                 ),
             ]
-        )
-        session.add_all(
-            [
-                PoiKnowledge(
-                    city="杭州",
-                    name="灵隐寺",
-                    category="attraction",
-                    ticket_price=Decimal("45.00"),
-                    duration_min=120,
-                    source="mysql.poi_knowledge",
-                    source_updated_at=None,
-                ),
-                PoiKnowledge(
-                    city="杭州",
-                    name=HOTEL_NAME,
-                    category="hotel",
-                    ticket_price=Decimal("880.00"),
-                    duration_min=None,
-                    tags="五星",
-                    source="mysql.poi_knowledge",
-                    source_updated_at=None,
-                ),
-            ]
-        )
-
-
-def _hotel_room(poi_id: int, room_name: str, base_price: str) -> None:
-    with db_session.session_scope() as session:
-        session.add(
-            HotelRoomType(
-                poi_id=poi_id, room_name=room_name, base_price=Decimal(base_price), capacity=2, description="含双早"
-            )
         )
 
 
@@ -254,10 +220,10 @@ def test_apply_plans_replaces_items_keeps_identity_and_soft_deletes_rest(client:
             "theme": "西湖晨游",
             "items": [
                 {"id": xihu, "item_type": "attraction", "poi_name": "西湖", "start_time": "09:00"},
-                {"item_type": "attraction", "poi_name": "灵隐寺"},
+                {"item_type": "attraction", "poi_name": "灵隐寺", "cost": 45},
             ],
         },
-        {"day_no": 2, "items": [{"item_type": "hotel", "poi_name": HOTEL_NAME}]},
+        {"day_no": 2, "items": [{"item_type": "hotel", "poi_name": HOTEL_NAME, "cost": 880}]},
     ]
     message_id, revision = _draft(trip_id, plans)
 
@@ -276,7 +242,8 @@ def test_apply_plans_replaces_items_keeps_identity_and_soft_deletes_rest(client:
         assert json.loads(day1.metadata_json) == {"theme": "西湖晨游"}
         assert day1.note == "湖山线"
         lingyin = session.execute(select(ItineraryItem).where(ItineraryItem.poi_name == "灵隐寺")).scalar_one()
-        assert lingyin.verification_status == "unverified" and lingyin.cost == Decimal("45.00")
+        # 语料库退役：成本随草稿落地，来源字段如实落默认（无权威库背书）
+        assert lingyin.cost == Decimal("45.00") and lingyin.verification_status == "unverified"
         hotel = session.execute(select(ItineraryItem).where(ItineraryItem.poi_name == HOTEL_NAME)).scalar_one()
         assert hotel.item_type == "hotel" and hotel.cost == Decimal("880.00")
         assert (hotel.freshness_status, hotel.review_requirement) == ("unknown", "before_departure")
@@ -417,13 +384,18 @@ def test_item_id_that_does_not_match_name_aborts_the_whole_apply(client: TestCli
     assert _live_items(1) == ["西湖", "楼外楼"]
 
 
-def test_poi_outside_city_is_rejected_but_transport_is_allowed(client: TestClient) -> None:
+def test_apply_plans_accepts_places_beyond_the_retired_corpus(client: TestClient) -> None:
+    """语料库退役后草稿即信任边界：不再做「候选 POI 城市归属」拦截。
+
+    （旧口径：不在 poi_knowledge 里的点名会 400；该守卫随 V4 迁移一并退役。）
+    """
     trip_id = _trip_id(client)
     message_id, revision = _draft(trip_id, [{"day_no": 1, "items": [{"item_type": "attraction", "poi_name": "外滩"}]}])
     body = client.post(
         f"/api/itinerary/{trip_id}/apply-plans", json={"actionMessageId": message_id, "baseRevision": revision}
     ).json()
-    assert body["code"] == 400 and body["message"] == "行程项不属于当前城市候选 POI，未应用任何修改"
+    assert body["code"] == 200, body
+    assert _live_items(1) == ["外滩"]
 
     message_id, revision = _draft(
         trip_id, [{"day_no": 1, "items": [{"item_type": "transport", "poi_name": "杭州东站接驳"}]}]
@@ -445,8 +417,17 @@ def test_apply_requires_owned_itinerary(client: TestClient) -> None:
 # ---------- hotel-option ----------
 
 
-def _hotel_draft(trip_id: int, room_name: str = ROOM_NAME) -> tuple[int, str]:
-    options = [{"hotelName": HOTEL_NAME, "tier": "豪华型", "roomTypes": [{"roomName": room_name, "basePrice": 900}]}]
+def _hotel_draft(trip_id: int, room_name: str = ROOM_NAME, base_price: float = 900) -> tuple[int, str]:
+    """候选卡片即事实源（语料库退役）：房价/房型/描述全部随卡片走。"""
+    options = [
+        {
+            "id": "H-1",
+            "hotelName": HOTEL_NAME,
+            "tier": "豪华型",
+            "basePrice": 880,
+            "roomTypes": [{"roomName": room_name, "basePrice": base_price, "description": "含双早"}],
+        }
+    ]
     return _draft(trip_id, [], hotel_options=options)
 
 
@@ -467,7 +448,6 @@ def test_hotel_option_bean_validation_messages(client: TestClient, payload, expe
 
 def test_hotel_option_prices_by_room_type_season_and_writes_remark(client: TestClient) -> None:
     trip_id = _trip_id(client)
-    _hotel_room(poi_id=2, room_name=ROOM_NAME, base_price="900.00")
     message_id, revision = _hotel_draft(trip_id)
 
     body = client.post(
@@ -496,38 +476,14 @@ def test_hotel_option_prices_by_room_type_season_and_writes_remark(client: TestC
         )
         # 第二天原有的老旅馆行被**原地替换**成所选酒店，不是补一条新的（同 Java）
         assert len(hotels) == 2 and {item.poi_name for item in hotels} == {HOTEL_NAME}
-        assert {item.cost for item in hotels} == {Decimal("900.00")}, "4 月平季、系数 1"
+        assert {item.cost for item in hotels} == {Decimal("900.00")}, "4 月平季、系数 1（房价取自候选卡片）"
         main = session.get(ItineraryMain, trip_id)
         assert main.hotel_tier == "豪华型", "所选晚次覆盖全部已有酒店日 → 档次写回主表"
     assert _operations(trip_id) == ["apply_hotel", "apply_hotel"]
 
 
-def test_hotel_option_basic_room_falls_back_to_knowledge_price(client: TestClient) -> None:
-    trip_id = _trip_id(client)
-    message_id, revision = _hotel_draft(trip_id, "基础房型")
-    body = client.post(
-        f"/api/itinerary/{trip_id}/hotel-option",
-        json={
-            "hotelName": HOTEL_NAME,
-            "roomType": "基础房型",
-            "dayNos": [2],
-            "actionMessageId": message_id,
-            "baseRevision": revision,
-        },
-    ).json()
-    assert body["code"] == 200, body
-    with db_session.session_scope() as session:
-        item = session.execute(
-            select(ItineraryItem).where(ItineraryItem.itinerary_id == trip_id, ItineraryItem.poi_name == HOTEL_NAME)
-        ).scalar_one()
-        assert item.cost == Decimal("880.00"), "基础房型用知识库参考价"
-        assert "知识库酒店基础房型参考价" in item.remark
-
-
 def test_hotel_option_rejects_choices_outside_the_draft(client: TestClient) -> None:
     trip_id = _trip_id(client)
-    _hotel_room(poi_id=2, room_name=ROOM_NAME, base_price="900.00")
-
     message_id, revision = _hotel_draft(trip_id)
     unknown_room = client.post(
         f"/api/itinerary/{trip_id}/hotel-option",
@@ -568,8 +524,7 @@ def test_hotel_option_rejects_choices_outside_the_draft(client: TestClient) -> N
 
 def test_hotel_option_requires_positive_price(client: TestClient) -> None:
     trip_id = _trip_id(client)
-    _hotel_room(poi_id=2, room_name=ROOM_NAME, base_price="0.00")
-    message_id, revision = _hotel_draft(trip_id)
+    message_id, revision = _hotel_draft(trip_id, base_price=0)
     body = client.post(
         f"/api/itinerary/{trip_id}/hotel-option",
         json={

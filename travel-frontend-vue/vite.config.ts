@@ -7,6 +7,7 @@ import vue from '@vitejs/plugin-vue'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
+import { VitePWA } from 'vite-plugin-pwa'
 
 // maplibre v6 的样式解析跑在独立 worker 里，SDK 以 `new URL('./maplibre-gl-worker.mjs', import.meta.url)`
 // 运行时拼路径——打包器无法静态分析，产物里没有该文件，worker 404 后地图静默空白（dev/build 皆然）。
@@ -51,6 +52,34 @@ export default defineConfig({
     Components({
       resolvers: [ElementPlusResolver()],
       dts: 'src/components.d.ts',
+    }),
+    // PWA（C2.5）：injectManifest + src/sw.ts——SW 只管应用壳 precache 与离线导航
+    // 回退；/api 私有数据一律不过 SW（按账号快照在 src/utils/offlineSnapshots.ts）。
+    // 版本锁定 0.20.x：与 Vite 5 兼容（0.21+ 面向 Vite 6，未核对不升）。
+    VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      registerType: 'autoUpdate',
+      injectRegister: null,
+      manifest: {
+        name: '旅行助手 Travel Assistant',
+        short_name: '旅行助手',
+        description: 'AI 旅行规划：生成每日行程、地图与预算对照',
+        lang: 'zh-CN',
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        // 主题色对齐 theme.css 默认 scheme 的 --lp-accent（#111827）
+        theme_color: '#111827',
+        background_color: '#111827',
+        icons: [
+          { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+      },
+      devOptions: { enabled: false },
     }),
   ],
   resolve: {

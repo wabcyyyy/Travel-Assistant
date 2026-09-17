@@ -69,9 +69,9 @@ withDefaults(
 .tile-value {
   margin: var(--lp-space-3) 0 0;
   font-size: 44px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.05;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   color: var(--lp-text-1);
   font-variant-numeric: tabular-nums;
 }

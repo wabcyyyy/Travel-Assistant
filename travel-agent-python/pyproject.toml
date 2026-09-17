@@ -13,10 +13,7 @@ dependencies = [
     "langgraph==0.2.44",
     "langchain-core==0.3.15",
     "pymysql==1.2.0",
-    "qdrant-client>=1.10,<2",
     "redis>=5.2,<6",
-    # RAG 语义默认依赖（默认 RAG_EMBEDDING_PROVIDER=semantic，模型需 fetch_rag_model.py 预置）
-    "sentence-transformers>=3.0,<6",
     # 后端迁移基座（PLAN v3.0）：SQLAlchemy 2 承载业务层数据访问；Alembic 以
     # op.execute() 原样包裹既有 db/migration/V*.sql（迁移文件不重写，保住
     # 「V1 一经发布不得修改」纪律，只换执行器）；bcrypt 校验 Java
@@ -33,9 +30,6 @@ dependencies = [
     # 封面图压缩（SPEC v2.3 S0-14）：长边缩放 + JPEG 重编码。此前仅经 reportlab
     # 传递进锁；显式列为直接依赖，避免 reportlab 升级/替换时被连带移除。
     "pillow>=10,<13",
-    # torch 显式列为直接依赖：tool.uv.sources 只对直接依赖生效，
-    # 否则传递依赖会从 PyPI 解析出带 CUDA 的 Linux 构建（数 GB）
-    "torch",
     "pydantic-settings>=2.7,<3",
 ]
 
@@ -75,7 +69,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # 测试里断言内联、嵌套容器字面量是常态；只保留正确性类规则。
 "tests/*" = ["SIM117", "RUF012", "RUF001", "RUF002", "RUF003"]
-# agent_eval 的评测/回放脚本先做 sys.path 注入再 import app（同 enrich_pois 模式），E402 是既定结构。
+# agent_eval 的评测/回放脚本先做 sys.path 注入再 import app，E402 是既定结构。
 "tests/agent_eval/*" = ["E402"]
 # chat_draft 门面：显式 re-export 旧导入路径（docstring 有说明），G-1.2 边界收敛时统一处理。
 "app/agent/chat_draft/__init__.py" = ["F401"]
@@ -85,18 +79,8 @@ include = ["app", "tests", "scripts", "main.py"]
 exclude = ["**/__pycache__", "**/.venv*", "scripts/archive", ".pytest_tmp", ".tmp_*"]
 pythonVersion = "3.12"
 typeCheckingMode = "basic"
-# torch/sentence-transformers 等缺 stub 的第三方：存在性交给运行时，类型层面不拦。
+# 缺 stub 的第三方：存在性交给运行时，类型层面不拦。
 reportMissingTypeStubs = "none"
-
-# torch 走 CPU 源：默认 PyPI 的 Linux 构建会带入 nvidia-* CUDA 依赖（数 GB），
-# 本项目只做 CPU 推理（CI / 镜像体积敏感）。
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
-
-[tool.uv.sources]
-torch = { index = "pytorch-cpu" }
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -132,7 +116,6 @@ allow_indirect_imports = true
 ignore_imports = [
     "app.api.agent -> app.agent.usage_store",
     "app.services.admin_service -> app.agent.usage_store",
-    "app.services.poi_search -> app.agent.poi_repository",
 ]
 forbidden_modules = [
     "app.agent.butler",
@@ -142,6 +125,7 @@ forbidden_modules = [
     "app.agent.stream_parser",
     "app.agent.chat_draft",
     "app.agent.city_guide",
+    "app.agent.city_reference",
     "app.agent.clarify",
     "app.agent.critic",
     "app.agent.day_stream",
@@ -165,7 +149,7 @@ forbidden_modules = [
     "app.agent.memory",
     "app.agent.nl_edit",
     "app.agent.observability",
-    "app.agent.poi_repository",
+    "app.agent.places",
     "app.agent.pricing",
     "app.agent.reflect",
     "app.agent.research",

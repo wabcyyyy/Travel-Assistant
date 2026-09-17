@@ -28,7 +28,6 @@ from app.db.models import (
     ItineraryDay,
     ItineraryItem,
     ItineraryMain,
-    PoiKnowledge,
     SysUser,
 )
 from app.services import cache_store, itinerary_query
@@ -134,7 +133,6 @@ def _seed() -> None:
                 BudgetDetail(itinerary_id=trip.id, category="餐饮", amount=Decimal("88.50"), item_count=1),
             ]
         )
-        session.add(PoiKnowledge(city="杭州", name="西湖", category="attraction", description="江南名湖"))
 
 
 @pytest.fixture
@@ -226,9 +224,10 @@ def test_day_metadata_and_item_field_names(client: TestClient) -> None:
     assert first["startTime"] == "09:30", "Jackson ISO_LOCAL_TIME 省略零秒"
     assert second["startTime"] == "12:00:30"
     assert first["whyThis"] == "离酒店步行可达"
-    assert first["description"] == "江南名湖" and first["intro"] == "三潭印月所在"
+    # 语料库退役：description 不再回查 poi_knowledge,与 intro 同源（条目快照自带）
+    assert first["description"] == "三潭印月所在" and first["intro"] == "三潭印月所在"
     assert first["sourceUpdatedAt"] == "2026-03-01T08:00"
-    assert second["description"] is None  # 只查本行程涉及的 POI，不做整城加载
+    assert second["description"] is None  # 无 intro 的条目如实为空，不做整城加载
 
 
 def test_quality_status_and_pending_facts(client: TestClient) -> None:

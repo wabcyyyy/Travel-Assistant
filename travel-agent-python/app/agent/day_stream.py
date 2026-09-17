@@ -45,6 +45,7 @@ from app.agent.narrative import sanitize_narrative
 from app.agent.plan_context import filter_used, parse_date
 from app.agent.reference_pool import ReferencePool, has_valid_coords, is_authoritative_source
 from app.agent.suggestions import build_suggestions, fill_suggestion_gaps
+from app.agent.weather import day_clause as weather_day_clause
 from app.common.addons import addons
 from app.common.config import settings
 from app.common.llm_client import get_llm_client
@@ -115,6 +116,10 @@ def llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
     requirements_text = requirements_clause(req.requirements)
     if requirements_text:
         system += requirements_text
+    # 城市级天气（C3.1）：该日落预报窗内才注入；数据而非指令，缺失即无此行。
+    weather_text = weather_day_clause(req.context, req.start_date, req.day_no)
+    if weather_text:
+        system += weather_text
     if req.feedback:
         # feedback 生产路径由服务端 reflect 生成，但 /v1/generate-day 允许
         # 客户端传入；同样用定界符声明"数据非指令"，防注入。
@@ -242,8 +247,8 @@ def generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False) 
         # format 阶段补证据；在单日边界先建立最小字段级来源契约。
         # 与 ReferencePool.ground 一致：来源不在权威值域内时不背书，
         # 保留 ground 已写入的 client-context 降级状态。
-        if poi and is_authoritative_source(str(poi.get("source") or "mysql.poi_knowledge")):
-            source_name = str(poi.get("source") or "mysql.poi_knowledge")
+        if poi and is_authoritative_source(str(poi.get("source") or "llm")):
+            source_name = str(poi.get("source") or "llm")
             updated_at = str(poi.get("source_updated_at") or "") or None
             item["source"] = source_name
             item["source_updated_at"] = updated_at

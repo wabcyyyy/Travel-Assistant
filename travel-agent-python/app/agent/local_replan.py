@@ -86,6 +86,11 @@ def run_local_replan(req: LocalReplanRequest) -> dict[str, Any]:
         raise ValueError(f"找不到受影响日期：{missing_days}")
 
     locked = {str(name).strip() for name in req.locked_names if str(name).strip()}
+    # 剩余预算约束（C3.4 透传）：调用方同时投喂 budget 与 spent 时，重排只受剩余额度
+    # 约束（已超支则钳到 0）；只给其一或都不给时维持原语义，spent 本身不读库。
+    budget_limit = req.budget
+    if req.budget is not None and req.spent is not None:
+        budget_limit = max(req.budget - req.spent, 0.0)
     candidate_items = _candidate_items(req, req.plans)
     requested_candidates = [
         str(name).strip()
@@ -104,6 +109,7 @@ def run_local_replan(req: LocalReplanRequest) -> dict[str, Any]:
             "violations": [f"候选点位不存在：{', '.join(unresolved)}"],
             "score": 0.0,
             "route_report": {},
+            "budget_limit": budget_limit,
         }
 
     output = deepcopy(req.plans)
@@ -122,7 +128,7 @@ def run_local_replan(req: LocalReplanRequest) -> dict[str, Any]:
                 working,
                 route_matrix=matrix,
                 mode=settings.route_mode,
-                budget_limit=req.budget,
+                budget_limit=budget_limit,
                 required_names=day_locked,
                 locked_names=day_locked,
             )
@@ -163,6 +169,8 @@ def run_local_replan(req: LocalReplanRequest) -> dict[str, Any]:
             "locked_count": len(locked),
             "replacement_count": len(replaced_items),
             "failed": failed,
+            "spent": req.spent,
+            "budget_limit": budget_limit,
         },
         action_id=req.action_id,
     )
@@ -179,4 +187,5 @@ def run_local_replan(req: LocalReplanRequest) -> dict[str, Any]:
         "score": round(sum(scores) / len(scores), 4) if scores else 0.0,
         "route_report": reports,
         "failure_reasons": list(req.failure_reasons),
+        "budget_limit": budget_limit,
     }

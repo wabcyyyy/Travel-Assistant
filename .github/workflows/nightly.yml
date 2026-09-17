@@ -103,7 +103,6 @@ jobs:
           DB_PASSWORD: ci-only-password
           DB_NAME: travel_assistant
           REDIS_URL: redis://127.0.0.1:6379/0
-          RAG_EMBEDDING_PROVIDER: hashed
           AGENT_INTERNAL_TOKEN: ci-internal-token
           # 本进程自己签发会话票：必须显式给 JWT_SECRET（≥32 字符），不能依赖空默认值
           JWT_SECRET: ci-example-jwt-secret-at-least-32-chars
@@ -137,7 +136,6 @@ jobs:
           DB_PASSWORD: ci-only-password
           DB_NAME: travel_assistant
           REDIS_URL: redis://127.0.0.1:6379/0
-          RAG_EMBEDDING_PROVIDER: hashed
         run: |
           uv run python tests/agent_eval/llm_eval.py --limit 3 | tee llm_eval_small.json
           # 防倒退门禁（SPEC v2.3 §8 A2）：failed run / Prompt 版本漂移 / 一致率低于基线 → 红；

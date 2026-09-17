@@ -6,8 +6,8 @@
 校验口径（纯静态，不需要数据库）：
 - 解析 db/migration 下**全部** V*.sql（按版本号升序），列集合取并集：
   CREATE TABLE 的列定义 + ALTER TABLE ... ADD COLUMN 新增的列；
-- Python：app/agent/poi_repository.py 的 _POI_COLUMNS（只读查询列）必须在该并集的
-  poi_knowledge 表中存在；
+- Python：app/agent/city_reference.py 查询的 city_geo / city_consumption 列
+  （下方静态期望表，POI 库退役后 agent 层仅存的城市级数据面）必须在并集中存在；
 - Java：各 @TableName 实体的字段（camelCase→snake_case）必须在对应表的并集列中；
   **Java 模块归档后这一半自动跳过并在输出里注明**（不会静默当全过）；
 - 任何缺失即 exit 1 —— 新环境「启动即建表」后两端查询不会因缺列直接失败。
@@ -44,8 +44,14 @@ except ImportError:
 
 # 与运行时同源：Java 侧那份优先（Flyway 与 Alembic 读同一份），归档后自动切本仓副本
 MIGRATION_DIR = resolve_migration_dir()
-POI_REPOSITORY = ROOT / "travel-agent-python/app/agent/poi_repository.py"
 ENTITY_DIR = ROOT / "travel-backend-java/src/main/java/com/travel/backend/entity"
+
+# city_reference（agent 层仅存的数据库面）查询列的静态期望：脚本改解析 SQL 字符串
+# 太脆，列清单以本表为准——city_reference 增列时这里同步登记，缺列即门禁变红。
+CITY_REFERENCE_TABLES: dict[str, set[str]] = {
+    "city_geo": {"city_name", "country", "country_code", "lat", "lng", "is_domestic"},
+    "city_consumption": {"city", "level", "meal_price", "transport_price", "hotel_price"},
+}
 
 _COLUMN_RE = re.compile(
     r"^\s*`?(\w+)`?\s+(?:BIGINT|VARCHAR|DECIMAL|INT|TINYINT|DATETIME|DATE|TIME|TEXT|LONGTEXT|CHAR|DOUBLE|FLOAT)",
@@ -96,14 +102,14 @@ def snake(name: str) -> str:
 
 
 def check_python(tables: dict[str, set[str]]) -> list[str]:
-    text = POI_REPOSITORY.read_text(encoding="utf-8")
-    block = re.search(r"_POI_COLUMNS\s*=\s*\((.*?)\)", text, re.S)
-    if not block:
-        return ["poi_repository._POI_COLUMNS 解析失败（检查脚本或重构了常量）"]
-    columns = re.findall(r'"([\w, ]+)"', block.group(1))
-    names = [c.strip() for part in columns for c in part.split(",") if c.strip()]
-    known = tables.get("poi_knowledge", set())
-    return [f"poi_knowledge 缺列（Python 只读查询需要）: {c}" for c in names if c.lower() not in known]
+    problems: list[str] = []
+    for table, columns in CITY_REFERENCE_TABLES.items():
+        known = tables.get(table)
+        if known is None:
+            problems.append(f"迁移（V1+V*）缺少 city_reference 依赖表 {table}")
+            continue
+        problems += [f"{table} 缺列（city_reference 只读查询需要）: {c}" for c in sorted(columns) if c not in known]
+    return problems
 
 
 def check_java(tables: dict[str, set[str]]) -> list[str]:

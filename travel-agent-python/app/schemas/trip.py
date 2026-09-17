@@ -372,6 +372,9 @@ class LocalReplanRequest(WireModel):
     failure_reasons: list[str] = Field(default_factory=list, max_length=20)
     plans: list[dict] = Field(default_factory=list, max_length=MAX_TRIP_DAYS)
     budget: float | None = None
+    # 实际已花费（C3.4 透传，与 budget 同币种）：由外部调用方投喂，服务端不读库；
+    # 与 budget 同时提供时以剩余预算（budget - spent）作为重排的预算约束。
+    spent: float | None = None
     request_id: str | None = Field(default=None, max_length=128)
     action_id: str | None = Field(default=None, max_length=128)
 
@@ -383,6 +386,11 @@ class ChatTurnRequest(WireModel):
     budget: float | None = None
     current_total: float | None = None
     current_hotel_total: float | None = None
+    # 实际花费聚合（C3.4）：只统计与预算同币种（CNY）的账目，跨币种不换算不相加；
+    # 其他币种只列币种码供模型提示用户。与 current_total（计划口径）语义无关。
+    spent_total: float | None = None
+    spent_by_category: dict[str, float] | None = None
+    spent_other_currencies: list[str] | None = None
     start_date: str | None = None
     end_date: str | None = None
     preferences: list[str] = Field(default_factory=list, max_length=20)

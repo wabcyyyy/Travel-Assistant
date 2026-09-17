@@ -25,6 +25,7 @@ from app.agent.json_utils import parse_llm_json
 from app.agent.narrative import NARRATIVE_THEME_MAX, sanitize_narrative
 from app.agent.reference_pool import ReferencePool
 from app.agent.trace import traced
+from app.agent.weather import trip_clause as trip_weather_clause
 from app.common.config import settings
 from app.common.llm_client import get_llm_client
 from app.prompts.open_generation import open_trip_system_prompt
@@ -184,6 +185,10 @@ def open_trip_prompt(req: GenerateDayRequest) -> tuple[str, str]:
     requirements_text = requirements_clause(req.requirements)
     if requirements_text:
         system += requirements_text
+    # 城市级天气（C3.1）：预报窗内逐日一行；数据而非指令，缺失即无此行。
+    weather_text = trip_weather_clause(req.context)
+    if weather_text:
+        system += weather_text
     if req.feedback:
         system += (
             "上一轮确定性校验发现以下问题，本轮必须修正。"

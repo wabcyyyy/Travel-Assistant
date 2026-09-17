@@ -5,133 +5,20 @@
 2. 优化前后各一条 `optimize` 快照（与既有写路径同纪律）；
 3. 活动点位不足 2 个 → 400（含缺 dayId 的 400）；
 4. 日标题写/清空都落 metadata_json.theme，未知天 404、超长 400。
+
+夹具/种子在 `_optimize_support`（见其 docstring：为何不经 test_* 模块借用）。
 """
 
 from __future__ import annotations
 
-from datetime import date
-from decimal import Decimal
-
-import pytest
-from fastapi import FastAPI
+from _optimize_support import _day_ids, _trip_id
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import select
 
-from app.api.business.auth import auth_router
-from app.api.business.itinerary import router as itinerary_router
-from app.common.config import settings
-from app.common.envelope import install_exception_handlers
 from app.db import session as db_session
-from app.db.models import (
-    Base,
-    ItineraryDay,
-    ItineraryItem,
-    ItineraryMain,
-    ItineraryVersion,
-    SysUser,
-)
-from app.services import cache_store, user_service
+from app.db.models import ItineraryItem, ItineraryVersion
 
-JWT_MATERIAL = "example-only-hs256-test-signing-material"
-
-
-@pytest.fixture(autouse=True)
-def db(monkeypatch, tmp_path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'w3.db'}")
-    Base.metadata.create_all(engine)
-    db_session.init_engine(engine, sessionmaker(bind=engine, expire_on_commit=False))
-    monkeypatch.setattr(settings, "jwt_secret", JWT_MATERIAL)
-    monkeypatch.setattr(settings, "redis_url", "redis://127.0.0.1:1/0")
-    cache_store.reset_for_tests()
-    _seed()
-    yield
-    db_session.init_engine(None, None)
-    cache_store.reset_for_tests()
-
-
-def _seed() -> None:
-    hashed = user_service.hash_password("x")
-    with db_session.session_scope() as session:
-        session.add(SysUser(username="alice", password=hashed, status=1, role="user"))
-        trip = ItineraryMain(
-            user_id=1,
-            title="杭州2日游",
-            city="杭州",
-            start_date=date(2026, 4, 1),
-            end_date=date(2026, 4, 2),
-            days=2,
-            persons=2,
-            budget=Decimal("2000.00"),
-            status=2,
-        )
-        session.add(trip)
-        session.flush()
-        first = ItineraryDay(
-            itinerary_id=trip.id, day_no=1, generation_status="SUCCEEDED", metadata_json='{"theme": "初版标题"}'
-        )
-        second = ItineraryDay(itinerary_id=trip.id, day_no=2, generation_status="SUCCEEDED")
-        session.add_all([first, second])
-        session.flush()
-        # 共线三点、故意乱序：甲(经度 0.0) 丙(0.2) 乙(0.1) —— 唯一最优路径为 甲 → 乙 → 丙
-        session.add_all(
-            [
-                ItineraryItem(
-                    day_id=first.id,
-                    itinerary_id=trip.id,
-                    item_type="attraction",
-                    poi_name="甲点",
-                    latitude=Decimal("30.000000"),
-                    longitude=Decimal("120.000000"),
-                    sort_no=0,
-                ),
-                ItineraryItem(
-                    day_id=first.id,
-                    itinerary_id=trip.id,
-                    item_type="attraction",
-                    poi_name="丙点",
-                    latitude=Decimal("30.000000"),
-                    longitude=Decimal("120.200000"),
-                    sort_no=1,
-                ),
-                ItineraryItem(
-                    day_id=first.id,
-                    itinerary_id=trip.id,
-                    item_type="attraction",
-                    poi_name="乙点",
-                    latitude=Decimal("30.000000"),
-                    longitude=Decimal("120.100000"),
-                    sort_no=2,
-                ),
-            ]
-        )
-
-
-@pytest.fixture
-def client() -> TestClient:
-    app = FastAPI()
-    install_exception_handlers(app)
-    app.include_router(auth_router)
-    app.include_router(itinerary_router)
-    client = TestClient(app, follow_redirects=False)
-    client.post("/api/auth/login", json={"username": "alice", "password": "x"})
-    return client
-
-
-def _trip_id(client: TestClient) -> int:
-    return client.get("/api/itinerary").json()["data"][0]["id"]
-
-
-def _day_ids(trip_id: int) -> list[int]:
-    with db_session.session_scope() as session:
-        return [
-            row.id
-            for row in session.execute(
-                select(ItineraryDay).where(ItineraryDay.itinerary_id == trip_id).order_by(ItineraryDay.day_no)
-            )
-            .scalars()
-            .all()
-        ]
+pytest_plugins = ["_optimize_support"]
 
 
 # ---------- 优化路线 ----------

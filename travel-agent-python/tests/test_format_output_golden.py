@@ -16,7 +16,7 @@ import pathlib
 
 import pytest
 
-from app.agent import poi_repository, pricing, tool_registry
+from app.agent import pricing, tool_registry
 from app.agent.workflow import format_output
 from app.schemas.trip import GenerateRequest
 
@@ -33,7 +33,7 @@ ACTIVITY_ROWS = [
         "price": 120,
         "latitude": 30.24,
         "longitude": 120.15,
-        "source": "mysql.poi_knowledge",
+        "source": "web.search",
     }
 ]
 
@@ -90,7 +90,34 @@ def stubbed(monkeypatch):
             if hasattr(holder, name):
                 monkeypatch.setattr(holder, name, getattr(pricing, name))
     monkeypatch.setattr(web_search_mod, "web_search_json", _fake_web_search_json)
-    monkeypatch.setattr(poi_repository, "search_pois", lambda *a, **k: copy.deepcopy(ACTIVITY_ROWS))
+
+    # 体验类地板改走联网补池（POI 库退役）：在 web_search 缝位打桩保金样确定；
+    # 非 activity 品类沿用 _fake_web_search_json 的替身语义（与真实映射一致）。
+    def _fake_search_places_via_web(city, category, limit=4, **_kwargs):
+        if category == "activity":
+            return copy.deepcopy(ACTIVITY_ROWS)
+        data = _fake_web_search_json(f"{city}{category}", schema_hint="")
+        rows = (data.get("items") or []) if isinstance(data, dict) else []
+        out = []
+        for row in rows[:limit]:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name") or "").strip()
+            if not name:
+                continue
+            cost = row.get("estimated_cost")
+            out.append(
+                {
+                    "name": name,
+                    "category": category,
+                    "intro": str(row.get("intro") or "").strip()[:80] or None,
+                    "estimated_cost": float(cost) if isinstance(cost, (int, float)) and cost > 0 else None,
+                    "source": "web.search",
+                }
+            )
+        return out
+
+    monkeypatch.setattr(web_search_mod, "search_places_via_web", _fake_search_places_via_web)
     monkeypatch.setattr(tool_registry.registry, "invoke", _fake_route_invoke)
     # 快照不能依赖本机 .env：显式固定所有影响输出的开关与预算
     for attr, value in {

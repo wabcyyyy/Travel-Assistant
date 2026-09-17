@@ -5,6 +5,8 @@
 #
 # 默认仅起 MySQL + Redis，避免与宿主机已占用端口冲突时难排查。
 # 后端已统一到 FastAPI（travel-agent-python 的 agent-python 服务，:8000 承载 /api 与 /api/agent）。
+# 注：语料库退役（V4）后不再需要 Qdrant——地点事实走 LLM + 联网搜索 + OpenTripMap/Nominatim，
+#     Docker 只承担 MySQL + Redis 两件基础设施。
 
 name: travel-assistant
 
@@ -48,22 +50,6 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # 向量数据库（RAG 检索）：默认 Agent 用本地嵌入式模式即可起跑；
-  # 配置 QDRANT_URL=http://qdrant:6333 后切到本服务（持久化 + 多实例共享）。
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: ta-qdrant
-    ports:
-      - "${QDRANT_PORT:-6333}:6333"
-    volumes:
-      - ta-qdrant-data:/qdrant/storage
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
-
   # ---- 应用层（可选 profile）----
   # 镜像需自行 build；模型/密钥通过 .env 注入。未开启 apps profile 时不会启动。
 
@@ -75,9 +61,19 @@ services:
     container_name: ta-agent
     env_file:
       - ./travel-agent-python/.env
+      # 运行密钥（JWT_SECRET/AGENT_INTERNAL_TOKEN/LLM_API_KEY 等）以根 .env 为准：
+      # backend .env 是宿主机开发路径，容器内同名键由此处覆盖
+      - ./.env
     environment:
       AGENT_HOST: 0.0.0.0
+      # 容器内连 MySQL 服务：口令/库名与 mysql 服务的 MYSQL_* 同源（root .env），
+      # 覆盖 backend .env 里指向宿主机本地库的 DB_*，避免两份口令漂移
       DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-travel_dev_only}
+      DB_NAME: ${MYSQL_DB:-travel_assistant}
+      REDIS_URL: redis://redis:6379/0
       REDIS_HOST: redis
       # 容器网络内 Redis 监听 6379（宿主机才映射为 6380）
       REDIS_PORT: "6379"
@@ -116,4 +112,3 @@ services:
 volumes:
   ta-mysql-data:
   ta-redis-data:
-  ta-qdrant-data:

@@ -6,6 +6,11 @@
       </template>
     </SectionHead>
 
+    <!-- 离线快照条幅（C2.5）：列表来自本地时必须明示保存时间 -->
+    <p v-if="listOfflineAt" class="offline-banner" role="status">
+      离线快照 · 保存于 {{ listOfflineAt }} —— 当前为只读列表，联网后自动刷新
+    </p>
+
     <Toolbar class="filters">
       <button
         v-for="tab in TABS"
@@ -119,11 +124,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Plus, Search, Star, StarFilled } from '@element-plus/icons-vue'
 
 import { deleteItinerary, listItineraries, setArchived, setFavorite } from '../api'
+import { acceptInvitation } from '../api/collaboration'
+import { loadSnapshot, saveListSnapshot, snapshotKeyForList } from '../utils/offlineSnapshots'
 import CoverDialog from '../components/trip/CoverDialog.vue'
 import ShareDialog from '../components/trip/ShareDialog.vue'
 import AppMenu from '../components/ui/AppMenu.vue'
@@ -161,6 +168,22 @@ const coverTarget = ref<ItinerarySummary | null>(null)
 const coverVisible = ref(false)
 const shareTarget = ref<ItinerarySummary | null>(null)
 const shareVisible = ref(false)
+// 离线快照（C2.5）：非空 = 列表来自本地快照
+const listOfflineAt = ref<string | null>(null)
+
+// 邀请落地（C2.3）：/trips?invite=<token> 登录后兑换成功即跳进该行程
+onMounted(async () => {
+  const invite = route.query.invite
+  if (typeof invite !== 'string' || !invite) return
+  router.replace({ path: '/trips' })
+  try {
+    const accepted = (await acceptInvitation(invite)).data
+    router.push(`/trips/${accepted.itineraryId}`)
+  } catch {
+    // 401 未登录：request 层会带跳登录；其余（过期/已用/已是成员）直接提示
+    // 静默处理——具体原因由全局错误提示承载，这里不叠加
+  }
+})
 
 function openCover(row: ItinerarySummary) {
   coverTarget.value = row
@@ -229,8 +252,21 @@ async function load() {
   try {
     const res = await listItineraries(view.value, keyword.value.trim())
     list.value = res.data
+    // 离线快照（C2.5）：本人列表成功读取即落盘（断网时供只读回退）
+    const username = localStorage.getItem('username')
+    if (username) void saveListSnapshot(username, res.data)
   } catch {
-    loadError.value = true
+    // 断网：回退到本人列表快照（只读），仍失败才报错
+    const username = localStorage.getItem('username')
+    const entry = typeof navigator !== 'undefined' && navigator.onLine === false && username
+      ? await loadSnapshot(snapshotKeyForList(username))
+      : null
+    if (entry) {
+      list.value = entry.payload as ItinerarySummary[]
+      listOfflineAt.value = new Date(entry.savedAt).toLocaleString()
+    } else {
+      loadError.value = true
+    }
   } finally {
     loading.value = false
   }
@@ -311,6 +347,17 @@ async function onDelete(row: ItinerarySummary) {
   display: flex;
   flex-direction: column;
   gap: var(--lp-space-4);
+}
+
+/* 离线快照条幅（C2.5） */
+.offline-banner {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--lp-text-muted);
+  background: var(--lp-accent-soft);
+  border: 1px solid var(--lp-border);
+  border-radius: var(--lp-radius-sm);
 }
 
 .filters {

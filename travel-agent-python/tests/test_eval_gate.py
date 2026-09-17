@@ -1,8 +1,8 @@
-"""评测防倒退门禁的单测（SPEC v2.3 §8 A2 / §12）。
+"""评测防倒退门禁的单测（SPEC v2.3 §8 A2 / §12 / C3.2 深度指标）。
 
-`check()` 是纯函数：这里逐类钉住通过线与四类红灯（failed / 版本漂移 / 一致率倒退 /
-字段缺失），并显式钉住「degraded 不判失败」这条纪律——它是防口径造假的护栏。
-`main()` 只测 guard 分支（无 key 跳过 / 报告缺失），不触网。
+`check()` 是纯函数：这里逐类钉住通过线与红灯（failed / 版本漂移 / 一致率倒退 /
+深度指标倒退 / 字段缺失），并显式钉住「degraded 不判失败」这条纪律——它是防
+口径造假的护栏。`main()` 只测 guard 分支（无 key 跳过 / 报告缺失），不触网。
 """
 
 from __future__ import annotations
@@ -20,6 +20,11 @@ def _report(**overrides) -> dict:
         "run_count": 6,
         "status_counts": {"success": 0, "degraded": 6, "failed": 0},
         "consistency_rate": 0.1667,
+        "depth_metrics": {
+            "coord_valid_rate": 1.0,
+            "deeplink_resolvable_rate": 1.0,
+            "category_reasonable_rate": 1.0,
+        },
     }
     base.update(overrides)
     return base
@@ -57,6 +62,23 @@ def test_missing_consistency_rate_is_flagged() -> None:
     report = _report()
     report.pop("consistency_rate")
     assert eval_gate.check(report)
+
+
+def test_depth_metric_regression_is_flagged() -> None:
+    """C3.2：深度指标低于记录基线判红（防倒退，非达标线）。"""
+    report = _report(
+        depth_metrics={"coord_valid_rate": 0.5, "deeplink_resolvable_rate": 1.0, "category_reasonable_rate": 1.0}
+    )
+    problems = eval_gate.check(report)
+    assert any("coord_valid_rate" in problem for problem in problems)
+
+
+def test_missing_depth_metrics_is_flagged() -> None:
+    """报告缺 depth_metrics（旧口径产物）→ 判红，提示先重跑 llm_eval。"""
+    report = _report()
+    report.pop("depth_metrics")
+    problems = eval_gate.check(report)
+    assert any("depth_metrics" in problem for problem in problems)
 
 
 def test_main_skips_without_llm_key(monkeypatch, capsys) -> None:

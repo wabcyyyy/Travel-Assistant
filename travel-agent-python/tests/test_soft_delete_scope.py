@@ -15,7 +15,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import session as db_session
-from app.db.models import Base, ItineraryItem, ItineraryMain, PoiKnowledge, SysUser
+from app.db.models import Base, CityGeo, ItineraryItem, ItineraryMain, SysUser
 
 
 @pytest.fixture
@@ -64,10 +64,10 @@ def test_scope_applies_to_every_soft_delete_table(session: Session) -> None:
 
 
 def test_tables_without_deleted_column_are_untouched(session: Session) -> None:
-    """无 deleted 列的表（poi_knowledge 等）不能被钩子误伤成 0 行。"""
-    session.add(PoiKnowledge(city="杭州", name="西湖", category="attraction"))
+    """无 deleted 列的表（city_geo 等字典表）不能被钩子误伤成 0 行。"""
+    session.add(CityGeo(city_name="杭州", country="中国", country_code="CN", is_domestic=True))
     session.commit()
-    assert len(session.execute(select(PoiKnowledge)).scalars().all()) == 1
+    assert len(session.execute(select(CityGeo)).scalars().all()) == 1
 
 
 def test_update_path_is_not_silently_scoped(session: Session) -> None:

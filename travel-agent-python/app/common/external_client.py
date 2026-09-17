@@ -57,6 +57,9 @@ class ExternalClient(Generic[T]):
     timeout_seconds: float = 8.0
     #: 节流等待上限（秒）：超过即放弃本次调用（不自旋、不阻塞车道）
     max_wait_seconds: float = 1.5
+    #: 本实例的车道最小间隔覆盖（秒）：个别供应商有硬性限流（如 Nominatim 1 rps），
+    #: 需要比车道默认值更保守的间隔；None = 沿用车道默认。
+    min_interval_seconds: float | None = None
 
     _cache: dict[str, tuple[Any, float]] = field(default_factory=dict, init=False, repr=False)
     _lane_last: dict[str, float] = field(default_factory=dict, init=False, repr=False)
@@ -112,7 +115,7 @@ class ExternalClient(Generic[T]):
         选择"放弃"而不是"无限等待"：后台补池撞上节流时应当快速跳过，
         否则一次生成会被外部依赖的节奏拖住。
         """
-        interval = _LANE_MIN_INTERVAL.get(lane, _LANE_MIN_INTERVAL[BACKGROUND])
+        interval = self.min_interval_seconds or _LANE_MIN_INTERVAL.get(lane, _LANE_MIN_INTERVAL[BACKGROUND])
         with self._lock:
             now = time.monotonic()
             last = self._lane_last.get(lane, 0.0)

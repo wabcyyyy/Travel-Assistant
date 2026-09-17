@@ -1,10 +1,10 @@
-"""事实落地：坐标校验与本地权威补点（G-2.2 自 day_stream 拆出）。
+"""事实落地：坐标校验与外部数据补点（G-2.2 自 day_stream 拆出）。
 
 职责：
-- has_coord：坐标存在且非 0/0（0/0 是 store._row_payload 把 NULL 写成的缺失哨兵）；
-- local_ground：开放模式自选点位在本地权威库按名解析并回填真实坐标。
+- has_coord：坐标存在且非 0/0（0/0 是缺失哨兵）；
+- local_ground：开放模式自选点位经 Nominatim 按名解析并回填真实坐标。
 
-依赖：tools（本地知识库检索）；无上层依赖。
+依赖：tools（外部地点检索）；无上层依赖。
 """
 
 import logging
@@ -23,10 +23,10 @@ def has_coord(value) -> bool:
 
 
 def local_ground(item: dict, city: str, cache: dict) -> None:
-    """用本地知识库落坐标与地址（去高德后：唯一的 grounding 源）。
+    """用外部地点层落坐标与地址（去高德后：Nominatim 是唯一的点名 grounding 源）。
 
-    只查 `poi_knowledge`（名称精确 → LIKE → 向量召回），过名称相似度门槛后才
-    采纳坐标/票价/图片——查不到就保持原样，由上层按「证据不足」降级。
+    按名称解析、过名称相似度门槛后才采纳坐标/地址——查不到就保持原样，
+    由上层按「证据不足」降级（票价/营业时间数据源不再提供，恒为 LLM 估价）。
     """
     from app.agent.tools import anchor_name_similar
 

@@ -213,7 +213,7 @@ def main() -> None:
         _dump(CONTRACTS_DIR / f"{group}.schema.json", group_json_schema(group))
 
     # 全量 OpenAPI：整只 main.app（含全部路由与挂载方式），排序键保证字节稳定。
-    # main 的 import 有模型加载成本，由调用方设 RAG_EMBEDDING_PROVIDER=hashed 规避联网。
+    # main 的 import 有外部客户端初始化成本，测试环境由 conftest 统一兜底。
     from main import app
 
     _dump(CONTRACTS_DIR / "openapi.json", app.openapi())

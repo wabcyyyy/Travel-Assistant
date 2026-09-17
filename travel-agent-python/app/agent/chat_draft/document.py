@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 def _trip_plan_document(req: ChatTurnRequest) -> dict:
     """每轮都把关系型行程投影成一份完整 JSON，作为 LLM 唯一可编辑的计划状态。"""
-    return {
+    document = {
         "schema_version": 1,
         "trip": {
             "city": req.city,
@@ -45,6 +45,16 @@ def _trip_plan_document(req: ChatTurnRequest) -> dict:
         "days": req.plans,
         "pending_action": None,
     }
+    # 实际花费（C3.4）放顶层、不进受保护的 trip 元数据块：模型只需读取它来理解
+    # "超支/剩余预算"，不允许也不会被要求在 plan_document 里回显（_extract_document_plans
+    # 的元数据一致性校验因此不受影响）。
+    if req.spent_total is not None:
+        document["spent"] = {
+            "total": req.spent_total,
+            "by_category": req.spent_by_category,
+            "other_currencies": req.spent_other_currencies,
+        }
+    return document
 
 
 def _decision_plan_document(req: ChatTurnRequest) -> dict:

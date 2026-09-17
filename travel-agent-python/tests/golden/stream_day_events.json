@@ -19,7 +19,7 @@
         "remark": null,
         "whyThis": null,
         "image": null,
-        "source": "mysql.poi_knowledge",
+        "source": "llm",
         "sourceUpdatedAt": null,
         "verificationStatus": "partially_verified",
         "valueKind": "observed",
@@ -27,9 +27,9 @@
         "reviewRequirement": "before_departure",
         "factEvidence": {
           "identity": {
-            "sourceRef": "mysql.poi_knowledge",
+            "sourceRef": "llm",
             "sourceUrl": null,
-            "provider": "mysql.poi_knowledge",
+            "provider": "llm",
             "retrievedAt": null,
             "expiresAt": null,
             "verificationStatus": "verified",
@@ -55,7 +55,7 @@
         "remark": null,
         "whyThis": null,
         "image": null,
-        "source": "mysql.poi_knowledge",
+        "source": "llm",
         "sourceUpdatedAt": null,
         "verificationStatus": "partially_verified",
         "valueKind": "observed",
@@ -63,9 +63,9 @@
         "reviewRequirement": "before_departure",
         "factEvidence": {
           "identity": {
-            "sourceRef": "mysql.poi_knowledge",
+            "sourceRef": "llm",
             "sourceUrl": null,
-            "provider": "mysql.poi_knowledge",
+            "provider": "llm",
             "retrievedAt": null,
             "expiresAt": null,
             "verificationStatus": "verified",
@@ -91,7 +91,7 @@
         "remark": null,
         "whyThis": null,
         "image": null,
-        "source": "mysql.poi_knowledge",
+        "source": "llm",
         "sourceUpdatedAt": null,
         "verificationStatus": "partially_verified",
         "valueKind": "observed",
@@ -99,9 +99,9 @@
         "reviewRequirement": "before_departure",
         "factEvidence": {
           "identity": {
-            "sourceRef": "mysql.poi_knowledge",
+            "sourceRef": "llm",
             "sourceUrl": null,
-            "provider": "mysql.poi_knowledge",
+            "provider": "llm",
             "retrievedAt": null,
             "expiresAt": null,
             "verificationStatus": "verified",
@@ -127,7 +127,7 @@
         "remark": null,
         "whyThis": null,
         "image": null,
-        "source": "mysql.poi_knowledge",
+        "source": "llm",
         "sourceUpdatedAt": null,
         "verificationStatus": "unverified",
         "valueKind": "estimated",
@@ -135,9 +135,9 @@
         "reviewRequirement": "before_departure",
         "factEvidence": {
           "identity": {
-            "sourceRef": "mysql.poi_knowledge",
+            "sourceRef": "llm",
             "sourceUrl": null,
-            "provider": "mysql.poi_knowledge",
+            "provider": "llm",
             "retrievedAt": null,
             "expiresAt": null,
             "verificationStatus": "verified",

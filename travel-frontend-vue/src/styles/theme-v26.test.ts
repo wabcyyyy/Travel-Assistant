@@ -8,12 +8,18 @@ import { describe, expect, it } from 'vitest'
 // （vitest 下 import.meta.url 不是 file: 协议，用 cwd = travel-frontend-vue 定位）
 const css = readFileSync(resolve(process.cwd(), 'src/styles/theme.css'), 'utf8')
 
-describe('theme.css v2.6 契约（字体 + day-tint）', () => {
-  it('字体：Geist Sans 自托管，Inter 已移除', () => {
+describe('theme.css v2.6/v2.8 契约（字体 + day-tint）', () => {
+  it('字体：Poppins 主字重自托管，Geist 保留为拉丁回退，Inter 已移除', () => {
+    // v2.8 trek 视觉复刻：字体栈以 Poppins 打头（trek --font-system 实测首位），
+    // Geist Sans 降为回退（trek --font-subtext 同款语义）；四个静态字重文件必须都在
+    expect(css).toContain("font-family: 'Poppins'")
+    for (const w of [400, 500, 600, 700]) {
+      expect(css).toContain(`/fonts/poppins-latin-${w}.woff2`)
+    }
     expect(css).toContain("font-family: 'Geist Sans'")
     expect(css).toContain('/fonts/geist-latin-var.woff2')
     expect(css).not.toContain("'Inter'")
-    expect(css).toMatch(/--lp-font-ui:\s*\n\s*'Geist Sans'/)
+    expect(css).toMatch(/--lp-font-ui:\s*'Poppins',\s*'Geist Sans'/)
   })
 
   it('day-tint 四档透明度与亮度界为 TREK 实测原值', () => {

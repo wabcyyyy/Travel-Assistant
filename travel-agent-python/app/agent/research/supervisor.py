@@ -19,8 +19,10 @@ from __future__ import annotations
 import contextvars
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date, timedelta
 
 from app.agent import tools
+from app.agent import weather as weather_module
 from app.agent.intent import build_intent_keywords
 from app.agent.observability import metrics
 from app.agent.research.evidence import EvidencePack, ResearchDomain, ResearchTask
@@ -92,12 +94,26 @@ def run_research_parallel(tasks: list[ResearchTask]) -> dict[ResearchDomain, Evi
     return packs
 
 
+def _trip_end_date(req: GenerateRequest) -> str | None:
+    """行程末日期（含首尾）；无出发日期返回 None（天气窗口无法确定）。"""
+    if not req.start_date:
+        return None
+    try:
+        start = date.fromisoformat(str(req.start_date)[:10])
+    except ValueError:
+        return None
+    return (start + timedelta(days=max(req.days, 1) - 1)).isoformat()
+
+
 def synthesize(packs: dict[ResearchDomain, EvidencePack], req: GenerateRequest) -> dict:
     """证据整合：映射回旧上下文契约并产出 research_report。"""
     attraction = packs.get("attraction") or EvidencePack(domain="attraction")
     food = packs.get("food") or EvidencePack(domain="food")
     hotel = packs.get("hotel") or EvidencePack(domain="hotel")
     consumption = tools.get_consumption(req.city)
+    # 城市级天气（C3.1）：与 consumption 同类的非点位证据，走同一通道；
+    # 失败静默（None），不进 research_report、不发事件，研究/生成形状零漂移。
+    weather = weather_module.get_weather_forecast(req.city, req.start_date, _trip_end_date(req))
     research_report = {
         "mode": "supervisor",
         "agents": {
@@ -116,6 +132,7 @@ def synthesize(packs: dict[ResearchDomain, EvidencePack], req: GenerateRequest) 
         "foods": food.items,
         "hotels": hotel.items,
         "consumption": consumption,
+        "weather": weather,
         "research_report": research_report,
     }
 

@@ -52,6 +52,8 @@ def _research_patch():
     return (
         patch.object(settings, "web_search_enabled", False),
         patch.object(settings, "llm_generation_web_search", False),
+        # 天气（C3.1）同为外网入口：离线评测整体关闭（synthesize 短路）
+        patch.object(settings, "weather_enabled", False),
         # 函数内导入，必须 patch 源模块（factory 模块级没有该属性）
         patch("app.agent.web_search.search_places_via_web", _forbid_network_call),
         patch.object(tools, "search_attractions", mock_llm.search_attractions),

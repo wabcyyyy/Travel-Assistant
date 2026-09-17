@@ -130,6 +130,10 @@ export interface ItineraryDetail {
   /** 用户旅行意图原文（§5.3.1 意图回显行；后端暂未回传，有值才渲染） */
   intent?: string | null
   status: number
+  /** 协作（C2.3）：当前调用者在本行程中的角色；owner/editor 可写，viewer 只读 */
+  myRole?: 'owner' | 'editor' | 'viewer'
+  /** 模板（C2.4）：已发布时间；有值=发布中（详情为本人视角才回传） */
+  templatePublishedAt?: string | null
   dayList: DayPlan[]
   budgetList: BudgetRow[]
   totalAmount: number

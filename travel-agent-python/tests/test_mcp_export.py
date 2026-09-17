@@ -44,7 +44,7 @@ def in_memory_addons(monkeypatch):
 
 
 def test_exposed_tools_are_read_only():
-    """对外只暴露 read_only 工具：外部客户端不能改行程（卡内硬约束）。"""
+    """mcp_write 默认关闭时对外只暴露 read_only 工具（C3.3 写面必须显式打开）。"""
     specs = mcp_api.exposed_specs()
     assert specs, "至少应暴露若干只读工具"
     assert all(spec.read_only for spec in specs)
@@ -52,7 +52,26 @@ def test_exposed_tools_are_read_only():
     # 写路径/昂贵外部调用一律不在白名单
     assert "web_search_places" not in names, "联网补池成本高且另有 addon 门控"
     assert "attach_poi_images" not in names
+    assert "optimize_day" not in names and "add_expense" not in names
     assert 4 <= len(specs) <= 8, "卡内要求 4~6 个（实现取 8 个只读入口，含近邻与消费查询）"
+
+
+def test_write_tools_exposed_only_when_mcp_write_enabled(in_memory_addons):
+    """C3.3：mcp_write 关→写工具不暴露；开→四件套可见且读面不变。"""
+    addons.set_enabled("mcp", True, changed_by="admin")
+    addons.set_enabled("mcp_write", False, changed_by="admin")
+    off_names = {spec.name for spec in mcp_api.exposed_specs()}
+    assert all(spec.read_only for spec in mcp_api.exposed_specs())
+
+    addons.set_enabled("mcp_write", True, changed_by="admin")
+    specs = {spec.name: spec for spec in mcp_api.exposed_specs()}
+    write_names = {"get_itinerary_detail", "optimize_day", "add_expense", "list_expenses"}
+    assert write_names <= set(specs)
+    for name in write_names:
+        assert specs[name].read_only is False
+        assert specs[name].parameters.get("required"), "写工具必须要求显式 user_id 等参数"
+    # 读面照旧
+    assert "search_attractions" in specs and off_names <= set(specs)
 
 
 def test_tool_contract_comes_from_registry():

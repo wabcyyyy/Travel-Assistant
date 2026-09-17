@@ -26,7 +26,7 @@ from sqlalchemy import func, or_, select
 
 from app.common.envelope import ApiError
 from app.common.vo_json import iso_date, iso_datetime, iso_time, number
-from app.db.models import BudgetDetail, ItineraryDay, ItineraryItem, ItineraryMain, PoiKnowledge
+from app.db.models import BudgetDetail, ItineraryDay, ItineraryItem, ItineraryMain, ItineraryMember
 from app.db.session import session_scope
 from app.services import cache_store
 
@@ -75,8 +75,42 @@ def _as_map_list(value: Any) -> list[dict[str, Any]] | None:
     return value if isinstance(value, list) else None
 
 
+def _member_role(session, itinerary_id: int, user_id: int) -> str | None:
+    """协作者角色（editor/viewer）；非成员返回 None。owner 不在成员表。"""
+    return session.execute(
+        select(ItineraryMember.role).where(
+            ItineraryMember.itinerary_id == itinerary_id, ItineraryMember.user_id == user_id
+        )
+    ).scalar_one_or_none()
+
+
 def require_main(session, user_id: int, itinerary_id: int) -> ItineraryMain:
-    """归属校验：不是自己的行程同样报 404，不暴露资源是否存在（同 Java）。"""
+    """读闸门（SPEC C2.3）：owner 或任意协作成员（editor/viewer）可读。
+
+    非成员同样报 404，不暴露资源是否存在（同 Java）。写路径不要用本函数，
+    用 `require_writable_main`；owner 专属操作（删行程/分享/封面/收藏归档）
+    用 `require_owned_main`。
+    """
+    main = session.get(ItineraryMain, itinerary_id)
+    if main is None or (main.user_id != user_id and _member_role(session, itinerary_id, user_id) is None):
+        raise ApiError(404, "行程不存在")
+    return main
+
+
+def require_writable_main(session, user_id: int, itinerary_id: int) -> ItineraryMain:
+    """写闸门（SPEC C2.3）：owner 或 editor；viewer 明确 403（非成员仍 404）。"""
+    main = session.get(ItineraryMain, itinerary_id)
+    if main is None:
+        raise ApiError(404, "行程不存在")
+    if main.user_id != user_id and _member_role(session, itinerary_id, user_id) != "editor":
+        if _member_role(session, itinerary_id, user_id) is None:
+            raise ApiError(404, "行程不存在")
+        raise ApiError(403, "对该行程只有查看权限")
+    return main
+
+
+def require_owned_main(session, user_id: int, itinerary_id: int) -> ItineraryMain:
+    """owner 专属闸门：删行程/分享/封面/收藏归档等个人语义操作不给协作者。"""
     main = session.get(ItineraryMain, itinerary_id)
     if main is None or main.user_id != user_id:
         raise ApiError(404, "行程不存在")
@@ -96,7 +130,7 @@ def next_sort(session, day_id: int | None) -> int:
 
 
 def find_owned_main(user_id: int, itinerary_id: int) -> ItineraryMain:
-    """归属校验 + 取主表实体（同 Java `findOwnedMain`）。
+    """owner 专属校验 + 取主表实体（同 Java `findOwnedMain`）。
 
     **不要 expunge**：写路径常在同一个事务里先取实体、再打快照（`create_snapshot` →
     `detail` → 这里），一旦 expunge，调用方手里那个实例就脱离会话，之后对它的赋值
@@ -104,7 +138,19 @@ def find_owned_main(user_id: int, itinerary_id: int) -> ItineraryMain:
     离开会话后仍可安全读属性，是因为 sessionmaker 配了 `expire_on_commit=False`。
     """
     with session_scope() as session:
+        return require_owned_main(session, user_id, itinerary_id)
+
+
+def find_readable_main(user_id: int, itinerary_id: int) -> ItineraryMain:
+    """读校验（owner/成员）+ 取实体；SSE events 等路由级读检查用。"""
+    with session_scope() as session:
         return require_main(session, user_id, itinerary_id)
+
+
+def find_writable_main(user_id: int, itinerary_id: int) -> ItineraryMain:
+    """写校验（owner/editor）+ 取实体；SSE 写入口（chat-edit/stream）等用。"""
+    with session_scope() as session:
+        return require_writable_main(session, user_id, itinerary_id)
 
 
 def find_owned_item(user_id: int, item_id: int) -> ItineraryItem:
@@ -113,7 +159,7 @@ def find_owned_item(user_id: int, item_id: int) -> ItineraryItem:
         if item is None:
             raise ApiError(404, "行程项不存在")
         itinerary_id = item.itinerary_id
-    find_owned_main(user_id, itinerary_id)
+    find_readable_main(user_id, itinerary_id)
     return item
 
 
@@ -192,13 +238,29 @@ def detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
 
 
 def evict_detail(user_id: int, itinerary_id: int) -> None:
-    """写路径的精确失效（对应 Java 侧生成链路的 evictDetailCache；不用 allEntries）。"""
-    cache_store.delete(DETAIL_CACHE_NAMESPACE, f"{user_id}:{itinerary_id}")
+    """写路径的精确失效（对应 Java 侧生成链路的 evictDetailCache；不用 allEntries）。
+
+    协作（SPEC C2.3）后详情缓存键按读者隔离（`{user_id}:{itinerary_id}`），编辑者
+    写一次必须失效 owner 与全部成员的键，否则他人 10 分钟内读到旧内容。
+    """
+    with session_scope() as session:
+        main = session.get(ItineraryMain, itinerary_id)
+        reader_ids = [
+            row[0]
+            for row in session.execute(
+                select(ItineraryMember.user_id).where(ItineraryMember.itinerary_id == itinerary_id)
+            ).all()
+        ]
+    if main is not None and main.user_id not in reader_ids:
+        reader_ids.append(main.user_id)
+    for reader_id in {*reader_ids, user_id}:
+        cache_store.delete(DETAIL_CACHE_NAMESPACE, f"{reader_id}:{itinerary_id}")
 
 
 def _build_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
-    main = find_owned_main(user_id, itinerary_id)
+    main = find_readable_main(user_id, itinerary_id)
     with session_scope() as session:
+        role = _member_role(session, itinerary_id, user_id)
         days = (
             session.execute(
                 select(ItineraryDay).where(ItineraryDay.itinerary_id == itinerary_id).order_by(ItineraryDay.day_no)
@@ -217,16 +279,6 @@ def _build_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
             .all()
         )
         budgets = session.execute(select(BudgetDetail).where(BudgetDetail.itinerary_id == itinerary_id)).scalars().all()
-
-        names = sorted({item.poi_name for item in items if item.poi_name and item.poi_name.strip()})
-        descriptions: dict[str, str | None] = {}
-        if names:
-            rows = session.execute(
-                select(PoiKnowledge.name, PoiKnowledge.description).where(
-                    PoiKnowledge.city == main.city, PoiKnowledge.name.in_(names)
-                )
-            ).all()
-            descriptions = {row[0]: row[1] for row in rows}
 
     items_by_day: dict[int, list[ItineraryItem]] = defaultdict(list)
     for item in items:
@@ -249,7 +301,7 @@ def _build_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
             "photoSpots": None,
             "practicalNotes": None,
             "dayOptions": None,
-            "items": [_item_vo(item, descriptions, intro_by_name) for item in items_by_day.get(day.id, [])],
+            "items": [_item_vo(item, intro_by_name) for item in items_by_day.get(day.id, [])],
         }
         metadata = _loads_object(day.metadata_json) or {}
         payload["theme"] = metadata.get("theme")
@@ -294,6 +346,8 @@ def _build_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
         "favorite": bool(main.favorite),
         "archived": bool(main.archived),
         "shareToken": main.share_token,
+        # 模板（C2.4）：owner 详情里可见发布状态（menu 出「发布/下架」）
+        "templatePublishedAt": iso_datetime(main.template_published_at),
         "destinationStatus": _destination_status(items),
         "qualityStatus": quality_status,
         "qualityRuleVersion": QUALITY_RULE_VERSION,
@@ -305,12 +359,12 @@ def _build_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
         "dayList": day_list,
         "budgetList": [{"category": b.category, "amount": _num(b.amount), "itemCount": b.item_count} for b in budgets],
         "totalAmount": float(total_amount),
+        # 协作（C2.3）：调用者在本行程里的角色——前端据此隐藏写控件（后端闸门为准）
+        "myRole": "owner" if main.user_id == user_id else (role or "viewer"),
     }
 
 
-def _item_vo(
-    item: ItineraryItem, descriptions: dict[str, str | None], intro_by_name: dict[str, ItineraryItem]
-) -> dict[str, Any]:
+def _item_vo(item: ItineraryItem, intro_by_name: dict[str, ItineraryItem]) -> dict[str, Any]:
     return {
         "id": item.id,
         "itemType": item.item_type,
@@ -338,7 +392,7 @@ def _item_vo(
         "factEvidenceJson": item.fact_evidence_json,
         "factEvidence": _loads_object(item.fact_evidence_json),
         "intro": intro_by_name[item.poi_name].intro if item.poi_name in intro_by_name else None,
-        "description": descriptions.get(item.poi_name or ""),
+        "description": item.intro,
         "sortNo": item.sort_no,
     }
 

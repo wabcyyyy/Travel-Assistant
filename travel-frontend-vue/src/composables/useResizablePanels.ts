@@ -12,7 +12,7 @@ const STORAGE_LEFT = 'ta-panel-left'
 const STORAGE_RIGHT = 'ta-panel-right'
 /**
  * 两栏同屏会把地图压成一条缝的内容宽档（TREK 的 768–1023 窗口档等价物：
- * 我们左侧还有 84px 导航栏，所以量的是工作台自身宽度而不是 window）。
+ * v2.8 顶栏形态后工作台即全宽，量的是工作台自身宽度而不是 window）。
  */
 const NARROW_WIDTH = 1024
 
@@ -26,7 +26,7 @@ function readStored(key: string, fallback: number): number {
  * - 存储值只记「拖出来的宽」，展示值再按窄带夹紧——回宽屏复原，不丢用户设定；
  * - 折叠在宽屏是 leftCollapsed/rightCollapsed 意图态，窄带是独立的 narrowPanel（left|right|null=纯地图），
  *   两者互不污染：窄带里点开右栏不会改宽屏的折叠记忆。
- * - 拖拽在面板内缘 4px 热区，宽度按指针位移；左栏以工作台左缘 + 边距为原点（含 84px 导航栏偏移）。
+ * - 拖拽在面板内缘 4px 热区，宽度按指针位移；左栏以工作台左缘 + 边距为原点。
  */
 export function useResizablePanels(rootEl: Ref<HTMLElement | null>) {
   const leftWidth = ref(readStored(STORAGE_LEFT, DEFAULT_LEFT))

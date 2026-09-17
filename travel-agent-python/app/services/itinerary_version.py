@@ -31,7 +31,7 @@ MAX_SUMMARY = 255
 
 def create_snapshot(user_id: int, itinerary_id: int, operation: str | None, summary: str | None) -> dict[str, Any]:
     with session_scope() as session:
-        main = _require_main(session, user_id, itinerary_id)
+        main = itinerary_query.require_writable_main(session, user_id, itinerary_id)
         latest = _latest(session, itinerary_id)
         itinerary_query.evict_detail(user_id, itinerary_id)
         detail = itinerary_query.detail(user_id, itinerary_id)
@@ -112,7 +112,7 @@ def diff(user_id: int, itinerary_id: int, from_id: int, to_id: int) -> dict[str,
 def restore(user_id: int, itinerary_id: int, version_id: int) -> dict[str, Any]:
     version_no: int
     with session_scope() as session:
-        main = _require_main(session, user_id, itinerary_id)
+        main = itinerary_query.require_writable_main(session, user_id, itinerary_id)
         version = _require(session, itinerary_id, version_id)
         try:
             snapshot = json.loads(version.snapshot_json)
@@ -198,10 +198,8 @@ def _metadata_json(day_snapshot: dict[str, Any]) -> str | None:
 
 
 def _require_main(session, user_id: int, itinerary_id: int) -> ItineraryMain:
-    main = session.get(ItineraryMain, itinerary_id)
-    if main is None or main.user_id != user_id:
-        raise ApiError(404, "行程不存在")
-    return main
+    """版本读路径（list/diff）：owner 或协作成员可读（SPEC C2.3）。"""
+    return itinerary_query.require_main(session, user_id, itinerary_id)
 
 
 def _latest(session, itinerary_id: int) -> ItineraryVersion | None:

@@ -18,10 +18,16 @@
       :detail="detail"
       :done-days="doneDays"
       :stream-state="streamState"
+      :can-edit="canEdit"
       @retry="onStreamRetry"
       @chat="chatVisible = true"
       @versions="versionVisible = true"
     />
+
+    <!-- 离线快照条幅（C2.5）：内容来自本地快照时必须明示，编辑入口维持隐藏 -->
+    <div v-if="detail && offlineSnapshotAt" class="offline-banner" role="status">
+      离线快照 · 保存于 {{ offlineSnapshotAt }} —— 当前为只读视图，联网后自动加载最新内容
+    </div>
 
     <!-- 三栏工作台（v2.6 §19.3；v2.7 §20 R1 视口固定 + 面板独立滚动）：
          左行程 / 中地图 / 右发现；面板宽 340/300 可拖可收（R2，TREK 语义）。
@@ -97,6 +103,7 @@
                   :highlight-id="highlightId"
                   :stream-state="streamState"
                   :selected-ids="selectedIds"
+                  :read-only="!canEdit"
                   @toggle="onDayToggle"
                   @item-drop="onItemDrop"
                   @item-select="onItemSelect"
@@ -111,6 +118,7 @@
             </div>
           </div>
 
+          <button v-if="canEdit" type="button" class="expense-entry" @click="expensesVisible = true">实际花费 · 记账</button>
           <!-- 预算条停靠左栏底部（v2.6 §19.3）：docked = 总价一行 + 明细弹层 -->
           <BudgetStrip
             class="budget-dock"
@@ -223,13 +231,36 @@
       @restored="onVersionRestored"
     />
 
-    <!-- 选择态批量条（v2.6 §19.3）：勾选 ≥1 项时底部浮出 -->
-    <SelectionBar :selected-ids="selectedIds" @clear="selectedIds = []" />
+    <!-- 选择态批量条（v2.6 §19.3）：勾选 ≥1 项时底部浮出；viewer 无批量写入口 -->
+    <SelectionBar v-if="canEdit" :selected-ids="selectedIds" @clear="selectedIds = []" />
 
-    <!-- AI 对话抽屉：ChatEditPanel 自页头卡片收编而来（v2.6 §19.3） -->
-    <AppSheet v-if="detail" v-model="chatVisible" direction="rtl" size="460px" title="AI 管家 · 智能修改">
+    <AppSheet v-if="detail" v-model="expensesVisible" direction="rtl" size="460px" title="实际花费">
+      <ExpensePanel
+        v-if="expensesVisible"
+        :detail="detail"
+        :read-only="!canEdit"
+        @select-item="(id) => { highlightId = id; expensesVisible = false }"
+      />
+    </AppSheet>
+
+    <!-- AI 对话抽屉：ChatEditPanel 自页头卡片收编而来（v2.6 §19.3）；viewer 无写入口 -->
+    <AppSheet v-if="detail && canEdit" v-model="chatVisible" direction="rtl" size="460px" title="AI 管家 · 智能修改">
       <ChatEditPanel :itinerary-id="detail.id" @apply-draft="loadDetail" />
     </AppSheet>
+
+    <!-- 协作（C2.3）：成员/邀请管理抽屉 -->
+    <AppSheet v-if="detail" v-model="collabVisible" direction="rtl" size="420px" title="协作成员">
+      <CollabPanel v-if="collabVisible" :itinerary-id="detail.id" :is-owner="myRole === 'owner'" />
+    </AppSheet>
+
+    <!-- 模板（C2.4）：发布前预览脱敏投影，确认发布/下架 -->
+    <TemplatePublishDialog
+      v-if="detail"
+      v-model:visible="templateVisible"
+      :itinerary-id="detail.id"
+      :published="templatePublished"
+      @changed="loadDetail"
+    />
 
     <ExportBar ref="exportBarRef" :stream-connected="streamConnected" :stream-on="stream.on" />
   </div>
@@ -247,6 +278,10 @@ import {
 } from 'lucide-vue-next'
 
 import BudgetStrip from '../components/trip/BudgetStrip.vue'
+import ExpensePanel from '../components/trip/ExpensePanel.vue'
+import CollabPanel from '../components/trip/CollabPanel.vue'
+import TemplatePublishDialog from '../components/trip/TemplatePublishDialog.vue'
+const expensesVisible = ref(false)
 import ButlerStrip from '../components/trip/ButlerStrip.vue'
 import DayListCard from '../components/trip/DayListCard.vue'
 import ChatEditPanel from '../components/trip/ChatEditPanel.vue'
@@ -270,6 +305,8 @@ import { useDiscoverAdd } from '../composables/useDiscoverAdd'
 import { useResizablePanels } from '../composables/useResizablePanels'
 import { storeToRefs } from 'pinia'
 import { getItineraryDetail } from '../api/itinerary'
+import { deleteSnapshot, loadSnapshot, saveDetailSnapshot, snapshotKeyForDetail } from '../utils/offlineSnapshots'
+import { useUserStore } from '../store/user'
 import { useItineraryStore } from '../store/itinerary'
 import { useItineraryActions } from '../composables/useItineraryActions'
 import { useItineraryStream, type ItineraryStreamEvent } from '../composables/useItineraryStream'
@@ -295,6 +332,15 @@ const highlightId = ref<number | null>(null)
 const coverVisible = ref(false)
 const shareVisible = ref(false)
 const versionVisible = ref(false)
+// 协作（C2.3）/模板（C2.4）：详情 VO 带 myRole；viewer 只读，owner 管协作与发布
+const myRole = computed<'owner' | 'editor' | 'viewer'>(() => detail.value?.myRole ?? 'owner')
+const canEdit = computed(() => myRole.value !== 'viewer')
+const collabVisible = ref(false)
+const templateVisible = ref(false)
+const templatePublished = computed(() => Boolean(detail.value?.templatePublishedAt))
+// 离线快照（C2.5）：非空 = 当前内容来自本地快照（断网回退），条幅明示保存时间
+const offlineSnapshotAt = ref<string | null>(null)
+const userStore = useUserStore()
 const doneDays = computed(
   () => (detail.value?.dayList || []).filter((d) => (d.items || []).length > 0).length,
 )
@@ -330,17 +376,27 @@ const corridorVars = computed(() => ({
 }))
 
 // 行程操作（自封面 Hero 收编，v2.7 §20 R1）：面板头条「⋯」菜单
-const headMenuItems = [
-  { key: 'cover', label: '换封面' },
-  { key: 'share', label: '分享' },
-  { key: 'pdf', label: '导出 PDF' },
-  { key: 'image', label: '导出图片' },
-  { key: 'similar', label: '新建相似行程' },
-]
+const headMenuItems = computed(() => {
+  // 协作（C2.3）/模板（C2.4）：按角色出菜单——cover/share 是 owner 专属语义，
+  // 导出/相似行程对协作成员开放；协作成员与发布入口仅 owner 可见
+  const items: { key: string; label: string }[] = []
+  if (myRole.value === 'owner') {
+    items.push({ key: 'cover', label: '换封面' })
+    items.push({ key: 'share', label: '分享' })
+    items.push({ key: 'collab', label: '协作成员' })
+    items.push({ key: 'template', label: templatePublished.value ? '模板 · 下架' : '发布为模板' })
+  }
+  items.push({ key: 'pdf', label: '导出 PDF' })
+  items.push({ key: 'image', label: '导出图片' })
+  items.push({ key: 'similar', label: '新建相似行程' })
+  return items
+})
 
 function onHeadMenu(key: string): void {
   if (key === 'cover') coverVisible.value = true
   else if (key === 'share') shareVisible.value = true
+  else if (key === 'collab') collabVisible.value = true
+  else if (key === 'template') templateVisible.value = true
   else if (key === 'pdf') onExportPdf()
   else if (key === 'image') onExportImage()
   else if (key === 'similar') router.push('/generate')
@@ -354,7 +410,26 @@ async function loadDetail() {
     // 行程详情落 store 单一数据源；对话/草稿/酒店选择由 ChatEditPanel 随 itineraryId 自行装载
     store.setDetail(res.data)
     collapsedDays.value = []
+    offlineSnapshotAt.value = null
+    // 离线快照（C2.5）：成功读取的本人详情按账号落盘（写失败静默，不影响线上）
+    const username = userStore.username
+    if (username) void saveDetailSnapshot(username, res.data.id, res.data)
   } catch (err) {
+    // 离线快照回退（C2.5）：断网时回退到本人最近一次成功读取的快照（只读）
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      const username = userStore.username
+      const entry = username ? await loadSnapshot(username ? snapshotKeyForDetail(username, String(route.params.id)) : '') : null
+      if (entry) {
+        store.setDetail(entry.payload as ItineraryDetail)
+        offlineSnapshotAt.value = new Date(entry.savedAt).toLocaleString()
+        loading.value = false
+        return
+      }
+    } else {
+      // 在线但读取失败：404（行程已删）或 401（鉴权失效）——不回退旧快照，就地删除
+      const username = userStore.username
+      if (username) void deleteSnapshot(snapshotKeyForDetail(username, String(route.params.id)))
+    }
     // 拦截器已 toast 具体原因；页面本身给出可操作的错误态（不存在/无权限/网络异常）
     const message = err instanceof Error ? err.message : ''
     loadErrorDescription.value =
@@ -739,6 +814,19 @@ onUnmounted(() => {
   margin: 0 auto;
 }
 
+/* ---------- 离线快照条幅（C2.5）：内容来自本地时必须明示 ---------- */
+.offline-banner {
+  position: sticky;
+  top: 0;
+  z-index: var(--lp-z-panel);
+  padding: 8px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--lp-text-muted);
+  background: var(--lp-accent-soft);
+  border-bottom: 1px solid var(--lp-border);
+}
+
 /* ---------- 阅读进度条（el-main 命名滚动时间轴驱动） ---------- */
 .reading-progress { position: fixed; top: 0; left: 0; width: 100%; height: 3px; z-index: var(--lp-z-panel); pointer-events: none; }
 
@@ -846,11 +934,11 @@ onUnmounted(() => {
 
 /* ---------- 桌面（≥768）视口固定布局：整页不滚，两栏各自滚（TREK 语义） ---------- */
 @media (min-width: 768px) {
-  /* 管家条细条：导航（h48 @top8）之下、工作台之上 */
+  /* 管家条细条：全宽顶栏（h64）之下、工作台之上（v2.8 trek 顶栏形态后不再有左导航偏移） */
   .butler-slot {
     position: fixed;
-    top: 62px;
-    left: 84px;
+    top: 64px;
+    left: 0;
     right: 0;
     z-index: var(--lp-z-bar);
   }
@@ -858,7 +946,7 @@ onUnmounted(() => {
   .workbench3 {
     position: fixed;
     top: 108px;
-    left: 84px;
+    left: 0;
     right: 0;
     bottom: 0;
     overflow: hidden;

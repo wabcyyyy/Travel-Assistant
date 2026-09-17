@@ -96,6 +96,9 @@ def _decide_plan_change(req: ChatTurnRequest, hotels: list[dict], feedback: str 
         '{"id":现有id,"start_time":"...","remark":"..."} 或 {"item_type":"attraction","poi_name":"新景点"}]}]}。'
         "保持的项目请带原 id（只改允许字段，可改变 day_no 来重排）；要删除的项目直接不写入；"
         "要新增的项目不带 id 且不得是 hotel。trip 中城市/人数/预算等元数据必须与当前一致，只允许 days 变化。"
+        "当前计划JSON顶层的spent是实际记账花费（人民币）：total为已花费合计、by_category为分类合计，"
+        "other_currencies列出未折算的其他币种；用户提到超支、剩余预算或省钱重排时，以 spent 对比 budget 为准，"
+        "且spent不进入plan_document。"
         "用户明确说减少/增加/改成 N 天时，plan_document.trip.days 必须等于该目标天数；未提天数时保持原天数。"
         "减少不重要或重复景点、或要求行程宽松时，应在 rewrite_plan 里真实删减/重排，不得只改 note。"
         "新增或调整时间时不得与同一天已有项目重叠；若无法安全安排应使用clarify。"

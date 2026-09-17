@@ -74,7 +74,7 @@ export function useItineraryActions() {
     } catch (err) {
       store.rollbackOp(opId)
       if (isConflictError(err)) {
-        ElMessage.warning('行程已在其他操作中被修改，已为您刷新最新版本')
+        ElMessage.warning('他人已修改此行程，已为您刷新最新内容')
         await store.reconcile()
       }
       throw err

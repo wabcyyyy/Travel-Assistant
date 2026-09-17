@@ -15,13 +15,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from app.agent import poi_repository, workflow
+from app.agent import tools, workflow
 from app.agent.day_prompts import GENERATION_TEMPERATURE
 from app.agent.observability import observe_run
 from app.common.config import settings
 from app.prompts.open_generation import OPEN_DAY_PROMPT_VERSION, OPEN_TRIP_PROMPT_VERSION
 from app.schemas.trip import GenerateRequest
-from tests.agent_eval.metrics import evaluate_narrative, evaluate_response
+from tests.agent_eval.metrics import evaluate_depth, evaluate_narrative, evaluate_response
 
 CASES_PATH = Path(__file__).with_name("cases.json")
 THEMED_CASES_PATH = Path(__file__).with_name("themed_cases.json")
@@ -39,11 +39,12 @@ def build_generate_request(case: dict) -> GenerateRequest:
 
 
 def _catalog(city: str) -> dict:
+    # 语料库退役：真机评测的候选目录走同一套外部检索层（OTM+联网补池）
     return {
-        "attractions": poi_repository.search_pois(city, category="attraction", limit=200),
-        "foods": poi_repository.search_pois(city, category="food", limit=50),
-        "hotels": poi_repository.search_pois(city, category="hotel", limit=30),
-        "consumption": poi_repository.get_city_consumption(city) or {},
+        "attractions": tools.search_attractions(city, [], 200),
+        "foods": tools.search_foods(city, 50),
+        "hotels": tools.search_hotels(city, 30),
+        "consumption": tools.get_consumption(city) or {},
     }
 
 
@@ -108,6 +109,8 @@ def _run_once(case: dict, suffix: str) -> tuple[dict, str]:
         "quality": quality,
         # M5 叙事化指标：与质量指标并列落报告，主题化评测的核心观测面
         "narrative": evaluate_narrative(response, case),
+        # C3.2 深度指标：坐标有效率/深链可解析率/类目合理率
+        "depth": evaluate_depth(response, case),
     }
     return run, _signature(response)
 
@@ -136,6 +139,7 @@ def _report_markdown(report: dict) -> str:
         run2 = detail["run2"]
         quality = run1.get("quality") or {}
         narrative = run1.get("narrative") or {}
+        depth = run1.get("depth") or {}
         title = case.get("name") or f"{case['city']}-{case['days']}d"
         lines += [
             f"## {title}（{case['city']} {case['days']} 日）",
@@ -154,6 +158,9 @@ def _report_markdown(report: dict) -> str:
             ("route_violation_rate", quality.get("route_violation_rate")),
             ("attraction_duplicate_rate", quality.get("attraction_duplicate_rate")),
             ("budget_deviation_rate", quality.get("budget_deviation_rate")),
+            ("coord_valid_rate", depth.get("coord_valid_rate")),
+            ("deeplink_resolvable_rate", depth.get("deeplink_resolvable_rate")),
+            ("category_reasonable_rate", depth.get("category_reasonable_rate")),
             ("theme_sentence_rate", narrative.get("theme_sentence_rate")),
             ("why_coverage", narrative.get("why_coverage")),
             ("practical_notes_rate", narrative.get("practical_notes_rate")),
@@ -242,6 +249,15 @@ def main() -> int:
         "run_count": len(details) * 2,
         "consistency_rate": round(same_count / max(len(details), 1), 4),
         "status_counts": status_counts,
+        # C3.2 深度指标聚合（run1 口径；eval_gate 的防倒退下限消费这些值）
+        "depth_metrics": {
+            key: round(
+                sum(float((detail["run1"].get("depth") or {}).get(key) or 0) for detail in details)
+                / max(len(details), 1),
+                4,
+            )
+            for key in ("coord_valid_rate", "deeplink_resolvable_rate", "category_reasonable_rate")
+        },
         "aggregate_stats": aggregate_stats,
         "failed_cases": [
             detail["case"]

@@ -14,6 +14,9 @@ revision 自 S0-13 起按文件拆分（0001 管 V1、0002 管 V2，见 E23）�
 
 from __future__ import annotations
 
+import importlib
+from unittest.mock import Mock
+
 import pytest
 from alembic import command
 from alembic.script import ScriptDirectory
@@ -85,3 +88,114 @@ def test_revision_refuses_to_rebuild_an_existing_schema(sqlite_db) -> None:
         command.upgrade(db_migrate.alembic_config(), "head")
     assert "stamp" in str(exc.value)
     assert "V1__baseline_schema.sql" in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# V4 退役 poi_knowledge（append-only 迁移，INV-3）：head 接线 + V4 执行接线
+# ---------------------------------------------------------------------------
+
+
+def test_head_is_0007_and_linear() -> None:
+    """模板迁移接在协作迁移之后，历史链保持单一且完整。"""
+    script = ScriptDirectory.from_config(db_migrate.alembic_config())
+    assert script.get_current_head() == "0007_template"
+    # 从 head 沿 down_revision 走回基线，链路上每个 revision 都必须真实存在
+    chain: list[str] = []
+    for revision in script.walk_revisions(base="base", head="heads"):
+        chain.append(revision.revision)
+    assert chain == [
+        "0007_template",
+        "0006_collaboration",
+        "0005_expense",
+        "0004_retire_poi_knowledge",
+        "0003_addons",
+        "0002_atlas_share_covers",
+        "0001_wrap_flyway_baseline",
+    ], "head 之后的祖先链断了或分叉了：V2/V3 的执行接线被破坏"
+
+
+def _stamp_and_create_legacy_tables(engine, revision: str) -> None:
+    """把库置为「已到 0003 且 poi_knowledge/hotel_room_type 还在」的形态。
+
+    V1 的 DDL 是 MySQL 方言，SQLite 跑不动，所以不真跑 0001-0003：直接手建
+    alembic_version 并打点 0003，再建两张 V4 要删的表（覆盖 0004 负责的变更面）。
+    """
+    with engine.begin() as connection:
+        connection.exec_driver_sql("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+        connection.exec_driver_sql(f"INSERT INTO alembic_version (version_num) VALUES ('{revision}')")
+    with engine.begin() as connection:
+        connection.exec_driver_sql("CREATE TABLE poi_knowledge (id INTEGER PRIMARY KEY, name VARCHAR(200) NOT NULL)")
+        connection.exec_driver_sql("CREATE TABLE hotel_room_type (id INTEGER PRIMARY KEY, poi_id INTEGER NOT NULL)")
+
+
+def test_upgrade_v4_drops_retired_tables(sqlite_db, capsys) -> None:
+    """SQLite 验证 V4 的 DROP；V5 MySQL DDL 由独立 MySQL 演练验证。"""
+    _stamp_and_create_legacy_tables(sqlite_db, "0003_addons")
+
+    command.upgrade(db_migrate.alembic_config(), "0004_retire_poi_knowledge")
+
+    inspector = inspect(sqlite_db)
+    assert not inspector.has_table("poi_knowledge"), "V4 未生效：poi_knowledge 还在（0004 没被 head 触达）"
+    assert not inspector.has_table("hotel_room_type"), "V4 未生效：hotel_room_type 还在"
+    with sqlite_db.connect() as connection:
+        recorded = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar()
+    assert recorded == "0004_retire_poi_knowledge", "upgrade 完成后版本必须推进到 0004"
+
+    # V4 只负责 V4：从 0003 升级时打印的 applying 日志里不得出现 V1-V3（SQLite 本身
+    # 也跑不动 MySQL 方言的 DDL，测试通过本身就是「没重跑旧迁移」的证据）
+    output = capsys.readouterr().out
+    applying = [line for line in output.splitlines() if line.startswith("[alembic] applying")]
+    assert applying == ["[alembic] applying V4__retire_poi_knowledge.sql"], (
+        f"从 0003 升级应只执行 V4 一个文件，实际：{applying}"
+    )
+
+
+def test_upgrade_head_applies_v4_statements_from_sql_truth(monkeypatch) -> None:
+    """0004 的执行面钉住 SQL 真相源：语句必须来自 statements_between(4, 4) 逐条 op.execute，
+    不得复制/改写 SQL（INV-3）；SQL 缺失时报错必须响亮而不是静默跳过。
+    """
+    module = importlib.import_module("app.db.migrations.versions.0004_retire_poi_knowledge")
+    schema_source = importlib.import_module("app.db.schema_source")
+
+    # 真调 schema_source.statements_between（保持对真相源文件的依赖），但在外面记录区间参数
+    seen_ranges: list[tuple[int, int]] = []
+    real_between = schema_source.statements_between
+
+    def spy(lo: int, hi: int):
+        seen_ranges.append((lo, hi))
+        return real_between(lo, hi)
+
+    monkeypatch.setattr(module, "statements_between", spy)
+
+    executed: list[str] = []
+    monkeypatch.setattr(
+        module.op,
+        "execute",
+        lambda statement: executed.append(statement),
+    )
+
+    module.upgrade()
+
+    assert seen_ranges == [(4, 4)], "0004 只准圈定 V4 区间，不得触碰 V1-V3"
+    real_v4 = [s for _, s in real_between(4, 4)]
+    assert executed == real_v4, "执行的语句必须逐条等于 V4__retire_poi_knowledge.sql 的内容"
+    assert any("DROP TABLE" in s and "poi_knowledge" in s for s in executed)
+    assert any("DROP TABLE" in s and "hotel_room_type" in s for s in executed)
+
+
+def test_v4_revision_fails_loudly_when_sql_missing(monkeypatch) -> None:
+    """SQL 目录缺失属于部署错误：0004 必须抛 RuntimeError，不能静默 0 语句通过。"""
+    module = importlib.import_module("app.db.migrations.versions.0004_retire_poi_knowledge")
+    monkeypatch.setattr(module, "statements_between", lambda lo, hi: [])
+
+    execute = Mock()
+    monkeypatch.setattr(module.op, "execute", execute)
+    with pytest.raises(RuntimeError, match="V4"):
+        module.upgrade()
+    execute.assert_not_called()
+
+
+def test_v4_revision_refuses_downgrade() -> None:
+    module = importlib.import_module("app.db.migrations.versions.0004_retire_poi_knowledge")
+    with pytest.raises(NotImplementedError, match="downgrade"):
+        module.downgrade()

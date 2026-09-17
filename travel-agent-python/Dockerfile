@@ -1,9 +1,7 @@
-# Agent 运行镜像：依赖来自 uv.lock（G-1.3 ⑤：禁手写 pip 列表，lock 是唯一真相源）
-# + 业务代码 + RAG 语义模型（构建期预置，运行期不联网下载）。
-# 多阶段：deps 阶段 uv sync --frozen 装 lock 依赖并下载模型；runtime 只带
-# venv + 代码 + 模型，非 root 运行，无编译工具链。
+# Agent 运行镜像：依赖来自 uv.lock；runtime 只带 venv 与代码，非 root 运行。
+# OTM_API_KEY 等运行配置经 compose env_file 注入，不作为构建参数。
 
-# ---- deps：依赖与模型 ----
+# ---- deps ----
 FROM python:3.12-slim AS deps
 # uv 版本固定保证构建可重现；须 >= 生成 uv.lock 的本机 uv（0.11.x，lock revision 3）
 COPY --from=ghcr.io/astral-sh/uv:0.11.21 /uv /bin/uv
@@ -12,36 +10,14 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
     && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml uv.lock ./
-# torch 已随 pyproject 的 pytorch-cpu index 配置进 lock：uv sync 自动走 CPU 源，
-# 不会再拉 PyPI 的 CUDA 构建（数 GB）——旧手写 pip 列表正是为绕这个，已无必要。
 RUN uv sync --frozen --no-dev
 
-# RAG 语义模型：构建期下载进镜像（bge-small-zh-v1.5 约百 MB 量级）；
-# 国内构建可用 --build-arg HF_ENDPOINT=https://hf-mirror.com 走镜像。
-# 离线/受限网络构建可 --build-arg DOWNLOAD_RAG_MODEL=false 跳过下载
-# （镜像内无模型将无法起跑 RAG，运行期须自行挂载模型目录）。
-ARG RAG_MODEL=BAAI/bge-small-zh-v1.5
-ARG HF_ENDPOINT=
-ARG DOWNLOAD_RAG_MODEL=true
-# 新版 huggingface_hub 默认走 Xet 存储（cas-bridge.xethub.hf.co），CN 网络不可达
-# 且不经 HF_ENDPOINT 镜像代理；禁用后回落经典 HTTP 路径，镜像端点才生效。
-ENV RAG_MODEL_CACHE_DIR=/app/models \
-    HF_ENDPOINT=${HF_ENDPOINT} \
-    HF_HUB_DISABLE_XET=1
-RUN if [ "$DOWNLOAD_RAG_MODEL" = "true" ]; then \
-        uv run python -c "from huggingface_hub import snapshot_download; snapshot_download('${RAG_MODEL}', cache_dir='/app/models')"; \
-    fi
-# 跳过下载时也要有该目录，runtime 阶段 COPY 才不会失败
-RUN mkdir -p /app/models
-
-# ---- runtime：venv + 代码 + 模型，非 root ----
+# ---- runtime：venv + 代码，非 root ----
 FROM python:3.12-slim
 WORKDIR /app
 COPY --from=deps /app/.venv /app/.venv
-COPY --from=deps /app/models /app/models
 COPY . .
 ENV PATH="/app/.venv/bin:$PATH" \
-    RAG_MODEL_CACHE_DIR=/app/models \
     AGENT_HOST=0.0.0.0
 EXPOSE 8000
 # 非 root 运行。注意：compose 把宿主机 data/ 目录 bind mount 到 /app/data

@@ -37,7 +37,15 @@
   <div v-if="partialNotice" class="gen-banner warn">
     <span>{{ partialNotice }}</span>
   </div>
+  <VerificationNotice />
   <div class="head-info">
+    <div v-if="weather?.daily?.length" class="weather-days" role="note" aria-label="出发前天气预报">
+      <span v-for="day in weather.daily" :key="day.date" class="meta-chip weather-day">
+        <CloudSun :size="13" class="weather-ico" />
+        {{ shortDay(day.date) }} {{ day.text }}<template v-if="day.tMin != null && day.tMax != null">
+          {{ Math.round(day.tMin) }}~{{ Math.round(day.tMax) }}°C</template>
+      </span>
+    </div>
     <div v-if="detail.preferences" class="meta-chips">
       <span class="meta-chip">偏好：{{ detail.preferences }}</span>
     </div>
@@ -55,9 +63,13 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { CloudSun } from 'lucide-vue-next'
+
+import VerificationNotice from './VerificationNotice.vue'
 
 import type { StreamState } from '../../store/itinerary'
 import type { ItineraryDetail } from '../../types/itinerary'
+import type { WeatherVO } from '../../types/generated/contracts'
 
 // head 卡状态区（M4-②a §5.4 / M4-②b §5.3.5 流式升级）：
 // 生成进度由 store.streamState 驱动（idle/researching/day/butler/complete/failed +
@@ -69,6 +81,8 @@ const props = defineProps<{
   doneDays: number
   /** SSE 生成进度状态机（store.streamState） */
   streamState: StreamState
+  /** 出发前天气（C3.1）：ButlerStrip 取数后下传；null/无数据即不渲染（静默） */
+  weather?: WeatherVO | null
 }>()
 
 const emit = defineEmits<{
@@ -117,6 +131,11 @@ const expectedDateNights = computed(() => {
 })
 const dateNightMismatch = computed(() => expectedDateNights.value != null
   && props.detail.stayNights !== expectedDateNights.value)
+
+function shortDay(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? iso : `${d.getMonth() + 1}/${d.getDate()}`
+}
 </script>
 
 <style scoped>
@@ -245,6 +264,24 @@ const dateNightMismatch = computed(() => expectedDateNights.value != null
   font-weight: 600;
   color: var(--lp-ink-soft);
   font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 出发前天气（C3.1）---------- */
+.weather-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.weather-day {
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.weather-ico {
+  flex: none;
+  color: var(--lp-accent);
 }
 
 .mismatch-line {

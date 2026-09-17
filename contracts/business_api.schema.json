@@ -986,6 +986,1238 @@
       "required": [
         "expireDays"
       ]
+    },
+    "ExpenseCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "enum": [
+            "attraction",
+            "food",
+            "hotel",
+            "transport",
+            "shopping",
+            "other"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "amount": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 99999999.99,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Amount"
+        },
+        "currency": {
+          "default": "CNY",
+          "maxLength": 3,
+          "minLength": 3,
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "dayNo": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dayno"
+        },
+        "itemId": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Itemid"
+        },
+        "spentAt": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Spentat"
+        },
+        "paymentMethod": {
+          "anyOf": [
+            {
+              "maxLength": 24,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Paymentmethod"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "category",
+        "amount",
+        "currency",
+        "dayNo",
+        "itemId",
+        "spentAt",
+        "paymentMethod",
+        "note"
+      ],
+      "title": "ExpenseCreate",
+      "type": "object"
+    },
+    "ExpenseUpdate": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "anyOf": [
+            {
+              "enum": [
+                "attraction",
+                "food",
+                "hotel",
+                "transport",
+                "shopping",
+                "other"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Category"
+        },
+        "amount": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 99999999.99,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Amount"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "maxLength": 3,
+              "minLength": 3,
+              "pattern": "^[A-Z]{3}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "dayNo": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dayno"
+        },
+        "itemId": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Itemid"
+        },
+        "spentAt": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Spentat"
+        },
+        "paymentMethod": {
+          "anyOf": [
+            {
+              "maxLength": 24,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Paymentmethod"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "title": "ExpenseUpdate",
+      "type": "object",
+      "required": [
+        "category",
+        "amount",
+        "currency",
+        "dayNo",
+        "itemId",
+        "spentAt",
+        "paymentMethod",
+        "note"
+      ]
+    },
+    "ExpenseVO": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "itineraryId": {
+          "title": "Itineraryid",
+          "type": "integer"
+        },
+        "userId": {
+          "title": "Userid",
+          "type": "integer"
+        },
+        "category": {
+          "enum": [
+            "attraction",
+            "food",
+            "hotel",
+            "transport",
+            "shopping",
+            "other"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "amount": {
+          "title": "Amount",
+          "type": "string"
+        },
+        "currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "dayNo": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dayno"
+        },
+        "itemId": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Itemid"
+        },
+        "spentAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Spentat"
+        },
+        "paymentMethod": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Paymentmethod"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "createdAt": {
+          "title": "Createdat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "itineraryId",
+        "userId",
+        "category",
+        "amount",
+        "currency",
+        "dayNo",
+        "itemId",
+        "spentAt",
+        "paymentMethod",
+        "note",
+        "createdAt"
+      ],
+      "title": "ExpenseVO",
+      "type": "object"
+    },
+    "ExpenseCategoryTotal": {
+      "properties": {
+        "category": {
+          "enum": [
+            "attraction",
+            "food",
+            "hotel",
+            "transport",
+            "shopping",
+            "other"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "amount": {
+          "title": "Amount",
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "currency",
+        "amount"
+      ],
+      "title": "ExpenseCategoryTotal",
+      "type": "object"
+    },
+    "ExpenseListVO": {
+      "properties": {
+        "expenses": {
+          "items": {
+            "$ref": "#/$defs/ExpenseVO"
+          },
+          "title": "Expenses",
+          "type": "array"
+        },
+        "totals": {
+          "items": {
+            "$ref": "#/$defs/ExpenseCategoryTotal"
+          },
+          "title": "Totals",
+          "type": "array"
+        }
+      },
+      "required": [
+        "expenses",
+        "totals"
+      ],
+      "title": "ExpenseListVO",
+      "type": "object"
+    },
+    "InvitationCreate": {
+      "properties": {
+        "role": {
+          "enum": [
+            "editor",
+            "viewer"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role"
+      ],
+      "title": "InvitationCreate",
+      "type": "object"
+    },
+    "InvitationVO": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "itineraryId": {
+          "title": "Itineraryid",
+          "type": "integer"
+        },
+        "role": {
+          "enum": [
+            "editor",
+            "viewer"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "expiresAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expiresat"
+        },
+        "createdAt": {
+          "title": "Createdat",
+          "type": "string"
+        },
+        "acceptedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Acceptedat"
+        },
+        "acceptedBy": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Acceptedby"
+        },
+        "revokedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Revokedat"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "accepted",
+            "revoked",
+            "expired"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "itineraryId",
+        "role",
+        "expiresAt",
+        "createdAt",
+        "acceptedAt",
+        "acceptedBy",
+        "revokedAt",
+        "status"
+      ],
+      "title": "InvitationVO",
+      "type": "object"
+    },
+    "InvitationCreatedVO": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "itineraryId": {
+          "title": "Itineraryid",
+          "type": "integer"
+        },
+        "role": {
+          "enum": [
+            "editor",
+            "viewer"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "expiresAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expiresat"
+        },
+        "createdAt": {
+          "title": "Createdat",
+          "type": "string"
+        },
+        "acceptedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Acceptedat"
+        },
+        "acceptedBy": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Acceptedby"
+        },
+        "revokedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Revokedat"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "accepted",
+            "revoked",
+            "expired"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "token": {
+          "maxLength": 256,
+          "minLength": 16,
+          "title": "Token",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "itineraryId",
+        "role",
+        "expiresAt",
+        "createdAt",
+        "acceptedAt",
+        "acceptedBy",
+        "revokedAt",
+        "status",
+        "token"
+      ],
+      "title": "InvitationCreatedVO",
+      "type": "object"
+    },
+    "InvitationListVO": {
+      "properties": {
+        "invitations": {
+          "items": {
+            "$ref": "#/$defs/InvitationVO"
+          },
+          "title": "Invitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "invitations"
+      ],
+      "title": "InvitationListVO",
+      "type": "object"
+    },
+    "MemberVO": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "itineraryId": {
+          "title": "Itineraryid",
+          "type": "integer"
+        },
+        "userId": {
+          "title": "Userid",
+          "type": "integer"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Username"
+        },
+        "role": {
+          "enum": [
+            "editor",
+            "viewer"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "createdAt": {
+          "title": "Createdat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "itineraryId",
+        "userId",
+        "username",
+        "role",
+        "createdAt"
+      ],
+      "title": "MemberVO",
+      "type": "object"
+    },
+    "MemberListVO": {
+      "properties": {
+        "members": {
+          "items": {
+            "$ref": "#/$defs/MemberVO"
+          },
+          "title": "Members",
+          "type": "array"
+        }
+      },
+      "required": [
+        "members"
+      ],
+      "title": "MemberListVO",
+      "type": "object"
+    },
+    "MemberRoleUpdate": {
+      "properties": {
+        "role": {
+          "enum": [
+            "editor",
+            "viewer"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role"
+      ],
+      "title": "MemberRoleUpdate",
+      "type": "object"
+    },
+    "InvitationAcceptRequest": {
+      "properties": {
+        "token": {
+          "maxLength": 256,
+          "minLength": 16,
+          "title": "Token",
+          "type": "string"
+        }
+      },
+      "required": [
+        "token"
+      ],
+      "title": "InvitationAcceptRequest",
+      "type": "object"
+    },
+    "InvitationAcceptVO": {
+      "properties": {
+        "itineraryId": {
+          "title": "Itineraryid",
+          "type": "integer"
+        },
+        "role": {
+          "enum": [
+            "editor",
+            "viewer"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "itineraryId",
+        "role",
+        "title"
+      ],
+      "title": "InvitationAcceptVO",
+      "type": "object"
+    },
+    "TemplateCostTier": {
+      "properties": {
+        "category": {
+          "enum": [
+            "门票",
+            "餐饮",
+            "交通",
+            "酒店"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "amountRangeText": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Amountrangetext",
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "amountRangeText"
+      ],
+      "title": "TemplateCostTier",
+      "type": "object"
+    },
+    "TemplateItemVO": {
+      "properties": {
+        "poiName": {
+          "title": "Poiname",
+          "type": "string"
+        },
+        "itemType": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Itemtype"
+        },
+        "startTime": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Starttime"
+        },
+        "endTime": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Endtime"
+        },
+        "latitude": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latitude"
+        },
+        "longitude": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Longitude"
+        }
+      },
+      "required": [
+        "poiName",
+        "itemType",
+        "startTime",
+        "endTime",
+        "latitude",
+        "longitude"
+      ],
+      "title": "TemplateItemVO",
+      "type": "object"
+    },
+    "TemplateDayVO": {
+      "properties": {
+        "dayNo": {
+          "title": "Dayno",
+          "type": "integer"
+        },
+        "theme": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Theme"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/TemplateItemVO"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "dayNo",
+        "theme",
+        "items"
+      ],
+      "title": "TemplateDayVO",
+      "type": "object"
+    },
+    "TemplateSummaryVO": {
+      "properties": {
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "city": {
+          "title": "City",
+          "type": "string"
+        },
+        "days": {
+          "title": "Days",
+          "type": "integer"
+        },
+        "persons": {
+          "title": "Persons",
+          "type": "integer"
+        },
+        "intro": {
+          "title": "Intro",
+          "type": "string"
+        },
+        "costTiers": {
+          "items": {
+            "$ref": "#/$defs/TemplateCostTier"
+          },
+          "title": "Costtiers",
+          "type": "array"
+        },
+        "dayList": {
+          "items": {
+            "$ref": "#/$defs/TemplateDayVO"
+          },
+          "title": "Daylist",
+          "type": "array"
+        }
+      },
+      "required": [
+        "title",
+        "city",
+        "days",
+        "persons",
+        "intro",
+        "costTiers",
+        "dayList"
+      ],
+      "title": "TemplateSummaryVO",
+      "type": "object"
+    },
+    "TemplatePublishVO": {
+      "properties": {
+        "itineraryId": {
+          "title": "Itineraryid",
+          "type": "integer"
+        },
+        "publishedAt": {
+          "title": "Publishedat",
+          "type": "string"
+        },
+        "summary": {
+          "$ref": "#/$defs/TemplateSummaryVO"
+        }
+      },
+      "required": [
+        "itineraryId",
+        "publishedAt",
+        "summary"
+      ],
+      "title": "TemplatePublishVO",
+      "type": "object"
+    },
+    "TemplateCardVO": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "city": {
+          "title": "City",
+          "type": "string"
+        },
+        "days": {
+          "title": "Days",
+          "type": "integer"
+        },
+        "coverUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Coverurl"
+        },
+        "costTiers": {
+          "items": {
+            "$ref": "#/$defs/TemplateCostTier"
+          },
+          "title": "Costtiers",
+          "type": "array"
+        },
+        "publishedAt": {
+          "title": "Publishedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "city",
+        "days",
+        "coverUrl",
+        "costTiers",
+        "publishedAt"
+      ],
+      "title": "TemplateCardVO",
+      "type": "object"
+    },
+    "TemplateDetailVO": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "city": {
+          "title": "City",
+          "type": "string"
+        },
+        "days": {
+          "title": "Days",
+          "type": "integer"
+        },
+        "coverUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Coverurl"
+        },
+        "costTiers": {
+          "items": {
+            "$ref": "#/$defs/TemplateCostTier"
+          },
+          "title": "Costtiers",
+          "type": "array"
+        },
+        "publishedAt": {
+          "title": "Publishedat",
+          "type": "string"
+        },
+        "summary": {
+          "$ref": "#/$defs/TemplateSummaryVO"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "city",
+        "days",
+        "coverUrl",
+        "costTiers",
+        "publishedAt",
+        "summary"
+      ],
+      "title": "TemplateDetailVO",
+      "type": "object"
+    },
+    "TemplateListVO": {
+      "properties": {
+        "templates": {
+          "items": {
+            "$ref": "#/$defs/TemplateCardVO"
+          },
+          "title": "Templates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "templates"
+      ],
+      "title": "TemplateListVO",
+      "type": "object"
+    },
+    "TemplateForkVO": {
+      "properties": {
+        "itineraryId": {
+          "title": "Itineraryid",
+          "type": "integer"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "itineraryId",
+        "title"
+      ],
+      "title": "TemplateForkVO",
+      "type": "object"
+    },
+    "WeatherDay": {
+      "properties": {
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Code"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "tMax": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tmax"
+        },
+        "tMin": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tmin"
+        },
+        "precipProb": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Precipprob"
+        }
+      },
+      "required": [
+        "date",
+        "code",
+        "text",
+        "tMax",
+        "tMin",
+        "precipProb"
+      ],
+      "title": "WeatherDay",
+      "type": "object"
+    },
+    "WeatherVO": {
+      "properties": {
+        "city": {
+          "title": "City",
+          "type": "string"
+        },
+        "source": {
+          "default": "open-meteo",
+          "title": "Source",
+          "type": "string"
+        },
+        "daily": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/WeatherDay"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Daily"
+        }
+      },
+      "required": [
+        "city",
+        "source",
+        "daily"
+      ],
+      "title": "WeatherVO",
+      "type": "object"
     }
   }
 }

@@ -28,7 +28,7 @@ from app.common.config import settings
 from app.prompts.open_generation import OPEN_DAY_PROMPT_VERSION, OPEN_TRIP_PROMPT_VERSION
 from app.schemas.trip import GenerateRequest
 from tests.agent_eval import mock_llm
-from tests.agent_eval.metrics import evaluate_response
+from tests.agent_eval.metrics import evaluate_depth, evaluate_response
 
 CASES_PATH = Path(__file__).with_name("cases.json")
 REPORT_DIR = Path(__file__).with_name("report")
@@ -59,7 +59,9 @@ def run_case(case: dict) -> dict:
     # 路线缓存属于进程级优化；每个 fixture 用例先清空，避免前一个城市的
     # 缓存改变本用例的 Trace 工具数和耗时，保证报告可复现。
     clear_route_cache()
-    fixture = mock_llm.catalog(case["city"])
+    # C3.2 坐标参数化：case 可带 "coords": false 走无坐标边界变体
+    coords = case.get("coords", True)
+    fixture = mock_llm.catalog(case["city"], coords=coords)
     # LLM-only 口径下的离线评测：mock 开放模式的模型输出（而非旧的
     # 确定性 fallback），走真实的编排/引用落地/反思/格式化链路。
     #
@@ -67,28 +69,42 @@ def run_case(case: dict) -> dict:
     # 会真的去打 LLM 网关（失败被内部吞掉降级），导致报告随环境凭据/网络抖动
     # 漂移、耗时不可控，CI 上更会因无外网而产出另一套数字。这里显式关闭，
     # 并把实时价入口换成"一旦调用即报错"的哨兵：离线不是靠约定，而是被证明。
+    # Nominatim 同理（无坐标变体会按名解析真坐标），一律钉死关闭。
     with (
         patch.object(workflow.settings, "llm_api_key", "fixture"),
         patch.object(settings, "live_price_search", False),
         patch.object(settings, "live_food_price_search", False),
         patch.object(settings, "web_search_enabled", False),
         patch.object(settings, "llm_generation_web_search", False),
+        patch.object(settings, "nominatim_enabled", False),
+        # 天气（C3.1）同为外网入口：离线评测整体关闭（synthesize 短路，不打坐标/预报）
+        patch.object(workflow.settings, "weather_enabled", False),
         patch.object(pricing, "query_live_price", _forbid_network_call),
         patch.object(pricing, "query_live_food_price", _forbid_network_call),
-        patch.object(tools, "search_attractions", mock_llm.search_attractions),
-        patch.object(tools, "search_foods", mock_llm.search_foods),
+        patch.object(
+            tools,
+            "search_attractions",
+            lambda city, prefs, limit=30: mock_llm.search_attractions(city, prefs, limit, coords=coords),
+        ),
+        patch.object(tools, "search_foods", lambda city, limit=10: mock_llm.search_foods(city, limit, coords=coords)),
         patch.object(tools, "get_consumption", mock_llm.get_consumption),
-        patch.object(tools, "search_hotels", mock_llm.search_hotels),
+        patch.object(tools, "search_hotels", lambda city, limit=6: mock_llm.search_hotels(city, limit, coords=coords)),
         patch.object(reasoning, "plan_research", mock_llm.plan_research),
         patch.object(reasoning, "evaluate_research", mock_llm.evaluate_research),
         patch.object(tools, "attach_poi_images", mock_llm.attach_poi_images),
-        patch.object(tools, "search_local_poi", mock_llm.search_local_poi),
+        patch.object(
+            tools,
+            "search_local_poi",
+            lambda city, name, category=None: mock_llm.search_local_poi(city, name, category=category, coords=coords),
+        ),
         patch.object(open_plans, "llm_open_day", mock_llm.fixture_open_day),
         patch.object(open_plans, "llm_open_trip", mock_llm.fixture_open_trip),
         trace_run(f"fixture-{case['city']}-{case['days']}") as recorder,
     ):
         response = workflow.run_generate(build_generate_request(case))
-    return evaluate_response(response, case, fixture, recorder.to_dict())
+    result = evaluate_response(response, case, fixture, recorder.to_dict())
+    result.update(evaluate_depth(response, case))
+    return result
 
 
 def _average(results: list[dict], key: str) -> float:
@@ -122,6 +138,10 @@ def build_report(cases: list[dict]) -> dict:
             ),
             "research_rounds_avg": _average(results, "research_rounds"),
             "research_pack_avg": _average(results, "research_pack"),
+            # C3.2 深度指标：坐标有效率 / 深链可解析率 / 类目合理率
+            "coord_valid_rate": _average(results, "coord_valid_rate"),
+            "deeplink_resolvable_rate": _average(results, "deeplink_resolvable_rate"),
+            "category_reasonable_rate": _average(results, "category_reasonable_rate"),
         },
         "details": results,
     }
@@ -141,7 +161,11 @@ def write_report(report: dict) -> None:
         "| --- | ---: |",
     ]
     for key, value in metrics.items():
-        lines.append(f"| {key} | {value:.2%} |")
+        # 均值型指标（research_rounds_avg 等）不是比例，按数值渲染而非百分比
+        if key.endswith("_avg"):
+            lines.append(f"| {key} | {value:g} |")
+        else:
+            lines.append(f"| {key} | {value:.2%} |")
     lines += [
         "",
         "| 城市 | 天数 | 权威 POI | 字段引用 | 冲突率 | 路线违规 | 重复率 | 预算偏差 | 轨迹工具数 |",

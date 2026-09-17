@@ -1,6 +1,7 @@
 import axios, { type AxiosRequestConfig } from 'axios'
 import router from '../router'
 import { useUserStore } from '../store/user'
+import { toast } from '../components/ui/toast'
 
 export type ApiRequestConfig = AxiosRequestConfig & {
   /** Optional background calls can fail without interrupting the current page. */
@@ -62,6 +63,12 @@ request.interceptors.response.use(
     }
     if (!error.config?.skipErrorMessage) {
       const message = error.response?.data?.message || error.message || '网络错误'
+      // 离线只读（C2.5）：断网时的写操作给明确提示，不静默失败（用自研 toast，不增 EP 记账）
+      const method = String(error.config?.method ?? '').toLowerCase()
+      if (!navigator.onLine && method !== 'get') {
+        toast.warning('离线状态，编辑需联网')
+        return Promise.reject(error)
+      }
       ElMessage.error(message)
     }
     return Promise.reject(error)

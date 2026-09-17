@@ -128,12 +128,15 @@ def test_run_search_merges_task_intent_keywords_into_extras(monkeypatch):
         # ≥3 条避免触发联网补池分支
         return [{"name": f"{city}景点{i}", "latitude": 30.0, "longitude": 120.0} for i in range(4)]
 
-    def fake_amap(city, keyword, *, category=None):
-        captured["keywords"].append(keyword)
+    import app.agent.web_search as web_search_mod
+
+    def fake_web(city, category, limit=4, intent_keywords=None):
+        for keyword in intent_keywords or []:
+            captured["keywords"].append(keyword)
         return []
 
     monkeypatch.setattr(tools, "search_attractions", fake_search)
-    monkeypatch.setattr(tools, "search_local_poi", fake_amap)
+    monkeypatch.setattr(web_search_mod, "search_places_via_web", fake_web)
     monkeypatch.setattr(reasoning, "plan_research", lambda task: {"extra_keywords": ["杭州 西湖"]})
     monkeypatch.setattr(
         reasoning, "evaluate_research", lambda task, items, round_no: {"sufficient": True, "extra_keywords": []}
@@ -142,7 +145,7 @@ def test_run_search_merges_task_intent_keywords_into_extras(monkeypatch):
     pack = run_research(task)
     assert captured["keywords"][0] == "杭州 西湖"  # plan 补充词顺序不变
     assert "杭州 千恋万花" in captured["keywords"]  # 意图关键词并入补池
-    assert captured["keywords"].count("杭州 西湖") == 1  # 去重
+    assert captured["keywords"].count("杭州 西湖") == 1  # 去重（web 补池由 factory 去重后的 extras 驱动）
     assert pack.rounds == 1
 
 
