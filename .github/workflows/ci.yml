@@ -156,7 +156,7 @@ jobs:
 
   schema-migration:
     needs: preflight
-    # 迁移门禁：按版本序把全部迁移 SQL（当前 V1、V2）应用到空库，验证「新环境可复现正确 schema」
+    # 迁移门禁：按版本序把全部迁移 SQL（当前 V1-V7）应用到空库，验证「新环境可复现正确 schema」
     runs-on: ubuntu-latest
     services:
       mysql:
@@ -186,10 +186,8 @@ jobs:
             -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='travel_assistant'")
           echo "created tables: $tables"
           test "$tables" -ge 13
-          # 采集管线依赖的关键列必须存在（fail-fast 契约）
-          mysql -h127.0.0.1 -uroot -N -B travel_assistant \
-            -e "SHOW COLUMNS FROM poi_knowledge LIKE 'avg_cost'" | grep -q avg_cost
           # V2 列/表断言：清单只增不减，防「迁移漏跑」
+          # （poi_knowledge avg_cost 断言已随 V4 语料退役删除，2026-09）
           mysql -h127.0.0.1 -uroot -N -B travel_assistant \
             -e "SHOW COLUMNS FROM itinerary_main LIKE 'cover_url'" | grep -q cover_url
           mysql -h127.0.0.1 -uroot -N -B travel_assistant \
