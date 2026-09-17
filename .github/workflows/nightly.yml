@@ -1,9 +1,9 @@
 name: nightly
 
-# 分层冒烟（评审报告 §4.2）：PR 层在 ci.yml；夜间跑
-#   1) 语义检索评测：验证默认 semantic 路径（模型走 HF 镜像 + 缓存）；
-#   2) 集成冒烟：起 MySQL/Redis + FastAPI 后端（首启即自动迁移 schema），
-#      再跑 tests/api 端到端（真实 LLM 生成，需 LLM_API_KEY secret，缺失时跳过）。
+# 分层冒烟（评审报告 §4.2）：PR 层在 ci.yml；夜间跑集成冒烟：
+# 起 MySQL/Redis + FastAPI 后端（首启即自动迁移 schema），再跑 tests/api
+# 端到端（真实 LLM 生成，需 LLM_API_KEY secret，缺失时跳过）。
+# （语义检索评测已随 RAG 退役整体删除。）
 # 手动触发：Actions → nightly → Run workflow。
 
 on:
@@ -15,40 +15,6 @@ permissions:
   contents: read
 
 jobs:
-  retrieval-semantic:
-    name: Retrieval eval (semantic)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: travel-agent-python
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          python-version: '3.12'
-          enable-cache: true
-      - name: Sync deps (lockfile-driven)
-        run: uv sync --frozen
-      - name: Cache RAG embedding model
-        uses: actions/cache@v4
-        with:
-          path: travel-agent-python/models
-          key: rag-model-bge-small-zh-v1.5
-      - name: Fetch RAG model (HF mirror)
-        env:
-          HF_ENDPOINT: https://hf-mirror.com
-        run: uv run python scripts/fetch_rag_model.py
-      - name: Hashed baseline
-        run: uv run python tests/agent_eval/eval_retrieval.py --provider hashed | tee hashed.json
-      - name: Semantic eval
-        run: uv run python tests/agent_eval/eval_retrieval.py --provider semantic | tee semantic.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: retrieval-eval
-          path: |
-            travel-agent-python/hashed.json
-            travel-agent-python/semantic.json
-
   integration-smoke:
     name: Integration smoke (tests/api)
     runs-on: ubuntu-latest

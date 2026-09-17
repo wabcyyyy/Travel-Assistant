@@ -1,7 +1,7 @@
 name: release
 
 # CI 分层第三层（评审报告 §4.2）：打 tag 时跑全量评测与门禁，产物存档。
-# 日常提交走 ci.yml（PR 层）；定时走 nightly.yml（冒烟 + 语义检索）。
+# 日常提交走 ci.yml（PR 层）；定时走 nightly.yml（集成冒烟）。
 # 手动触发：Actions → release → Run workflow。
 
 on:
@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   eval-suite:
-    name: Offline eval suite (agent / research / retrieval)
+    name: Offline eval suite (agent / research)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -33,23 +33,11 @@ jobs:
           AGENT_INTERNAL_TOKEN: ''
           LLM_API_KEY: ''
         run: uv run pytest tests/ --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval -q
-      - name: Agent / research / retrieval evals (hashed)
+      - name: Agent / research evals (hashed)
         run: |
           mkdir -p eval-artifacts
           uv run python tests/agent_eval/eval_agent.py | tee eval-artifacts/eval_agent.json
           uv run python tests/agent_eval/eval_research.py | tee eval-artifacts/eval_research.json
-          uv run python tests/agent_eval/eval_retrieval.py --provider hashed | tee eval-artifacts/eval_retrieval_hashed.json
-      - name: Cache RAG embedding model
-        uses: actions/cache@v4
-        with:
-          path: travel-agent-python/models
-          key: rag-model-bge-small-zh-v1.5
-      - name: Fetch RAG model (HF mirror)
-        env:
-          HF_ENDPOINT: https://hf-mirror.com
-        run: uv run python scripts/fetch_rag_model.py
-      - name: Retrieval eval (semantic)
-        run: uv run python tests/agent_eval/eval_retrieval.py --provider semantic | tee eval-artifacts/eval_retrieval_semantic.json
       - uses: actions/upload-artifact@v4
         with:
           name: eval-artifacts
