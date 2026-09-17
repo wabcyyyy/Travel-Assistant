@@ -42,6 +42,12 @@ openapi.json
 dump.rdb
 .agents/
 skills-lock.json
+.claude/
+.zcode/
+
+# 夜间会话/门禁本地临时物
+.tmp/
+travel-agent-python/.pytest-tmp*/
 
 # 内部工作文档（不入库，本地保留）
 docs/
