@@ -1,7 +1,7 @@
-"""本地点位检索（加点工作台）：`GET /api/pois`。
+"""加点工作台地点检索：`GET /api/pois`。
 
-数据源是本地 `poi_knowledge`（无外部 API、无 key、无配额），
-口径与 Agent 生成时引用的权威库同源（见 app/services/poi_search.py）。
+数据源 = OTM 半径池 + 联网搜索补池（无本地语料，见 app/services/poi_search.py），
+与 Agent 生成时能引用的点位同源（同一 `app.agent.tools.workbench_search`）。
 """
 
 from __future__ import annotations
@@ -23,8 +23,8 @@ router = APIRouter(
 
 @router.get("")
 def list_pois(
-    city: str = Query(..., min_length=1, description="目的地城市（本地库内城市名）"),
-    keywords: str | None = Query(None, description="名称/标签/描述关键词；留空则按评分取该城前 30"),
+    city: str = Query(..., min_length=1, description="目的地城市（城市字典覆盖的城市名）"),
+    keywords: str | None = Query(None, description="名称关键词；留空则取该城前 30"),
     category: str | None = Query(None, description="attraction|food|hotel"),
     user: AuthUser | None = Depends(enforce_business_auth),
 ) -> dict:
