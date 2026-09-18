@@ -13,18 +13,23 @@ POI 权威库退役后的坐标/分类/图片来源（TREK 式"不存语料，�
 事实边界：两家数据源都**没有票价/营业时间**——这些字段由 LLM 估价并按
 `estimated` 如实标注，行程页以深链引导用户出发前自行核实。
 
-依赖：common（external_client/http_client/config）；无 agent 内部依赖，无数据库。
+依赖：common（external_client/http_client/config）+ app.db（仅 city_geo 城市字典的
+国内判定查询）；无 agent 内部依赖。
 """
 
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any
 from urllib.parse import quote
+
+from sqlalchemy import text
 
 from app.common.config import settings
 from app.common.external_client import ExternalClient
 from app.common.http_client import api_client
+from app.db.session import session_scope
 
 logger = logging.getLogger(__name__)
 
@@ -246,79 +251,140 @@ def geocode_place(name: str, city: str | None = None) -> dict[str, Any] | None:
         return None
 
 
-# ---- 地图深链（纯函数，无网络） ----------------------------------------------
+# ---- 地图深链（D1-D10 统一口径，2026-09 拍板） -------------------------------
+#
+# 与前端 src/utils/geo.ts 的 externalMapLink/mapDirectionsUrl 语义对齐，双方由
+# tests/golden/deeplink_cases.json 双向钉住（tests/test_deeplink_parity.py +
+# travel-frontend-vue/src/utils/deeplink.parity.test.ts）。
+
+
+def _parse_coords(latitude: Any, longitude: Any) -> tuple[float, float] | None:
+    """坐标有效性谓词（与前端 geo.hasValidCoordinates 同语义）：
+    有限值 + 经纬度范围 + 非 0/0 哨兵；有效则返回 (lat, lon)，无效返回 None。
+    判定与打点共用同一谓词，杜绝"同一坐标两处口径"。
+    """
+    try:
+        lat, lon = float(latitude), float(longitude)
+    except (TypeError, ValueError):
+        return None
+    if not (math.isfinite(lat) and math.isfinite(lon)):
+        return None
+    if abs(lat) > 90 or abs(lon) > 180 or (lat == 0 and lon == 0):
+        return None
+    return lat, lon
 
 
 def _in_china(latitude: float, longitude: float) -> bool:
     return 18.0 <= latitude <= 54.0 and 73.0 <= longitude <= 135.0
 
 
-def _looks_chinese(text: str) -> bool:
-    return any("\u4e00" <= ch <= "\u9fff" for ch in str(text or ""))
+def _dict_domestic(city: str) -> bool | None:
+    """city_geo.is_domestic 查询（D3 权威源：V4 保留城市字典即为国内海外判定）。
 
-
-def _is_domestic(latitude: float | None, longitude: float | None, city: str) -> bool:
-    """坐标优先（国界框），无坐标按城市名是否含汉字——只是链接选择提示，错选不致命。"""
+    未收录 / 城市为空 / 库不可用一律返回 None，由调用方决定默认——统一默认海外：
+    谷歌链接对国内点只是体验次优，高德链接对海外点则是错误国家，两种错误不对称。
+    """
+    name = str(city or "").strip()[:32]
+    if not name:
+        return None
     try:
-        if latitude is not None and longitude is not None:
-            return _in_china(float(latitude), float(longitude))
-    except (TypeError, ValueError):
-        pass
-    return _looks_chinese(city)
+        with session_scope() as session:
+            row = session.execute(
+                text("SELECT is_domestic FROM city_geo WHERE city_name = :name"),
+                {"name": name},
+            ).scalar()
+    except Exception:  # DB 不可用：深链是核实引导，不因字典查询失败打断调用方
+        return None
+    return None if row is None else bool(row)
+
+
+def _is_domestic(latitude: Any, longitude: Any, city: str) -> bool:
+    """坐标优先（国界框，坐标先过有效性谓词）；无/无效坐标查 city_geo 字典。"""
+    coords = _parse_coords(latitude, longitude)
+    if coords is not None:
+        return _in_china(*coords)
+    return bool(_dict_domestic(city))
+
+
+def to_gcj02(latitude: float, longitude: float) -> tuple[float, float]:
+    """WGS-84 → GCJ-02（高德 URI 按 GCJ-02 解释坐标，直传 WGS-84 会偏数百米）。
+
+    与前端 src/utils/coordinates.ts 的 toGcj02 同一公式（两侧测试各钉已知值，
+    改一侧必须同步另一侧）；中国境外原样返回。
+    """
+    if longitude < 72.004 or longitude > 137.8347 or latitude < 0.8293 or latitude > 55.8271:
+        return latitude, longitude
+    x = longitude - 105
+    y = latitude - 35
+    pi = math.pi
+
+    def _wave(v: float, a: float, b: float) -> float:
+        return (a * math.sin(v * pi) + b * math.sin(v / 3 * pi)) * 2 / 3
+
+    common = (20 * math.sin(6 * x * pi) + 20 * math.sin(2 * x * pi)) * 2 / 3
+    lat_offset = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * math.sqrt(abs(x))
+    lat_offset += common + _wave(y, 20, 40) + (160 * math.sin(y / 12 * pi) + 320 * math.sin(y * pi / 30)) * 2 / 3
+    lon_offset = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * math.sqrt(abs(x))
+    lon_offset += common + _wave(x, 20, 40) + (150 * math.sin(x / 12 * pi) + 300 * math.sin(x / 30 * pi)) * 2 / 3
+    rad = latitude / 180 * pi
+    magic = 1 - 0.00669342162296594323 * math.sin(rad) ** 2
+    sqrt_magic = math.sqrt(magic)
+    lat_offset = lat_offset * 180 / ((6378245 * (1 - 0.00669342162296594323)) / (magic * sqrt_magic) * pi)
+    lon_offset = lon_offset * 180 / (6378245 / sqrt_magic * math.cos(rad) * pi)
+    return latitude + lat_offset, longitude + lon_offset
 
 
 def map_search_url(name: str, city: str, *, latitude: float | None = None, longitude: float | None = None) -> str:
-    """单点"地图核实"链接：国内高德、海外谷歌；有坐标用 marker/marker 语义，否则关键词搜索。"""
+    """单点"地图核实"链接：国内高德、海外谷歌。
+
+    有有效坐标：国内走高德 marker（坐标先换算 GCJ-02），海外走谷歌坐标定位；
+    无/无效坐标一律关键词搜索（名称 + 城市，空格分隔）。
+    """
     label = str(name or "").strip()
-    if _is_domestic(latitude, longitude, city):
-        try:
-            if latitude is not None and longitude is not None and float(latitude) and float(longitude):
-                return (
-                    f"https://uri.amap.com/marker?position={float(longitude)},{float(latitude)}"
-                    f"&name={quote(label)}&src={_AMAP_SRC}&callnative=0"
-                )
-        except (TypeError, ValueError):
-            pass
-        keyword = f"{label} {str(city or '').strip()}".strip()
+    city_text = str(city or "").strip()
+    keyword = f"{label} {city_text}".strip()
+    coords = _parse_coords(latitude, longitude)
+    if _is_domestic(latitude, longitude, city_text):
+        if coords is not None:
+            g_lat, g_lon = to_gcj02(*coords)
+            return (
+                f"https://uri.amap.com/marker?position={g_lon},{g_lat}&name={quote(label)}&src={_AMAP_SRC}&callnative=0"
+            )
         return f"https://uri.amap.com/search?keyword={quote(keyword)}&src={_AMAP_SRC}&callnative=0"
-    query = quote(f"{label} {str(city or '').strip()}".strip())
-    return f"https://www.google.com/maps/search/?api=1&query={query}"
+    query = f"{coords[0]},{coords[1]}" if coords is not None else keyword
+    return f"https://www.google.com/maps/search/?api=1&query={quote(query)}"
 
 
 def map_directions_url(stops: list[dict[str, Any]]) -> str | None:
-    """全天路线链接：取有有效坐标的停靠点串 waypoint；少于 2 点返回 None。
+    """全天路线链接：取有效坐标的停靠点串 waypoint；少于 2 点返回 None。
 
-    国内走高德 navigation（from/to/via，坐标必须）；海外走谷歌 dir
-    （waypoints 支持坐标）。
+    国内走高德 navigation（from/to/via 先换算 GCJ-02；官方 URI 途经点上限
+    1 个，超出返回 None、由界面提示分段核实——与前端同口径）；海外走谷歌 dir
+    （origin/destination 用坐标，waypoints 暂不设上限——D6 已知差异，前端限 3）。
     """
-    points: list[tuple[str, float, float]] = []
+    points: list[tuple[float, float]] = []
     for stop in stops:
-        lat_raw, lon_raw = stop.get("latitude"), stop.get("longitude")
-        if lat_raw is None or lon_raw is None:
-            continue
-        try:
-            lat, lon = float(lat_raw), float(lon_raw)
-        except (TypeError, ValueError):
-            continue
-        if not lat or not lon:
-            continue
-        points.append((str(stop.get("poi_name") or stop.get("name") or ""), lat, lon))
+        coords = _parse_coords(stop.get("latitude"), stop.get("longitude"))
+        if coords is not None:
+            points.append(coords)
     if len(points) < 2:
         return None
-    domestic = _in_china(points[0][1], points[0][2])
 
-    def _coord(point: tuple[str, float, float]) -> str:
-        return f"{point[2]},{point[1]}"
+    def _coord(lat: float, lon: float) -> str:
+        g_lat, g_lon = to_gcj02(lat, lon)
+        return f"{g_lon},{g_lat}"
 
-    if domestic:
-        via = ";".join(_coord(p) for p in points[1:-1])
+    if _in_china(points[0][0], points[0][1]):
+        middles = points[1:-1]
+        if len(middles) > 1:
+            return None
         url = (
-            f"https://uri.amap.com/navigation?from={_coord(points[0])}&to={_coord(points[-1])}"
+            f"https://uri.amap.com/navigation?from={_coord(*points[0])}&to={_coord(*points[-1])}"
             f"&mode=car&policy=1&src={_AMAP_SRC}&coordinate=gaode&callnative=0"
         )
-        return f"{url}&via={via}" if via else url
-    origin = quote(points[0][0] or _coord(points[0]))
-    destination = quote(points[-1][0] or _coord(points[-1]))
-    waypoints = quote("|".join(_coord(p) for p in points[1:-1]))
+        return f"{url}&via={_coord(*middles[0])}" if middles else url
+    origin = quote(f"{points[0][1]},{points[0][0]}")
+    destination = quote(f"{points[-1][1]},{points[-1][0]}")
+    waypoints = quote("|".join(f"{lon},{lat}" for lat, lon in points[1:-1]))
     url = f"https://www.google.com/maps/dir/?api=1&origin={origin}&destination={destination}"
     return f"{url}&waypoints={waypoints}" if waypoints else url

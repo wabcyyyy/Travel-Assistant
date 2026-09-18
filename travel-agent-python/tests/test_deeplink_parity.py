@@ -16,22 +16,81 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from app.agent.places import map_directions_url, map_search_url
+from app.agent import places
+from app.agent.places import map_directions_url, map_search_url, to_gcj02
 
 CASES_PATH = pathlib.Path(__file__).parent / "golden" / "deeplink_cases.json"
 
 #: 与 deeplink_parity.md 差异表一一对应：两侧期望不同的 case 必须在此登记，
-#: 值只写一句结论 + 编号，细节以差异表为准。
+#: 值只写一句结论 + 编号，细节以差异表为准。2026-09-18 D1-D10 拍板统一后，
+#: 仅剩 D1/D6 两条"已知且接受"的形态差异。
 DIFF_NOTES = {
-    "search_domestic_with_coords": "D1 待统一：有坐标时后端 marker 打点、前端关键词搜索。",
-    "search_zero_sentinel": "D7 待统一：0/0 哨兵后端误判海外走谷歌、前端当无坐标。",
-    "search_out_of_range_coords": "D2 待统一：越界坐标后端误判海外走谷歌、前端回落关键词。",
-    "search_hanzi_foreign_city_no_coords": "D3 待统一：汉字名海外城市（巴厘岛）两侧判定相反。",
-    "search_foreign_with_coords": "D4 已知且接受：query 取坐标还是名称，低于断言粒度。",
-    "route_domestic_four_stops": "D5 待统一：高德 via 后端无上限、前端限 1 超出返回空。",
-    "route_foreign_seven_stops": "D6 已知且接受：谷歌 waypoints 后端无上限、前端限 3。",
-    "route_out_of_range_stop": "D2 同源：越界点后端纳入路线、前端剔除。",
+    "search_domestic_with_coords": "D1 已知且接受：后端走高德 marker（GCJ-02 换算后精确打点），前端按名称关键词。",
+    "route_foreign_seven_stops": "D6 已知且接受：谷歌 waypoints 后端暂不设上限，前端按移动端语义限 3、超出返回空。",
 }
+
+#: D3 判定字典的固定钉：parity 测试不依赖真实 city_geo 库内容（离线套件的库状态
+#: 不确定），把字典查询钉成确定性映射后测链接逻辑本身；DB 查询路径由
+#: test_place_dict_lookup 单独覆盖。
+_CITY_DICT = {
+    "上海": True,
+    "杭州": True,
+    "北京": True,
+    "巴厘岛": False,
+    "Paris": False,
+    "Tokyo": False,
+    "New York": False,
+}
+
+#: 导入期保存真实实现：DB 路径测试要先撤掉 _pin_city_dict 的钉再测原函数。
+_real_dict_domestic = places._dict_domestic
+
+
+@pytest.fixture(autouse=True)
+def _pin_city_dict(monkeypatch):
+    monkeypatch.setattr(places, "_dict_domestic", lambda city: _CITY_DICT.get(str(city or "").strip()))
+
+
+def test_place_dict_lookup_reads_city_geo(monkeypatch):
+    """_dict_domestic 的 DB 路径：命中返回布尔、未收录返回 None、库不可用返回 None。"""
+    monkeypatch.setattr(places, "_dict_domestic", _real_dict_domestic)
+
+    class _FakeCtx:
+        def __init__(self, result):
+            self._result = result
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def execute(self, _stmt, _params):
+            return self
+
+        def scalar(self):
+            return self._result
+
+    monkeypatch.setattr(places, "session_scope", lambda: _FakeCtx(True))
+    assert places._dict_domestic("杭州") is True
+    monkeypatch.setattr(places, "session_scope", lambda: _FakeCtx(None))
+    assert places._dict_domestic("不存在城") is None
+    monkeypatch.setattr(places, "session_scope", lambda: _FakeCtx(False))
+    assert places._dict_domestic("巴厘岛") is False
+
+    def _boom():
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(places, "session_scope", _boom)
+    assert places._dict_domestic("杭州") is None
+
+
+def test_to_gcj02_matches_frontend_known_values():
+    """跨语言一致性：与前端 coordinates.toGcj02 的测试向量同值（geo.test.ts 同断言）。"""
+    lat, lon = to_gcj02(39.9, 116.4)
+    assert round(lat, 6) == 39.901404
+    assert round(lon, 6) == 116.406243
+    assert to_gcj02(35, 139) == (35, 139)  # 境外原样返回
 
 
 def _cases() -> list[dict]:

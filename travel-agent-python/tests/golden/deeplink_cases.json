@@ -99,10 +99,10 @@
         "longitude": 0
       },
       "backend": {
-        "host": "www.google.com",
-        "path": "/maps/search",
+        "host": "uri.amap.com",
+        "path": "/search",
         "params": [
-          "query"
+          "keyword"
         ]
       },
       "frontend": {
@@ -122,10 +122,10 @@
         "longitude": -95
       },
       "backend": {
-        "host": "www.google.com",
-        "path": "/maps/search",
+        "host": "uri.amap.com",
+        "path": "/search",
         "params": [
-          "query"
+          "keyword"
         ]
       },
       "frontend": {
@@ -143,10 +143,10 @@
         "city": "巴厘岛"
       },
       "backend": {
-        "host": "uri.amap.com",
-        "path": "/search",
+        "host": "www.google.com",
+        "path": "/maps/search",
         "params": [
-          "keyword"
+          "query"
         ]
       },
       "frontend": {
@@ -327,13 +327,7 @@
         "city": "杭州"
       },
       "backend": {
-        "host": "uri.amap.com",
-        "path": "/navigation",
-        "params": [
-          "from",
-          "to",
-          "via"
-        ]
+        "null": true
       },
       "frontend": {
         "null": true
@@ -523,7 +517,9 @@
         "path": "/navigation",
         "params": [
           "from",
-          "to",
+          "to"
+        ],
+        "absent_params": [
           "via"
         ]
       },
