@@ -26,7 +26,8 @@ export function hasValidCoordinates(stop: Coordinates): boolean {
 }
 
 export function externalMapLink(target: MapStop, city: string | null | undefined): string {
-  const keyword = `${city?.trim() ?? ''}${target.name.trim()}`
+  // 空格分隔：多词城市名直接粘连会产出「New YorkTimes Square」类坏关键词。
+  const keyword = [city?.trim(), target.name.trim()].filter(Boolean).join(' ')
   if (isForeignCity(city)) {
     const query = hasValidCoordinates(target) ? `${target.latitude},${target.longitude}` : keyword
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`

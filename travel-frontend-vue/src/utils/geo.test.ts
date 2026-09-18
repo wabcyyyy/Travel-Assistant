@@ -12,13 +12,13 @@ describe('地图核实', () => {
     { latitude: 0, longitude: 0 },
   ])('无效坐标按名称搜索 %j', (coordinates) => {
     expect(hasValidCoordinates(coordinates)).toBe(false)
-    expect(new URL(externalMapLink({ name: '寺 & 庭', ...coordinates }, '东京')).searchParams.get('query')).toBe('东京寺 & 庭')
+    expect(new URL(externalMapLink({ name: '寺 & 庭', ...coordinates }, '东京')).searchParams.get('query')).toBe('东京 寺 & 庭')
   })
   it('海外坐标和国内名称保持各自口径', () => {
     expect(new URL(externalMapLink(stop(), '东京')).searchParams.get('query')).toBe('35,139')
     const domestic = new URL(externalMapLink(stop(30, 120), '杭州'))
     expect(domestic.hostname).toBe('uri.amap.com')
-    expect(domestic.searchParams.get('keyword')).toBe('杭州寺 & 庭')
+    expect(domestic.searchParams.get('keyword')).toBe('杭州 寺 & 庭')
     expect(hasValidCoordinates(stop(0, 120))).toBe(true)
   })
 })

@@ -36,13 +36,10 @@ const cases: ParityCase[] = (
 ).cases
 
 const DIFF_NOTES: Record<string, string> = {
-  search_domestic_with_coords: 'D1：前端国内搜索顾虑 WGS84≠GCJ-02，一律按名称关键词；后端有坐标走高德 marker（待统一）。',
-  search_zero_sentinel: 'D7：0/0 哨兵前端当无坐标走关键词；后端误判海外走谷歌（待统一）。',
-  search_out_of_range_coords: 'D2：前端 90/180 校验拒绝越界坐标回落关键词；后端误判海外走谷歌（待统一）。',
-  search_hanzi_foreign_city_no_coords: 'D3：前端按国内城市白名单把巴厘岛判海外走谷歌；后端按汉字兜底判国内走高德（待统一）。',
-  route_domestic_four_stops: 'D5：高德 URI 前端限 1 个途经点、超出返回 null；后端无上限（待统一）。',
-  route_foreign_seven_stops: 'D6：谷歌路线前端按移动端语义限 3 个途经点、超出返回 null；后端无上限（已知且接受）。',
-  route_out_of_range_stop: 'D2 同源：越界坐标前端拒绝纳入路线；后端照常纳入（待统一）。',
+  // 2026-09-18 D1-D10 拍板统一后，仅剩两条"已知且接受"的形态差异（细节见差异表）：
+  search_domestic_with_coords:
+    'D1：后端有坐标走高德 marker（GCJ-02 换算后精确打点），前端按名称关键词——链接形态不同、各自正确。',
+  route_foreign_seven_stops: 'D6：谷歌路线前端按移动端语义限 3 个途经点、超出返回 null；后端暂不设上限。',
 }
 
 function assertProtocol(url: string | null, expectSide: SideExpect): void {

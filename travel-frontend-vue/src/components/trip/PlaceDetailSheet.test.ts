@@ -71,7 +71,7 @@ describe('PlaceDetailSheet（贴底浮层详情卡）', () => {
 
     const link = wrapper.find('a.act')
     expect(link.attributes('href')).toContain('uri.amap.com')
-    expect(link.attributes('href')).toContain(encodeURIComponent('杭州浅草寺'))
+    expect(link.attributes('href')).toContain(encodeURIComponent('杭州 浅草寺'))
   })
 
   it('Esc 关闭（仅打开时挂监听，卸载后不再响应）', async () => {
