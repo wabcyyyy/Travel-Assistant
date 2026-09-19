@@ -29,6 +29,7 @@ from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import update
 
 from app.agent import observe_run, run_generate_day, run_generate_trip_stream, run_plan_context, use_scene
+from app.common import cache_store
 from app.common.envelope import ApiError
 from app.common.task_pool import SlotExecutor, TaskRejected
 from app.db.models import ItineraryDay, ItineraryMain
@@ -38,7 +39,6 @@ from app.schemas.stream_events import StreamEvent
 from app.schemas.trip import MAX_TRIP_DAYS, DailyPlan, GenerateDayRequest
 from app.services import (
     budget_engine,
-    cache_store,
     day_persistence,
     generation_events,
     generation_gate,
@@ -46,9 +46,7 @@ from app.services import (
     itinerary_query,
     itinerary_version,
 )
-from app.services import (
-    preferences as preferences_service,
-)
+from app.services import preferences as preferences_service
 
 logger = logging.getLogger(__name__)
 

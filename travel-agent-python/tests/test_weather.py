@@ -23,11 +23,12 @@ from sqlalchemy.orm import sessionmaker
 from app.agent import weather
 from app.api import security
 from app.api.business.weather import router as weather_router
+from app.common import cache_store
 from app.common.envelope import install_exception_handlers
 from app.common.http_client import configure_clients
 from app.db import session as db_session
 from app.db.models import Base, ItineraryMain, SysUser
-from app.services import cache_store, user_service
+from app.services import user_service
 
 _TODAY = date.today()
 

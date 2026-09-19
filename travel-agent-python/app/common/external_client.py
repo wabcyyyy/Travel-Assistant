@@ -19,17 +19,21 @@
 
 线程安全：缓存与车道时间戳都加锁（生成跑在 worker 线程，管理面在主线程）。
 
-依赖：仅标准库（threading/time/logging）；loader 由调用方注入。
+依赖：标准库（threading/time/logging/json）+ httpx（只为 `fetch_bytes`/`fetch_json`
+两个外呼助手签名与超时服务）；具体的 loader 仍由调用方注入。
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +57,10 @@ class ExternalClient(Generic[T]):
     negative_ttl_seconds: float = 60.0
     #: 响应字节上限（httpx 通道用 clamp_bytes；LLM 通道由 max_tokens 承担）
     max_response_bytes: int = 256 * 1024
-    #: 单次调用超时（秒），供 loader 与调用方对齐
+    #: 进程内缓存条目上限：高基数键（点位名、坐标串）在长跑进程里必须有界（R2-10）
+    max_entries: int = 2048
+    #: 单次调用超时（秒）：由 `fetch_json`/`fetch_bytes` 真正传给 httpx（per-request
+    #: 覆盖共享客户端的默认超时）。以前它只是声明，调用点各写各的。
     timeout_seconds: float = 8.0
     #: 节流等待上限（秒）：超过即放弃本次调用（不自旋、不阻塞车道）
     max_wait_seconds: float = 1.5
@@ -101,6 +108,18 @@ class ExternalClient(Generic[T]):
             return
         with self._lock:
             self._cache[cache_key] = (value, time.monotonic() + ttl)
+            if len(self._cache) <= self.max_entries:
+                return
+            # 与 cache_store 的兜底表同理：高基数键（POI 名、坐标串）+ 长跑进程 = 无界增长。
+            # 先清过期，仍超限按最早到期逐出（不含刚写入的这条）。
+            now = time.monotonic()
+            for key in [k for k, (_v, exp) in self._cache.items() if exp <= now]:
+                self._cache.pop(key, None)
+            overflow = len(self._cache) - self.max_entries
+            if overflow > 0:
+                candidates = sorted((k for k in self._cache if k != cache_key), key=lambda k: self._cache[k][1])
+                for key in candidates[:overflow]:
+                    self._cache.pop(key, None)
 
     def clear_cache(self) -> None:
         """测试/管理用：清空缓存（便于断言"真的又打了一次"）。"""
@@ -163,3 +182,43 @@ class ExternalClient(Generic[T]):
             logger.warning("external[%s] response too large: %d > %d", self.name, len(data), self.max_response_bytes)
             return None
         return data
+
+
+def fetch_bytes(
+    client: ExternalClient[Any],
+    http: httpx.Client,
+    url: str,
+    *,
+    params: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    json_body: dict[str, Any] | None = None,
+) -> bytes | None:
+    """INV-9 的真实执行点：GET/POST → 本 client 的 per-request 超时 → 状态检查 → 字节上限。
+
+    为什么要有这个函数：`timeout_seconds`/`max_response_bytes` 过去只是**声明**，调用点
+    各写各的 `api_client().get(...).json()`——于是"每个外呼都有超时与响应上限"这条
+    纪律只在图片通道成立，结构化 JSON 通道（OTM/Nominatim/Open-Meteo）三条都没上限。
+    `json_body` 走 POST：给需要请求体的现代 API（Places 一类）留的口，纪律不变。
+    """
+    if json_body is not None:
+        response = http.post(url, json=json_body, params=params, headers=headers, timeout=client.timeout_seconds)
+    else:
+        response = http.get(url, params=params, headers=headers, timeout=client.timeout_seconds)
+    response.raise_for_status()
+    return client.clamp_bytes(response.content)
+
+
+def fetch_json(
+    client: ExternalClient[Any],
+    http: httpx.Client,
+    url: str,
+    *,
+    params: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    json_body: dict[str, Any] | None = None,
+) -> Any:
+    """`fetch_bytes` + JSON 解析；形状是否可用由调用方判（None = 降级，不冒充数据）。"""
+    raw = fetch_bytes(client, http, url, params=params, headers=headers, json_body=json_body)
+    if raw is None:
+        return None
+    return json.loads(raw)

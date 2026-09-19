@@ -45,11 +45,8 @@ export function generateItinerary(
   })
 }
 
-export function getItineraryList() {
-  return requestGet<ItinerarySummary[]>('/itinerary')
-}
-
-/** 列表筛选（view 五档 + q 关键词；SPEC §6.5 过滤轴之一——「写完了没 / 收不收藏」）。 */
+/** 列表筛选（view 五档 + q 关键词；SPEC §6.5 过滤轴之一——「写完了没 / 收不收藏」）。
+ * view 缺省即后端默认档（all），排除归档；首页工作台也走这一条。 */
 export function listItineraries(view?: string, q?: string) {
   const params: Record<string, string> = {}
   if (view && view !== 'all') params.view = view
@@ -69,25 +66,6 @@ export function setArchived(id: number, archived: boolean) {
 
 export function getItineraryDetail(id: number | string) {
   return requestGet<ItineraryDetail>(`/itinerary/${id}`)
-}
-
-/** 就近推荐行（W2 右栏「发现」；后端仅回 name/category/rating/address/distanceM，无坐标）。 */
-export interface NearbyPoi {
-  name: string
-  category: string
-  rating: number | null
-  address: string | null
-  distanceM: number | null
-}
-
-/** 同城知识库近邻（去高德后的本地 GraphRAG；后端失败时静默返回空列表）。 */
-export function getPoiNearby(data: {
-  city: string
-  latitude?: number
-  longitude?: number
-  limit?: number
-}) {
-  return requestPost<{ items: NearbyPoi[] }>('/itinerary/poi-nearby', data)
 }
 
 /** 按路线重排某天（v2.6 W3）：确定性优化器全量重排、不删除点位；返回权威详情。 */
@@ -118,10 +96,6 @@ export function deleteItem(itemId: number) {
 
 export function reorderItems(id: number | string, dayId: number, itemIds: number[]) {
   return requestPut<ItineraryDetail>(`/itinerary/${id}/days/${dayId}/order`, itemIds)
-}
-
-export function nlEditItinerary(id: number | string, instruction: string) {
-  return requestPost<{ applied: string[] }>('/itinerary/' + id + '/nl-edit', { instruction })
 }
 
 export function chatEditItinerary(
@@ -249,26 +223,6 @@ export function cityGuide(input: string, history: { role: string; content: strin
     message: string
     suggestions: { name: string; reason: string }[]
   }>('/itinerary/city-guide', { input, history })
-}
-
-export interface NearbyPoi {
-  name: string
-  category: string
-  rating: number | null
-  address: string | null
-  distanceM: number | null
-}
-
-/** 附近推荐：行程项所在城市的权威知识库真实近邻（轻量 GraphRAG）。 */
-export function getNearbyPois(data: {
-  city: string
-  name?: string
-  latitude?: number
-  longitude?: number
-  limit?: number
-  category?: string
-}) {
-  return requestPost<{ items: NearbyPoi[] }>('/itinerary/poi-nearby', data)
 }
 
 /** 采纳 chat 草稿（「应用到行程」入口），返回应用后的行程全量。 */

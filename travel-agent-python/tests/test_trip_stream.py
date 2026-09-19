@@ -18,6 +18,7 @@ from app.agent.generation_core import (
     haversine_m,
     norm_poi_key,
 )
+from app.agent.grounding_evidence import issue_evidence
 from app.agent.stream_parser import DailyPlansStreamParser
 from app.agent.trip_stream import (
     _filter_suggestions_by_city,
@@ -59,7 +60,12 @@ class FakeLLMClient:
 
 @pytest.fixture
 def stream_env(monkeypatch):
-    """通用桩：LLM key/客户端注入，禁用联网补齐，坐标落地为空操作。"""
+    """通用桩：LLM key/客户端注入，禁用联网补齐，点名解析按名字给坐标。
+
+    解析桩必须给坐标：D6=C 之后模型自报的经纬度在 LLM 输出边界就被剥掉，
+    坐标通道判重只可能由**接地后的坐标**触发（这才是生产语义）。fixture 的
+    TRIP_JSON 里两条圣家堂都带了模型自报坐标，正好用来验证剥离生效。
+    """
     monkeypatch.setattr(settings, "llm_api_key", "test-key")
     monkeypatch.setattr(settings, "llm_generation_web_search", False)
 
@@ -67,10 +73,17 @@ def stream_env(monkeypatch):
         fake = FakeLLMClient(chunks)
         monkeypatch.setattr("app.agent.trip_stream.get_llm_client", lambda: fake)
 
-    def _no_ground(item, city, cache):
-        return None
+    # 服务端解析出的权威坐标（与 TRIP_JSON 里模型自填的那对不同），两个名称变体同点
+    grounded = (41.40362, 2.17438)
 
-    monkeypatch.setattr("app.agent.landing.local_ground", _no_ground)
+    def _ground(item, city):
+        if "圣家堂" in str(item.get("poi_name") or ""):
+            item["latitude"], item["longitude"] = grounded
+            item["source"] = "nominatim"
+            # 与真实 local_ground 同形状：解析成功当场签票
+            issue_evidence({**item, "name": item["poi_name"], "city": city})
+
+    monkeypatch.setattr("app.agent.landing.local_ground", _ground)
     monkeypatch.setattr("app.agent.trip_stream.fill_suggestion_gaps", lambda rows, city, **kw: rows)
     return _install
 
@@ -211,11 +224,18 @@ class TestRunGenerateTripStream:
         assert done["daysEmitted"] == [1, 2, 3]
         assert done["tripTheme"] == "巴塞罗那·高迪之光"
 
-        # 跨天变体重复（圣家堂大教堂）与名称归一重复都被坐标/名称通道拦截
+        # 跨天变体重复（圣家堂大教堂）由**接地后的坐标**通道拦截：模型自报的
+        # 经纬度已在 LLM 输出边界剥离（D6=C），所以下面 day1 的坐标必须是桩给的
+        # 那一对，而不是 TRIP_JSON 里的 41.4036/2.1744。
         day3 = next(e for e in events if e["type"] == "day" and e["plan"]["dayNo"] == 3)
         names = [it["poiName"] for it in day3["plan"]["items"]]
         assert "圣家堂大教堂" not in names
         assert "古埃尔公园" in names
+
+        day1 = next(e for e in events if e["type"] == "day" and e["plan"]["dayNo"] == 1)
+        sagrada = next(it for it in day1["plan"]["items"] if "圣家堂" in it["poiName"])
+        assert (sagrada["latitude"], sagrada["longitude"]) == (41.40362, 2.17438)
+        assert sagrada["source"] == "nominatim"
 
         # 备选池：东京店铺被城市校验丢弃
         suggestions = next(e for e in events if e["type"] == "suggestions")

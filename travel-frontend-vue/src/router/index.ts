@@ -83,7 +83,7 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   // 公开页（分享 /s/:token）跳过登录判定：分享链接必须匿名可开（SPEC §1.3）
   if (to.meta.public === true) return true
   // 凭据在 HttpOnly Cookie；本地仅保存展示用 username/role
@@ -99,9 +99,26 @@ router.beforeEach((to) => {
     }
     return { name: 'home' }
   }
-  if (to.meta.requiresAdmin && localStorage.getItem('role') !== 'admin') {
-    return { name: 'home' }
+  // 管理端：localStorage.role 只是展示缓存，不能作为唯一授权依据（R5-2）——
+  // 服务端回查 GET /api/user/info 的角色为准（后端 user_router 挂了默认拒绝依赖）。
+  // 延迟 import 打破 router → api/auth → api/request → router 的静态环。
+  if (to.meta.requiresAdmin) {
+    try {
+      const { getUserInfo } = await import('../api/auth')
+      const res = await getUserInfo({ skipErrorMessage: true })
+      if (res.data?.role === 'admin') {
+        localStorage.setItem('role', 'admin')
+        return true
+      }
+      localStorage.removeItem('role')
+      return { name: 'home' }
+    } catch {
+      // 未登录/无权限/网络失败一律不放行：401 时 request 层已带跳登录，这里只兜底回首页
+      localStorage.removeItem('role')
+      return { name: 'home' }
+    }
   }
+  return true
 })
 
 export default router

@@ -3,7 +3,7 @@
 三段彼此独立的增强，**任何一段失败都只降级、不影响已生成好的行程**：
 A. AI 管家讲解 → `itinerary_main.plan_note`
 B. 景点详细介绍 → `itinerary_item.intro`（按 8 个一批，避免 max_tokens 截断致整批解析失败）
-C. 备选池介绍补写 → 重写 `itinerary_main.suggestions_json`
+C. 备选池批量后验证 + 介绍补写 → 重写 `itinerary_main.suggestions_json`
 
 三条实现纪律（都是并发写回踩过的坑）：
 - 一律**单列 UPDATE**，不用陈旧实体整行回写：富化动辄几十秒，期间用户可能正在编辑同一行程；
@@ -20,7 +20,7 @@ from typing import Any
 
 from sqlalchemy import select, update
 
-from app.agent import run_butler_note, run_poi_intros
+from app.agent import run_butler_note, run_poi_intros, verify_suggestion_rows
 from app.db.models import ItineraryDay, ItineraryItem, ItineraryMain
 from app.db.session import session_scope
 from app.schemas.trip import Suggestion
@@ -58,6 +58,10 @@ def enrich_itinerary(user_id: int, itinerary_id: int, request: Any) -> None:
         return
     _write_butler_note(user_id, main, request, itinerary_id)
     _fill_item_intros(user_id, main, request, itinerary_id)
+    try:
+        _verify_suggestions(user_id, itinerary_id)
+    except Exception as exc:
+        logger.warning("suggestion verification failed for %s: %s", itinerary_id, exc)
     try:
         _enrich_suggestion_intros(main, request, itinerary_id)
     except Exception as exc:
@@ -159,18 +163,57 @@ def _fill_item_intros(user_id: int, main: ItineraryMain, request: Any, itinerary
         _publish_degraded(itinerary_id, "poi_intros", str(exc), "跳过景点介绍")
 
 
-def _enrich_suggestion_intros(main: ItineraryMain, request: Any, itinerary_id: int) -> None:
+def _load_suggestion_rows(itinerary_id: int) -> list[dict[str, Any]] | None:
+    """读备选池 JSON（用最新行，避免拿 finish 时的陈旧快照）；无内容返回 None。"""
     with session_scope() as session:
-        fresh = session.get(ItineraryMain, itinerary_id)  # 用最新行，避免拿 finish 时的陈旧快照
+        fresh = session.get(ItineraryMain, itinerary_id)
         raw = fresh.suggestions_json if fresh is not None else None
-    if not raw or not raw.strip():
-        return
+    if not raw or not str(raw).strip():
+        return None
     try:
         rows = json.loads(raw)
     except (ValueError, TypeError) as exc:
         logger.warning("suggestions json parse failed for %s: %s", itinerary_id, exc)
-        return
+        return None
     if not isinstance(rows, list) or not rows:
+        return None
+    return rows
+
+
+def _store_suggestion_rows(user_id: int, itinerary_id: int, rows: list[dict[str, Any]]) -> None:
+    """单列 UPDATE 回写：富化动辄几十秒，期间用户可能正在编辑同一行程。"""
+    try:
+        payload = json.dumps(rows, ensure_ascii=False)
+    except (TypeError, ValueError) as exc:
+        logger.warning("suggestions json encode failed for %s: %s", itinerary_id, exc)
+        return
+    with session_scope() as session:
+        session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(suggestions_json=payload))
+    itinerary_query.evict_detail(user_id, itinerary_id)
+
+
+def _verify_suggestions(user_id: int, itinerary_id: int) -> dict[str, int]:
+    """备选池批量后验证（PLAN-A1 G6-B）：回填坐标 + 丢弃与本次行程矛盾的点。
+
+    主行程的点位在生成时被问过一遍；备选池那 24-40 个名字此前从未被检验，
+    "AI 备选"面板因此一直在展示未经核实的名字。这里补上判定，并把结果写回
+    `suggestions_json`（前端据此决定打点还是走关键词深链）。
+    """
+    rows = _load_suggestion_rows(itinerary_id)
+    if not rows:
+        return {}
+    with session_scope() as session:
+        fresh = session.get(ItineraryMain, itinerary_id)
+        city = str(fresh.city or "") if fresh is not None else ""
+    kept, stats = verify_suggestion_rows(rows, city)
+    if stats.get("filled") or stats.get("dropped"):
+        _store_suggestion_rows(user_id, itinerary_id, kept)
+    return stats
+
+
+def _enrich_suggestion_intros(main: ItineraryMain, request: Any, itinerary_id: int) -> None:
+    rows = _load_suggestion_rows(itinerary_id)
+    if not rows:
         return
 
     def needs_intro(row: dict) -> bool:
@@ -212,15 +255,7 @@ def _enrich_suggestion_intros(main: ItineraryMain, request: Any, itinerary_id: i
             changed = True
     if not changed:
         return
-    try:
-        with session_scope() as session:
-            session.execute(
-                update(ItineraryMain)
-                .where(ItineraryMain.id == itinerary_id)
-                .values(suggestions_json=json.dumps(rows, ensure_ascii=False))
-            )
-    except (TypeError, ValueError) as exc:
-        logger.warning("suggestions json write failed for %s: %s", itinerary_id, exc)
+    _store_suggestion_rows(main.user_id, itinerary_id, rows)
 
 
 def resolve_intent(request: Any) -> str:

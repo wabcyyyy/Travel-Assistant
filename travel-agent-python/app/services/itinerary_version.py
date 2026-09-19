@@ -18,6 +18,8 @@ from datetime import date, datetime, time
 from typing import Any
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.common.envelope import ApiError
 from app.db.models import ItineraryDay, ItineraryItem, ItineraryMain, ItineraryVersion
@@ -27,34 +29,61 @@ from app.services import budget_engine, itinerary_query
 logger = logging.getLogger(__name__)
 
 MAX_SUMMARY = 255
+#: 快照序号冲突的重试次数（R2-3）。协同编辑下两个写者会同时算出同一个 N+1。
+_MAX_SNAPSHOT_ATTEMPTS = 3
 
 
 def create_snapshot(user_id: int, itinerary_id: int, operation: str | None, summary: str | None) -> dict[str, Any]:
-    with session_scope() as session:
-        main = itinerary_query.require_writable_main(session, user_id, itinerary_id)
-        latest = _latest(session, itinerary_id)
-        itinerary_query.evict_detail(user_id, itinerary_id)
-        detail = itinerary_query.detail(user_id, itinerary_id)
-        version = ItineraryVersion(
-            itinerary_id=itinerary_id,
-            user_id=user_id,
-            parent_version_id=None if latest is None else latest.id,
-            version_no=1 if latest is None else latest.version_no + 1,
-            operation=operation or "snapshot",
-            summary=(summary or "行程快照")[:MAX_SUMMARY],
-            snapshot_json=json.dumps(detail, ensure_ascii=False),
-        )
-        session.add(version)
-        session.flush()
-        return {
-            "id": version.id,
-            "itineraryId": main.id,
-            "versionNo": version.version_no,
-            "parentVersionId": version.parent_version_id,
-            "operation": version.operation,
-            "summary": version.summary,
-            "createdAt": version.created_at.isoformat() if version.created_at else None,
-        }
+    """落一版本快照，返回它的 VO。
+
+    `version_no` 是"读最新值 +1"的读改写：两个成员同时编辑就会算出同一个号，
+    `uk_itinerary_version` 唯一键会拒掉其中一个。唯一键是**正确性**的最后一道防线
+    （它保证不出现两份同号快照），所以这里不去绕过它，而是重开一个 session 重读
+    最新值再试——旧实现直接让整笔业务写连坐回滚，用户看到的是"保存失败 500"。
+    """
+    last_exc: Exception | None = None
+    for attempt in range(_MAX_SNAPSHOT_ATTEMPTS):
+        try:
+            with session_scope() as session:
+                return _write_snapshot(session, user_id, itinerary_id, operation, summary)
+        except IntegrityError as exc:
+            last_exc = exc
+            logger.warning(
+                "snapshot version_no collision on itinerary %s (attempt %d/%d)",
+                itinerary_id,
+                attempt + 1,
+                _MAX_SNAPSHOT_ATTEMPTS,
+            )
+    raise ApiError(500, "版本快照写入冲突，请稍后重试") from last_exc
+
+
+def _write_snapshot(
+    session: Session, user_id: int, itinerary_id: int, operation: str | None, summary: str | None
+) -> dict[str, Any]:
+    main = itinerary_query.require_writable_main(session, user_id, itinerary_id)
+    latest = _latest(session, itinerary_id)
+    itinerary_query.evict_detail(user_id, itinerary_id)
+    detail = itinerary_query.detail(user_id, itinerary_id)
+    version = ItineraryVersion(
+        itinerary_id=itinerary_id,
+        user_id=user_id,
+        parent_version_id=None if latest is None else latest.id,
+        version_no=1 if latest is None else latest.version_no + 1,
+        operation=operation or "snapshot",
+        summary=(summary or "行程快照")[:MAX_SUMMARY],
+        snapshot_json=json.dumps(detail, ensure_ascii=False),
+    )
+    session.add(version)
+    session.flush()
+    return {
+        "id": version.id,
+        "itineraryId": main.id,
+        "versionNo": version.version_no,
+        "parentVersionId": version.parent_version_id,
+        "operation": version.operation,
+        "summary": version.summary,
+        "createdAt": version.created_at.isoformat() if version.created_at else None,
+    }
 
 
 def list_versions(user_id: int, itinerary_id: int) -> list[dict[str, Any]]:

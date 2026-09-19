@@ -1,4 +1,4 @@
-import { requestGet, requestPost } from './request'
+import { requestGet, requestPost, type ApiRequestConfig } from './request'
 import type * as Contracts from '../types/generated/contracts'
 
 /** 认证域：登录/注册/登出/用户信息。主凭据为 HttpOnly Cookie。
@@ -17,6 +17,7 @@ export function logoutApi() {
   return requestPost<void>('/auth/logout')
 }
 
-export function getUserInfo() {
-  return requestGet<Contracts.UserInfoVO>('/user/info')
+/** 当前用户信息（GET /api/user/info）：既供 UI，也是路由守卫回查角色的服务端入口（R5-2）。 */
+export function getUserInfo(config?: ApiRequestConfig) {
+  return requestGet<Contracts.UserInfoVO>('/user/info', config)
 }

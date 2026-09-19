@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+from app.agent.existence import VERIFIED, ResolveResult
+from app.agent.grounding_evidence import issue_evidence
 from app.agent.trace import traced
 
 
@@ -42,6 +44,10 @@ def _attractions(city: str, *, coords: bool = True) -> list[dict]:
             "open_time": "08:00-18:00",
             "tags": "人文 自然 网红",
             "rating": 4.8,
+            "city": city,
+            # 真实 tools.search_attractions 的行由 places 打源；fixture 替身必须
+            # 带同一个值，否则"权威判定表"与"目录"就分不开（PLAN-A1 D11A）。
+            "source": "opentripmap",
         }
         for i in range(1, 13)
     ]
@@ -61,6 +67,8 @@ def _foods(city: str, *, coords: bool = True) -> list[dict]:
             "duration_min": 60,
             "open_time": "10:00-22:00",
             "tags": "美食",
+            "city": city,
+            "source": "opentripmap",
         }
         for i in range(1, 5)
     ]
@@ -76,12 +84,26 @@ def _hotels(city: str, *, coords: bool = True) -> list[dict]:
             "ticket_price": 300 + i * 50,
             "description": "舒适型酒店",
             "tags": "住宿",
+            "city": city,
+            # 酒店域走联网补池（真实 OTM 免费 key 不支持 kinds=accommodations）
+            "source": "web.search",
         }
         for i in range(1, 3)
     ]
 
 
 def catalog(city: str, *, coords: bool = True) -> dict:
+    pool = {
+        "attractions": _attractions(city, coords=coords),
+        "foods": _foods(city, coords=coords),
+        "hotels": _hotels(city, coords=coords),
+    }
+    # fixture 目录只回答"外部世界有哪些点"；能不能背书由票决定，所以这里显式
+    # 给每行签发一张票（等价于生产里 tools._as_candidate 的当场签发）。
+    # 没有票的 fixture 行会走 client-context 降级——那正是 P6 要钉的行为。
+    for rows in pool.values():
+        for row in rows:
+            issue_evidence(row)
     return {
         "attractions": _attractions(city, coords=coords),
         "foods": _foods(city, coords=coords),
@@ -116,12 +138,37 @@ def attach_poi_images(plan: list[dict], city: str) -> list[dict]:
 
 @traced("tool", "fixture.search_local_poi")
 def search_local_poi(city: str, name: str, *, category: str | None = None, coords: bool = True) -> list[dict]:
-    """按名称回放 fixture 坐标，供开放模式的 local_ground 离线落点。"""
+    """按名称回放 fixture 坐标（近邻/点名检索端点的替身）。"""
     for group in (_attractions(city, coords=coords), _foods(city, coords=coords), _hotels(city, coords=coords)):
         for poi in group:
             if poi["name"] == name:
                 return [deepcopy(poi)]
     return []
+
+
+@traced("tool", "fixture.resolve_poi")
+def resolve_poi(name: str, city: str, *, coords: bool = True) -> ResolveResult:
+    """存在性判定的离线替身：命中 fixture 目录即产出一张 VERIFIED 判定。
+
+    D11A 解的就是这里：**目录只充当"外部世界有哪些点"的替身**，权威与否由本函数
+    显式返回的判定（provider + external_id + 坐标）决定，生产代码不再拿
+    "名字在目录里"隐式自证。目录里没有 → UNKNOWN（不是 NOT_FOUND：替身没有
+    否证资格，与真实免费 provider 同口径）。
+    """
+    for group in (_attractions(city, coords=coords), _foods(city, coords=coords), _hotels(city, coords=coords)):
+        for poi in group:
+            if poi["name"] != name:
+                continue
+            return ResolveResult(
+                state=VERIFIED,
+                provider=str(poi.get("source") or "opentripmap"),
+                name=name,
+                external_id=str(poi.get("id") or name),
+                latitude=poi.get("latitude"),
+                longitude=poi.get("longitude"),
+                address=poi.get("address"),
+            )
+    return ResolveResult.unknown("fixture_miss")
 
 
 def plan_research(task) -> dict:

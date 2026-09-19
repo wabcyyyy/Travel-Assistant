@@ -47,6 +47,15 @@ def current_errors() -> list[str]:
     return sorted(set(keys))
 
 
+def _emit(line: str) -> None:
+    """按控制台编码安全输出：基线键里有中文与非断行空格，GBK 码页会直接抛
+    UnicodeEncodeError——那会让"报告新增类型错误"这件事本身把门禁脚本炸掉
+    （2026-09-18 实测踩过），比错误更难查。
+    """
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    sys.stdout.write(line.encode(encoding, errors="replace").decode(encoding, errors="replace") + "\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--update", action="store_true", help="重新生成基线")
@@ -64,15 +73,22 @@ def main() -> int:
         else []
     )
     new = [key for key in current if key not in set(baseline)]
-    print(f"pyright: {len(current)} errors (baseline {len(baseline)})")
+    _emit(f"pyright: {len(current)} errors (baseline {len(baseline)})")
     if new:
-        print(f"\nNEW type errors not in baseline ({len(new)}):")
+        _emit(f"\nNEW type errors not in baseline ({len(new)}):")
         for key in new:
-            print(f"  {key}")
-        print("\nfix them; baseline only shrinks (INV-1)")
+            _emit(f"  {key}")
+        _emit("\nfix them; baseline only shrinks (INV-1)")
         return 1
     if len(current) < len(baseline):
-        print("progress: fewer errors than baseline — run `--update` to shrink it")
+        # Ratchet closes behind you (INV-1: gates only tighten). A surplus left in the
+        # baseline is debt the next person can silently reintroduce. Shrink it here.
+        print(
+            f"\nBASELINE IS STALE: {len(baseline) - len(current)} frozen errors are already gone.\n"
+            "run `uv run python scripts/typecheck.py --update` and commit "
+            "pyright-baseline.txt with your change."
+        )
+        return 1
     return 0
 
 

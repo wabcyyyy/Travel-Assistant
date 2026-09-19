@@ -5,10 +5,13 @@
   调用的环境变量名与默认值字面量（兼容 ``int(_get(...))`` / ``float(_get(...))`` 包裹；
   非字面量默认（如 ``str(BASE_DIR / ...)``）只做存在性校验）；
 - 解析 .env.example 的活动 ``KEY=VALUE`` 行与 ``# KEY=`` 注释行；
-- 断言：①每个非密钥 config 键在 example 中存在（活动行或注释行均可；
-  名字含 KEY/SECRET/TOKEN/PASSWORD 的密钥类排除，保持占位符不校验）；
+- 断言：①**每个** config 键都要在 example 里出现（活动行或注释行均可；
+  2026-09-18 整改 R2-6 之前，名字含 KEY/SECRET/TOKEN/PASSWORD 的键被整体跳过，
+  于是 PEXELS_ACCESS_KEY 从 .env.example 消失而门禁常绿——存在性不该跟着值比对一起豁免）；
   ②活动行的值与 config 默认一致（布尔归一化 true/false/1/0 大小写不敏感；
-  int 按字符串去空格比较；float 用 str(float(a)) == str(float(b))）。
+  int 按字符串去空格比较；float 用 str(float(a)) == str(float(b))；密钥类仍只比存在性，
+  因为 example 里放的是占位符而不是默认值）；
+  ③反向：example 的活动键必须对得上 config 字段/别名，否则就是没人读的"配置剧场"。
 
 失败信息直接指出漂移的键，便于 CI 排障。
 """
@@ -22,6 +25,17 @@ CONFIG_PATH = Path(__file__).resolve().parent.parent / "app" / "common" / "confi
 EXAMPLE_PATH = Path(__file__).resolve().parent.parent / ".env.example"
 
 _SECRET_MARKS = ("KEY", "SECRET", "TOKEN", "PASSWORD")
+
+# example 里允许存在、但不由 Settings 读取的键：给别的进程用的（compose/mysql 客户端），
+# 或是派生键的组成部分（REDIS_URL 由 REDIS_HOST/PORT/PASSWORD 派生）。
+_NON_SETTINGS_KEYS_ALLOWED = {
+    "MYSQL_HOST",
+    "MYSQL_PORT",
+    "MYSQL_USER",
+    "MYSQL_PASSWORD",
+    "MYSQL_DB",
+    "MYSQL_ROOT_PASSWORD",
+}
 
 
 def _extract_config_defaults(source: str) -> dict[str, tuple[str, Any, Any]]:
@@ -83,16 +97,20 @@ def _parse_example(text: str) -> tuple[dict[str, str], set[str]]:
     return active, commented
 
 
-def test_env_example_covers_all_non_secret_config_keys():
+def test_env_example_covers_every_config_key():
     defaults = _extract_config_defaults(CONFIG_PATH.read_text(encoding="utf-8"))
     assert defaults, "未能从 config.py 解析出任何配置键（解析逻辑可能失效）"
     active, commented = _parse_example(EXAMPLE_PATH.read_text(encoding="utf-8"))
-    missing = sorted(
-        key
-        for key in defaults
-        if not any(mark in key.upper() for mark in _SECRET_MARKS) and key not in active and key not in commented
-    )
+    missing = sorted(key for key in defaults if key not in active and key not in commented)
     assert not missing, f".env.example 缺少以下 config 键（活动行或 # KEY= 注释行均可）: {missing}"
+
+
+def test_env_example_has_no_unread_keys():
+    """反向门禁：example 里写了一个没人读的键，比缺键更坏——它会让人以为开关有效。"""
+    defaults = _extract_config_defaults(CONFIG_PATH.read_text(encoding="utf-8"))
+    active, _commented = _parse_example(EXAMPLE_PATH.read_text(encoding="utf-8"))
+    orphans = sorted(k for k in active if k not in defaults and k not in _NON_SETTINGS_KEYS_ALLOWED)
+    assert not orphans, f"这些 .env.example 活动键在 config.py 里没有对应字段（没人读）: {orphans}"
 
 
 def test_env_example_active_values_match_config_defaults():

@@ -19,11 +19,12 @@ from __future__ import annotations
 
 import logging
 from datetime import time
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
 
-from app.agent import get_poi_detail, run_edit_ops, search_hotels
+from app.agent import resolve_poi, run_edit_ops, search_hotels
 from app.common.envelope import ApiError
 from app.common.vo_json import iso_time
 from app.db.models import ItineraryDay, ItineraryItem
@@ -160,21 +161,23 @@ def _apply_edit_op(session, op, itinerary_id: int, city: str | None, day_ids_by_
         return f"「{poi_name}」移到第{dest_no}天"
 
     if action == "add":
-        # 语料库退役：新加点位经外部地点层（Nominatim）按名解析真实坐标，
-        # 票价/时长/营业时间不再有权威来源，由预算侧按估价口径处理。
-        poi = get_poi_detail(city or "", poi_name)
+        # 新加点位走存在性解析器（可插拔 provider + 名称门槛 + 位置闸），
+        # 票价/时长/营业时间没有权威来源，由预算侧按估价口径处理。
+        verdict = resolve_poi(poi_name, city or "")
         entity = ItineraryItem(
             day_id=target_day_id,
             itinerary_id=itinerary_id,
             item_type="attraction",
             poi_name=poi_name,
         )
-        if poi is not None:
-            entity.poi_id = str(poi.get("id") or "") or None
-            entity.address = poi.get("address")
-            entity.latitude = poi.get("latitude")
-            entity.longitude = poi.get("longitude")
-            entity.source = poi.get("source") or "nominatim"
+        # 只有"服务端真解析到、且落在目的地范围内"才给外部背书：一次未判定的
+        # 解析（超时/歧义/解析到别的城市）不该让用户点进去看到"地点有来源"。
+        if verdict.grounded and verdict.latitude is not None and verdict.longitude is not None:
+            entity.poi_id = verdict.external_id or None
+            entity.address = verdict.address
+            entity.latitude = Decimal(str(verdict.latitude))
+            entity.longitude = Decimal(str(verdict.longitude))
+            entity.source = verdict.provider
             entity.verification_status = "partially_verified"
             entity.value_kind = "observed"
             entity.review_requirement = "before_departure"

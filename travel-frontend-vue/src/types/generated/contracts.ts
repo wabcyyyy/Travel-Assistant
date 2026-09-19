@@ -616,6 +616,26 @@ export interface InvitationAcceptVO {
   title: string
 }
 
+export interface FeedbackCreate {
+  itemId: number
+  value: "right" | "wrong"
+  reason: "wrong_location" | "wrong_time" | "wrong_price" | "not_interested" | "closed" | "other" | null
+  note: string | null
+}
+
+export interface FeedbackVO {
+  itemId: number
+  value: "right" | "wrong"
+  reason: "wrong_location" | "wrong_time" | "wrong_price" | "not_interested" | "closed" | "other" | null
+  note: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FeedbackListVO {
+  feedbacks: FeedbackVO[]
+}
+
 export interface TemplateCostTier {
   category: "门票" | "餐饮" | "交通" | "酒店"
   amountRangeText: string

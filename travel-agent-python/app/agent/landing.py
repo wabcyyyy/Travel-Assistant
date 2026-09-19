@@ -11,14 +11,16 @@
 触发网络落地），两者的可观测行为不同，强行合并会改变事件序列（INV-2）。
 
 依赖：generation_core（脏项过滤）、reference_pool（参考资料池）、grounding
-（本地补点）；无上层依赖。
+（本地补点）、existence（存在性判定）；无上层依赖。
 """
 
 from typing import Any
 
 from app.agent.generation_core import filter_dirty_items
 from app.agent.grounding import local_ground
+from app.agent.grounding_labels import is_authoritative_source
 from app.agent.reference_pool import ReferencePool
+from app.agent.trace import record_event
 
 
 def filter_plan_items(items: list[Any] | None) -> list[dict]:
@@ -26,12 +28,56 @@ def filter_plan_items(items: list[Any] | None) -> list[dict]:
     return filter_dirty_items(items)
 
 
-def ground_item(item: dict, *, city: str, ref_pool: ReferencePool, ground_cache: dict) -> bool:
-    """单个点位的事实落地：参考资料命中即回填权威字段，否则本地知识库补点。
+def ground_item(item: dict, *, city: str, ref_pool: ReferencePool) -> bool:
+    """单个点位的事实落地：参考资料命中即回填权威字段，否则经存在性解析器补点。
 
-    返回是否命中参考资料（供调用方决定是否累计 used_names）。
+    返回是否命中参考资料（供调用方决定是否累计 used_names）。解析缓存由
+    `existence` 自己按 (城市, 名字) 记忆化，这里不再传 cache。
     """
     if ref_pool.ground(item):
         return True
-    local_ground(item, city, ground_cache)
+    local_ground(item, city)
     return False
+
+
+def drop_refuted_items(items: list[dict], *, city: str, report: dict[str, Any] | None = None) -> list[dict]:
+    """删掉"与本次行程矛盾"的点位（PLAN-A1 G5 + 09-19 复评的两条证据）。
+
+    只删两种，都在 `ResolveResult.deletable` 里判定：
+    - 解析成功但落在别的城市/国家——这是正面矛盾，不是"我没查到"；
+    - 有否证资格的 provider 明确回了"没有"（免费源没有这个资格：实测它们的
+      空结果里约 70% 是真实地点，含秦始皇兵马俑与东京迪士尼）。
+
+    已经拿到权威来源的项不再问一遍：落地阶段 `local_ground` 已经把结论存进
+    existence 的记忆化表，重复问虽然不外呼但会白吃解析预算，预算要留给真正
+    没有证据的名字。删除必须可观测（事件 + 报表计数），否则前端与 eval 只会
+    看见"少了一个点"而不知道为什么少。
+    """
+    kept: list[dict] = []
+    dropped: list[dict[str, str]] = []
+    for item in items:
+        name = str(item.get("poi_name") or "").strip()
+        if not name or item.get("item_type") == "transport" or is_authoritative_source(item.get("source")):
+            kept.append(item)
+            continue
+        result = _resolve(name, city)
+        if result is None or not result.deletable:
+            kept.append(item)
+            continue
+        dropped.append({"name": name, "provider": result.provider, "reason": result.reason or result.state})
+    if dropped:
+        record_event("decision", "refuted_poi_dropped", metadata={"items": dropped, "count": len(dropped)})
+        if report is not None:
+            report["refuted_pois_dropped"] = (report.get("refuted_pois_dropped") or []) + dropped
+    return kept
+
+
+def _resolve(name: str, city: str) -> Any:
+    """存在性判定（延迟导入：本模块被落地链调用，不应因判定层出错而拖垮落地）。"""
+    from app.agent.existence import resolve_poi
+
+    try:
+        return resolve_poi(name, city)
+    except Exception as exc:  # 判定层任何故障都按"未判定"处理，绝不当成"不存在"
+        record_event("decision", "existence_check_failed", status="error", metadata={"error": str(exc)[:120]})
+        return None

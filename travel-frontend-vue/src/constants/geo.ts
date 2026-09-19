@@ -1,6 +1,13 @@
 // 国内城市/省份维护入口（M4-④ §工程卫生 #8）：
-// geo.ts 的判定函数基于本表；新增可识别城市/省份时只改这里，
+// utils/geo.ts 的判定函数基于本表；新增可识别城市/省份时只改这里，
 // utils/geo.ts 保留函数导出，调用方 import 路径不变。
+//
+// 关于 R5-6「不再硬编码城市清单」：这条表**故意保留为权威来源**，不接 supported-cities。
+// 理由：`GET /api/itinerary/supported-cities` 返回的是 city_geo 全量（含东京/巴黎等境内外城市），
+// 它是「能不能生成」的口径，而非「国内 vs 海外」的口径。把它灌进这里的判定会
+// 把境外城市误判为国内、生成 uri.amap.com 坏链接——正是 geo.test.ts / deeplink.parity.test.ts
+// 16 条用例守护的后端深链契约（东京必须落 google）。所以「国内/海外」判定与「受支持目的地」
+// 是两份不同事实：前者由这张人工字典定夺（离线可用、稳定），后者由 supported-cities 提供（见 utils/supportedCities.ts）。
 
 /** 内置知识库 6 城 + 常见直辖市/省会/计划单列市/旅游城市 */
 export const DOMESTIC_CITIES: readonly string[] = [

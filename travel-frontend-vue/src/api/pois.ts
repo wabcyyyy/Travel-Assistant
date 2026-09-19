@@ -1,6 +1,7 @@
 import { requestGet } from './request'
 
-/** 本地点位检索（去高德后：加点/补坐标一律查服务端 `poi_knowledge`，无外部 API）。 */
+/** 加点工作台检索：服务端 `services/poi_search.search_local` → OTM 分类池 + 联网补池
+ * （AI-NATIVE 数据面）。本地知识库表 `poi_knowledge` 已随 V4 退役，也无外部图商 API。 */
 
 export interface LocalPoi {
   id: number

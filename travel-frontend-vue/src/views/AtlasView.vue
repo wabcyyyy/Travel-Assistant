@@ -74,7 +74,7 @@
         />
       </aside>
 
-      <Sheet v-model:visible="sheetVisible" :title="`城市列表（${atlas.pins.length}）`">
+      <AppSheet v-model="sheetVisible" direction="btt" :title="`城市列表（${atlas.pins.length}）`">
         <AtlasSidebar
           :pins="atlas.pins"
           :unknown-cities="atlas.unknownCities"
@@ -82,7 +82,7 @@
           @select="onSheetSelect"
           @open="openTrip"
         />
-      </Sheet>
+      </AppSheet>
     </div>
   </div>
 </template>
@@ -103,7 +103,7 @@ import AtlasSidebar from '../components/atlas/AtlasSidebar.vue'
 import AppPanel from '../components/ui/AppPanel.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
 import SectionHead from '../components/ui/SectionHead.vue'
-import Sheet from '../components/ui/Sheet.vue'
+import AppSheet from '../components/ui/AppSheet.vue'
 import SkeletonCard from '../components/ui/SkeletonCard.vue'
 import { basemapUrlForScheme } from '../constants/map'
 import {

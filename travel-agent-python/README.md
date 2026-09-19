@@ -109,9 +109,9 @@ uv run python main.py  # 127.0.0.1:8000，默认不开启 reload
 | 后台管理 | `GET /api/admin/{stats,users,itineraries,agent-metrics,llm-usage}`（+ `PUT /users/{id}/status/{status}`、两处 `DELETE`） | 需 admin 角色，非管理员 403 / 匿名 401 |
 | 连通性 | `GET /api/test/hello`、`GET /api/agent/health` | 一键启动脚本与 CI 流水线的探活目标 |
 
-完整清单以启动时导出的 `openapi.json` 与 `scripts/check_endpoint_coverage.py` 的输出为准（Java 退役后后者报告「端点对照不再适用且无残留登记」，是无残留端点的机器证据）。
+完整清单以入仓产物 `contracts/openapi.json` 为准（由 `scripts/export_contracts.py` 单点导出，CI 与本仓 `scripts/check.ps1` 的漂移门禁逐字节看护）。启动期**不**再落 `openapi.json` 到根目录——第二份产物必然与入仓那份漂移。
 
-启动时自动导出 `openapi.json` 到项目根目录。
+端点面与调用点的一致性由 `tests/test_cutover_contract.py` 机检（前端调用点 + 活栈测试路径 vs 装配后路由）；历史上的 `scripts/check_endpoint_coverage.py` 已在 Java 退役后变成恒真门禁，2026-09-18 删除（理由见 `tests/test_retirement_readiness.py` 模块 docstring）。
 
 ## 测试
 
@@ -129,9 +129,6 @@ uv run pytest tests/api -q
 # 性能压测（需本服务 + Redis 6380 运行中）
 uv run python tests/perf/load_test.py --endpoint all --duration 10 --workers 20
 # 报告输出：tests/perf/report/load_report.json / load_report.md
-
-# 端点覆盖门禁（Java 退役后报告「端点对照不再适用且无残留登记」，CI 内自动执行）
-uv run python scripts/check_endpoint_coverage.py
 
 # 切流量契约门禁（前端调用点 + 活栈测试路径 vs 装配后路由；离线套件里自动执行）
 uv run pytest tests/test_cutover_contract.py -q

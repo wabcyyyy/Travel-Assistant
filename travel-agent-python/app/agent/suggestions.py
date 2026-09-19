@@ -189,7 +189,7 @@ def build_suggestions(
     分配，避免备选池被单一品类占满。
 
     allow_external=True（开放模式）时，不在候选池中的模型建议也放行：
-    坐标/地址留空，由前端在加入行程前经高德补齐；低质关键词过滤仍然生效。
+    坐标/地址留空，由前端在加入行程前经地图检索补齐；低质关键词过滤仍然生效。
     """
     pool: dict[str, dict] = {}
     for poi in list(candidates or []) + list(foods or []) + list(hotels or []):

@@ -141,8 +141,13 @@ def test_final_validation_marks_unfixed_constraints_as_degraded(monkeypatch):
     assert any("开放时间不符" in entry for entry in response.validation_log)
 
 
-def test_unknown_destination_with_llm_is_researched(monkeypatch):
-    """本地无候选时应进入开放研究，并保留可追溯的草案状态。"""
+def test_unknown_destination_without_candidates_is_draft_only(monkeypatch):
+    """候选池三域全空 = 没有任何外部证据，不得自称 researched（PLAN-A1 P4）。
+
+    曾经这里断言 researched：OTM key 未配 / 城市中心缺失 / 联网预算耗尽都会
+    把池打成空且不算 error，于是"模型凭自身知识写完"与"查过外部数据"共用
+    同一个状态，前端与导出都读不出差别。
+    """
     monkeypatch.setattr(workflow.settings, "llm_api_key", "configured")
     monkeypatch.setattr(workflow.settings, "live_price_search", False)
     monkeypatch.setattr(tools, "search_attractions", lambda *_args, **_kwargs: [])
@@ -193,8 +198,9 @@ def test_unknown_destination_with_llm_is_researched(monkeypatch):
     with patch.object(open_plans, "llm_open_day", open_day):
         response = workflow.run_generate(GenerateRequest(city="不存在的目的地", days=1))
 
-    assert response.destination_status == "researched"
+    assert response.destination_status == "draft_only"
     assert response.schedule_report["open_research"] is True
+    assert response.schedule_report["empty_domains"] == ["candidates", "foods", "hotels"]
     assert response.quality_report.quality_status == "READY_WITH_WARNINGS"
     item = response.daily_plans[0].items[0]
     assert item.source == "llm.open_day"

@@ -1,6 +1,6 @@
 """深链语义 parity（Y4）：用 tests/golden/deeplink_cases.json 钉住后端地图深链口径。
 
-前后端各有一份深链实现（本模块测 app.agent.places；前端 src/utils/geo.ts 由
+前后端各有一份深链实现（本模块测 app.agent.map_link；前端 src/utils/geo.ts 由
 travel-frontend-vue/src/utils/deeplink.parity.test.ts 读**同一份 case 文件**断言）。
 任何一侧单方面改语义都会让对侧或本侧显形。断言粒度 = 协议 host + path 前缀 +
 关键查询参数存在/缺席——src/callnative/policy/coordinate 与坐标数值（GCJ-02
@@ -16,8 +16,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from app.agent import places
-from app.agent.places import map_directions_url, map_search_url, to_gcj02
+from app.agent import map_link
+from app.agent.map_link import map_directions_url, map_search_url, to_gcj02
 
 CASES_PATH = pathlib.Path(__file__).parent / "golden" / "deeplink_cases.json"
 
@@ -43,17 +43,17 @@ _CITY_DICT = {
 }
 
 #: 导入期保存真实实现：DB 路径测试要先撤掉 _pin_city_dict 的钉再测原函数。
-_real_dict_domestic = places._dict_domestic
+_real_dict_domestic = map_link._dict_domestic
 
 
 @pytest.fixture(autouse=True)
 def _pin_city_dict(monkeypatch):
-    monkeypatch.setattr(places, "_dict_domestic", lambda city: _CITY_DICT.get(str(city or "").strip()))
+    monkeypatch.setattr(map_link, "_dict_domestic", lambda city: _CITY_DICT.get(str(city or "").strip()))
 
 
 def test_place_dict_lookup_reads_city_geo(monkeypatch):
     """_dict_domestic 的 DB 路径：命中返回布尔、未收录返回 None、库不可用返回 None。"""
-    monkeypatch.setattr(places, "_dict_domestic", _real_dict_domestic)
+    monkeypatch.setattr(map_link, "_dict_domestic", _real_dict_domestic)
 
     class _FakeCtx:
         def __init__(self, result):
@@ -71,18 +71,18 @@ def test_place_dict_lookup_reads_city_geo(monkeypatch):
         def scalar(self):
             return self._result
 
-    monkeypatch.setattr(places, "session_scope", lambda: _FakeCtx(True))
-    assert places._dict_domestic("杭州") is True
-    monkeypatch.setattr(places, "session_scope", lambda: _FakeCtx(None))
-    assert places._dict_domestic("不存在城") is None
-    monkeypatch.setattr(places, "session_scope", lambda: _FakeCtx(False))
-    assert places._dict_domestic("巴厘岛") is False
+    monkeypatch.setattr(map_link, "session_scope", lambda: _FakeCtx(True))
+    assert map_link._dict_domestic("杭州") is True
+    monkeypatch.setattr(map_link, "session_scope", lambda: _FakeCtx(None))
+    assert map_link._dict_domestic("不存在城") is None
+    monkeypatch.setattr(map_link, "session_scope", lambda: _FakeCtx(False))
+    assert map_link._dict_domestic("巴厘岛") is False
 
     def _boom():
         raise RuntimeError("db down")
 
-    monkeypatch.setattr(places, "session_scope", _boom)
-    assert places._dict_domestic("杭州") is None
+    monkeypatch.setattr(map_link, "session_scope", _boom)
+    assert map_link._dict_domestic("杭州") is None
 
 
 def test_to_gcj02_matches_frontend_known_values():
@@ -115,7 +115,7 @@ def _assert_protocol(url: str | None, expect: dict, note: str = "") -> None:
 
 @pytest.mark.parametrize("case", _cases(), ids=lambda c: c["name"])
 def test_deeplink_backend_protocol(case):
-    """后端 places 深链按 golden case 钉协议口径；两侧差异点见 DIFF_NOTES 与差异表。"""
+    """后端 map_link 深链按 golden case 钉协议口径；两侧差异点见 DIFF_NOTES 与差异表。"""
     expect = case["backend"]
     stops = case["input"].get("stops")
     if stops is not None:

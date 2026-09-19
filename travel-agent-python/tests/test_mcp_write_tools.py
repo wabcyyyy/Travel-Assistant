@@ -19,10 +19,11 @@ from sqlalchemy.orm import sessionmaker
 from app.agent import ToolInvocationError, registry
 from app.api import mcp as mcp_api  # noqa: F401  导入即完成写工具注册（被测对象）
 from app.common import addons as addons_module
+from app.common import cache_store
 from app.common.config import settings
 from app.db import session as db_session
 from app.db.models import Base, ItineraryDay, ItineraryItem, ItineraryMain, SysUser
-from app.services import cache_store, user_service
+from app.services import user_service
 
 
 @pytest.fixture()

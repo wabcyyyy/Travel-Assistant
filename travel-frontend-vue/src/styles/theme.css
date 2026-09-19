@@ -205,7 +205,6 @@
   --lp-shadow-card: var(--lp-shadow-xs);
   --lp-shadow-modal: var(--lp-shadow-md);
   --lp-shadow-dropdown: var(--lp-shadow-sm);
-  --lp-shadow-popover: var(--lp-shadow-sm);
   --lp-shadow-accent: 0 4px 14px color-mix(in srgb, var(--lp-accent) 26%, transparent);
   /* hero 大卡（trek .hero-trip 实测：微近影 + 大负 spread 氛围影） */
   --lp-shadow-hero: 0 2px 4px rgb(0 0 0 / 6%), 0 20px 50px -16px rgb(0 0 0 / 26%);
@@ -215,7 +214,6 @@
   --lp-z-nav: 200;
   --lp-z-panel: 500;
   --lp-z-modal: 1000;
-  --lp-z-overlay: 9000;
   --lp-z-toast: 10000;
   /* 内容宽度 */
   --lp-content: 1120px;
@@ -239,24 +237,10 @@
   --lp-ink-deep: var(--lp-bg-inverse);
   --lp-theme-accent: linear-gradient(90deg, var(--lp-accent), var(--lp-accent-hover));
   --lp-why-ink: var(--lp-text-muted);
-  --lp-note-callout: var(--lp-surface-2);
-  --lp-photo-badge: var(--lp-accent-subtle);
-  --lp-branch-a: var(--lp-accent);
   --lp-branch-b: #4f52b5;
   --lp-stream-glow: rgb(14 116 144 / 18%);
   --lp-cover-gradient: linear-gradient(125deg, #0b1220 0%, #12303e 48%, #155e75 100%);
   --lp-cover-scrim: linear-gradient(to top, rgb(2 6 23 / 55%), rgb(2 6 23 / 0%));
-  /* 图表 / 分类色板 */
-  --lp-olive: #4d7c0f;
-  --lp-clay: #d97706;
-  --lp-sky: #0284c7;
-  --lp-gold: #b45309;
-  --lp-slate: #475569;
-  --lp-cat-ticket: #0e7490;
-  --lp-cat-meal: #d97706;
-  --lp-cat-transport: #0284c7;
-  --lp-cat-hotel: #475569;
-  --lp-cat-other: #909399;
 }
 
 /* ---------- scheme 覆盖（accent 家族；具体色值只在本块与 .dark 块出现） ---------- */

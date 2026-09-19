@@ -141,11 +141,17 @@ forbidden_modules = [
     "app.agent.formatting",
     "app.agent.function_calling",
     "app.agent.generation_core",
+    "app.agent.existence",
+    "app.agent.existence_commercial",
+    "app.agent.grounding_labels",
+    "app.agent.grounding_evidence",
+    "app.agent.suggestion_grounding",
     "app.agent.generators",
     "app.agent.geo",
     "app.agent.intent",
     "app.agent.landing",
     "app.agent.local_replan",
+    "app.agent.map_link",
     "app.agent.memory",
     "app.agent.nl_edit",
     "app.agent.observability",
@@ -166,4 +172,9 @@ forbidden_modules = [
     "app.agent.usage_store",
     "app.agent.web_search",
     "app.agent.workflow",
+    # R0-4：这两个是 2026-09-18 自检发现的仅有漏项（app/agent 下 50 个模块只登记了 48）——
+    # 漏登记 = 深路径 import 不会红，正是根 AGENTS.md 警告的"新增子模块必须登记"漂移。
+    # 登记面由 tests/test_agent_facade_registration.py 机检（枚举 app/agent/** 与本表取差集）。
+    "app.agent.weather",
+    "app.agent.json_utils",
 ]

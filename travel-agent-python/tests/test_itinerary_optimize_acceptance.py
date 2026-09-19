@@ -12,10 +12,11 @@ from sqlalchemy import select
 
 from app.agent import route_service
 from app.common import addons as addons_module
+from app.common import cache_store
 from app.common.config import settings
 from app.db import session as db_session
 from app.db.models import ItineraryItem, ItineraryVersion
-from app.services import cache_store, itinerary_command
+from app.services import itinerary_command
 
 # 共享夹具挂载在非测试模块 `_optimize_support`（见其 docstring：为何不经
 # test_* 模块借用——邻居先收集时夹具会注册失败，顺序脆弱）。

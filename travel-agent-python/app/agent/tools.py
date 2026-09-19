@@ -11,21 +11,25 @@
 - OTM/Nominatim **没有票价/营业时间/评分**——这些字段恒为空，由 LLM 估价并按
   `estimated` 如实标注，行程页以地图深链引导用户出发前核实；
 - OTM 仅 en/ru 语言，返回名称为英文；中文名由生成链路的 LLM 对齐，
-  `anchor_name_similar` 的字符重叠口径对中英混排仍然有效（英文名含于中文介绍时）。
+  `existence.same_entity` 的字符重叠口径对中英混排仍然有效（英文名含于中文介绍时），
+  跨脚本写法（浅草寺/淺草寺）只有 provider 的 name:* 别名能对上。
 
 依赖：places（OTM/Nominatim/深链）、city_reference（城市字典/消费基准）、
 web_search（联网补池）。**零本地语料、零向量库。**
 
-跨模块 API（G-1.2 提级，供 day_stream 共用）：anchor_name_similar。
+同一实体判定已提到 `app/agent/existence.py`（G-1.2 提级的下一步：它现在是
+存在性判定的组成部分，池内命中也要过它）。
 """
 
 import logging
 import re
 
 from app.agent import city_reference, places, web_search
+from app.agent.existence import same_entity
+from app.agent.grounding_evidence import issue_evidence
 from app.agent.trace import traced
 from app.common.config import settings
-from app.common.external_client import BACKGROUND, ExternalClient
+from app.common.external_client import BACKGROUND, ExternalClient, fetch_json
 from app.common.http_client import image_client
 
 logger = logging.getLogger(__name__)
@@ -47,31 +51,6 @@ PREFERENCE_KEYWORDS = {
     "主题娱乐": ("amusements", "theatres", "aquariums", "zoos", "theme"),
     "购物": ("shops", "malls", "markets", "bazaars"),
 }
-
-
-def anchor_name_similar(query: str, candidate: str) -> bool:
-    """附近推荐锚点解析的名称相似度门槛。
-
-    外部检索对乱码或不存在名称也会返回结果；若候选名与查询几乎无关，
-    不能当锚点，否则「不存在的景点」会被错误定位到市中心酒店。
-    """
-
-    def norm(s: str) -> str:
-        return re.sub(r"[\s·'’\-()（）]", "", str(s or "")).lower()
-
-    q, c = norm(query), norm(candidate)
-    if not q or not c:
-        return False
-    if q == c or q in c or c in q:
-        return True
-    # 共享足够长的片段才算命中（至少 2 个字符重叠，或候选短名出现在查询中）
-    shorter, longer = (q, c) if len(q) <= len(c) else (c, q)
-    if len(shorter) >= 2 and shorter in longer:
-        return True
-    # 字符重叠率：过滤「不存在的景点XYZ123」→「湖滨大酒店」这类弱相关
-    overlap = len(set(q) & set(c))
-    union = len(set(q) | set(c))
-    return union > 0 and overlap / union >= 0.55 and overlap >= 4
 
 
 def _expand(preferences: list[str]) -> list[str]:
@@ -127,6 +106,9 @@ def _as_candidate(row: dict, city: str) -> dict:
     if candidate.get("avg_cost") is None and row.get("estimated_cost") is not None:
         candidate["avg_cost"] = row["estimated_cost"]
     candidate["_authoritative"] = True
+    # 取到数据的当场签发证据票：之后任何链路引用这行时，背书凭的是票，
+    # 不是行上那个可以被任何调用方照抄的 source 字符串（PLAN-A1 G1）。
+    issue_evidence(candidate)
     return candidate
 
 
@@ -211,7 +193,7 @@ def search_local_poi(city: str, name: str, *, category: str | None = None) -> li
     不设门槛会把「不存在的地点」错误锚定到无关坐标。
     """
     row = get_poi_detail(city, name)
-    if row and anchor_name_similar(str(name or ""), str(row.get("name") or "")):
+    if row and same_entity(str(name or ""), str(row.get("name") or "")):
         return [row]
     return []
 
@@ -251,9 +233,7 @@ def find_nearby_pois(
         radius_m=radius_m,
     )
     out = [
-        _as_candidate(row, city)
-        for row in rows
-        if not (name and anchor_name_similar(str(name), str(row.get("name") or "")))
+        _as_candidate(row, city) for row in rows if not (name and same_entity(str(name), str(row.get("name") or "")))
     ]
     for row in out:
         # 契约键：PoiNearbyItem._distance_m（wire 键固定，见 schemas.agent_ops）
@@ -293,8 +273,6 @@ def workbench_search(city: str, keywords: str = "", category: str | None = None,
     ][:limit]
 
 
-_poi_image_cache: dict[tuple[str, str], str | None] = {}
-
 # 图片通道（G-3.2 外部调用基类）：超时 8s、响应上限 256KB、成功缓存 6h、
 # 负结果 5min（图库偶尔限流时要能较快重试）；后台车道节流。
 _image_client: ExternalClient = ExternalClient(
@@ -315,22 +293,24 @@ _wiki_client: ExternalClient = ExternalClient(
 )
 
 
-def _unsplash_image(name: str, city: str) -> str | None:
-    """从 Unsplash 检索 POI 实景照片（免费 API，返回真实摄影图，非地图位置图）。"""
-    query = " ".join(x for x in (name, city) if x).strip()
+def _unsplash_image(name: str) -> str | None:
+    """从 Unsplash 检索 POI 实景照片。查询词只准用点位名——纪律与两份实现为何并存，
+    统一记在 services/poi_photo.py 的模块 docstring（单一说明处，不在此复述）。
+    """
+    query = str(name or "").strip()
     key = ExternalClient.resolve_key(settings.unsplash_access_key)
     if not query or not key:
         return None
 
     def _load() -> str | None:
-        resp = image_client().get(
+        payload = fetch_json(
+            _image_client,
+            image_client(),
             "https://api.unsplash.com/search/photos",
             params={"query": query[:60], "per_page": 1, "orientation": "landscape", "content_filter": "high"},
             headers={"Authorization": f"Client-ID {key}"},
         )
-        if _image_client.clamp_bytes(resp.content) is None:
-            return None
-        results = resp.json().get("results") or []
+        results = (payload or {}).get("results") if isinstance(payload, dict) else None
         if results and isinstance(results[0], dict):
             return (results[0].get("urls") or {}).get("regular") or (results[0].get("urls") or {}).get("full")
         return None
@@ -345,7 +325,9 @@ def _wikipedia_image(name: str) -> str | None:
         return None
 
     def _load() -> str | None:
-        resp = image_client().get(
+        payload = fetch_json(
+            _wiki_client,
+            image_client(),
             "https://zh.wikipedia.org/w/api.php",
             params={
                 "action": "query",
@@ -359,9 +341,8 @@ def _wikipedia_image(name: str) -> str | None:
             },
             headers={"User-Agent": "TravelAssistantDemo/1.0 (student-project; contact=dev@localhost.invalid)"},
         )
-        if _wiki_client.clamp_bytes(resp.content) is None:
-            return None
-        pages = (resp.json().get("query") or {}).get("pages") or {}
+        query = payload.get("query") if isinstance(payload, dict) else None
+        pages = (query or {}).get("pages") or {}
         for page in pages.values():
             thumb = (page.get("thumbnail") or {}).get("source")
             if thumb:
@@ -376,19 +357,15 @@ def poi_image(name: str | None, city: str) -> str | None:
 
     都取不到时返回 None（**不再回退高德实拍**）——前端拿到 404 后落本地分类
     占位图，比一张错的地图截图更诚实。
+
+    缓存只有 ExternalClient 那一层（自带 TTL 与负结果短 TTL），不再叠进程内 dict。
     """
     if not name:
         return None
-    key = (city, name)
-    if key in _poi_image_cache:
-        return _poi_image_cache[key]
     url: str | None = None
     if settings.poi_image_wiki:
         url = _wikipedia_image(name)
-    if not url:
-        url = _unsplash_image(name, city)
-    _poi_image_cache[key] = url
-    return url
+    return url or _unsplash_image(name)
 
 
 def attach_poi_images(plan: list[dict], city: str) -> list[dict]:

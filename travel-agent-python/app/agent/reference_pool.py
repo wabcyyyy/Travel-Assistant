@@ -1,27 +1,33 @@
 """参考资料池：权威候选 → 带编号参考资料 → 模型引用落地（G-2.2 自 generators 拆出）。
 
 职责：
-- normalize_poi_name / has_valid_coords / is_authoritative_source：名称归一、
-  坐标有效性、来源值域校验（后两者是权威背书的判定基础）；
+- normalize_poi_name：名称归一，供引用匹配；
 - ReferencePool：把本次候选编成可被模型引用的 [Rn] 资料块，并把模型输出的
   refs 引用落地回权威字段。
 
 实现要点：
+- 背书判定不在本模块：来源是否可信、缺坐标怎么降级，全部交给
+  `grounding_labels.label_for_evidence_row`（三条链路共用的唯一实现）；
 - 来源值域校验不可省：/v1/generate-day 的 context 由调用方传入属不可信输入，
-  不做值域校验则调用方可伪造 "mysql.poi_knowledge" 让幻觉事实获得权威背书；
-- 值域保留历史来源（amap/nominatim）——库里存量行仍带这些 source。
+  不做值域校验则调用方可伪造 "opentripmap" 让幻觉事实获得外部背书。
 
-依赖：generation_core；无上层依赖。
+依赖：generation_core、grounding_labels；无上层依赖。
 """
 
 import decimal
 import re
-from collections.abc import Mapping
-from typing import Any
 
+from app.agent.existence import same_entity
 from app.agent.generation_core import norm_poi_key  # noqa: F401  (供上层沿用同一归一)
+from app.agent.grounding_labels import (
+    UNTRUSTED_SOURCE,
+    apply_label,
+    has_valid_coords,
+    is_trusted_row,
+    label_for_evidence_row,
+)
 
-# 开放模式参考资料注入规模：把权威知识库（poi_knowledge）检索结果按编号
+# 开放模式参考资料注入规模：把本次候选池（OTM/联网搜索/LLM）拿到的点位按编号
 # 提供给模型，选点优先从资料中挑并输出 refs 引用编号；规模过大不再加。
 REFERENCE_ATTRACTION_LIMIT = 16
 REFERENCE_FOOD_LIMIT = 6
@@ -29,45 +35,10 @@ REFERENCE_HOTEL_LIMIT = 4
 
 _NAME_NORMALIZE_RE = re.compile(r"[\s（）()【】\[\]·]")
 
-# 权威来源值域：只有这些前缀的 source 才允许为行程项背书
-# （verification_status=partially_verified / value_kind=observed）。
-# /v1/generate-day 的 context 由 HTTP 调用方传入，属于不可信输入；若不做
-# 值域校验，调用方可伪造 "opentripmap" 让幻觉事实获得外部背书。
-# POI 库退役后，外部来源即 OpenTripMap / Nominatim（真实坐标与分类）与
-# 联网搜索（真实店名）；llm 保留——模型自选点位落 ref 时按 llm 记账。
-AUTHORITATIVE_SOURCE_PREFIXES = (
-    "opentripmap",
-    "nominatim",
-    "web.search",
-    "llm",
-)
-# 非权威来源统一改写为该标记，并降级为 unverified/estimated。
-UNTRUSTED_SOURCE = "client-context"
-
 
 def normalize_poi_name(name: str | None) -> str:
     """归一化地点名：去空白/括号/间隔号，供引用匹配使用。"""
     return _NAME_NORMALIZE_RE.sub("", str(name or "")).strip()
-
-
-def is_authoritative_source(source: object) -> bool:
-    text = str(source or "").strip()
-    return bool(text) and text.startswith(AUTHORITATIVE_SOURCE_PREFIXES)
-
-
-def has_valid_coords(poi: Mapping[str, Any]) -> bool:
-    """坐标存在且非 0/0（0/0 是缺失坐标的哨兵值，不是有效位置）。
-
-    参数用 Mapping 而非 dict：调用方既有开放 dict（落地草稿），也有
-    TypedDict（PoiFactRow 权威行）——TypedDict 可赋给 Mapping，不可赋给 dict。
-    """
-    lat, lng = poi.get("latitude"), poi.get("longitude")
-    if lat is None or lng is None:
-        return False
-    try:
-        return abs(float(lat)) > 1e-6 and abs(float(lng)) > 1e-6
-    except (TypeError, ValueError):
-        return False
 
 
 def _json_default(o):
@@ -202,6 +173,12 @@ class ReferencePool:
         # match() 仅在名称查找（原名/归一化名）都未命中时才落到 refs 编号，
         # 因此这里直接按名称查找即可区分两种引用方式。
         matched_by_name = name in self.by_name or normalize_poi_name(name) in self.by_normalized
+        if not matched_by_name and not same_entity(name, str(poi.get("name") or "")):
+            # refs 编号与名字对不上：名称通道没命中、只凭模型给的编号就把权威行的
+            # 坐标 graft 到一个不相干的名字上，等于给幻觉发证据（D7：池命中也要
+            # 过同一实体判定）。宁可退回"位置待核实"，也不交出可能被指错的位置。
+            self.stats["refs_gate_rejected"] = self.stats.get("refs_gate_rejected", 0) + 1
+            return False
         self.stats["grounded"] += 1
         poi_name = str(poi.get("name") or "")
         self.cited_names.add(poi_name)
@@ -209,6 +186,17 @@ class ReferencePool:
         if not matched_by_name:
             item["poi_name"] = poi_name
         item["item_type"] = poi.get("category") or item.get("item_type") or "attraction"
+        # 背书判定唯一实现：值域外的来源（例如客户端伪造的 context）改写为
+        # client-context 并降级；缺 source 的池内行按 pool-unknown 记账——
+        # 既不挂"权威知识库"的名号（该表已于 V4 退役），也不谎称是客户端传入。
+        label = label_for_evidence_row(poi)
+        apply_label(item, label)
+        if label.source == UNTRUSTED_SOURCE:
+            self.stats["untrusted_grounded"] = self.stats.get("untrusted_grounded", 0) + 1
+        # 来源不可信的行一个字段都不采纳：伪 source 不只是让徽章失真，还能把
+        # 真实景点指到调用自选的坐标/poi_id 上（P6）。
+        if not is_trusted_row(poi):
+            return True
         item["poi_id"] = str(poi.get("id") or "") or item.get("poi_id")
         item["address"] = poi.get("address")
         if has_valid_coords(poi):
@@ -220,32 +208,6 @@ class ReferencePool:
             item["open_time"] = poi.get("open_time")
         if poi.get("ticket_price") is not None:
             item["cost"] = float(poi["ticket_price"])
-        source_name = str(poi.get("source") or "mysql.poi_knowledge")
-        updated_at = str(poi.get("source_updated_at") or "") or None
-        if not is_authoritative_source(source_name):
-            # 参考资料来源不在权威值域内（例如客户端伪造的 context）：
-            # 不背书，改写来源并降级为待复核的估算事实。
-            item["source"] = UNTRUSTED_SOURCE
-            item["source_updated_at"] = None
-            item["verification_status"] = "unverified"
-            item["value_kind"] = "estimated"
-            item["freshness_status"] = "unknown"
-            item["review_requirement"] = "before_departure"
-            self.stats["untrusted_grounded"] = self.stats.get("untrusted_grounded", 0) + 1
-            return True
-        item["source"] = source_name
-        item["source_updated_at"] = updated_at
-        item["verification_status"] = "partially_verified"
-        item["value_kind"] = "observed"
-        item["freshness_status"] = "fresh" if updated_at else "unknown"
-        item["review_requirement"] = "none" if updated_at else "before_departure"
-        if not has_valid_coords(poi):
-            # 权威行缺坐标：item 上残留的是模型自填坐标，不能随其它字段
-            # 一起获得 observed 背书，整体降级为待复核估算。
-            item["verification_status"] = "unverified"
-            item["value_kind"] = "estimated"
-            item["freshness_status"] = "unknown"
-            item["review_requirement"] = "before_departure"
         return True
 
 

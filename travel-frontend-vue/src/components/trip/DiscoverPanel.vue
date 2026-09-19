@@ -71,7 +71,10 @@
             <span v-else class="thumb-fallback">{{ categoryLabel(entry.category) }}</span>
           </div>
           <div class="poi-body">
-            <p class="poi-name" :title="entry.name">{{ entry.name }}</p>
+            <p class="poi-name" :title="entry.name">
+              {{ entry.name }}
+              <span v-if="isUnverifiedSuggestion(entry)" class="poi-unverified">{{ SUGGESTION_UNVERIFIED_LABEL }}</span>
+            </p>
             <p v-if="entry.note" class="poi-note" :title="entry.note">{{ entry.note }}</p>
           </div>
           <button
@@ -127,8 +130,10 @@ import { storeToRefs } from 'pinia'
 import { Plus, Search } from 'lucide-vue-next'
 
 import { searchLocalPois, type LocalPoi } from '../../api/pois'
+import { SUGGESTION_UNVERIFIED_LABEL } from '../../constants/data-provenance'
 import { useItineraryStore } from '../../store/itinerary'
 import { useDiscoverAdd } from '../../composables/useDiscoverAdd'
+import { typeLabel } from './day-card/shared'
 import type { TripItem } from '../../types/itinerary'
 import type { Suggestion } from '../../types/generated/contracts'
 import AppDialog from '../ui/AppDialog.vue'
@@ -177,16 +182,9 @@ const CATEGORY_CHIPS: { value: Category | 'all'; label: string }[] = [
   { value: 'other', label: '其他' },
 ]
 
-const CATEGORY_LABELS: Record<Category, string> = {
-  attraction: '景点',
-  food: '美食',
-  hotel: '酒店',
-  shopping: '购物',
-  other: '其他',
-}
-
+// 分类中文标签走全站唯一口径（R5-3）：typeLabel 覆盖 attraction/food/hotel/shopping/other
 function categoryLabel(category: Category): string {
-  return CATEGORY_LABELS[category]
+  return typeLabel(category)
 }
 
 function normalizeCategory(raw: string): Category {
@@ -237,6 +235,12 @@ const unplannedEntries = computed<PanelEntry[]>(() =>
       suggestion: s,
     })),
 )
+
+/** 没有坐标 = 后台批量后验证没能证实这个名字存在（见 constants/data-provenance）。 */
+function isUnverifiedSuggestion(entry: PanelEntry): boolean {
+  if (entry.kind !== 'suggestion' || !entry.suggestion) return false
+  return entry.suggestion.latitude == null || entry.suggestion.longitude == null
+}
 
 const plannedCount = computed(() => plannedEntries.value.length)
 const unplannedCount = computed(() => unplannedEntries.value.length)
@@ -569,6 +573,11 @@ async function confirmAdd(dayId: number): Promise<void> {
   font-size: 12.5px;
   font-weight: 500;
   color: var(--lp-text-1);
+}
+
+.poi-unverified {
+  font-size: 10px;
+  color: var(--lp-text-faint);
 }
 
 .poi-note {

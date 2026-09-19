@@ -17,11 +17,13 @@ from app.agent.chat_draft import run_chat_turn
 from app.agent.city_guide import run_city_guide
 from app.agent.clarify import run_clarify
 from app.agent.day_stream import run_generate_day
+from app.agent.existence import resolve_poi
 from app.agent.local_replan import run_local_replan
 from app.agent.nl_edit import run_edit_ops
 from app.agent.observability import metrics, observe_run, scene, use_scene
 from app.agent.plan_context import run_plan_context
 from app.agent.schedule_optimizer import optimize_daily_plan
+from app.agent.suggestion_grounding import verify_suggestion_rows
 from app.agent.tool_registry import ToolInvocationError, ToolSpec, registry
 from app.agent.tools import find_nearby_pois, get_poi_detail, search_hotels, workbench_search
 from app.agent.trip_stream import run_generate_trip_stream
@@ -39,6 +41,7 @@ __all__ = [
     "observe_run",
     "optimize_daily_plan",
     "registry",
+    "resolve_poi",
     "run_adjust",
     "run_butler_note",
     "run_chat_turn",
@@ -55,5 +58,6 @@ __all__ = [
     "search_hotels",
     "usage_store",
     "use_scene",
+    "verify_suggestion_rows",
     "workbench_search",
 ]

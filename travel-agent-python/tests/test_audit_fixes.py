@@ -11,8 +11,9 @@ import json
 import httpx
 import pytest
 
-from app.agent import landing, open_plans, tools, workflow
+from app.agent import grounding, landing, open_plans, tools, workflow
 from app.agent.day_stream import llm_open_day
+from app.agent.existence import UNKNOWN, VERIFIED, ResolveResult
 from app.agent.grounding import local_ground
 from app.agent.reference_pool import ReferencePool
 from app.agent.reflect import parse_time, validate_plans
@@ -350,11 +351,46 @@ def test_llm_client_empty_choices_raises_semantic_error(monkeypatch):
 
 
 def test_local_ground_treats_zero_coords_as_missing(monkeypatch):
+    """0/0 是缺失哨兵：带着它的项必须照样送去解析，不能被当成"已有坐标"。"""
     calls = []
-    monkeypatch.setattr(tools, "search_local_poi", lambda city, name, **kw: calls.append(name) or [])
+
+    def _resolve(name, city):
+        calls.append(name)
+        return ResolveResult.unknown("stubbed")
+
+    monkeypatch.setattr(grounding, "resolve_poi", _resolve)
     item = {"poi_name": "某景点", "latitude": 0.0, "longitude": 0.0}
-    local_ground(item, "杭州", {})
+    assert local_ground(item, "杭州") is False
     assert calls == ["某景点"]
+    assert item["latitude"] == 0.0  # 未判定：项保持原样，不谎称解析过
+
+
+def test_local_ground_writes_the_provider_that_resolved(monkeypatch):
+    """接地成功时 source 必须是真跑过的那家 provider——它是背书的唯一凭据。"""
+    monkeypatch.setattr(
+        grounding,
+        "resolve_poi",
+        lambda name, city: ResolveResult(
+            state=VERIFIED, provider="nominatim", name=name, external_id="77", latitude=30.2, longitude=120.1
+        ),
+    )
+    item = {"poi_name": "某景点"}
+    assert local_ground(item, "杭州") is True
+    assert (item["source"], item["latitude"]) == ("nominatim", 30.2)
+
+
+def test_local_ground_refuses_out_of_area_hits(monkeypatch):
+    """解析成功但落在别的城市：不给坐标（这是矛盾证据，由反思层决定去留）。"""
+    monkeypatch.setattr(
+        grounding,
+        "resolve_poi",
+        lambda name, city: ResolveResult(
+            state=UNKNOWN, provider="nominatim", out_of_area=True, latitude=1.0, longitude=2.0
+        ),
+    )
+    item = {"poi_name": "某景点"}
+    assert local_ground(item, "杭州") is False
+    assert "latitude" not in item and "source" not in item
 
 
 # ---------- #12：graph 空间层拒绝单轴为 0 的坏坐标 ----------

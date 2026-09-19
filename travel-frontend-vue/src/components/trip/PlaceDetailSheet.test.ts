@@ -1,11 +1,18 @@
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import PlaceDetailSheet from './PlaceDetailSheet.vue'
 import { useItineraryStore } from '../../store/itinerary'
 import type { ItineraryDetail, TripItem } from '../../types/itinerary'
+
+// 详情卡挂了条目反馈面板（C3.5）：mock 掉 api，避免单测打真实 HTTP
+vi.mock('../../api/feedback', () => ({
+  fetchMyFeedback: vi.fn().mockResolvedValue({ data: { feedbacks: [] } }),
+  submitFeedback: vi.fn(),
+  revokeFeedback: vi.fn(),
+}))
 
 function makeItem(overrides: Partial<TripItem> = {}): TripItem {
   return {

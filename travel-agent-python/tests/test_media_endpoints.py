@@ -16,11 +16,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api import security
+from app.api.business import media
 from app.api.business.media import router as media_router
-from app.common import redis_client
+from app.common import cache_store, redis_client
+from app.common.config import settings
 from app.common.envelope import install_exception_handlers
 from app.common.http_client import configure_clients
-from app.services import cache_store, image_proxy, poi_photo
+from app.services import image_proxy, poi_photo
 from app.services.image_proxy import is_safe_image_url
 
 UNSPLASH_KEY = "test-unsplash-key"
@@ -130,7 +132,8 @@ def test_image_proxy_maps_empty_non_image_and_oversized(env):
             200, headers={"content-type": "image/jpeg"}, content=b"x" * (image_proxy.MAX_IMAGE_BYTES + 1)
         ),
     }
-    expected = {"empty": 404, "html": 502, "huge": 502}
+    # 超限不是上游故障：413（旧实现读满内存后才拒绝，502 只是把它伪装成"上游坏了"）
+    expected = {"empty": 404, "html": 502, "huge": 413}
     for name, canned in cases.items():
         client = httpx.Client(transport=httpx.MockTransport(lambda _r, c=canned: c), follow_redirects=False)
         configure_clients(image=client, api=client)
@@ -143,6 +146,43 @@ def test_image_proxy_maps_empty_non_image_and_oversized(env):
     assert ok_response.status_code == 200
     assert ok_response.headers["content-type"].startswith("image/png")
     assert ok_response.headers["cache-control"] == "public, max-age=21600"
+
+
+def test_image_proxy_never_echoes_svg_markup(env):
+    """R1-2：本服务没有 CSP，同源吐出 SVG = 把"在你的源上执行 JS"送给任何能在
+    白名单图站上放文件的人。响应头声明与内容嗅探两条路都要堵。"""
+    app, _recorder, _ = env
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    declared = httpx.Response(200, headers={"content-type": "image/svg+xml"}, content=svg)
+    sniffed = httpx.Response(200, headers={"content-type": "image/png"}, content=svg)
+    for name, canned in (("declared", declared), ("sniffed", sniffed)):
+        client = httpx.Client(transport=httpx.MockTransport(lambda _r, c=canned: c), follow_redirects=False)
+        configure_clients(image=client, api=client)
+        response = _client(app).get("/api/image-proxy", params={"url": "https://upload.wikimedia.org/x.svg"})
+        assert response.status_code == 502, name
+        assert "svg" not in (response.headers.get("content-type") or "")
+
+
+def test_anonymous_media_endpoints_are_ip_limited(env, monkeypatch):
+    """R1-4：/api/image-proxy 与 /api/poi-photo 匿名可达且各自要打外网。"""
+    app, _recorder, _ = env
+    monkeypatch.setattr(settings, "public_rate_limit_per_minute", 2)
+    # 限速桶按 IP 计；离线套件的进程内窗口是全测试共用的，这里换一个专属地址隔开用例
+    monkeypatch.setattr(media, "client_ip", lambda _request: "203.0.113.77")
+    good = httpx.Response(200, headers={"content-type": "image/png"}, content=b"png")
+    configure_clients(
+        image=httpx.Client(transport=httpx.MockTransport(lambda _r: good), follow_redirects=False),
+        api=httpx.Client(transport=httpx.MockTransport(lambda _r: good), follow_redirects=False),
+    )
+    client = _client(app)
+    statuses = [
+        client.get("/api/image-proxy", params={"url": "https://images.unsplash.com/a.png"}).status_code
+        for _ in range(3)
+    ]
+    assert statuses[:2] == [200, 200]
+    assert statuses[2] == 429
+    # 两个端点各自一个桶：图片代理被耗尽不应把点位解析一起关掉（这里默认桩是"无图"→404）
+    assert client.get("/api/poi-photo", params={"name": "灵隐寺", "city": "杭州"}).status_code == 404
 
 
 def _client(app: FastAPI) -> TestClient:

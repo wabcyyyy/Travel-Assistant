@@ -19,7 +19,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from app.agent import open_plans, tools, workflow
+from app.agent import grounding, open_plans, tools, workflow
 from app.agent.formatting import prices as pricing
 from app.agent.research import reasoning
 from app.agent.route_service import clear_route_cache
@@ -97,6 +97,8 @@ def run_case(case: dict) -> dict:
             "search_local_poi",
             lambda city, name, category=None: mock_llm.search_local_poi(city, name, category=category, coords=coords),
         ),
+        # 存在性判定替身（D11A）：接地走这里，不再隐式拿 fixture 目录自证
+        patch.object(grounding, "resolve_poi", lambda name, city: mock_llm.resolve_poi(name, city, coords=coords)),
         patch.object(open_plans, "llm_open_day", mock_llm.fixture_open_day),
         patch.object(open_plans, "llm_open_trip", mock_llm.fixture_open_trip),
         trace_run(f"fixture-{case['city']}-{case['days']}") as recorder,
@@ -118,6 +120,8 @@ def build_report(cases: list[dict]) -> dict:
         "case_count": len(results),
         "metrics": {
             "poi_authority_rate": _average(results, "poi_authority_rate"),
+            "poi_grounded_rate": _average(results, "poi_grounded_rate"),
+            "poi_refuted_count": sum(int(r.get("poi_refuted_count") or 0) for r in results),
             "field_reference_rate": _average(results, "field_reference_rate"),
             "time_conflict_rate": _average(results, "time_conflict_rate"),
             "route_violation_rate": _average(results, "route_violation_rate"),

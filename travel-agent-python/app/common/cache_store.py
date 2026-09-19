@@ -5,7 +5,8 @@
 本模块统一给 key 加 `py:` 前缀，两侧各用各的命名空间、各自独占失效权，
 避免"看起来共享、实际互相看不见"的诡异缓存行为。
 
-语义对齐 Java：`amap:poi` TTL 1 小时；空结果也缓存（防穿透），用哨兵值表示。
+命名规范 `<域>:<实体>:<标识>`；空结果也缓存（防穿透），用哨兵值表示。
+（历史：Java 时代的 `amap:poi` 命名空间已无写入者，去高德后不再有图商键。）
 """
 
 from __future__ import annotations
@@ -22,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 KEY_PREFIX = "py:"
 _EMPTY_SENTINEL = "\x00empty"
+
+#: 进程内兜底表的条目上限：Redis outage 期间所有写入都落到这张表上（R2-10）
+LOCAL_CACHE_MAX_ENTRIES = 4096
 
 _local: dict[str, tuple[float, str]] = {}
 _lock = threading.Lock()
@@ -62,6 +66,27 @@ def get_json(namespace: str, key: str) -> Any | None:
         return None
 
 
+def _local_put(full: str, expires_at: float, raw: str) -> None:
+    """写进程内兜底缓存，并保证这张表**有界**（R2-10）。
+
+    Redis 长时间不可用时，这里会接住全部写入：旧实现只在"读同一个键"或 delete 时
+    才清条目，于是 outage 越久 RSS 越大，直到进程被 OOM 杀掉——缓存降级反而变成
+    故障放大器。调用方必须已持有 `_lock`。
+    先清过期项；仍超限就按最早到期逐出（不含刚写入的这个，避免占位被自己挤掉）。
+    """
+    _local[full] = (expires_at, raw)
+    if len(_local) <= LOCAL_CACHE_MAX_ENTRIES:
+        return
+    now = time.time()
+    for key in [k for k, (exp, _v) in _local.items() if exp <= now]:
+        _local.pop(key, None)
+    overflow = len(_local) - LOCAL_CACHE_MAX_ENTRIES
+    if overflow > 0:
+        candidates = sorted((k for k in _local if k != full), key=lambda k: _local[k][0])
+        for key in candidates[:overflow]:
+            _local.pop(key, None)
+
+
 def set_json(namespace: str, key: str, value: Any, ttl_seconds: int) -> None:
     full = full_key(namespace, key)
     raw = _EMPTY_SENTINEL if value is None else json.dumps(value, ensure_ascii=False, default=str)
@@ -72,7 +97,7 @@ def set_json(namespace: str, key: str, value: Any, ttl_seconds: int) -> None:
         redis_client.note_failure(exc)
         logger.debug("cache redis write failed, fallback local (%s): %s", namespace, exc)
     with _lock:
-        _local[full] = (time.time() + ttl_seconds, raw)
+        _local_put(full, time.time() + ttl_seconds, raw)
 
 
 def reserve(namespace: str, key: str, value: Any, ttl_seconds: int) -> bool:
@@ -100,7 +125,7 @@ def reserve(namespace: str, key: str, value: Any, ttl_seconds: int) -> bool:
             _local.pop(full, None)  # 过期项先清，setdefault 才能占位
         claimed = full not in _local
         if claimed:
-            _local[full] = (time.time() + ttl_seconds, raw)
+            _local_put(full, time.time() + ttl_seconds, raw)
     return claimed
 
 

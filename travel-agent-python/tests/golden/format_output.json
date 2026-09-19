@@ -43,7 +43,7 @@
             "poi_name": "西湖",
             "remark": null,
             "review_requirement": "none",
-            "source": "mysql.poi_knowledge",
+            "source": "opentripmap",
             "source_updated_at": "2026-08-01T00:00:00Z",
             "start_time": "09:00",
             "tag": null,
@@ -67,7 +67,7 @@
             "poi_name": "楼外楼",
             "remark": "餐饮价偏高，已按城市人均¥65参考价调整为¥97.5",
             "review_requirement": "none",
-            "source": "mysql.poi_knowledge",
+            "source": "opentripmap",
             "source_updated_at": "2026-08-01T00:00:00Z",
             "start_time": "12:40",
             "tag": null,
@@ -127,13 +127,13 @@
     "sources": [
       {
         "expires_at": null,
-        "provider": "mysql.poi_knowledge",
+        "provider": "opentripmap",
         "published_at": null,
         "publisher": null,
         "retrieved_at": "2026-08-01T00:00:00Z",
-        "source_id": "mysql.poi_knowledge",
+        "source_id": "opentripmap",
         "source_url": null,
-        "storage_source": "mysql.poi_knowledge"
+        "storage_source": "opentripmap"
       }
     ],
     "status": "degraded",
@@ -252,7 +252,7 @@
             "poi_name": "灵隐寺",
             "remark": null,
             "review_requirement": "before_departure",
-            "source": "mysql.poi_knowledge",
+            "source": "opentripmap",
             "source_updated_at": "2026-08-01T00:00:00Z",
             "start_time": "09:00",
             "tag": null,
@@ -359,13 +359,13 @@
     "sources": [
       {
         "expires_at": null,
-        "provider": "mysql.poi_knowledge",
+        "provider": "opentripmap",
         "published_at": null,
         "publisher": null,
         "retrieved_at": "2026-08-01T00:00:00Z",
-        "source_id": "mysql.poi_knowledge",
+        "source_id": "opentripmap",
         "source_url": null,
-        "storage_source": "mysql.poi_knowledge"
+        "storage_source": "opentripmap"
       },
       {
         "expires_at": null,
@@ -375,17 +375,7 @@
         "retrieved_at": null,
         "source_id": "llm.open_day",
         "source_url": null,
-        "storage_source": null
-      },
-      {
-        "expires_at": null,
-        "provider": "local",
-        "published_at": null,
-        "publisher": null,
-        "retrieved_at": null,
-        "source_id": "local-grounding",
-        "source_url": null,
-        "storage_source": "local-grounding"
+        "storage_source": "llm.open_day"
       }
     ],
     "status": "success",
@@ -617,17 +607,7 @@
         "retrieved_at": null,
         "source_id": "llm.open_day",
         "source_url": null,
-        "storage_source": null
-      },
-      {
-        "expires_at": null,
-        "provider": "local",
-        "published_at": null,
-        "publisher": null,
-        "retrieved_at": null,
-        "source_id": "local-grounding",
-        "source_url": null,
-        "storage_source": "local-grounding"
+        "storage_source": "llm.open_day"
       }
     ],
     "status": "success",
@@ -816,7 +796,7 @@
             "poi_name": "杭州舒适酒店1",
             "remark": "联网实时价￥420：杭州·杭州舒适酒店1 挂牌价；按淡季系数×0.85调整",
             "review_requirement": "none",
-            "source": "mysql.poi_knowledge",
+            "source": "opentripmap",
             "source_updated_at": "2026-08-01T00:00:00Z",
             "start_time": "18:00",
             "tag": null,
@@ -886,27 +866,17 @@
         "retrieved_at": null,
         "source_id": "llm.open_day",
         "source_url": null,
-        "storage_source": null
+        "storage_source": "llm.open_day"
       },
       {
         "expires_at": null,
-        "provider": "local",
-        "published_at": null,
-        "publisher": null,
-        "retrieved_at": null,
-        "source_id": "local-grounding",
-        "source_url": null,
-        "storage_source": "local-grounding"
-      },
-      {
-        "expires_at": null,
-        "provider": "mysql.poi_knowledge",
+        "provider": "opentripmap",
         "published_at": null,
         "publisher": null,
         "retrieved_at": "2026-08-01T00:00:00Z",
-        "source_id": "mysql.poi_knowledge",
+        "source_id": "opentripmap",
         "source_url": null,
-        "storage_source": "mysql.poi_knowledge"
+        "storage_source": "opentripmap"
       }
     ],
     "status": "success",
@@ -1071,7 +1041,7 @@
             "poi_name": "丽江悦榕庄",
             "remark": "淡季估算：系数×0.85（知识库基准价￥2500）",
             "review_requirement": "none",
-            "source": "mysql.poi_knowledge",
+            "source": "opentripmap",
             "source_updated_at": "2026-08-01T00:00:00Z",
             "start_time": "21:00",
             "tag": null,
@@ -1142,27 +1112,17 @@
         "retrieved_at": null,
         "source_id": "llm.open_day",
         "source_url": null,
-        "storage_source": null
+        "storage_source": "llm.open_day"
       },
       {
         "expires_at": null,
-        "provider": "local",
-        "published_at": null,
-        "publisher": null,
-        "retrieved_at": null,
-        "source_id": "local-grounding",
-        "source_url": null,
-        "storage_source": "local-grounding"
-      },
-      {
-        "expires_at": null,
-        "provider": "mysql.poi_knowledge",
+        "provider": "opentripmap",
         "published_at": null,
         "publisher": null,
         "retrieved_at": "2026-08-01T00:00:00Z",
-        "source_id": "mysql.poi_knowledge",
+        "source_id": "opentripmap",
         "source_url": null,
-        "storage_source": "mysql.poi_knowledge"
+        "storage_source": "opentripmap"
       }
     ],
     "status": "degraded",
@@ -1429,17 +1389,7 @@
         "retrieved_at": null,
         "source_id": "llm.open_day",
         "source_url": null,
-        "storage_source": null
-      },
-      {
-        "expires_at": null,
-        "provider": "local",
-        "published_at": null,
-        "publisher": null,
-        "retrieved_at": null,
-        "source_id": "local-grounding",
-        "source_url": null,
-        "storage_source": "local-grounding"
+        "storage_source": "llm.open_day"
       }
     ],
     "status": "degraded",
@@ -1558,7 +1508,7 @@
             "poi_name": "西湖",
             "remark": null,
             "review_requirement": "none",
-            "source": "mysql.poi_knowledge",
+            "source": "opentripmap",
             "source_updated_at": "2026-08-01T00:00:00Z",
             "start_time": "09:00",
             "tag": null,
@@ -1606,7 +1556,7 @@
             "poi_name": "杭州舒适酒店1",
             "remark": "联网实时价￥420：杭州·杭州舒适酒店1 挂牌价；按节假日旺季系数×1.8调整",
             "review_requirement": "none",
-            "source": "mysql.poi_knowledge",
+            "source": "opentripmap",
             "source_updated_at": "2026-08-01T00:00:00Z",
             "start_time": "18:00",
             "tag": null,
@@ -1730,7 +1680,7 @@
             "poi_name": "杭州舒适酒店1",
             "remark": "联网实时价￥420：杭州·杭州舒适酒店1 挂牌价；按节假日旺季系数×1.8调整",
             "review_requirement": "none",
-            "source": "mysql.poi_knowledge",
+            "source": "opentripmap",
             "source_updated_at": "2026-08-01T00:00:00Z",
             "start_time": "19:00",
             "tag": null,
@@ -1815,13 +1765,13 @@
     "sources": [
       {
         "expires_at": null,
-        "provider": "mysql.poi_knowledge",
+        "provider": "opentripmap",
         "published_at": null,
         "publisher": null,
         "retrieved_at": "2026-08-01T00:00:00Z",
-        "source_id": "mysql.poi_knowledge",
+        "source_id": "opentripmap",
         "source_url": null,
-        "storage_source": "mysql.poi_knowledge"
+        "storage_source": "opentripmap"
       },
       {
         "expires_at": null,
@@ -1831,17 +1781,7 @@
         "retrieved_at": null,
         "source_id": "llm.open_day",
         "source_url": null,
-        "storage_source": null
-      },
-      {
-        "expires_at": null,
-        "provider": "local",
-        "published_at": null,
-        "publisher": null,
-        "retrieved_at": null,
-        "source_id": "local-grounding",
-        "source_url": null,
-        "storage_source": "local-grounding"
+        "storage_source": "llm.open_day"
       }
     ],
     "status": "degraded",
@@ -2102,17 +2042,7 @@
         "retrieved_at": null,
         "source_id": "llm.open_day",
         "source_url": null,
-        "storage_source": null
-      },
-      {
-        "expires_at": null,
-        "provider": "local",
-        "published_at": null,
-        "publisher": null,
-        "retrieved_at": null,
-        "source_id": "local-grounding",
-        "source_url": null,
-        "storage_source": "local-grounding"
+        "storage_source": "llm.open_day"
       }
     ],
     "status": "degraded",
@@ -2295,17 +2225,7 @@
         "retrieved_at": null,
         "source_id": "llm.open_day",
         "source_url": null,
-        "storage_source": null
-      },
-      {
-        "expires_at": null,
-        "provider": "local",
-        "published_at": null,
-        "publisher": null,
-        "retrieved_at": null,
-        "source_id": "local-grounding",
-        "source_url": null,
-        "storage_source": "local-grounding"
+        "storage_source": "llm.open_day"
       }
     ],
     "status": "degraded",
@@ -2563,7 +2483,7 @@
             "poi_name": "西湖",
             "remark": null,
             "review_requirement": "none",
-            "source": "mysql.poi_knowledge",
+            "source": "opentripmap",
             "source_updated_at": "2026-08-01T00:00:00Z",
             "start_time": "09:00",
             "tag": null,
@@ -2677,13 +2597,13 @@
     "sources": [
       {
         "expires_at": null,
-        "provider": "mysql.poi_knowledge",
+        "provider": "opentripmap",
         "published_at": null,
         "publisher": null,
         "retrieved_at": "2026-08-01T00:00:00Z",
-        "source_id": "mysql.poi_knowledge",
+        "source_id": "opentripmap",
         "source_url": null,
-        "storage_source": "mysql.poi_knowledge"
+        "storage_source": "opentripmap"
       },
       {
         "expires_at": null,
@@ -2693,17 +2613,7 @@
         "retrieved_at": null,
         "source_id": "llm.open_day",
         "source_url": null,
-        "storage_source": null
-      },
-      {
-        "expires_at": null,
-        "provider": "local",
-        "published_at": null,
-        "publisher": null,
-        "retrieved_at": null,
-        "source_id": "local-grounding",
-        "source_url": null,
-        "storage_source": "local-grounding"
+        "storage_source": "llm.open_day"
       }
     ],
     "status": "degraded",

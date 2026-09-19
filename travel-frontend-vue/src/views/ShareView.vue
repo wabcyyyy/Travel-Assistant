@@ -91,7 +91,7 @@
 
     <footer class="share-footer">
       <router-link class="cta big" to="/generate">生成我的行程</router-link>
-      <p class="foot-note">本地演示项目 · 数据来自高德 / Wikivoyage(CC BY-SA) / Unsplash 等，仅供学习展示</p>
+      <p class="foot-note">本地演示项目 · {{ DATA_PROVENANCE }}，仅供学习展示 · {{ DATA_PROVENANCE_DISCLAIMER }}</p>
     </footer>
   </div>
 </template>
@@ -103,6 +103,7 @@ import { useRoute } from 'vue-router'
 import { getSharedItinerary } from '../api/share'
 import AppPanel from '../components/ui/AppPanel.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
+import { DATA_PROVENANCE, DATA_PROVENANCE_DISCLAIMER } from '../constants/data-provenance'
 import type { SharedItinerary } from '../types/share'
 
 // 公开只读分享页（SPEC §7.6）：匿名可开、无写接口；锚点 D{n}-{index}；

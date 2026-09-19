@@ -17,6 +17,7 @@
 
 import asyncio
 import functools
+import hmac
 import json
 import logging
 import queue
@@ -151,15 +152,28 @@ def _fail_payload(exc: Exception, endpoint: str) -> ApiResponse[None]:
     # ValidationError 是 ValueError 子类，但其原文含字段级校验细节，不外泄。
     if isinstance(exc, ValidationError):
         return ApiResponse.fail("请求参数不合法", code=400)
+    # JSONDecodeError 也是 ValueError 子类，但它是"上游给了坏数据"而非业务降级原因：
+    # 上游响应体可能被打进消息里，不属于"对用户如实降级"的那一类（R2-9）。
+    if isinstance(exc, json.JSONDecodeError):
+        return ApiResponse.fail("服务暂时不可用，请稍后重试", code=502)
     if isinstance(exc, ValueError):
         return ApiResponse.fail(str(exc)[:200], code=500)
     return ApiResponse.fail("服务暂时不可用，请稍后重试", code=500)
 
 
 def require_internal_token(x_agent_token: str | None = Header(default=None)) -> None:
-    """Protect expensive mutation/generation endpoints when an internal token is configured."""
+    """内部令牌校验：配了就必须对，比较走常数时间（R1-8）。
+
+    没配令牌时是否放行由**部署形态**决定，不在这里判：`Settings.validate_boot` 已经
+    拒绝"绑定非回环地址但不设令牌"（那等于匿名烧钱接口），所以"空令牌"只可能出现在
+    回环直调的本地/测试拓扑。真正把它带到公网的是边缘——nginx 必须以 `deny all`
+    丢掉 `/api/agent/`，见 `travel-frontend-vue/nginx.conf`。
+    """
     expected = settings.agent_internal_token
-    if expected and x_agent_token != expected:
+    if not expected:
+        return
+    provided = (x_agent_token or "").encode("utf-8")
+    if not hmac.compare_digest(provided, expected.encode("utf-8")):
         raise HTTPException(status_code=401, detail="invalid agent token")
 
 

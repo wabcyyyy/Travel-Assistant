@@ -39,11 +39,19 @@ from app.agent.generation_core import (
 )
 from app.agent.generators import pick_hotels
 from app.agent.grounding import has_coord, local_ground
+from app.agent.grounding_labels import (
+    apply_label,
+    has_valid_coords,
+    is_trusted_row,
+    label_for_evidence_row,
+    label_for_landed_item,
+)
 from app.agent.json_utils import parse_llm_json
+from app.agent.landing import drop_refuted_items
 from app.agent.memory import WorkingMemory
 from app.agent.narrative import sanitize_narrative
 from app.agent.plan_context import filter_used, parse_date
-from app.agent.reference_pool import ReferencePool, has_valid_coords, is_authoritative_source
+from app.agent.reference_pool import ReferencePool
 from app.agent.suggestions import build_suggestions, fill_suggestion_gaps
 from app.agent.weather import day_clause as weather_day_clause
 from app.common.addons import addons
@@ -134,8 +142,9 @@ def llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
         temperature=GENERATION_TEMPERATURE,
         # 输出要求是"一天 items + 叙事字段 + 24-40 条 suggestions"，体量大，
         # 截断即 JSON 解析失败 → 整日草案；叙事字段约占输出增量 30-50%，
-        # 给足输出预算。
-        max_tokens=3200,
+        # 给足输出预算。3200 实测装不下（2026-09-18 量测 6/6 城截断，
+        # 见 docs/量测-存在性接地-2026-09-18.md §5），8000 后 6/6 城解析成功。
+        max_tokens=8000,
         model=settings.llm_fast_model or None,
         json_mode=True,
         enable_search=settings.llm_generation_web_search,
@@ -171,7 +180,7 @@ def generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False) 
         raise ValueError("未配置 LLM，无法生成行程内容")
 
     # 开放模式是唯一生成路径：LLM 凭自身知识选点 + 权威参考资料注入引导，
-    # 命中项落地权威字段，未命中项由高德补真实坐标。
+    # 命中项落地权威字段；未命中项坐标留空，由前端在加入行程前经地图检索补齐。
     try:
         plan = llm_open_day(req, set(req.used_names))
         source = "open"
@@ -212,16 +221,21 @@ def generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False) 
     trip_date = parse_date(req.start_date)
     factor = season_factor(trip_date)
     label = season_label(trip_date)
-    ground_cache: dict = {}
 
-    items: list[TripItem] = []
-    for item in sanitize_itinerary_items(plan.get("items")):
+    drafts = sanitize_itinerary_items(plan.get("items"))
+    for item in drafts:
         if source == "open" and ref_pool.ground(item):
             pass  # 权威背书：字段与来源已由参考资料落地
         elif source == "open":
-            local_ground(item, req.city, ground_cache)
+            local_ground(item, req.city)
+    # 与本次行程矛盾的点位（解析到别处 / 有否证资格的源明确说没有）先出局，
+    # 再进装配：留在行程里把一个名字指到别的城市，比少一个点更糟（G5）。
+    drafts = drop_refuted_items(drafts, city=req.city)
+
+    items: list[TripItem] = []
+    for item in drafts:
         poi = lookup.get(str(item.get("poi_name") or ""))
-        if poi:
+        if poi and is_trusted_row(poi):
             if not has_coord(item.get("latitude")) and has_valid_coords(poi):
                 item["latitude"] = float(poi["latitude"])
                 item["longitude"] = float(poi["longitude"])
@@ -245,51 +259,21 @@ def generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False) 
 
         # generate-day 也会被 Java 直接持久化，不能只在整段 workflow 的
         # format 阶段补证据；在单日边界先建立最小字段级来源契约。
-        # 与 ReferencePool.ground 一致：来源不在权威值域内时不背书，
-        # 保留 ground 已写入的 client-context 降级状态。
-        if poi and is_authoritative_source(str(poi.get("source") or "llm")):
-            source_name = str(poi.get("source") or "llm")
-            updated_at = str(poi.get("source_updated_at") or "") or None
-            item["source"] = source_name
-            item["source_updated_at"] = updated_at
-            item["verification_status"] = "partially_verified"
-            item["value_kind"] = "observed"
-            item["freshness_status"] = "fresh" if updated_at else "unknown"
-            item["review_requirement"] = "none" if updated_at else "before_departure"
-            if not has_valid_coords(poi):
-                # 权威行缺坐标：item 上残留的是模型自填坐标，不背书。
-                item["verification_status"] = "unverified"
-                item["value_kind"] = "estimated"
-                item["freshness_status"] = "unknown"
-                item["review_requirement"] = "before_departure"
-            item["fact_evidence"] = {
-                "identity": FactEvidence(
-                    source_ref=source_name,
-                    provider=source_name,
-                    retrieved_at=updated_at,
-                    verification_status="verified" if item.get("poi_id") else "unverified",
-                    value_kind="observed",
-                    freshness_status="fresh" if updated_at else "unknown",
-                    review_requirement="none" if updated_at else "before_departure",
-                ),
-            }
-        elif source == "open":
-            item_source = str(item.get("source") or "llm.open_day")
-            item["source"] = item_source
-            item["verification_status"] = "unverified"
-            item["value_kind"] = "estimated"
-            item["freshness_status"] = "unknown"
-            item["review_requirement"] = "before_departure"
-            item["fact_evidence"] = {
-                "identity": FactEvidence(
-                    source_ref=item_source,
-                    provider=item_source,
-                    verification_status="unverified",
-                    value_kind="generated",
-                    freshness_status="unknown",
-                    review_requirement="before_departure",
-                ),
-            }
+        # 标签判定与 format 阶段、参考资料落地共用 grounding_labels 的唯一实现
+        # （此前三处各写一份且互不一致，同一项走哪条链决定它拿什么徽章）。
+        label = label_for_evidence_row(poi) if poi else label_for_landed_item(item, req.city)
+        apply_label(item, label)
+        item["fact_evidence"] = {
+            "identity": FactEvidence(
+                source_ref=label.source,
+                provider=label.source,
+                retrieved_at=label.source_updated_at,
+                verification_status="verified" if (label.endorsed and item.get("poi_id")) else "unverified",
+                value_kind="observed" if label.endorsed else "generated",
+                freshness_status=label.freshness_status,
+                review_requirement=label.review_requirement,
+            ),
+        }
 
         def _norm(t):
             return t.replace("24:", "00:") if isinstance(t, str) else t

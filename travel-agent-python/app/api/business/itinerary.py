@@ -33,6 +33,7 @@ from app.schemas.business.itinerary import (
 )
 from app.services import (
     cover_service,
+    day_persistence,
     itinerary_chat,
     itinerary_city,
     itinerary_command,
@@ -42,6 +43,7 @@ from app.services import (
     itinerary_query,
     itinerary_version,
     preferences,
+    quota_service,
     share_service,
 )
 
@@ -61,27 +63,30 @@ def get_supported_cities() -> dict:
 
 
 @router.post("/clarify")
-def post_clarify(body: dict[str, Any]) -> dict:
+def post_clarify(body: dict[str, Any], user: AuthUser = Depends(enforce_business_auth)) -> dict:
     """槽位澄清：纯解析，不落库（同 Java `ItineraryCityService.clarify`）。"""
+    quota_service.enforce_llm_budget(user.id)
     slots = body.get("slots")
     return ok(itinerary_city.clarify(str(body.get("message") or ""), slots if isinstance(slots, dict) else {}))
 
 
 @router.post("/city-guide")
-def post_city_guide(body: dict[str, Any]) -> dict:
+def post_city_guide(body: dict[str, Any], user: AuthUser = Depends(enforce_business_auth)) -> dict:
+    quota_service.enforce_llm_budget(user.id)
     history = body.get("history")
     return ok(itinerary_city.city_guide(str(body.get("input") or ""), history if isinstance(history, list) else []))
 
 
 @router.post("/poi-nearby")
-def post_poi_nearby(body: dict[str, Any]) -> dict:
+def post_poi_nearby(body: dict[str, Any], user: AuthUser = Depends(enforce_business_auth)) -> dict:
+    quota_service.enforce_llm_budget(user.id)
     return ok(itinerary_city.poi_nearby(body))
 
 
 @router.post("/generate")
 def post_generate(
     body: GenerateTripRequest,
-    user: AuthUser | None = Depends(enforce_business_auth),
+    user: AuthUser = Depends(enforce_business_auth),
     x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
 ) -> dict:
     """建壳 + 异步逐日生成，立即返回可轮询的初始详情（status=1）。
@@ -89,6 +94,7 @@ def post_generate(
     `X-Idempotency-Key`（可选）：网络层重试 / 双击时带同一个键，TTL 内返回
     同一个行程而不是重复建壳（backlog「被重复请求咬过」）。
     """
+    quota_service.enforce_llm_budget(user.id)
     return ok(itinerary_generation.generate(user.id, body, idempotency_key=x_idempotency_key))
 
 
@@ -195,9 +201,10 @@ def patch_day(
 def post_nl_edit(
     body: NlEditBody,
     id: int = Path(..., ge=1),
-    user: AuthUser | None = Depends(enforce_business_auth),
+    user: AuthUser = Depends(enforce_business_auth),
 ) -> dict:
     """自然语言编辑：解析并**直接落库**（chat-edit 只出草稿，两者职责不同）。"""
+    quota_service.enforce_llm_budget(user.id)
     return ok(itinerary_nl_edit.nl_edit(user.id, id, body.instruction))
 
 
@@ -258,13 +265,44 @@ async def events(
 ) -> StreamingResponse:
     """订阅生成进度事件流（进程内 SSE；取代 Java 的「Redis pub/sub → SseEmitter」转发桥）。"""
     # 归属查询进线程池，登记订阅必须在事件循环里做（要捕获 loop 才能跨线程投递）
-    await run_in_threadpool(itinerary_query.find_readable_main, user.id, id)
+    main = await run_in_threadpool(itinerary_query.find_readable_main, user.id, id)
     subscription, _rejected = event_hub.subscribe(id, event_publisher.too_many_connections_envelope(id))
-    return _sse(_event_frames(id, subscription))
+    snapshot = await run_in_threadpool(_terminal_snapshot, id, main)
+    return _sse(_event_frames(id, subscription, snapshot))
 
 
-async def _event_frames(itinerary_id: int, subscription):
+def _terminal_snapshot(itinerary_id: int, main) -> str | None:
+    """订阅时行程已经终态 → 补一帧收尾，别让这条连接永远只发心跳（R2-2）。
+
+    总线只广播、不留历史（`event_hub` 无回放缓冲），所以"生成结束之后才连上"
+    （EventSource 瞬时断线重连、或用户在结果页重新打开）的客户端永远等不到
+    终态帧。终态判定读库里的 `gen_state`，不猜缓存。
+    """
+    gen_state = getattr(main, "gen_state", None)
+    if gen_state == "FAILED":
+        return event_publisher.error_envelope(itinerary_id, "GENERATION_FAILED", "生成未完成，可重新发起生成")
+    if gen_state not in ("COMPLETED", "PARTIAL"):
+        return None
+    expected = int(getattr(main, "days", 0) or 0)
+    missing = set(day_persistence.unfinished_day_nos(itinerary_id))
+    return event_publisher.build_envelope(
+        itinerary_id,
+        "done",
+        {
+            "daysExpected": expected,
+            "daysEmitted": [day_no for day_no in range(1, expected + 1) if day_no not in missing],
+            "tripTheme": getattr(main, "trip_theme", None),
+            "complete": gen_state == "COMPLETED",
+            "message": "该行程已生成完成",
+        },
+    )
+
+
+async def _event_frames(itinerary_id: int, subscription, snapshot: str | None = None):
     try:
+        if snapshot is not None:
+            yield f"data:{snapshot}\n\n"
+            return
         while True:
             envelope = await subscription.take()
             if envelope is event_hub.CLOSED:
@@ -280,16 +318,18 @@ async def _event_frames(itinerary_id: int, subscription):
 
 @router.post("/{id}/chat-edit")
 def chat_edit(
-    id: int = Path(..., ge=1), body: ChatEditBody = Body(...), user: AuthUser | None = Depends(enforce_business_auth)
+    id: int = Path(..., ge=1), body: ChatEditBody = Body(...), user: AuthUser = Depends(enforce_business_auth)
 ) -> dict:
+    quota_service.enforce_llm_budget(user.id)
     return ok(itinerary_chat.chat_edit(user.id, id, body.message, body.history))
 
 
 @router.post("/{id}/chat-edit/stream")
 async def chat_edit_stream(
-    id: int = Path(..., ge=1), body: ChatEditBody = Body(...), user: AuthUser | None = Depends(enforce_business_auth)
+    id: int = Path(..., ge=1), body: ChatEditBody = Body(...), user: AuthUser = Depends(enforce_business_auth)
 ) -> StreamingResponse:
     """对话编辑的 SSE 变体：与非阻塞版同参构造、同一条落库收尾路径。"""
+    quota_service.enforce_llm_budget(user.id)
     await run_in_threadpool(itinerary_query.find_writable_main, user.id, id)
     return _sse(_sse_frames(itinerary_chat.chat_edit_stream(user.id, id, body.message, body.history)))
 

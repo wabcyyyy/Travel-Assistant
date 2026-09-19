@@ -1,4 +1,4 @@
-"""一次 Agent 运行的硬性边界：Deadline、模型调用和 Token 预算。
+"""一次 Agent 运行的硬性边界：Deadline、模型调用、检索与存在性解析、Token 预算。
 
 没有 active run 时函数保持兼容，不会限制离线工具单测；HTTP 入口通过
 ``observe_run`` 自动启用。限制由执行器检查，而不是只写在 Prompt 里。
@@ -24,10 +24,14 @@ class RunLimits:
     max_llm_calls: int = settings.max_llm_calls
     max_tokens: int = settings.max_token_budget
     max_replans: int = settings.max_replans
-    # 检索/证据类调用上限（研究补查、RAG、高德等），防止无界放大
+    # 检索/证据类调用上限（研究补查、联网搜索、外部点位 API），防止无界放大
     max_retrievals: int = settings.max_retrievals
+    # 存在性解析上限（PLAN-A1 G2）：一次 run 最多问多少个点位名"真的存在吗"。
+    # 实测一天行程约 30 个唯一名字，默认 24 让主行程基本覆盖、备选池有界。
+    max_existence_checks: int = settings.existence_resolve_limit
     llm_calls: int = 0
     retrievals: int = 0
+    existence_checks: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
     replans: int = 0
@@ -40,6 +44,8 @@ class RunLimits:
             raise RunLimitExceeded("模型调用预算已耗尽")
         if kind == "retrieval" and self.max_retrievals > 0 and self.retrievals >= self.max_retrievals:
             raise RunLimitExceeded("检索预算已耗尽")
+        if kind == "existence" and self.max_existence_checks > 0 and self.existence_checks >= self.max_existence_checks:
+            raise RunLimitExceeded("存在性解析预算已耗尽")
         if kind == "replan" and self.replans >= self.max_replans:
             raise RunLimitExceeded("局部重规划次数已耗尽")
 
@@ -48,6 +54,12 @@ class RunLimits:
         self.retrievals += max(1, int(n or 1))
         if self.max_retrievals > 0 and self.retrievals > self.max_retrievals:
             raise RunLimitExceeded("检索预算已耗尽")
+
+    def record_existence(self, n: int = 1) -> None:
+        """记录一次存在性解析；超预算抛出，由调用方降级为 UNKNOWN（不得当成不存在）。"""
+        self.existence_checks += max(1, int(n or 1))
+        if self.max_existence_checks > 0 and self.existence_checks > self.max_existence_checks:
+            raise RunLimitExceeded("存在性解析预算已耗尽")
 
     def record_llm(self, prompt_tokens: int = 0, completion_tokens: int = 0) -> None:
         self.llm_calls += 1
@@ -71,6 +83,8 @@ class RunLimits:
             "max_llm_calls": self.max_llm_calls,
             "retrievals": self.retrievals,
             "max_retrievals": self.max_retrievals,
+            "existence_checks": self.existence_checks,
+            "max_existence_checks": self.max_existence_checks,
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
             "max_tokens": self.max_tokens,

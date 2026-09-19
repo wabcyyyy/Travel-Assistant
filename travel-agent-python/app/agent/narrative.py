@@ -4,17 +4,21 @@
 backup_plan/day_options/note）做轻量清洗兜底——超限截断、类型非法降级为空、
 剥离用户指令残留分句，绝不让单条脏叙事炸掉整日行程（骨架照常交付）。
 
+同时将 LLM 输出边界**收口为唯一一处**（D6=C / P5）：模型自报的身份、坐标与
+溯源标签在这里统一剥掉，因为三条生成链（open_day / open_trip / 流式逐日）都在
+parse_llm_json 之后经过本函数，而知识/约束链的 items 由服务端自建、不经此处。
+
 实现要点：
 - 限值口径与 app/prompts/open_generation 契约、app/schemas/trip.py 的截断
   逐项对齐；
 - 同日同名去重（dedupe_same_day_items）是模型重复拆条的确定性兜底。
 
-依赖：generation_core.norm_poi_key、trace.record_event；re。
+依赖：generation_core（norm_poi_key、模型申报字段剥离）、trace.record_event；re。
 """
 
 import re
 
-from app.agent.generation_core import norm_poi_key
+from app.agent.generation_core import has_model_claims, norm_poi_key, strip_model_claims
 from app.agent.trace import record_event
 
 # 叙事字段规模上限：与 open_generation 契约、app/schemas/trip.py 的截断口径
@@ -162,11 +166,18 @@ def sanitize_narrative(plan: dict) -> dict:
     items = cleaned.get("items")
     if isinstance(items, list):
         fixed_items: list = []
+        claimed: list[str] = []
         for item in items:
             if not isinstance(item, dict):
                 fixed_items.append(item)  # 脏项交给 sanitize_itinerary_items 过滤
                 continue
             row = dict(item)
+            # 身份/位置/溯源标签由服务端解析器写，模型自报的一律剥掉（D6=C + G4）。
+            # 不剥的话，一个编出来的名字配上编出来的经纬度就能绕过整条接地链：
+            # 落地判据是"已有坐标就不再解析"，坐标权即存在性背书。
+            if has_model_claims(row):
+                claimed.append(str(row.get("poi_name") or row.get("poiName") or ""))
+                strip_model_claims(row)
             why = row.get("why_this")
             if why is None:
                 why = row.get("whyThis")
@@ -179,6 +190,8 @@ def sanitize_narrative(plan: dict) -> dict:
             else:
                 row["why_this"] = ""
             fixed_items.append(row)
+        if claimed:
+            record_event("decision", "model_claims_stripped", metadata={"names": claimed, "count": len(claimed)})
         # 同日同名点位去重（保留首条）：模型偶尔把同一景区按不同 tag 拆成多条
         cleaned["items"] = _dedupe_same_day_items(fixed_items)
     return cleaned

@@ -6,6 +6,8 @@
 | 指标 | 结果 |
 | --- | ---: |
 | poi_authority_rate | 100.00% |
+| poi_grounded_rate | 58.98% |
+| poi_refuted_count | 0.00% |
 | field_reference_rate | 100.00% |
 | time_conflict_rate | 0.00% |
 | route_violation_rate | 0.00% |

@@ -22,7 +22,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from app.agent import tools
+from app.agent import grounding, tools
 from app.agent.research import (
     merge_candidates,
     reasoning,
@@ -61,6 +61,7 @@ def _research_patch():
         patch.object(tools, "search_hotels", mock_llm.search_hotels),
         patch.object(tools, "get_consumption", mock_llm.get_consumption),
         patch.object(tools, "search_local_poi", mock_llm.search_local_poi),
+        patch.object(grounding, "resolve_poi", mock_llm.resolve_poi),
         patch.object(reasoning, "plan_research", mock_llm.plan_research),
         patch.object(reasoning, "evaluate_research", mock_llm.evaluate_research),
     )

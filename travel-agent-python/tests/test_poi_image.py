@@ -13,6 +13,7 @@ class _FakeResp:
 
     必须带 `.content`：G-3.2 起图片通道经 ExternalClient，会用它做响应字节
     上限检查（真实 httpx.Response 一定有此属性，桩缺了会静默降级成 None）。
+    必须带 `raise_for_status`：INV-9 补齐后 `fetch_json` 会先检查状态再解析。
     """
 
     def __init__(self, payload):
@@ -26,6 +27,9 @@ class _FakeResp:
 
     def json(self):
         return self._payload
+
+    def raise_for_status(self) -> None:
+        return None
 
 
 def test_attach_poi_images_skips_hotel_and_keeps_existing(monkeypatch):
@@ -58,7 +62,11 @@ def test_attach_poi_images_skips_hotel_and_keeps_existing(monkeypatch):
 
 
 def test_poi_image_returns_none_without_external_hit_and_caches(monkeypatch):
-    """去高德后：维基/图库都无图即 None（**不再回退高德**），且空结果也进缓存。"""
+    """去高德后：维基/图库都无图即 None（**不再回退高德**），且空结果也进缓存。
+
+    缓存只有一层：ExternalClient 的负结果短 TTL。旧实现额外叠了一个进程内 dict，
+    既无界又不过期（R3-1 删掉），所以这里"第二次不再外呼"的断言现在钉的是那一层。
+    """
     calls = []
 
     def fake_get(*_a, **_k):
@@ -68,7 +76,6 @@ def test_poi_image_returns_none_without_external_hit_and_caches(monkeypatch):
     monkeypatch.setattr(tools, "image_client", lambda: _StubClient(fake_get))
     monkeypatch.setattr(tools.settings, "unsplash_access_key", "")
     monkeypatch.setattr(tools.settings, "poi_image_wiki", True)
-    tools._poi_image_cache.clear()
 
     assert tools.poi_image("故宫", "北京") is None
     assert calls, "应至少尝试过维基检索"
@@ -83,7 +90,6 @@ def test_poi_image_prefers_wikipedia_then_unsplash(monkeypatch):
 
     monkeypatch.setattr(tools.settings, "poi_image_wiki", True)
     monkeypatch.setattr(tools.settings, "unsplash_access_key", "KEY")
-    tools._poi_image_cache.clear()
 
     def wiki_only(*_a, **_k):
         return _FakeResp(wiki_payload)
@@ -91,10 +97,23 @@ def test_poi_image_prefers_wikipedia_then_unsplash(monkeypatch):
     monkeypatch.setattr(tools, "image_client", lambda: _StubClient(wiki_only))
     assert tools.poi_image("西湖", "杭州") == "https://upload.wikimedia.org/x.jpg"
 
-    tools._poi_image_cache.clear()
     monkeypatch.setattr(tools.settings, "poi_image_wiki", False)
     monkeypatch.setattr(tools, "image_client", lambda: _StubClient(lambda *_a, **_k: _FakeResp(unsplash_payload)))
     assert tools.poi_image("西湖", "杭州") == "https://images.unsplash.com/abc"
+
+
+def test_unsplash_query_must_not_carry_the_city(monkeypatch):
+    """同城所有卡片带上城市词会命中同一批泛化风景图——生成链路同样受这条纪律约束。"""
+    seen = {}
+
+    def fake_get(_url, params=None, **_k):
+        seen["query"] = (params or {}).get("query")
+        return _FakeResp({"results": []})
+
+    monkeypatch.setattr(tools, "image_client", lambda: _StubClient(fake_get))
+    monkeypatch.setattr(tools.settings, "unsplash_access_key", "KEY")
+    assert tools._unsplash_image("灵隐寺") is None
+    assert seen["query"] == "灵隐寺"
 
 
 def test_unsplash_disabled_returns_none(monkeypatch):
@@ -106,5 +125,5 @@ def test_unsplash_disabled_returns_none(monkeypatch):
 
     monkeypatch.setattr(tools, "image_client", lambda: _StubClient(fake_get))
     monkeypatch.setattr(tools.settings, "unsplash_access_key", "")
-    assert tools._unsplash_image("故宫", "北京") is None
+    assert tools._unsplash_image("故宫") is None
     assert hits == []

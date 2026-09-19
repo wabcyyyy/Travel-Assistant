@@ -1,13 +1,8 @@
 import type { ItineraryDetail } from '../types/itinerary'
+import { typeLabel } from '../components/trip/day-card/shared'
+import { cssVar } from './cssVar'
 
 const FONT = '"Microsoft YaHei", "PingFang SC", "Helvetica Neue", sans-serif'
-
-const TYPE_LABEL: Record<string, string> = {
-  attraction: '景点',
-  food: '餐饮',
-  hotel: '酒店',
-  transport: '交通',
-}
 
 interface Row {
   type: string
@@ -18,6 +13,23 @@ interface Row {
   remark: string
 }
 
+/**
+ * 把每天的点位映射成导出行（纯函数，可单测）：`type` 走全站唯一口径 typeLabel（R5-3），
+ * 与日卡界面共用同一措辞——导出 PNG 与界面不再漂移。
+ */
+export function buildDayRows(detail: ItineraryDetail): Row[][] {
+  return detail.dayList.map((day) =>
+    day.items.map((item) => ({
+      type: typeLabel(item.itemType),
+      name: item.poiName,
+      time: item.startTime ? `${item.startTime}${item.endTime ? ' - ' + item.endTime : ''}` : '',
+      duration: item.durationMin ? `${item.durationMin}分` : '',
+      cost: item.cost != null ? `￥${item.cost}` : '',
+      remark: item.remark || '',
+    })),
+  )
+}
+
 export function exportItineraryImage(detail: ItineraryDetail) {
   const width = 920
   const margin = 32
@@ -26,16 +38,18 @@ export function exportItineraryImage(detail: ItineraryDetail) {
   const headerH = 96
   const budgetH = 168
 
-  const dayRows = detail.dayList.map((day) =>
-    day.items.map((item) => ({
-      type: TYPE_LABEL[item.itemType] || item.itemType,
-      name: item.poiName,
-      time: item.startTime ? `${item.startTime}${item.endTime ? ' - ' + item.endTime : ''}` : '',
-      duration: item.durationMin ? `${item.durationMin}分` : '',
-      cost: item.cost != null ? `￥${item.cost}` : '',
-      remark: item.remark || '',
-    }))
-  )
+  // 取色一律走 --lp-* 令牌（R5-4）：canvas 侧不留裸 hex，theme-lint 扩扫 .ts 亦绿。
+  const surface = cssVar('--lp-surface-1')
+  const stripe = cssVar('--lp-surface-2')
+  const ink = cssVar('--lp-text-1')
+  const muted = cssVar('--lp-text-muted')
+  const accent = cssVar('--lp-accent')
+  const onFill = cssVar('--lp-accent-on-fill')
+  const success = cssVar('--lp-success')
+  const successSoft = cssVar('--lp-success-soft')
+  const danger = cssVar('--lp-danger')
+
+  const dayRows = buildDayRows(detail)
 
   const dayBlockHeights = dayRows.map((rows) => 44 + rows.length * lineHeight)
   const contentH =
@@ -46,17 +60,17 @@ export function exportItineraryImage(detail: ItineraryDetail) {
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d')!
-  ctx.fillStyle = '#f5f7fa'
+  ctx.fillStyle = surface
   ctx.fillRect(0, 0, width, height)
 
   let y = margin
 
-  ctx.fillStyle = '#303133'
+  ctx.fillStyle = ink
   ctx.font = `700 26px ${FONT}`
   ctx.textAlign = 'center'
   ctx.fillText(detail.title, width / 2, y + 26)
   ctx.font = `14px ${FONT}`
-  ctx.fillStyle = '#909399'
+  ctx.fillStyle = muted
   const meta = [
     detail.city,
     `${detail.days} 天 ${detail.persons} 人`,
@@ -69,16 +83,15 @@ export function exportItineraryImage(detail: ItineraryDetail) {
 
   dayRows.forEach((rows, dayIndex) => {
     const day = detail.dayList[dayIndex]
-    ctx.fillStyle = '#409eff'
+    ctx.fillStyle = accent
     ctx.fillRect(margin, y, contentWidth, 32)
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = onFill
     ctx.font = `600 15px ${FONT}`
     ctx.textAlign = 'left'
     const dayTitle = `第 ${day.dayNo} 天${day.travelDate ? '（' + day.travelDate + '）' : ''}`
     ctx.fillText(dayTitle, margin + 12, y + 21)
     y += 32
 
-    ctx.fillStyle = '#f5f7fa'
     ctx.font = `12px ${FONT}`
     const headers: [string, number][] = [
       ['类型', 76],
@@ -91,22 +104,22 @@ export function exportItineraryImage(detail: ItineraryDetail) {
     const baseX = margin + 12
     let colX = baseX
     const colWidths = headers.map(([, w]) => w)
-    ctx.fillStyle = '#f5f7fa'
+    ctx.fillStyle = surface
     ctx.fillRect(margin, y, contentWidth, lineHeight)
-    ctx.fillStyle = '#909399'
+    ctx.fillStyle = muted
     headers.forEach(([label, w]) => {
       ctx.fillText(label, colX, y + 19)
       colX += w === 0 ? contentWidth - 12 - (colX - margin) : w
     })
     y += lineHeight
 
-    ctx.fillStyle = '#303133'
+    ctx.fillStyle = ink
     rows.forEach((row: Row, rowIndex: number) => {
       if (rowIndex % 2 === 1) {
-        ctx.fillStyle = '#fafafa'
+        ctx.fillStyle = stripe
         ctx.fillRect(margin, y, contentWidth, lineHeight)
       }
-      ctx.fillStyle = '#303133'
+      ctx.fillStyle = ink
       const values = [row.type, row.name, row.time, row.duration, row.cost, row.remark]
       colX = baseX
       values.forEach((value, index) => {
@@ -120,32 +133,32 @@ export function exportItineraryImage(detail: ItineraryDetail) {
   })
 
   y -= 12
-  ctx.fillStyle = '#67c23a'
+  ctx.fillStyle = success
   ctx.fillRect(margin, y, contentWidth, 32)
-  ctx.fillStyle = '#ffffff'
+  ctx.fillStyle = onFill
   ctx.font = `600 15px ${FONT}`
   ctx.fillText('预算明细', margin + 12, y + 21)
   y += 32
 
-  ctx.fillStyle = '#303133'
+  ctx.fillStyle = ink
   ctx.font = `13px ${FONT}`
   const budgetLabelWidth = 120
   const barMaxWidth = contentWidth - budgetLabelWidth - 180
   detail.budgetList.forEach((b) => {
     const label = `${b.category}  ￥${b.amount}`
     ctx.fillText(label, margin + 12, y + 21)
-    ctx.fillStyle = '#e9f5e4'
+    ctx.fillStyle = successSoft
     ctx.fillRect(margin + 12 + budgetLabelWidth, y + 10, barMaxWidth, 16)
-    ctx.fillStyle = '#67c23a'
+    ctx.fillStyle = success
     const maxAmount = Math.max(...detail.budgetList.map((x) => Number(x.amount)), 1)
     const barW = (Number(b.amount) / maxAmount) * barMaxWidth
     ctx.fillRect(margin + 12 + budgetLabelWidth, y + 10, barW, 16)
-    ctx.fillStyle = '#303133'
+    ctx.fillStyle = ink
     y += lineHeight
   })
   y += 4
   ctx.font = `700 15px ${FONT}`
-  ctx.fillStyle = '#f56c6c'
+  ctx.fillStyle = danger
   ctx.fillText(`合计：￥${detail.totalAmount}`, margin + 12, y + 21)
 
   canvas.toBlob((blob) => {

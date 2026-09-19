@@ -10,6 +10,7 @@ import json
 import logging
 
 from app.agent.run_limits import current_limits
+from app.agent.trace import record_event
 from app.common.addons import addons
 from app.common.config import settings
 from app.common.external_client import BACKGROUND, ExternalClient
@@ -32,7 +33,10 @@ def web_search_enabled() -> bool:
     return bool(settings.web_search_enabled and settings.llm_api_key and addons.is_enabled("web_search"))
 
 
-def _check_budget() -> bool:
+def _check_budget(caller: str) -> bool:
+    """检索预算检查。耗尽必须**响亮**：静默返回空会被上层当成"搜了但没有"，
+    于是"证据为零"与"预算没了"在报表里长成同一个样子（PLAN-A1 P4 的成因之一）。
+    """
     limits = current_limits()
     if not limits:
         return True
@@ -40,13 +44,19 @@ def _check_budget() -> bool:
         limits.check("retrieval")
         limits.record_retrieval(1)
         return True
-    except Exception:
+    except Exception as exc:
+        record_event(
+            "decision",
+            "web_search_budget_exhausted",
+            status="error",
+            metadata={"caller": caller, "error": str(exc)[:120]},
+        )
         return False
 
 
 def web_search_text(question: str, *, max_tokens: int = 400) -> str:
     """联网问答，返回纯文本；失败返回空串。"""
-    if not web_search_enabled() or not question or not _check_budget():
+    if not web_search_enabled() or not question or not _check_budget("web_search_text"):
         return ""
     try:
         client = get_llm_client()
@@ -72,7 +82,7 @@ def web_search_json(question: str, *, schema_hint: str, max_tokens: int = 800) -
     prompt = question.strip()[:500]
 
     def _load() -> dict | list | None:
-        if not _check_budget():
+        if not _check_budget("web_search_json"):
             return None
         client = get_llm_client()
         raw = client.complete(

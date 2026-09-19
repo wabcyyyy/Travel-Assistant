@@ -123,9 +123,14 @@ def test_token_check(monkeypatch, in_memory_addons):
     assert mcp_api._authorized({b"authorization": b"Bearer wrong"}) is False
     assert mcp_api._authorized({b"authorization": b"Bearer s3cret"}) is True
     assert mcp_api._authorized({b"x-agent-token": b"s3cret"}) is True
-    # 未配置令牌（回环部署）：与 HTTP 直调面同口径放行
+    # 未配置令牌（回环部署）：只读面照旧放行
     monkeypatch.setattr(settings, "agent_internal_token", "")
     assert mcp_api._authorized({}) is True
+    # 但写面不行：MCP 写工具的 user_id 由调用方自备，没凭据的端口上开写入
+    # 等于任何人可读写他人行程（R1-8）
+    addons.set_enabled("mcp_write", True, changed_by="admin")
+    assert mcp_api._authorized({}) is False
+    assert mcp_api._authorized({b"x-agent-token": b""}) is False
 
 
 def test_end_to_end_list_and_call(monkeypatch, in_memory_addons):

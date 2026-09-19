@@ -19,9 +19,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
+from app.agent.existence import VERIFIED, ResolveResult
 from app.agent.nl_edit import EditOp
 from app.api.business.auth import auth_router
 from app.api.business.itinerary import router as itinerary_router
+from app.common import cache_store
 from app.common.config import settings
 from app.common.envelope import install_exception_handlers
 from app.db import session as db_session
@@ -33,7 +35,7 @@ from app.db.models import (
     ItineraryMain,
     SysUser,
 )
-from app.services import cache_store, itinerary_city, itinerary_nl_edit, user_service
+from app.services import itinerary_city, itinerary_nl_edit, user_service
 
 JWT_MATERIAL = "example-only-hs256-test-signing-material"
 PASSWORD = "example123"
@@ -48,7 +50,7 @@ def db(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "redis_url", "redis://127.0.0.1:1/0")
     cache_store.reset_for_tests()
     # 语料库退役：nl-edit 的外部地点解析/酒店候选默认给空（用例按需覆盖）
-    monkeypatch.setattr(itinerary_nl_edit, "get_poi_detail", lambda city, name: None)
+    monkeypatch.setattr(itinerary_nl_edit, "resolve_poi", lambda name, city: ResolveResult.unknown("stub_off"))
     monkeypatch.setattr(itinerary_nl_edit, "search_hotels", lambda city, limit=8: [])
     _seed()
     yield
@@ -178,17 +180,18 @@ def test_add_op_resolves_external_place_and_marks_coords_verified(client: TestCl
     """外部地点层命中的点位要带真实坐标与来源，坐标按 observed、票价留白走估价。"""
     trip_id = _trip_id(client)
 
-    def _hit(city, name):
-        return {
-            "id": "N123",
-            "name": name,
-            "latitude": 30.2407,
-            "longitude": 120.1315,
-            "address": "浙江省杭州市 法云弄1号",
-            "source": "nominatim",
-        }
+    def _hit(name, city):
+        return ResolveResult(
+            state=VERIFIED,
+            provider="nominatim",
+            name=name,
+            external_id="N123",
+            latitude=30.2407,
+            longitude=120.1315,
+            address="浙江省杭州市 法云弄1号",
+        )
 
-    monkeypatch.setattr(itinerary_nl_edit, "get_poi_detail", _hit)
+    monkeypatch.setattr(itinerary_nl_edit, "resolve_poi", _hit)
     _ops(monkeypatch, EditOp(action="add", day_no=2, poi_name="灵隐寺"))
     client.post(f"/api/itinerary/{trip_id}/nl-edit", json={"instruction": "第二天加灵隐寺"})
 
@@ -384,3 +387,28 @@ def test_poi_nearby_degrades_silently_and_applies_default_limit(client: TestClie
 
     monkeypatch.setattr(itinerary_city, "find_nearby_pois", explode)
     assert client.post("/api/itinerary/poi-nearby", json={"city": "杭州"}).json()["data"] == {"items": []}
+
+
+def test_add_op_refuses_endorsement_for_out_of_area_resolution(client: TestClient, monkeypatch) -> None:
+    """解析成功但落在别的城市：点位照样加入（用户点名要的），但不给外部背书。"""
+    trip_id = _trip_id(client)
+
+    def _elsewhere(name, city):
+        return ResolveResult(
+            state="unknown",
+            provider="nominatim",
+            name=name,
+            out_of_area=True,
+            latitude=31.85,
+            longitude=117.22,
+            reason="resolved_out_of_area",
+        )
+
+    monkeypatch.setattr(itinerary_nl_edit, "resolve_poi", _elsewhere)
+    _ops(monkeypatch, EditOp(action="add", day_no=2, poi_name="方所书店"))
+    client.post(f"/api/itinerary/{trip_id}/nl-edit", json={"instruction": "第二天加方所书店"})
+
+    with db_session.session_scope() as session:
+        item = session.execute(select(ItineraryItem).where(ItineraryItem.poi_name == "方所书店")).scalar_one()
+        assert item.latitude is None and item.longitude is None
+        assert item.verification_status == "unverified"

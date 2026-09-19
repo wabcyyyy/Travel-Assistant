@@ -22,13 +22,12 @@ describe('theme.css v2.6/v2.8 契约（字体 + day-tint）', () => {
     expect(css).toMatch(/--lp-font-ui:\s*'Poppins',\s*'Geist Sans'/)
   })
 
-  it('day-tint 四档透明度与亮度界为 TREK 实测原值', () => {
+  it('day-tint 消费中的三档透明度为 TREK 实测原值', () => {
+    // 只断言有 var() 消费者的令牌（badge/header/header-hover）；
+    // activity/l-min/l-max 目前全站零消费，属同义反复，R5-8 移出断言。
     expect(css).toMatch(/--lp-day-tint-badge:\s*16%/)
     expect(css).toMatch(/--lp-day-tint-header:\s*8%/)
     expect(css).toMatch(/--lp-day-tint-header-hover:\s*14%/)
-    expect(css).toMatch(/--lp-day-tint-activity:\s*6%/)
-    expect(css).toMatch(/--lp-day-tint-l-min:\s*0\.4/)
-    expect(css).toMatch(/--lp-day-tint-l-max:\s*0\.78/)
   })
 
   it('天色相：D1–D8 色相（默认 + teal 两套）与 8 个派生色齐备', () => {

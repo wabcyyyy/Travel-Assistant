@@ -20,11 +20,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.api.business import itinerary as itinerary_routes
+from app.common import cache_store
 from app.common.envelope import ApiError, install_exception_handlers
 from app.common.task_pool import TaskRejected
 from app.db import session as db_session
 from app.db.models import Base
-from app.services import cache_store, itinerary_generation
+from app.services import itinerary_generation
 
 
 @pytest.fixture(autouse=True)

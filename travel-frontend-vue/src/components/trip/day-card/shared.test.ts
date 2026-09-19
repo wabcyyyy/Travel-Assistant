@@ -14,7 +14,8 @@ import {
   spotName,
   typeLabel,
 } from './shared'
-import type { DayPlan } from '../../../types/itinerary'
+import { buildDayRows } from '../../../utils/exportImage'
+import type { DayPlan, ItineraryDetail, TripItem } from '../../../types/itinerary'
 
 function day(overrides: Partial<DayPlan> = {}): DayPlan {
   return { dayId: 1, dayNo: 1, items: [], ...overrides }
@@ -69,6 +70,32 @@ describe('typeLabel', () => {
   it('白名单映射，未知类型原样透传', () => {
     expect(typeLabel('attraction')).toBe('景点')
     expect(typeLabel('souvenir')).toBe('souvenir')
+  })
+
+  it('权威措辞锁定：美食/酒店/交通/景点/购物/其他（R5-3 单一真源）', () => {
+    expect(typeLabel('food')).toBe('美食')
+    expect(typeLabel('hotel')).toBe('酒店')
+    expect(typeLabel('transport')).toBe('交通')
+    expect(typeLabel('shopping')).toBe('购物')
+    expect(typeLabel('other')).toBe('其他')
+  })
+
+  it('导出 PNG 的行类型标签与日卡界面逐字一致（R5-3 漂移闸门）', () => {
+    const item = (itemType: string) => ({ itemType, poiName: 'x' }) as unknown as TripItem
+    const detail = {
+      dayList: [
+        {
+          dayId: 1,
+          dayNo: 1,
+          items: [item('attraction'), item('food'), item('hotel'), item('transport')],
+        },
+      ],
+    } as unknown as ItineraryDetail
+    const rows = buildDayRows(detail)[0]!
+    const types = rows.map((r) => r.type)
+    // 界面（typeLabel）与导出（buildDayRows→typeLabel）两侧必须同一串，且 food=美食非餐饮
+    expect(types).toEqual(['景点', '美食', '酒店', '交通'])
+    expect(types).toEqual(['attraction', 'food', 'hotel', 'transport'].map(typeLabel))
   })
 })
 

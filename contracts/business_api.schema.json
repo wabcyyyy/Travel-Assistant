@@ -1759,6 +1759,144 @@
       "title": "InvitationAcceptVO",
       "type": "object"
     },
+    "FeedbackCreate": {
+      "properties": {
+        "itemId": {
+          "minimum": 1,
+          "title": "Itemid",
+          "type": "integer"
+        },
+        "value": {
+          "enum": [
+            "right",
+            "wrong"
+          ],
+          "title": "Value",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "wrong_location",
+                "wrong_time",
+                "wrong_price",
+                "not_interested",
+                "closed",
+                "other"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "itemId",
+        "value",
+        "reason",
+        "note"
+      ],
+      "title": "FeedbackCreate",
+      "type": "object"
+    },
+    "FeedbackVO": {
+      "properties": {
+        "itemId": {
+          "title": "Itemid",
+          "type": "integer"
+        },
+        "value": {
+          "enum": [
+            "right",
+            "wrong"
+          ],
+          "title": "Value",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "wrong_location",
+                "wrong_time",
+                "wrong_price",
+                "not_interested",
+                "closed",
+                "other"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Note"
+        },
+        "createdAt": {
+          "title": "Createdat",
+          "type": "string"
+        },
+        "updatedAt": {
+          "title": "Updatedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "itemId",
+        "value",
+        "reason",
+        "note",
+        "createdAt",
+        "updatedAt"
+      ],
+      "title": "FeedbackVO",
+      "type": "object"
+    },
+    "FeedbackListVO": {
+      "properties": {
+        "feedbacks": {
+          "items": {
+            "$ref": "#/$defs/FeedbackVO"
+          },
+          "title": "Feedbacks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "feedbacks"
+      ],
+      "title": "FeedbackListVO",
+      "type": "object"
+    },
     "TemplateCostTier": {
       "properties": {
         "category": {

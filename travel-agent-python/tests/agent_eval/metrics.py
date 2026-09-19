@@ -5,8 +5,9 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from app.agent.grounding_evidence import lookup_ticket
 from app.agent.intent import build_intent_keywords
-from app.agent.places import map_directions_url
+from app.agent.map_link import map_directions_url
 from app.agent.reflect import _item_end, _item_start, estimate_transfer_minutes
 
 
@@ -123,11 +124,26 @@ def evaluate_narrative(response, case: dict) -> dict:
     }
 
 
+def _anchored(item: dict, city: str) -> bool:
+    """这一项能不能对上本服务签发的证据票（"有来源"的唯一凭据）。"""
+    name = str(item.get("poi_name") or "").strip()
+    if not name:
+        return False
+    return lookup_ticket(name, city, str(item.get("poi_id") or "")) is not None
+
+
 def evaluate_response(response, case: dict, catalog: dict, trace: dict) -> dict:
     items = _items(response)
     all_known = {p["name"]: p for p in catalog["attractions"] + catalog["foods"] + catalog["hotels"]}
     poi_items = [i for i in items if i.get("item_type") in ("attraction", "food", "hotel")]
-    authoritative = [i for i in poi_items if i.get("poi_name") in all_known]
+    city = str(case.get("city") or "")
+    # D11A：权威判定与 fixture 目录解耦——过去"名字在目录里"就算权威，等于
+    # 用出题的表给自己打分。现在认的是证据票：目录行必须显式签票才算查到过。
+    authoritative = [i for i in poi_items if _anchored(i, city)]
+    grounded = [
+        i for i in poi_items if _anchored(i, city) and has_coord(i.get("latitude")) and has_coord(i.get("longitude"))
+    ]
+    refuted = len((response.schedule_report or {}).get("refuted_pois_dropped") or [])
     field_matches = []
     for item in authoritative:
         source = all_known[item["poi_name"]]
@@ -206,6 +222,10 @@ def evaluate_response(response, case: dict, catalog: dict, trace: dict) -> dict:
         "days": len(response.daily_plans),
         "total_items": len(items),
         "poi_authority_rate": round(len(authoritative) / max(len(poi_items), 1), 4),
+        # 与 coord_valid_rate 成对看：只算坐标会给"模型自填坐标"记成功，
+        # 只算票会漏掉"查到过但这一版没落上坐标"——两个一起才看得清接地质量。
+        "poi_grounded_rate": round(len(grounded) / max(len(poi_items), 1), 4),
+        "poi_refuted_count": refuted,
         "field_reference_rate": round(field_reference_rate, 4),
         "time_conflict_rate": round(conflicts / pairs, 4) if pairs else 0.0,
         "route_violation_rate": round(route_violations / route_pairs, 4) if route_pairs else 0.0,

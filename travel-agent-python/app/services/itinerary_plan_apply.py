@@ -26,13 +26,7 @@ from app.db.models import ItineraryDay, ItineraryItem
 from app.db.session import session_scope
 from app.schemas.business.itinerary import HotelOptionRequest
 from app.schemas.trip import MAX_TRIP_DAYS
-from app.services import (
-    budget_engine,
-    itinerary_chat,
-    itinerary_query,
-    itinerary_version,
-    season_price,
-)
+from app.services import budget_engine, itinerary_chat, itinerary_query, itinerary_version, season_price
 
 logger = logging.getLogger(__name__)
 

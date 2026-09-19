@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import DiscoverPanel from './DiscoverPanel.vue'
 import { useItineraryStore } from '../../store/itinerary'
 import type { ItineraryDetail } from '../../types/itinerary'
+import { SUGGESTION_UNVERIFIED_LABEL } from '../../constants/data-provenance'
 
 // 本地检索 API 边界替身：断言发现面板发出的检索参数
 const pois = vi.hoisted(() => ({ searchLocalPois: vi.fn() }))
@@ -57,11 +58,11 @@ function buttonByText(text: string): HTMLButtonElement {
   return found
 }
 
-async function mountPanel() {
+async function mountPanel(detail: ItineraryDetail = DETAIL) {
   const pinia = createPinia()
   setActivePinia(pinia)
   const store = useItineraryStore()
-  store.setDetail(DETAIL)
+  store.setDetail(detail)
   const wrapper = mount(DiscoverPanel, {
     global: { plugins: [pinia] },
     attachTo: document.body,
@@ -173,5 +174,21 @@ describe('DiscoverPanel 检索', () => {
     buttonByText('清除').click()
     await nextTick()
     expect(qa('.poi-card')).toHaveLength(2)
+  })
+})
+
+
+describe('DiscoverPanel 备选池溯源标签（PLAN-A1 G6-A）', () => {
+  it('没被外部数据源证实的备选带「未核实」，带回真实坐标的不带', async () => {
+    const detail = structuredClone(DETAIL) as unknown as ItineraryDetail
+    detail.suggestions = [
+      { name: '龙井村', category: 'attraction', latitude: 30.22, longitude: 120.12 },
+      { name: '某家小店', category: 'food' },
+    ] as never
+    await mountPanel(detail)
+
+    const chips = qa('.poi-unverified').map((el) => el.textContent?.trim())
+    expect(chips).toEqual([SUGGESTION_UNVERIFIED_LABEL])
+    expect(q('.poi-name').textContent).not.toContain(SUGGESTION_UNVERIFIED_LABEL)
   })
 })

@@ -13,8 +13,6 @@ import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from fastapi import HTTPException, Request, status
-
 from app.common import jwt_compat, token_revocation, user_repository
 from app.common.config import settings
 
@@ -69,18 +67,3 @@ def authenticate(token: str | None) -> AuthUser | None:
     if user.get("status") not in (None, 1):
         return None
     return AuthUser(id=int(user["id"]), username=username, role=str(user.get("role") or "user"))
-
-
-def require_user(request: Request) -> AuthUser:
-    token, _source = extract_token(request.headers.get("Authorization"), request.cookies)
-    user = authenticate(token)
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
-    return user
-
-
-def require_admin(request: Request) -> AuthUser:
-    user = require_user(request)
-    if not user.is_admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
-    return user

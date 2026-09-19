@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import copy
 import re
+from collections.abc import Mapping
 from math import asin, cos, radians, sin, sqrt
 from typing import Any, TypedDict
 
@@ -308,6 +309,40 @@ def filter_dirty_items(items: list[Any] | None) -> list[dict]:
     return out
 
 
+# 模型不得申报的字段（D6=C + G4）：点位身份、位置与溯源标签一律由服务端解析器写。
+# 允许模型自填坐标/来源等于给编造的名字发一张真地图钉——落地链"已有坐标就不
+# 解析"的判据会被直接绕过，幻觉点位从此不再经过任何存在性检查。
+_MODEL_CLAIM_KEYS = (
+    "latitude",
+    "longitude",
+    "poi_id",
+    "poiId",
+    "xid",
+    "source",
+    "source_updated_at",
+    "sourceUpdatedAt",
+    "verification_status",
+    "verificationStatus",
+    "value_kind",
+    "valueKind",
+    "freshness_status",
+    "freshnessStatus",
+    "review_requirement",
+    "reviewRequirement",
+)
+
+
+def has_model_claims(item: Mapping[str, Any]) -> bool:
+    """这一项是否试图自报身份/位置/标签（剥离与计数共用同一判据）。"""
+    return any(item.get(key) not in (None, "", [], {}) for key in _MODEL_CLAIM_KEYS)
+
+
+def strip_model_claims(item: dict[str, Any]) -> None:
+    """就地剥掉模型自报的身份/位置/标签字段。"""
+    for key in _MODEL_CLAIM_KEYS:
+        item.pop(key, None)
+
+
 def _max_day_no(plans: list[dict]) -> int:
     m = 0
     for plan in plans:
@@ -327,9 +362,18 @@ _NAME_SEPARATOR_RE = re.compile(r"[\s·・、,，。．.\-—_]+")
 _EARTH_RADIUS_M = 6371000.0
 
 
+def strip_name_annotation(name: Any) -> str:
+    """剥掉地点名里的括号注记（分店/别名/原文注音），保留其余文本。
+
+    单一真源：去重键与存在性解析的查询串都必须用同一种写法——「楼外楼（孤山路
+    总店）」与「楼外楼」是同一家店，实测有 24/192 个点位只因这串注记而查不到。
+    """
+    return _BRACKET_ANNOTATION_RE.sub("", str(name or "")).strip()
+
+
 def norm_poi_key(name) -> str:
     """POI 名称归一化键：同名判定（同日/跨天去重）与 used 比对共用。"""
-    s = _BRACKET_ANNOTATION_RE.sub("", str(name or ""))
+    s = strip_name_annotation(name)
     s = _NAME_SEPARATOR_RE.sub("", s)
     return s.lower().casefold()
 

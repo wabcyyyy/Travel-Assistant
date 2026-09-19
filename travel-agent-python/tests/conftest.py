@@ -21,6 +21,24 @@ def _default_clear_agent_internal_token(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _neutralize_ip_and_user_limits(monkeypatch):
+    """限速/配额在离线套件里默认放到极大值。
+
+    上面的 `_pin_redis_unreachable` 把所有窗口都打到 `state_and_sessions` 的**进程内**
+    兜底实现上，而那张表整个 pytest 会话共用：不放开的话，"某个用户在本进程里的第 7 次
+    generate"会随机撞进 429，测试之间互相污染。专项用例自行 monkeypatch 回小值
+    （见 tests/test_quota_service.py、tests/test_media_endpoints.py 的限速用例）。
+    """
+    from app.common.config import settings
+
+    monkeypatch.setattr(settings, "user_llm_runs_per_minute", 100_000)
+    monkeypatch.setattr(settings, "user_daily_llm_runs", 100_000)
+    monkeypatch.setattr(settings, "public_rate_limit_per_minute", 100_000)
+    monkeypatch.setattr(settings, "share_rate_limit_per_minute", 100_000)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _pin_redis_unreachable(monkeypatch):
     """离线套件的既有假设：默认环境**无可用 Redis**（CI 即如此）。
 
@@ -42,6 +60,27 @@ def _disable_weather(monkeypatch):
     from app.common.config import settings
 
     monkeypatch.setattr(settings, "weather_enabled", False)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _disable_live_geocoding(monkeypatch):
+    """离线套件默认关掉一切外部地理数据源（与上面的天气开关同构）。
+
+    2026-09-18 量测时发现的存量问题：`local_ground` 在单测里会真打公网解析
+    「拙政园」，于是同一断言在 CI（无外网）与本机（有外网）走的是不同分支——
+    用例"绿"的原因不一致。存在性判定层同理：OTM 有真 key 时，连"删不删点位"
+    这种判定都会随本机密钥漂移。
+
+    需要接地/解析语义的用例请显式打桩（`existence.resolve_poi` 或
+    `landing.local_ground`），见 test_existence / test_audit_fixes / test_day_stream。
+    """
+    from app.common.config import settings
+
+    monkeypatch.setattr(settings, "nominatim_enabled", False)
+    monkeypatch.setattr(settings, "otm_api_key", "")
+    monkeypatch.setattr(settings, "amap_web_key", "")
+    monkeypatch.setattr(settings, "google_places_api_key", "")
     yield
 
 
@@ -71,6 +110,16 @@ def _clear_external_client_caches():
     yield
     for client in clients:
         client.clear_cache()
+
+
+@pytest.fixture(autouse=True)
+def _reset_existence_memo():
+    """存在性判定按 (城市, 名字) 记忆化，跨用例复用会把上一个用例的结论漏进来。"""
+    from app.agent.existence import reset_existence_state
+
+    reset_existence_state()
+    yield
+    reset_existence_state()
 
 
 @pytest.fixture(autouse=True)

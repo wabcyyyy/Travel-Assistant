@@ -35,12 +35,7 @@ from app.db.models import (
 )
 from app.db.session import session_scope
 from app.schemas.business.itinerary import ItemUpsertRequest
-from app.services import (
-    budget_engine,
-    itinerary_chat,
-    itinerary_query,
-    itinerary_version,
-)
+from app.services import budget_engine, itinerary_chat, itinerary_query, itinerary_version
 
 logger = logging.getLogger(__name__)
 VALID_ITEM_TYPES = ("attraction", "food", "hotel", "transport")

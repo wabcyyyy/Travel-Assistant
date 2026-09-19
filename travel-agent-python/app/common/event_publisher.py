@@ -17,9 +17,9 @@
 与 5s 熔断；reset_event_publisher 供测试隔离用例间的客户端与熔断状态。
 """
 
-import itertools
 import json
 import logging
+import threading
 from datetime import datetime, timedelta, timezone
 
 import redis
@@ -34,8 +34,25 @@ _TZ_CST = timezone(timedelta(hours=8))
 # seq 计数键 TTL：与 Java 端一致，覆盖一次行程生成的最长会话窗口即可
 _SEQ_TTL_SECONDS = 7200
 
-# Redis 不可用时的进程内序号（Java 的 AtomicLong fallbackSeq 同物；CPython 下 next() 自身原子）
-_fallback_seq = itertools.count(1)
+# Redis 不可用时的进程内序号：**按行程**各记一个"已发出的最大 seq"（R2-1）。
+# 旧实现是进程级共享的 `itertools.count(1)`：行程 42 已经从 Redis 拿到 80，一次
+# 熔断就让它的下一帧退到全局计数（比如 5）——既回退又插进别的行程的流里，
+# 直接违反 INV-5「seq 单调」，而前端是按 seq 去重的，回退等于丢真事件。
+# 这份记忆同时兜住"Redis 恢复后计数器已被清掉（TTL 7200s）"的回退窗口。
+_last_seq: dict[int, int] = {}
+_last_seq_lock = threading.Lock()
+#: 长跑进程的护栏：超量直接清空（丢的是地板值，不是数据；重连后仍会各自增长）
+_LAST_SEQ_MAX = 4096
+
+
+def _advance_seq(itinerary_id: int, candidate: int) -> int:
+    """同一行程内 seq 只增不减：Redis 与降级路径切换都不能让它倒退。"""
+    with _last_seq_lock:
+        if len(_last_seq) > _LAST_SEQ_MAX:
+            _last_seq.clear()
+        value = max(candidate, _last_seq.get(itinerary_id, 0) + 1)
+        _last_seq[itinerary_id] = value
+        return value
 
 
 def _get_client() -> redis.Redis:
@@ -56,6 +73,8 @@ def reset_event_publisher() -> None:
     """测试钩子：丢弃共享客户端、熔断状态与进程内订阅表，保证用例之间互不串状态。"""
     redis_client.reset_for_tests()
     event_hub.reset_for_tests()
+    with _last_seq_lock:
+        _last_seq.clear()
 
 
 def _next_seq(itinerary_id: int) -> int:
@@ -69,10 +88,10 @@ def _next_seq(itinerary_id: int) -> int:
         client = _get_client()
         seq = client.incr(key)
         client.expire(key, _SEQ_TTL_SECONDS)
-        return int(seq)
+        return _advance_seq(int(itinerary_id), int(seq))
     except Exception as exc:
         redis_client.note_failure(exc)
-        return next(_fallback_seq)
+        return _advance_seq(int(itinerary_id), 1)
 
 
 def build_envelope(

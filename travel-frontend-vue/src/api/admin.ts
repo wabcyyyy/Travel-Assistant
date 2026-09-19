@@ -169,20 +169,10 @@ export interface AddonInfo {
   enabled: boolean
 }
 
-export interface AddonAuditRow {
-  enabled: boolean
-  changedBy: string
-  createdAt: string
-}
-
 export function getAddons() {
   return requestGet<{ addons: AddonInfo[] }>('/admin/addons')
 }
 
 export function setAddon(key: AddonInfo['key'], enabled: boolean) {
   return requestPut<{ key: string; enabled: boolean }>(`/admin/addons/${key}`, { enabled })
-}
-
-export function getAddonAudit(key: AddonInfo['key']) {
-  return requestGet<{ audit: AddonAuditRow[] }>(`/admin/addons/${key}/audit`)
 }

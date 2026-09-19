@@ -1,20 +1,22 @@
-"""事实落地：坐标校验与外部数据补点（G-2.2 自 day_stream 拆出）。
+"""事实落地：把点位名变成带真实坐标与来源的事实（G-2.2 自 day_stream 拆出）。
 
 职责：
 - has_coord：坐标存在且非 0/0（0/0 是缺失哨兵）；
-- local_ground：开放模式自选点位经 Nominatim 按名解析并回填真实坐标。
+- local_ground：开放模式自选点位经**存在性解析器**（`existence`）补真实坐标与来源。
 
-依赖：tools（外部地点检索）；无上层依赖。
+依赖：existence（可插拔 provider、三值结论、名称门槛、位置闸、预算）；无上层依赖。
+缓存不在这层：`existence` 自带 (城市, 名字) 记忆化、provider 侧还有 TTL，这里再叠
+一层进程内 dict 只会多出第二份真相（旧的 `cache` 参数就是这么长出来的）。
 """
 
-import logging
+from __future__ import annotations
 
-from app.agent import tools
+from typing import Any
 
-logger = logging.getLogger(__name__)
+from app.agent.existence import resolve_poi
 
 
-def has_coord(value) -> bool:
+def has_coord(value: Any) -> bool:
     """坐标有效：非 None 且非 0.0（0/0 是缺失哨兵，与 find_nearby_pois 口径一致）。"""
     try:
         return value is not None and abs(float(value)) > 1e-6
@@ -22,50 +24,26 @@ def has_coord(value) -> bool:
         return False
 
 
-def local_ground(item: dict, city: str, cache: dict) -> None:
-    """用外部地点层落坐标与地址（去高德后：Nominatim 是唯一的点名 grounding 源）。
+def local_ground(item: dict[str, Any], city: str) -> bool:
+    """用存在性解析器落坐标/地址，并把**真跑过的 provider** 写进 item.source。
 
-    按名称解析、过名称相似度门槛后才采纳坐标/地址——查不到就保持原样，
-    由上层按「证据不足」降级（票价/营业时间数据源不再提供，恒为 LLM 估价）。
+    返回是否接地成功。三条纪律：
+    - 未判定（没问到 / 超时 / 名字对不上）与"解析到别的城市"都原样保留，
+      由上层按证据不足降级——绝不把"没查到"当成"不存在"；
+    - `source` 只在这里由服务端写入，它是背书的唯一凭据（见 grounding_labels）；
+    - 已经拿到系统坐标的项不再解析（参考资料落地给的就够了，省一次外呼）。
+
+    票价/营业时间数据源不提供，恒为 LLM 估价（value_kind=estimated）。
     """
-    from app.agent.tools import anchor_name_similar
-
-    if has_coord(item.get("latitude")) and has_coord(item.get("longitude")):
-        return
-    key = f"{city}:{item.get('poi_name')}"
-    if key in cache:
-        hit = cache[key]
-        if hit:
-            item["latitude"] = hit["lat"]
-            item["longitude"] = hit["lng"]
-            item["address"] = hit.get("address")
-            if hit.get("photo"):
-                item["image"] = hit["photo"]
-        return
-    try:
-        pois = tools.search_local_poi(city, item.get("poi_name") or "")
-        query_name = str(item.get("poi_name") or "")
-        hit = None
-        for poi in pois or []:
-            if anchor_name_similar(query_name, str(poi.get("name") or "")):
-                hit = poi
-                break
-        if hit and hit.get("longitude") is not None and hit.get("latitude") is not None:
-            item["longitude"] = float(hit["longitude"])
-            item["latitude"] = float(hit["latitude"])
-            item["address"] = hit.get("address") or None
-            if hit.get("ticket_price") is not None and not item.get("cost"):
-                item["cost"] = float(hit["ticket_price"])
-            if hit.get("image"):
-                item["image"] = hit["image"]
-            cache[key] = {
-                "lat": item["latitude"],
-                "lng": item["longitude"],
-                "address": item.get("address"),
-                "photo": hit.get("image"),
-            }
-            return
-        cache[key] = None
-    except Exception as e:
-        logger.warning("local ground failed: %s", e)
-        cache[key] = None
+    name = str(item.get("poi_name") or "").strip()
+    if not name or (has_coord(item.get("latitude")) and has_coord(item.get("longitude"))):
+        return False
+    result = resolve_poi(name, city)
+    if not result.grounded:
+        return False
+    item["latitude"] = result.latitude
+    item["longitude"] = result.longitude
+    if result.address and not item.get("address"):
+        item["address"] = result.address
+    item["source"] = result.provider
+    return True

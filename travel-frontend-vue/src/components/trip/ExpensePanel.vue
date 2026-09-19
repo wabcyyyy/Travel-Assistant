@@ -7,13 +7,13 @@
       <p v-if="!ledger.expenses.length">还没有账目，记下旅途中的第一笔花费。</p>
       <ul class="totals">
         <li v-for="total in ledger.totals" :key="`${total.currency}-${total.category}`" :class="{ over: isOver(total) }">
-          {{ labels[total.category] || total.category }}：{{ total.currency }} {{ total.amount }}
+          {{ typeLabel(total.category) }}：{{ total.currency }} {{ total.amount }}
           <span v-if="total.currency === 'CNY'"> / 预估 ¥{{ estimate(total.category).toFixed(2) }}</span>
           <span v-else>（不与人民币预算换算）</span>
         </li>
       </ul>
       <article v-for="expense in ledger.expenses" :key="expense.id" class="expense-row">
-        <div><strong>{{ labels[expense.category] || expense.category }} · {{ expense.currency }} {{ expense.amount }}</strong>
+        <div><strong>{{ typeLabel(expense.category) }} · {{ expense.currency }} {{ expense.amount }}</strong>
           <p>{{ expense.spentAt || '日期未填' }}<template v-if="expense.dayNo"> · 第 {{ expense.dayNo }} 天</template><template v-if="expense.paymentMethod"> · {{ expense.paymentMethod }}</template></p>
           <p v-if="expense.note">{{ expense.note }}</p>
           <button v-if="linkedItem(expense.itemId)" type="button" @click="emit('select-item', expense.itemId!)">{{ linkedItem(expense.itemId)?.poiName }}</button>
@@ -24,14 +24,14 @@
     </template>
     <AppDialog v-model="dialog" :title="editingId ? '修改账目' : '记一笔'" width="min(440px, calc(100vw - 24px))">
       <form class="expense-form" @submit.prevent="save">
-        <label>类目<select v-model="draft.category"><option v-for="(label, value) in labels" :key="value" :value="value">{{ label }}</option></select></label>
+        <label>类目<select v-model="draft.category"><option v-for="value in EXPENSE_CATEGORIES" :key="value" :value="value">{{ typeLabel(value) }}</option></select></label>
         <label>金额<input v-model="amount" inputmode="decimal" required pattern="[0-9]+(\.[0-9]{1,2})?" placeholder="0.00" /></label>
         <label>币种<input v-model="draft.currency" required pattern="[A-Za-z]{3}" maxlength="3" /></label>
         <label>日期<input v-model="spentAt" type="date" /></label>
         <label>行程日<select v-model="draft.dayNo"><option :value="null">未指定</option><option v-for="day in detail.dayList" :key="day.dayId" :value="day.dayNo">第 {{ day.dayNo }} 天</option></select></label>
         <label>关联点位<select v-model="draft.itemId"><option :value="null">不关联</option><optgroup v-for="day in detail.dayList" :key="day.dayId" :label="`第 ${day.dayNo} 天`"><option v-for="item in day.items" :key="item.id" :value="item.id">{{ item.poiName }}</option></optgroup></select></label>
         <label>支付方式<input v-model="payment" maxlength="24" placeholder="现金／银行卡等" /></label>
-        <label>备注<textarea v-model="note" maxlength="255" rows="3"></textarea></label>
+        <label>备注<AppTextarea v-model="note" :maxlength="255" :rows="3" aria-label="备注" /></label>
         <p v-if="formError" role="alert">{{ formError }}</p>
         <button type="submit" :disabled="busy">{{ busy ? '保存中…' : '保存' }}</button>
       </form>
@@ -42,13 +42,16 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import AppDialog from '../ui/AppDialog.vue'
+import AppTextarea from '../ui/AppTextarea.vue'
 import { confirmDialog } from '../ui/confirm'
 import { listExpenses, createExpense, updateExpense, deleteExpense } from '../../api/expenses'
 import type { ExpenseCreate, ExpenseListVO, ExpenseVO, ExpenseCategoryTotal } from '../../types/generated/contracts'
 import type { ItineraryDetail } from '../../types/itinerary'
+// 分类中文标签走全站唯一口径（R5-3）；类目下拉的候选键是费用分类枚举
+import { typeLabel } from './day-card/shared'
 const props = defineProps<{ detail: ItineraryDetail; /** 协作（C2.3）：viewer 只读——隐藏记账/改删入口 */ readOnly?: boolean }>()
 const emit = defineEmits<{ 'select-item': [id: number] }>()
-const labels: Record<string, string> = { attraction: '景点', food: '餐饮', hotel: '住宿', transport: '交通', shopping: '购物', other: '其他' }
+const EXPENSE_CATEGORIES = ['attraction', 'food', 'hotel', 'transport', 'shopping', 'other'] as const
 const ledger = ref<ExpenseListVO>({ expenses: [], totals: [] })
 const loading = ref(false)
 const busy = ref(false)

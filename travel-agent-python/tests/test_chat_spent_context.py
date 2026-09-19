@@ -19,12 +19,13 @@ from sqlalchemy.orm import sessionmaker
 
 from app.agent.chat_draft.document import _trip_plan_document
 from app.agent.local_replan import run_local_replan
+from app.common import cache_store
 from app.common.config import settings
 from app.db import session as db_session
 from app.db.models import Base, ItineraryDay, ItineraryMain, SysUser
 from app.schemas.expense import ExpenseCreate
 from app.schemas.trip import ChatTurnRequest, LocalReplanRequest
-from app.services import cache_store, expense_service, user_service
+from app.services import expense_service, user_service
 from app.services.itinerary_chat import build_chat_turn_context
 
 

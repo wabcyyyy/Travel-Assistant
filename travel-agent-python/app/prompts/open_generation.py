@@ -69,6 +69,8 @@ def open_day_system_prompt(*, day_no: int = 1, pace: str, hotel_clause: str, hot
         f"{trip_theme_rule}"
         "硬性要求：poi_name 必须是简洁的正式地点名（≤10 字，如「龙门石窟」「开封府」），"
         "禁止写成描述性句子。"
+        "禁止在 item 中输出经纬度坐标、poi_id 与任何来源/核验字段——位置与真伪由系统"
+        "按名称解析后填写，你只负责给出准确、可被搜索到的正式地点名。"
         "所有 items 与 suggestions 的地点必须真实位于目的地城市（或其合理一日游范围内），"
         "禁止输出与目的地无关的其它城市地点。"
         "同一天的 items 禁止出现同名或同一地点的重复条目"
@@ -131,6 +133,8 @@ def open_trip_system_prompt(*, days: int, hotel_clause: str) -> str:
         '"need_reservation":true或false,'
         '"estimated_cost":门票/餐饮/酒店的人均或每晚估算数字，shopping 类禁止填写}]}。'
         "硬性要求：trip_theme 只在顶层输出一次（整趟一个，禁止每天重复输出）；"
+        "禁止在 item 中输出经纬度坐标、poi_id 与任何来源/核验字段——位置与真伪由系统"
+        "按名称解析后填写，你只负责给出准确、可被搜索到的正式地点名；"
         "所有 items 与 suggestions 的地点必须真实位于目的地城市（或其合理一日游范围内），"
         "禁止输出与目的地无关的其它城市地点；"
         "跨天片区编排：先为整趟规划各天的主打片区，每天 items 尽量集中在同一片区，"

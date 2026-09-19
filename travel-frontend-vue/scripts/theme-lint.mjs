@@ -11,6 +11,11 @@
  *      唯一例外：减少动效块（prefers-reduced-motion / [data-reduce-motion]）里的
  *      全局压制——a11y 语义必须能压过组件级动画，无法用变量表达。
  *
+ * 【.ts 扩扫（R5-4）】JS 侧取色（canvas/内联 style/地图 paint）同样禁止裸 hex：
+ *   只扫「产出视觉的 .ts」白名单（TS_VISUAL_FILES），且**仅色值规则**生效；
+ *   `cssVar('--lp-*', …)` 行内作为离线兜底的 hex 视为令牌取值的合理回落，予以放行
+ *   （与「令牌定义块」例外同理）。把新文件加进 TS_VISUAL_FILES 前先确认它可 0 裸 hex。
+ *
  * 成功口径：`src/components/ui/**`、`src/styles/**`、`src/App.vue` 与本期新增 view 必须
  * 0 违规。未收敛的旧文件登记在 theme-lint.allowlist.json —— **只准变短不准变长**：
  *   - 新文件出现违规 = CI 红；已豁免文件中出现「比登记更多」的违规 = CI 红；
@@ -28,6 +33,9 @@ import { fileURLToPath } from 'node:url'
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const SRC = join(ROOT, 'src')
 const ALLOWLIST_PATH = join(ROOT, 'scripts', 'theme-lint.allowlist.json')
+
+// R5-4：产出视觉的 .ts（canvas 绘图/地图 paint/取色工具），纳入「仅色值」扫描。
+const TS_VISUAL_FILES = ['src/utils/exportImage.ts', 'src/utils/mapBasemap.ts', 'src/utils/cssVar.ts']
 
 const TOKEN_BLOCK = /(:root\b|\[data-scheme|\.dark\b|prefers-color-scheme:\s*dark)/
 const MOTION_BLOCK = /(prefers-reduced-motion|data-reduce-motion)/
@@ -99,12 +107,30 @@ function scanCss(text, file, out) {
   })
 }
 
+/** .ts：`//` 行注释等长置空（目标文件内 `//` 不出现在字符串中，https:// 因前导 : 不匹配）。 */
+function blankLineComments(text) {
+  return text.replace(/(^|[^:])\/\/.*$/gm, '$1')
+}
+
+/** R5-4：扫「产出视觉的 .ts」的裸 hex —— 仅色值规则；cssVar('--lp-*', …) 行的兜底 hex 放行。 */
+function scanTs(text, file, out) {
+  const lines = blankLineComments(blankComments(text)).split('\n')
+  lines.forEach((line, index) => {
+    if (RULES.color.test(line) && !/cssVar\s*\(/.test(line)) {
+      out.push({ file: relative(ROOT, file).split('\\').join('/'), line: index + 1, rule: 'color', text: line.trim().slice(0, 120) })
+    }
+  })
+}
+
 function collect() {
   const violations = []
   for (const file of walk(SRC)) {
     const raw = readFileSync(file, 'utf8')
     const text = file.endsWith('.vue') ? maskVueToStyles(raw) : raw
     scanCss(text, file, violations)
+  }
+  for (const rel of TS_VISUAL_FILES) {
+    scanTs(readFileSync(join(ROOT, rel), 'utf8'), join(ROOT, rel), violations)
   }
   return violations
 }

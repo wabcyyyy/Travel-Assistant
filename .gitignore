@@ -34,7 +34,10 @@ sql/__pycache__/
 *.token
 secrets/
 **/secrets/
-openapi.json
+# 散落的本机 OpenAPI 落盘（曾经的第二生产者）。契约产物在 contracts/ 下，
+# 必须入仓并被漂移门禁看见——不要再写裸 `openapi.json` 规则把它一起吞掉。
+/openapi.json
+/travel-agent-python/openapi.json
 
 # 编辑器/工具私有
 .trae/

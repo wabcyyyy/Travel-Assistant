@@ -105,7 +105,7 @@
         <div class="quick-cities">
           <span class="hint">热门目的地</span>
           <button
-            v-for="c in POPULAR_CITIES"
+            v-for="c in quickCities"
             :key="c"
             type="button"
             class="city-chip"
@@ -233,6 +233,7 @@ import {
 } from '@element-plus/icons-vue'
 
 import { generateItinerary, cityGuide, newIdempotencyKey } from '../api'
+import { fetchSupportedCities, POPULAR_CITIES_FALLBACK } from '../utils/supportedCities'
 import VerificationNotice from '../components/trip/VerificationNotice.vue'
 
 const router = useRouter()
@@ -251,8 +252,10 @@ const PREFERENCE_TAGS = [
 
 const HOTEL_TIERS = ['经济型', '舒适型', '高档型', '豪华型', '奢华型']
 
-// 热门目的地快捷选择（点击直接填入目的地）
-const POPULAR_CITIES = ['成都', '杭州', '西安', '重庆', '北京', '上海']
+// 热门目的地快捷选择（点击直接填入目的地）：单一来源是 supported-cities 接口，进程内拉一次；
+// 兜底用离线清单（R5-6），接口回传后取前 8 个作为推荐行。
+const QUICK_CITY_LIMIT = 8
+const quickCities = ref<string[]>([...POPULAR_CITIES_FALLBACK])
 
 const chat = ref<{ role: 'user' | 'ai'; text: string }[]>([])
 const say = ref('')
@@ -330,13 +333,15 @@ watch(dateRange, (range) => {
   }
 })
 
-onMounted(() => {
+onMounted(async () => {
   // 首页目的地墙点击跳转：/generate?city=杭州
   const cityFromQuery = typeof route.query.city === 'string' ? route.query.city.trim() : ''
   if (cityFromQuery && !form.city) {
     form.city = cityFromQuery
   }
   // 偏好标签不回填历史偏好：每次进入约稿单都从空白开始，由用户当次勾选
+  // 受支持城市拉一次并缓存（失败自动留在离线兜底，R5-6）
+  quickCities.value = (await fetchSupportedCities()).slice(0, QUICK_CITY_LIMIT)
 })
 
 function togglePreference(label: string) {

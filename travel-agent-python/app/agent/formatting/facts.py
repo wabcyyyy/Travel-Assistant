@@ -3,6 +3,9 @@
 知识库永远只是补充证据：本次候选快照里命中的条目才回填坐标/票价/营业时间并给出
 质量背书；未命中的模型自选地点必须如实标为生成值、出发前复核。
 
+背书判定本身不在这里（也不该在这里）：三条链路共用
+`grounding_labels.label_for_*`，本模块只负责"回填哪些字段 + 登记来源记录"。
+
 边界形状（G-1.6）：权威行（只读）用 generation_core.PoiFactRow TypedDict
 推断已知键类型；item 是**每步可缺键的可变草稿**，开放 dict[str, Any] 才是
 它的诚实类型（TypedDict(total=False) 的读写严格度与这条链不匹配）。
@@ -14,7 +17,14 @@ from typing import Any, cast
 
 from app.agent.generation_core import PoiFactRow
 from app.agent.grounding import has_coord
-from app.agent.reference_pool import has_valid_coords
+from app.agent.grounding_labels import (
+    apply_label,
+    has_valid_coords,
+    is_trusted_row,
+    label_for_evidence_row,
+    label_for_landed_item,
+    source_record_for,
+)
 from app.agent.reflect import parse_time
 from app.schemas.trip import SourceRecord
 
@@ -35,9 +45,18 @@ def build_lookup(
     return lookup
 
 
-def apply_item_facts(item: dict[str, Any], poi: PoiFactRow | None, source_records: dict[str, SourceRecord]) -> None:
+def apply_item_facts(
+    item: dict[str, Any],
+    poi: PoiFactRow | None,
+    source_records: dict[str, SourceRecord],
+    *,
+    city: str = "",
+) -> None:
     """按候选快照回填权威字段，并就地质标溯源与质量状态。"""
-    if poi:
+    label = label_for_evidence_row(poi) if poi else label_for_landed_item(item, city)
+    # 来源不可信的行一个字段都不采纳：伪 source 不只让徽章失真，还能把真实景点
+    # 指到调用方自选的坐标与 poi_id 上（P6）。
+    if poi and is_trusted_row(poi):
         # 0/0 是缺失坐标的哨兵值（store._row_payload 会把 NULL 写成 0.0），
         # 不能作为权威坐标回填，否则幻觉坐标获得权威背书。
         poi_lat = poi.get("latitude")
@@ -57,60 +76,9 @@ def apply_item_facts(item: dict[str, Any], poi: PoiFactRow | None, source_record
             item["cost"] = float(price)
         if item.get("open_time") is None:
             item["open_time"] = poi.get("open_time")
-        source_name = str(poi.get("source") or "mysql.poi_knowledge")
-        source_updated_at = str(poi.get("source_updated_at") or "") or None
-        item["source"] = source_name
-        item["source_updated_at"] = source_updated_at
-        item["verification_status"] = "partially_verified"
-        item["value_kind"] = "observed"
-        item["freshness_status"] = "fresh" if source_updated_at else "unknown"
-        item["review_requirement"] = "none" if source_updated_at else "before_departure"
-        if not has_valid_coords(poi):
-            # 权威行缺坐标：item 上残留的是模型自填坐标，不背书。
-            item["verification_status"] = "unverified"
-            item["value_kind"] = "estimated"
-            item["freshness_status"] = "unknown"
-            item["review_requirement"] = "before_departure"
-        # fact_evidence 延迟构建：前端请求详情时再补充，不阻塞生成流程
-        source_records.setdefault(
-            source_name,
-            SourceRecord(
-                source_id=source_name,
-                storage_source=source_name,
-                provider=source_name,
-                retrieved_at=str(poi.get("source_fetched_at") or source_updated_at or "") or None,
-                expires_at=None,
-            ),
-        )
-        return
-
-    # 开放模式中的 LLM 地点必须明确标为生成/待复核事实。
-    item["source"] = item.get("source") or "llm.open_day"
-    item["verification_status"] = "unverified"
-    item["value_kind"] = "estimated"
-    item["freshness_status"] = "unknown"
-    item["review_requirement"] = "before_departure"
-    # fact_evidence 延迟构建：前端请求详情时再补充
-    source_records.setdefault(
-        "llm.open_day",
-        SourceRecord(
-            source_id="llm.open_day",
-            provider="llm.open_day",
-            retrieved_at=None,
-            expires_at=None,
-        ),
-    )
-    if item.get("latitude") is not None and item.get("longitude") is not None:
-        source_records.setdefault(
-            "local-grounding",
-            SourceRecord(
-                source_id="local-grounding",
-                storage_source="local-grounding",
-                provider="local",
-                retrieved_at=None,
-                expires_at=None,
-            ),
-        )
+    apply_label(item, label)
+    # fact_evidence 延迟构建：前端请求详情时再补充，不阻塞生成流程
+    source_records.setdefault(label.source, source_record_for(label, poi))
 
 
 def sync_duration_from_time_window(item: dict[str, Any]) -> None:

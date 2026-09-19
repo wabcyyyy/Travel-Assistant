@@ -33,6 +33,8 @@
     </p>
     <p v-if="item.remark" class="sheet-remark">备注：{{ item.remark }}</p>
 
+    <ItemFeedbackPanel :item="item" />
+
     <div class="sheet-actions">
       <button type="button" class="act" @click="emit('edit', item)">编辑</button>
       <button type="button" class="act" @click="emit('move', item)">加入其他天</button>
@@ -52,7 +54,9 @@ import { ExternalLink, X } from 'lucide-vue-next'
 import { useItineraryStore } from '../../store/itinerary'
 import { useItemPhoto } from '../../composables/useItemPhoto'
 import { externalMapLink, hasValidCoordinates } from '../../utils/geo'
+import { typeLabel as typeLabelOf } from './day-card/shared'
 import EvidenceBadge from './EvidenceBadge.vue'
+import ItemFeedbackPanel from './ItemFeedbackPanel.vue'
 import type { TripItem } from '../../types/itinerary'
 
 // 贴底浮层详情卡（v2.6 §19.3，TREK 式）：选中站点/图钉 → 悬浮于中栏地图上。
@@ -71,14 +75,11 @@ const store = useItineraryStore()
 const { detail } = storeToRefs(store)
 const { imgSrc, onImgError } = useItemPhoto()
 
-const TYPE_LABEL: Record<string, string> = {
-  attraction: '景点',
-  food: '美食',
-  hotel: '酒店',
-  transport: '交通',
-}
-
-const typeLabel = computed(() => TYPE_LABEL[props.item?.itemType ?? ''] ?? '点位')
+// 类型标签走全站唯一口径（R5-3）；无点位时回落「点位」占位
+const typeLabel = computed(() => {
+  const type = props.item?.itemType
+  return type ? typeLabelOf(type) : '点位'
+})
 
 const hasCoord = computed(() => !!props.item && hasValidCoordinates(props.item))
 

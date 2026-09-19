@@ -14,16 +14,20 @@ from fastapi import HTTPException, Request, status
 
 from app.api.deps import AuthUser, authenticate, extract_token
 
-# 与 Java SecurityConfig 现有 permitAll 白名单逐条对应；只增不删。
-# `/api/pois`（本地知识库检索）**不在**此列：它是登录用户的加点数据源，需要身份。
-# 已移除的高德域端点（staticmap/poi-photo/image）随之从白名单删除，改由 media 路由承载。
+# 匿名可达清单。历史上这里写的是"与 Java SecurityConfig 逐条对应、只增不删"，
+# 但对照物（Java 模块）已随退役删除，那句话只会让人以为清单还有外部约束（R4-2）。
+# 现在每一条都要自己站得住：
+# - /api/test/hello：探活（start-all.ps1 与 CI 的健康检查目标）；
+# - /api/auth/：登录/注册本身，靠按 IP 滑动窗口挡暴力（见 business/auth.py）；
+# - /api/uploads/、/api/share/：分享页与上传图必须匿名可读，否则分享链接 401；
+# - /api/poi-photo、/api/image-proxy：前端在登录前就要出图，且 R1-4 起各挂按 IP 限速、
+#   R1-1/R1-2 起流式截断 + 拒绝 SVG。它们仍是本清单里风险最高的两条，收紧前先想清楚
+#   "登录前首屏"这个理由是否还成立。
 PUBLIC_PATHS: tuple[str, ...] = (
     "/api/test/hello",
     "/api/auth/",
-    "/error",
     "/api/poi-photo",
     "/api/image-proxy",
-    # 迁移后新增（v2.2 §5.3/§6.4）：分享页与上传图必须匿名可读，否则分享链接 401
     "/api/uploads/",
     "/api/share/",
 )

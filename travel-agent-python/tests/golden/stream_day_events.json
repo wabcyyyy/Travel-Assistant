@@ -19,7 +19,7 @@
         "remark": null,
         "whyThis": null,
         "image": null,
-        "source": "llm",
+        "source": "opentripmap",
         "sourceUpdatedAt": null,
         "verificationStatus": "partially_verified",
         "valueKind": "observed",
@@ -27,9 +27,9 @@
         "reviewRequirement": "before_departure",
         "factEvidence": {
           "identity": {
-            "sourceRef": "llm",
+            "sourceRef": "opentripmap",
             "sourceUrl": null,
-            "provider": "llm",
+            "provider": "opentripmap",
             "retrievedAt": null,
             "expiresAt": null,
             "verificationStatus": "verified",
@@ -55,7 +55,7 @@
         "remark": null,
         "whyThis": null,
         "image": null,
-        "source": "llm",
+        "source": "opentripmap",
         "sourceUpdatedAt": null,
         "verificationStatus": "partially_verified",
         "valueKind": "observed",
@@ -63,9 +63,9 @@
         "reviewRequirement": "before_departure",
         "factEvidence": {
           "identity": {
-            "sourceRef": "llm",
+            "sourceRef": "opentripmap",
             "sourceUrl": null,
-            "provider": "llm",
+            "provider": "opentripmap",
             "retrievedAt": null,
             "expiresAt": null,
             "verificationStatus": "verified",
@@ -91,7 +91,7 @@
         "remark": null,
         "whyThis": null,
         "image": null,
-        "source": "llm",
+        "source": "opentripmap",
         "sourceUpdatedAt": null,
         "verificationStatus": "partially_verified",
         "valueKind": "observed",
@@ -99,9 +99,9 @@
         "reviewRequirement": "before_departure",
         "factEvidence": {
           "identity": {
-            "sourceRef": "llm",
+            "sourceRef": "opentripmap",
             "sourceUrl": null,
-            "provider": "llm",
+            "provider": "opentripmap",
             "retrievedAt": null,
             "expiresAt": null,
             "verificationStatus": "verified",
@@ -127,7 +127,7 @@
         "remark": null,
         "whyThis": null,
         "image": null,
-        "source": "llm",
+        "source": "web.search",
         "sourceUpdatedAt": null,
         "verificationStatus": "unverified",
         "valueKind": "estimated",
@@ -135,13 +135,13 @@
         "reviewRequirement": "before_departure",
         "factEvidence": {
           "identity": {
-            "sourceRef": "llm",
+            "sourceRef": "web.search",
             "sourceUrl": null,
-            "provider": "llm",
+            "provider": "web.search",
             "retrievedAt": null,
             "expiresAt": null,
-            "verificationStatus": "verified",
-            "valueKind": "observed",
+            "verificationStatus": "unverified",
+            "valueKind": "generated",
             "freshnessStatus": "unknown",
             "reviewRequirement": "before_departure"
           }

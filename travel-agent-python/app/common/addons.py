@@ -42,6 +42,8 @@ ADDONS: dict[str, dict[str, str]] = {
     "mcp_write": {"env": "mcp_write_enabled", "label": "MCP 行程写入"},
     # 模板广场（C2.4）：默认关闭——自托管私有部署不默认开放社区面
     "template_community": {"env": "template_community_enabled", "label": "模板广场"},
+    # 条目对/错反馈（C3.5）：默认关闭——读面开不足以开反馈面，增强能力单独显式打开
+    "item_feedback": {"env": "item_feedback_enabled", "label": "条目对/错反馈"},
 }
 
 #: 进程内缓存 TTL（秒）：管理切换会就地失效，TTL 只兜多进程部署的最终一致。

@@ -2,8 +2,14 @@
 # CI (ci.yml preflight job) runs the SAME steps in the SAME order: ruff check ->
 # ruff format --check -> typecheck (pyright baseline ratchet) -> import-linter ->
 # secret scan -> offline pytest.
+# The last step compares regenerated contract artifacts byte-for-byte with the
+# working tree, so it is meaningful mid-feature (it does not diff against HEAD).
 # Usage (from anywhere): powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check.ps1
+# Opt out of the diff-cover step only when no baseline ref exists:
+#   ... -File scripts\check.ps1 -AllowNoDiffCover
 # NOTE: ASCII-only comments - Windows PowerShell 5.1 reads BOM-less files as ANSI.
+
+param([switch]$AllowNoDiffCover)
 
 $ErrorActionPreference = 'Stop'
 $pkg = Split-Path -Parent $PSScriptRoot
@@ -50,21 +56,36 @@ uv run pytest tests/ -q --ignore=tests/api --ignore=tests/perf --ignore=tests/ag
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Step "coverage gate on changed lines (diff-cover, G-3.4)"
-# 本次变更行覆盖率 >= 70%，门槛只升不降。基线取 origin/master；无该引用时
-# （如浅克隆或离线仓库）跳过并提示，避免本地门禁因缺基线而误红。
-git rev-parse --verify --quiet origin/master > $null
-if ($LASTEXITCODE -eq 0) {
-    uv run diff-cover coverage.xml --compare-branch=origin/master --fail-under=70
+# Threshold only ever goes up (INV-1). Baseline is origin/master; when that ref is
+# missing (shallow clone / offline repo) fall back to HEAD~1 instead of silently
+# skipping -- a skipped gate must never be mistaken for a passed one (R0-6).
+$baseline = "origin/master"
+git rev-parse --verify --quiet $baseline > $null
+if ($LASTEXITCODE -ne 0) {
+    $baseline = "HEAD~1"
+    git rev-parse --verify --quiet $baseline > $null
+    if ($LASTEXITCODE -ne 0) {
+        if ($AllowNoDiffCover) {
+            Write-Host "  skipped via -AllowNoDiffCover (no baseline available)" -ForegroundColor Yellow
+            $baseline = ""
+        } else {
+            Write-Host "  FAIL: neither origin/master nor HEAD~1 available; pass -AllowNoDiffCover to opt out" -ForegroundColor Red
+            exit 1
+        }
+    } else {
+        Write-Host "  fallback baseline: origin/master missing, comparing against $baseline" -ForegroundColor Yellow
+    }
+}
+if ($baseline -ne "") {
+    uv run diff-cover coverage.xml --compare-branch=$baseline --fail-under=70
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-} else {
-    Write-Host "  skipped: origin/master not available (shallow clone?)" -ForegroundColor Yellow
 }
 
 Step "contract export drift"
-# CI python-agent job 同款检查：重跑导出后与入仓产物逐字节比对（G-1.1）
-uv run python scripts/export_contracts.py
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-git diff --exit-code -- ../contracts ../travel-frontend-vue/src/types/generated
+# R0-1/R0-2: re-export, byte-compare with the working tree, then require every
+# artifact to be tracked. Extracted into scripts/check_contract_drift.ps1 so a
+# deliberate violation can be proven red in seconds, not after the full gate.
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "check_contract_drift.ps1")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host ""

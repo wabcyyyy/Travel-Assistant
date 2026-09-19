@@ -26,6 +26,7 @@ app.services（C3.3 写面）。
 
 from __future__ import annotations
 
+import hmac
 import inspect
 import logging
 from typing import Any
@@ -342,11 +343,13 @@ def _authorized(headers: dict[bytes, bytes]) -> bool:
     """`AGENT_INTERNAL_TOKEN` 校验（Bearer 或 X-Agent-Token，二选一）。"""
     expected = settings.agent_internal_token
     if not expected:
-        # 未配置令牌时与 HTTP 直调面同口径：仅回环部署可匿名（见 main 的启动校验）
-        return True
+        # 未配置令牌时与 HTTP 直调面同口径：仅回环部署可匿名（见 main 的启动校验）。
+        # 但写工具例外：MCP 的 user_id 由调用方自备（自托管信任），一旦在没凭据的
+        # 端口上开着写入，等于任何人可读写他人行程（R1-8）。
+        return not addons.is_enabled("mcp_write")
     raw = (headers.get(b"authorization") or headers.get(b"x-agent-token") or b"").decode("latin-1").strip()
     token = raw[7:].strip() if raw.lower().startswith("bearer ") else raw
-    return token == expected
+    return hmac.compare_digest(token.encode("utf-8"), expected.encode("utf-8"))
 
 
 class McpGate:

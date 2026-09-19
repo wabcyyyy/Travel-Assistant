@@ -4,7 +4,8 @@
 - 组装 FastAPI 应用、挂载 CORS 与路由、定义启动生命周期。
 
 实现要点：
-- 启动时通过 lifespan 导出 openapi.json；
+- OpenAPI 只有一个生产者：`scripts/export_contracts.py` 导出 `contracts/openapi.json`
+  （启动期不再落第二份，否则根目录产物与入仓产物会各说一套）；
 - 生成任务的自动续跑扫描与两个有界池的优雅关闭也挂在同一个 lifespan 上；
 - 按 settings.agent_cors_origins 配置跨域来源；
 - 把 app.api.agent.router 挂载到 /api/agent 前缀；
@@ -15,7 +16,6 @@
   app.services.generation_recovery / itinerary_generation。
 """
 
-import json
 import logging
 from contextlib import asynccontextmanager
 
@@ -26,8 +26,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.agent.usage_store import usage_store
 from app.api import agent, mcp
 from app.api.business import business_routers
+from app.api.security_headers import SecurityHeadersMiddleware
 from app.common import cron
-from app.common.config import BASE_DIR, settings
+from app.common.config import settings
 from app.common.envelope import install_exception_handlers
 from app.db import migrate as db_migrate
 from app.services import export_service, generation_recovery, itinerary_chat, itinerary_generation
@@ -55,8 +56,6 @@ async def lifespan(app: FastAPI):
     cron.register("usage-cleanup", 86400, _cleanup_usage)
     generation_recovery.register_loop()
     cron.start_all()
-    with (BASE_DIR / "openapi.json").open("w", encoding="utf-8") as f:
-        json.dump(app.openapi(), f, ensure_ascii=False, indent=2)
     try:
         yield
     finally:
@@ -88,8 +87,11 @@ app.add_middleware(
 )
 
 install_exception_handlers(app)
+# 全站安全响应头（R1-3）：纯 ASGI 包装，只补头、不缓冲 SSE
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(agent.router, prefix="/api/agent", tags=["agent"])
+
 # MCP 只读工具出口（G-3.6）：addon 门控（默认关）+ AGENT_INTERNAL_TOKEN 鉴权，
 # 两者都在 McpGate 里按请求实时判定——addon 关闭时整个前缀 404。
 app.mount("/mcp", mcp.mcp_asgi_app())

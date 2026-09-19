@@ -8,7 +8,6 @@ import AppMenu from './AppMenu.vue'
 import AppPopover from './AppPopover.vue'
 import AppSheet from './AppSheet.vue'
 import AppToastHost from './AppToastHost.vue'
-import Sheet from './Sheet.vue'
 import { confirmDialog, confirmService } from './confirm'
 import { toast } from './toast'
 
@@ -225,16 +224,6 @@ describe('toast 队列与宿主', () => {
     ;(host.querySelector('.toast-close') as HTMLButtonElement).click()
     await nextTick()
     expect(toast.state.items.length).toBe(0)
-    wrapper.unmount()
-  })
-})
-
-describe('Sheet 薄封装', () => {
-  it('visible 透传给 AppSheet 并渲染插槽', async () => {
-    const wrapper = mount(Sheet, { props: { visible: true, title: '城市列表' }, slots: { default: '<p class="inner">内容</p>' } })
-    await flushPromises()
-    expect(document.body.querySelector('.sheet-panel')).not.toBeNull()
-    expect(document.body.querySelector('.inner')?.textContent).toBe('内容')
     wrapper.unmount()
   })
 })

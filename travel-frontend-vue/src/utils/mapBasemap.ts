@@ -1,13 +1,9 @@
 import { AttributionControl, ScaleControl, type Map as MapLibreMap } from 'maplibre-gl'
 
 import { basemapUrlForScheme } from '../constants/map'
+import { cssVar } from './cssVar'
 
 const COUNTRIES_GEOJSON_URL = '/geo/countries-simplified.json'
-
-function cssVar(name: string, fallback: string): string {
-  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-  return value || fallback
-}
 
 /**
  * 署名（license 要求，SPEC §20 R0）：紧凑控件常驻右下。

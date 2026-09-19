@@ -12,9 +12,9 @@ from __future__ import annotations
 import pytest
 import redis
 
-from app.common import redis_client, token_revocation
+from app.common import cache_store, redis_client, token_revocation
 from app.common.config import settings
-from app.services import cache_store, state_and_sessions
+from app.services import state_and_sessions
 
 
 @pytest.fixture(autouse=True)

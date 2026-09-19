@@ -128,7 +128,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Plus, Search, Star, StarFilled } from '@element-plus/icons-vue'
 
-import { deleteItinerary, listItineraries, setArchived, setFavorite } from '../api'
+import { deleteItinerary, listItineraries, setFavorite } from '../api'
 import { acceptInvitation } from '../api/collaboration'
 import { loadSnapshot, saveListSnapshot, snapshotKeyForList } from '../utils/offlineSnapshots'
 import CoverDialog from '../components/trip/CoverDialog.vue'
@@ -140,7 +140,7 @@ import EmptyState from '../components/ui/EmptyState.vue'
 import SectionHead from '../components/ui/SectionHead.vue'
 import SkeletonCard from '../components/ui/SkeletonCard.vue'
 import Toolbar from '../components/ui/Toolbar.vue'
-import { coverForCity } from '../constants/covers'
+import { useTripRowActions } from '../composables/useTripRowActions'
 import { useAtlasStore } from '../store/atlas'
 import type { ItinerarySummary } from '../types/itinerary'
 import { tripStatusLabel, tripStatusTone } from '../utils/tripStatus'
@@ -164,10 +164,18 @@ const list = ref<ItinerarySummary[]>([])
 const loading = ref(true)
 const loadError = ref(false)
 const keyword = ref(typeof route.query.q === 'string' ? route.query.q : '')
-const coverTarget = ref<ItinerarySummary | null>(null)
-const coverVisible = ref(false)
-const shareTarget = ref<ItinerarySummary | null>(null)
-const shareVisible = ref(false)
+// 行操作（换封面/分享/归档）与弹窗态统一走 composable（R5-5）
+const {
+  coverVisible,
+  coverTarget,
+  shareVisible,
+  shareTarget,
+  coverOf,
+  openCover,
+  openShare,
+  onCoverUpdated,
+  archive,
+} = useTripRowActions({ reload: load })
 // 离线快照（C2.5）：非空 = 列表来自本地快照
 const listOfflineAt = ref<string | null>(null)
 
@@ -184,21 +192,6 @@ onMounted(async () => {
     // 静默处理——具体原因由全局错误提示承载，这里不叠加
   }
 })
-
-function openCover(row: ItinerarySummary) {
-  coverTarget.value = row
-  coverVisible.value = true
-}
-
-function openShare(row: ItinerarySummary) {
-  shareTarget.value = row
-  shareVisible.value = true
-}
-
-/** 封面更新后列表卡片要跟着变（封面图在列表上） */
-function onCoverUpdated() {
-  void load()
-}
 
 const view = computed<string>(() => {
   const value = route.query.view
@@ -221,10 +214,6 @@ const EMPTY_TEXT: Record<string, string> = {
 const emptyDescription = computed(() =>
   loadError.value ? '行程加载失败，请确认服务已启动后重试' : (EMPTY_TEXT[view.value] ?? EMPTY_TEXT.all),
 )
-
-function coverOf(row: ItinerarySummary): string {
-  return row.coverUrl || coverForCity(row.city)
-}
 
 function statusLabel(row: ItinerarySummary): string {
   return tripStatusLabel(row)
@@ -296,16 +285,6 @@ async function toggleFavorite(row: ItinerarySummary) {
   }
 }
 
-async function onArchive(row: ItinerarySummary, archived: boolean) {
-  try {
-    await setArchived(row.id, archived)
-    ElMessage.success(archived ? '已归档' : '已取消归档')
-    void load()
-  } catch {
-    /* 拦截器已提示 */
-  }
-}
-
 /** 行操作菜单项（v2.6 §19.2：AppMenu 数据驱动，动态文案与 divided 由这里表达） */
 function menuFor(row: ItinerarySummary) {
   return [
@@ -325,8 +304,8 @@ function onRowMenu(key: string, row: ItinerarySummary) {
   else if (key === 'cover') openCover(row)
   else if (key === 'share') openShare(row)
   else if (key === 'favorite') void toggleFavorite(row)
-  else if (key === 'archive') void onArchive(row, true)
-  else if (key === 'unarchive') void onArchive(row, false)
+  else if (key === 'archive') void archive(row, true)
+  else if (key === 'unarchive') void archive(row, false)
   else if (key === 'delete') void onDelete(row)
 }
 

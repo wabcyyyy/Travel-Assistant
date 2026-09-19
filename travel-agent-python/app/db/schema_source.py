@@ -1,11 +1,12 @@
-"""Flyway 迁移 SQL 的读取入口——**双跑期不复制文件，只引用同一份真相**。
+"""Flyway 迁移 SQL 的读取入口——**本仓 `app/db/migrations/sql/` 是唯一真相源**。
 
-迁移期间 Java 服务仍由 Flyway 在启动时执行 `db/migration/V*.sql`，Python 侧的
-Alembic 直接读取同一目录按序执行。若在这里复制一份 SQL，就会出现两份 schema
-定义互相漂移——那正是本次迁移要消灭的问题，不能反过来引入。
+历史：双跑期（PLAN v3.0 M0–M7）这里先找 `travel-backend-java/`、再退本仓副本，
+以便 Java 的 Flyway 与 Python 的 Alembic 读同一份文件。Java 已退役、SQL 已整体
+搬进本仓，那条"先看 Java"的分支因此恒为假——但**不是无害的假**：只要有人从历史里
+restore 一份 `travel-backend-java/`（哪怕是稀疏克隆或误留的构建产物），迁移真相源
+就会静默切走，本仓的 V*.sql 与 alembic 版本表立刻各说一套（R3-5 删除该分支）。
 
-Java 退役（M7）时把目录整体搬进 `app/db/migrations/sql/` 即可：`resolve_migration_dir()`
-先看 Java 侧、再退本仓副本，所以**搬迁不需要改任何代码**，也不会出现"改了一半"的中间态。
+追加迁移只能新增 `V<n>__*.sql` + 对应 `versions/000n_*.py`，已入库的文件不许改（INV-3）。
 """
 
 from __future__ import annotations
@@ -15,30 +16,18 @@ from pathlib import Path
 
 from app.common.config import BASE_DIR
 
-# travel-backend-java 与 travel-agent-python 是仓库根下的兄弟目录
-_REPO_ROOT = BASE_DIR.parent
-JAVA_MIGRATION_DIR = _REPO_ROOT / "travel-backend-java" / "src" / "main" / "resources" / "db" / "migration"
-# Java 退役（M7）时 SQL 整体搬到这里；搬完无需改任何代码，解析顺序会自动切过来
+# 唯一落点。`IN_REPO_MIGRATION_DIR` 这个别名保留是给解析器与测试表达"本仓这份"之意的
 IN_REPO_MIGRATION_DIR = BASE_DIR / "app" / "db" / "migrations" / "sql"
 
 _VERSION_RE = re.compile(r"^V(\d+)_")
 
 
-def _has_migrations(directory: Path) -> bool:
-    """目录存在还不够——归档后 Java 侧目录可能空着留在这里，空目录会让启动迁移静默不做事。"""
-    return directory.is_dir() and next(directory.glob("V*.sql"), None) is not None
-
-
 def resolve_migration_dir() -> Path:
-    """优先用 Java 侧那份（今天 Flyway 与 Alembic 读同一份，truth 只有一份），
-    Java 模块归档后再自动改用本仓副本——两种状态都能跑，归档因此是一次纯文件搬迁。
-    """
-    if _has_migrations(JAVA_MIGRATION_DIR):
-        return JAVA_MIGRATION_DIR
+    """迁移 SQL 目录（历史上会因 Java 侧存在而切换，现在恒为本仓目录）。"""
     return IN_REPO_MIGRATION_DIR
 
 
-# 兼容既有引用（脚本与测试）：运行时按当前仓库状态取一次
+# 既有引用面（env.py 与全部 versions/000n_*.py 的错误文案）用的就是这个名字
 SQL_MIGRATION_DIR = resolve_migration_dir()
 
 

@@ -41,13 +41,18 @@ export function dayTintVar(dayNo: number): string {
   return `var(--lp-day-${((dayNo - 1) % 8) + 1})`
 }
 
-// ---------- 条目类型 ----------
-
+// ---------- 条目/点位类型标签（全站唯一口径，R5-3） ----------
+// itemType（行程点位）与 category（发现/记账分类）共用这一张表：
+// food=美食 / hotel=酒店 / transport=交通 / attraction=景点 为权威措辞，
+// shopping/other 为发现与记账分类的补充键。界面、导出 PNG、费用面板、发现面板
+// 一律 import typeLabel，不得再各自维护副本（历史 5 份副本会漂移）。
 const TYPE_LABEL: Record<string, string> = {
   attraction: '景点',
   food: '美食',
   hotel: '酒店',
   transport: '交通',
+  shopping: '购物',
+  other: '其他',
 }
 
 export function typeLabel(type: string): string {

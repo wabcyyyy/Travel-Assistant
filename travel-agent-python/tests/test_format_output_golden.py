@@ -17,6 +17,7 @@ import pathlib
 import pytest
 
 from app.agent import pricing, tool_registry
+from app.agent.grounding_evidence import issue_evidence
 from app.agent.workflow import format_output
 from app.schemas.trip import GenerateRequest
 
@@ -133,7 +134,6 @@ def stubbed(monkeypatch):
         "meal_price_hard_cap_ratio": 4.0,
         "meal_price_soft_cap_ratio": 2.0,
         "web_search_enabled": True,
-        "max_web_search_queries": 6,
     }.items():
         monkeypatch.setattr(wf.settings, attr, value)
     return monkeypatch
@@ -142,7 +142,7 @@ def stubbed(monkeypatch):
 # ---------------------------------------------------------------- 素材
 
 
-def _poi(name, lat, lon, *, ticket=None, open_time=None, source="mysql.poi_knowledge", fetched="2026-08-01T00:00:00Z"):
+def _poi(name, lat, lon, *, ticket=None, open_time=None, source="opentripmap", fetched="2026-08-01T00:00:00Z"):
     row = {
         "id": f"poi-{name}",
         "name": name,
@@ -155,6 +155,9 @@ def _poi(name, lat, lon, *, ticket=None, open_time=None, source="mysql.poi_knowl
         row["ticket_price"] = ticket
     if open_time is not None:
         row["open_time"] = open_time
+    # fixture 冒充的是"外部数据层查到的一行"，所以要连证据票一起签
+    # （生产在 tools._as_candidate 当场签）。不签票的行会被当成调用方伪造。
+    issue_evidence(row)
     return row
 
 

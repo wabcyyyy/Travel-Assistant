@@ -8,40 +8,24 @@
  */
 import type * as Contracts from './generated/contracts'
 
-// 契约别名：核验状态枚举的唯一源是生成类型，业务 VO 字段直接引用
-type VerificationStatus = Contracts.FactEvidence['verificationStatus']
-type ValueKind = Contracts.FactEvidence['valueKind']
-type FreshnessStatus = Contracts.FactEvidence['freshnessStatus']
-type ReviewRequirement = Contracts.FactEvidence['reviewRequirement']
+/**
+ * 行程点位（视图层）。后端线级字段的类型一律派生自生成契约 Contracts.TripItem（单一真源，R5-1）：
+ * itemType/poiName 必填，其余按「视图层全可选」不变量取 Partial（同文件 PhotoSpotEntry/DayOption 的口径），
+ * 手写副本（曾各自重复声明 20 个字段）已删除。后端改字段名 → 这里 vue-tsc 必红（故意留此耦合）。
+ * 只补「业务详情 VO 才回传、契约里没有」的视图扩展键。
+ */
+type TripItemContractFields = Pick<Contracts.TripItem, 'itemType' | 'poiName'> &
+  Partial<Omit<Contracts.TripItem, 'itemType' | 'poiName'>>
 
-export interface TripItem {
+export interface TripItem extends TripItemContractFields {
+  /** ORM 主键：详情 VO 回传，契约无此键 */
   id?: number
-  itemType: string
-  poiName: string
-  poiId?: string | null
-  address?: string | null
-  latitude?: number | null
-  longitude?: number | null
-  startTime?: string | null
-  endTime?: string | null
-  durationMin?: number | null
-  cost?: number | null
-  tag?: string | null
-  remark?: string | null
+  /** 详情 VO 偶发回传的介绍/图说字段，契约 TripItem 里没有 */
   description?: string | null
   intro?: string | null
-  image?: string | null
-  openTime?: string | null
+  /** 图片备用字段（契约只有 image） */
   imageUrl?: string | null
-  /** 叙事字段（M3 生成契约补齐后生效）：该点与本趟意图的关系，value_kind=generated */
-  whyThis?: string | null
-  source?: string | null
-  sourceUpdatedAt?: string | null
-  verificationStatus?: VerificationStatus
-  valueKind?: ValueKind
-  freshnessStatus?: FreshnessStatus
-  reviewRequirement?: ReviewRequirement
-  factEvidence?: Record<string, Contracts.FactEvidence>
+  /** ORM 排序号，详情 VO 回传 */
   sortNo?: number
 }
 

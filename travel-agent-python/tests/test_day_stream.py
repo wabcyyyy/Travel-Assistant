@@ -1,6 +1,7 @@
 from pydantic import ValidationError
 
 from app.agent import day_stream
+from app.agent.grounding_evidence import issue_evidence
 from app.schemas.trip import BackupRule, GenerateDayRequest, GenerateRequest, PhotoSpot
 
 
@@ -16,6 +17,11 @@ def test_generate_request_rejects_more_than_one_week():
 def test_open_city_can_generate_after_workflow_enters_fallback(monkeypatch):
     """没有本地候选的城市也不能因某一天重试而中止整段行程。"""
     monkeypatch.setattr(day_stream.settings, "llm_api_key", "configured")
+
+    def _no_ground(item, city):
+        return None
+
+    monkeypatch.setattr(day_stream, "local_ground", _no_ground)
     monkeypatch.setattr(
         day_stream,
         "llm_open_day",
@@ -62,6 +68,53 @@ def test_open_city_can_generate_after_workflow_enters_fallback(monkeypatch):
     assert plan.items[0].source == "llm.open_day"
     assert plan.items[0].review_requirement == "before_departure"
     assert "identity" in plan.items[0].fact_evidence
+
+
+def test_resolved_item_is_endorsed_with_the_provider_that_ran(monkeypatch):
+    """点名解析真跑过时，来源就是那个 provider，并且拿到 observed 背书。
+
+    与 test_grounding_labels 的口径同源：项上的 source 只可能由服务端解析器写
+    （模型自报的在 LLM 输出边界已剥），所以它可以作为背书的凭据。
+    """
+    monkeypatch.setattr(day_stream.settings, "llm_api_key", "configured")
+
+    def _ground(item, city):
+        item["latitude"] = 31.32
+        item["longitude"] = 120.62
+        item["address"] = "苏州市姑苏区东北街178号"
+        item["source"] = "nominatim"
+        # 真实 local_ground 解析成功时同步签发证据票；背书认票不认字符串
+        issue_evidence({**item, "name": item["poi_name"], "city": city})
+
+    monkeypatch.setattr(day_stream, "local_ground", _ground)
+    monkeypatch.setattr(
+        day_stream,
+        "llm_open_day",
+        lambda req, used: {
+            "note": "苏州第2天行程",
+            "items": [
+                {
+                    "item_type": "attraction",
+                    "poi_name": "拙政园",
+                    "start_time": "09:00",
+                    "end_time": "11:00",
+                    "duration_min": 120,
+                    "cost": 0,
+                }
+            ],
+        },
+    )
+
+    plan, _source = day_stream.generate_day_once(
+        GenerateDayRequest(city="苏州", day_no=2, days=4, context={"candidates": [], "foods": [], "hotels": []}),
+        force_fallback=True,
+    )
+
+    item = plan.items[0]
+    assert item.source == "nominatim"
+    assert item.verification_status == "partially_verified"
+    assert item.value_kind == "observed"
+    assert item.fact_evidence["identity"].provider == "nominatim"
 
 
 def test_duration_min_follows_scheduled_window(monkeypatch):

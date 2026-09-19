@@ -21,6 +21,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.api.business.auth import auth_router
 from app.api.business.itinerary import router as itinerary_router
+from app.common import cache_store
 from app.common.config import settings
 from app.common.envelope import install_exception_handlers
 from app.db import session as db_session
@@ -33,7 +34,7 @@ from app.db.models import (
     ItineraryVersion,
     SysUser,
 )
-from app.services import cache_store, itinerary_chat, user_service
+from app.services import itinerary_chat, user_service
 
 JWT_MATERIAL = "example-only-hs256-test-signing-material"
 PASSWORD = "example123"

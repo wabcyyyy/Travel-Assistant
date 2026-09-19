@@ -24,11 +24,11 @@ from typing import Any
 
 from sqlalchemy import func, or_, select
 
+from app.common import cache_store
 from app.common.envelope import ApiError
 from app.common.vo_json import iso_date, iso_datetime, iso_time, number
 from app.db.models import BudgetDetail, ItineraryDay, ItineraryItem, ItineraryMain, ItineraryMember
 from app.db.session import session_scope
-from app.services import cache_store
 
 logger = logging.getLogger(__name__)
 
@@ -151,16 +151,6 @@ def find_writable_main(user_id: int, itinerary_id: int) -> ItineraryMain:
     """写校验（owner/editor）+ 取实体；SSE 写入口（chat-edit/stream）等用。"""
     with session_scope() as session:
         return require_writable_main(session, user_id, itinerary_id)
-
-
-def find_owned_item(user_id: int, item_id: int) -> ItineraryItem:
-    with session_scope() as session:
-        item = session.get(ItineraryItem, item_id)
-        if item is None:
-            raise ApiError(404, "行程项不存在")
-        itinerary_id = item.itinerary_id
-    find_readable_main(user_id, itinerary_id)
-    return item
 
 
 def list_summaries(user_id: int, view: str | None = None, q: str | None = None) -> list[dict[str, Any]]:

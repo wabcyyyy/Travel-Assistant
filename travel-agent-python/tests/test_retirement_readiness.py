@@ -3,12 +3,15 @@
 为什么值得单独钉：退休动作最容易以两种方式静默出事——
 1. **运行时找不到文件**：SQL 真相源与印刷字体今天都住在 Java 模块里，直接删目录，
    服务要到"启动迁移"或"导出 PDF"时才炸；
-2. **门禁自己先红**：`check_endpoint_coverage.py` 与 `check_schema_contract.py` 都以
-   "Java 目录必须存在"为前提，归档当天 CI 会因为脚本读不到目录而失败。
+2. **门禁自己先红**：`check_schema_contract.py` 以"Java 目录必须存在"为前提，归档当天
+   CI 会因为脚本读不到目录而失败。
 
 所以两处路径都改成"Java 侧优先 + 本仓副本兜底"的解析器，归档因此是**一次纯文件搬迁**；
-两个脚本也在"Java 侧不存在"时给出明确语义（不是静默跳过）：端点对照要求残留清单已清空，
-schema 契约输出里注明跳过了实体列那一半。
+脚本在"Java 侧不存在"时给出明确语义（不是静默跳过）：schema 契约输出里注明跳过了实体列那一半。
+
+（2026-09-18 自检整改 R0-5）`scripts/check_endpoint_coverage.py` 已删除：Java 目录消失后
+它只剩"打印 OK 并 return 0"一条路径，两个统计函数永不被调用——一个恒真的门禁比没有门禁更糟，
+因为它让人以为"端点残留已被机检"。端点面的真判据改由契约漂移 + 离线 TestClient 用例承担。
 """
 
 from __future__ import annotations
@@ -32,21 +35,23 @@ def _load_script(name: str, file_name: str | None = None):
     return module
 
 
-def test_migration_dir_prefers_the_copy_that_actually_has_sql(monkeypatch, tmp_path) -> None:
-    """两个分支都要钉：有 SQL 的 Java 侧优先；目录存在但空（归档后残留）也必须退本仓。"""
-    java_dir = tmp_path / "java" / "db" / "migration"
+def test_a_stray_java_tree_never_switches_the_migration_truth_source(tmp_path) -> None:
+    """R3-5：迁移 SQL 只有一个落点。
+
+    旧解析器"先看 Java、再退本仓"，意味着任何人 restore 一份 `travel-backend-java/`
+    （稀疏克隆、误留的构建产物、考古脚本）都会让启动迁移静默改读另一份 SQL——
+    本仓的 V*.sql 与 alembic 版本表立刻各说一套。这里钉住它不再有任何旁路。
+    """
+    java_dir = tmp_path / "travel-backend-java" / "src" / "main" / "resources" / "db" / "migration"
     java_dir.mkdir(parents=True)
-    monkeypatch.setattr(schema_source, "JAVA_MIGRATION_DIR", java_dir)
+    (java_dir / "V99__stray.sql").write_text("SELECT 1;", encoding="utf-8")
 
-    # 分支一：Java 侧真的有迁移文件 → 用它的（Flyway 与 Alembic 读同一份）
-    (java_dir / "V1__baseline_schema.sql").write_text("SELECT 1;", encoding="utf-8")
-    assert schema_source.resolve_migration_dir() == java_dir
-
-    # 分支二：目录还在但没 SQL（搬迁后残留空目录）→ 必须退本仓，否则启动迁移会静默不做事
-    (java_dir / "V1__baseline_schema.sql").unlink()
     assert schema_source.resolve_migration_dir() == schema_source.IN_REPO_MIGRATION_DIR
-    # 文档里承诺的落点：归档时把 SQL 搬到这里
-    assert schema_source.IN_REPO_MIGRATION_DIR == BASE_DIR / "app" / "db" / "migrations" / "sql"
+    assert not hasattr(schema_source, "JAVA_MIGRATION_DIR"), "Java 侧旁路必须彻底删除，不留常量"
+    # 解析出来的文件全部来自本仓，且版本号严格升序
+    names = [p.name for p in schema_source.migration_files()]
+    assert names and all("migrations" in str(p) for p in schema_source.migration_files())
+    assert names == sorted(names, key=lambda n: int(n.split("_")[0].lstrip("V")))
 
 
 def test_font_default_resolves_to_the_in_repo_copy(monkeypatch, tmp_path) -> None:
@@ -58,20 +63,6 @@ def test_font_default_resolves_to_the_in_repo_copy(monkeypatch, tmp_path) -> Non
     java_font.parent.mkdir(parents=True)
     java_font.write_bytes(b"font")
     assert config._default_font_path() == str(service_root / "app" / "resources" / "fonts" / "simhei.ttf")
-
-
-def test_endpoint_coverage_requires_an_empty_checklist_once_java_is_gone(monkeypatch, tmp_path, capsys) -> None:
-    module = _load_script("check_endpoint_coverage")
-    monkeypatch.setattr(module, "JAVA_CONTROLLERS", tmp_path / "archived")
-
-    # 残留清单没清空就归档 = 动作跑在清单之前（或 checkout 少了 Java 目录）→ 必须红
-    monkeypatch.setattr(module, "EXPECTED_REMAINING", {("GET", "/api/legacy"): "示例残留"})
-    assert module.main() == 1
-    assert "EXPECTED_REMAINING" in capsys.readouterr().out
-
-    monkeypatch.setattr(module, "EXPECTED_REMAINING", {})
-    assert module.main() == 0
-    assert "已删除" in capsys.readouterr().out
 
 
 def test_schema_contract_notes_the_skipped_java_half(monkeypatch, tmp_path, capsys) -> None:

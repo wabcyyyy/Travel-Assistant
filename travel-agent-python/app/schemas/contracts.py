@@ -65,6 +65,7 @@ from app.schemas.expense import (
     ExpenseUpdate,
     ExpenseVO,
 )
+from app.schemas.feedback import FeedbackCreate, FeedbackListVO, FeedbackVO
 from app.schemas.template import (
     TemplateCardVO,
     TemplateCostTier,
@@ -160,6 +161,9 @@ CONTRACT_GROUPS: dict[str, tuple[type[BaseModel], ...]] = {
         MemberRoleUpdate,
         InvitationAcceptRequest,
         InvitationAcceptVO,
+        FeedbackCreate,
+        FeedbackVO,
+        FeedbackListVO,
         TemplateCostTier,
         TemplateItemVO,
         TemplateDayVO,

@@ -418,7 +418,7 @@ async function loadDetail() {
     // 离线快照回退（C2.5）：断网时回退到本人最近一次成功读取的快照（只读）
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       const username = userStore.username
-      const entry = username ? await loadSnapshot(username ? snapshotKeyForDetail(username, String(route.params.id)) : '') : null
+      const entry = username ? await loadSnapshot(snapshotKeyForDetail(username, String(route.params.id))) : null
       if (entry) {
         store.setDetail(entry.payload as ItineraryDetail)
         offlineSnapshotAt.value = new Date(entry.savedAt).toLocaleString()

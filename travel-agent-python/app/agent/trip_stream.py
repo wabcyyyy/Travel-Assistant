@@ -31,7 +31,7 @@ from app.agent.generation_core import (
     stay_nights,
 )
 from app.agent.generators import pick_hotels
-from app.agent.landing import filter_plan_items, ground_item
+from app.agent.landing import drop_refuted_items, filter_plan_items, ground_item
 from app.agent.narrative import sanitize_narrative
 from app.agent.reference_pool import ReferencePool
 from app.agent.stream_parser import DailyPlansStreamParser
@@ -107,7 +107,6 @@ def _prepare_day(
     req: GenerateDayRequest,
     ref_pool: ReferencePool,
     seen: PoiSeenRegistry,
-    ground_cache: dict,
     price_lookup: dict[str, dict],
 ) -> dict:
     """单天落地：叙事清洗 → 脏项过滤 → 事实落地 → 同日/跨天双通道去重 → 权威价补水。
@@ -128,7 +127,7 @@ def _prepare_day(
         if name and seen.is_duplicate(name, item_type):
             record_event("decision", "stream_duplicate_dropped", metadata={"day_no": day_no, "poi_name": name})
             continue
-        ground_item(item, city=req.city, ref_pool=ref_pool, ground_cache=ground_cache)
+        ground_item(item, city=req.city, ref_pool=ref_pool)
         if name and seen.is_duplicate(name, item_type, item.get("latitude"), item.get("longitude")):
             # 落地后坐标通道判重命中（名称变体指向同一地点）
             record_event(
@@ -138,7 +137,8 @@ def _prepare_day(
         if name:
             seen.register(name, item_type, item.get("latitude"), item.get("longitude"))
         kept_items.append(item)
-    plan["items"] = kept_items
+    # 矛盾点位出局（G5）：落地后按存在性判定删掉"解析到别处"的项，其余保留。
+    plan["items"] = drop_refuted_items(kept_items, city=req.city)
     # 0 价补水：餐饮/酒店 cost=0 用权威价覆盖（唯一实现在 generation_core，G-1.3 ③）
     fill_zero_costs([plan], price_lookup)
     return plan
@@ -192,7 +192,6 @@ def run_generate_trip_stream(req: GenerateDayRequest, cancel: threading.Event | 
             price_lookup[name] = poi
 
     seen: PoiSeenRegistry = PoiSeenRegistry()
-    ground_cache: dict = {}
     plans: list[dict] = []
     emitted_nos: list[int] = []
     per_day_suggestions: list[dict] = []
@@ -242,7 +241,6 @@ def run_generate_trip_stream(req: GenerateDayRequest, cancel: threading.Event | 
                     req=req,
                     ref_pool=ref_pool,
                     seen=seen,
-                    ground_cache=ground_cache,
                     price_lookup=price_lookup,
                 )
                 plans.append(plan)

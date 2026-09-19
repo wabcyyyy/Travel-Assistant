@@ -278,8 +278,10 @@ def test_llm_open_day_returns_sanitized_narrative_fields(monkeypatch):
     req = GenerateDayRequest(city="京都", day_no=1, days=3)
     plan = day_stream.llm_open_day(req, set())
 
-    # max_tokens 叙事增量：2400 → 3200
-    assert client.kwargs[0]["max_tokens"] == 3200
+    # max_tokens 三次上调：2400 → 3200 → 8000。3200 实测装不下"叙事字段 +
+    # 24-40 条 suggestions"的输出契约（2026-09-18 量测 6/6 城整段 JSON 被截断
+    # → parse 失败 → 该日退化为草案），见 docs/量测-存在性接地-2026-09-18.md §5。
+    assert client.kwargs[0]["max_tokens"] == 8000
     # 清洗后全字段到位
     assert plan["trip_theme"] == "题" * 40
     assert plan["theme"] == "长" * 40

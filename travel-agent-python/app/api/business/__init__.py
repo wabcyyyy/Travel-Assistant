@@ -15,6 +15,7 @@ from app.api.business.auth import auth_router, user_router
 from app.api.business.covers import router as covers_router
 from app.api.business.expenses import router as expenses_router
 from app.api.business.export import router as export_router
+from app.api.business.feedback import router as feedback_router
 from app.api.business.itinerary import router as itinerary_router
 from app.api.business.media import router as media_router
 from app.api.business.members import router as members_router
@@ -31,6 +32,7 @@ business_routers: tuple[APIRouter, ...] = (
     itinerary_router,
     covers_router,
     expenses_router,
+    feedback_router,
     members_router,
     pois_router,
     weather_router,

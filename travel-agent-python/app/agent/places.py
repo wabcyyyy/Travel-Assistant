@@ -1,4 +1,4 @@
-"""外部地点数据层：OpenTripMap 为主、Nominatim 兜底、地图深链工具。
+"""外部地点数据层：OpenTripMap 为主、Nominatim 兜底（只取数据，不下结论）。
 
 POI 权威库退役后的坐标/分类/图片来源（TREK 式"不存语料，事实交给外部活数据"）：
 
@@ -6,30 +6,25 @@ POI 权威库退役后的坐标/分类/图片来源（TREK 式"不存语料，�
   检索（坐标/分类/热度）、xid 详情（结构化地址/官网/图片/维基简介）。免费 key，
   仅 en/ru 两种语言——返回名称为英文，中文名由生成链路的 LLM 对齐；
 - **Nominatim**（OSM 官方地理编码）：任意名称→坐标，OTM 失败或缺 key 时兜底；
-  使用政策要求 1 rps 与可联系的 User-Agent；
-- **地图深链**：谷歌地图（海外）/ 高德 URI（国内）的搜索与路线链接。纯函数拼
-  URL，无 key 无网络，把"事实核实"交给地图 App 的活数据。
+  使用政策要求 1 rps 与可联系的 User-Agent。`geocode_place_rows` 区分 None
+  （没问到）与 [] （问到且没有），供存在性判定取用。
 
 事实边界：两家数据源都**没有票价/营业时间**——这些字段由 LLM 估价并按
-`estimated` 如实标注，行程页以深链引导用户出发前自行核实。
+`estimated` 如实标注，行程页以深链（见 `map_link`）引导用户出发前自行核实。
 
-依赖：common（external_client/http_client/config）+ app.db（仅 city_geo 城市字典的
-国内判定查询）；无 agent 内部依赖。
+依赖：common（external_client/http_client/config）；无 agent 内部依赖、无 DB。
+地图深链与 GCJ-02 换算在 `app/agent/map_link.py`。
 """
 
 from __future__ import annotations
 
 import logging
-import math
 from typing import Any
 from urllib.parse import quote
 
-from sqlalchemy import text
-
 from app.common.config import settings
-from app.common.external_client import ExternalClient
+from app.common.external_client import ExternalClient, fetch_json
 from app.common.http_client import api_client
-from app.db.session import session_scope
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +32,6 @@ _OTM_BASE = "https://api.opentripmap.com/0.1/en"
 _NOMINATIM_BASE = "https://nominatim.openstreetmap.org/search"
 # 与 wikipedia 图片通道一致的 UA 策略（Nominatim 政策要求可联系的标识）
 _NOMINATIM_UA = "TravelAssistantDemo/1.0 (student-project; contact=dev@localhost.invalid)"
-
-_AMAP_SRC = "travel-assistant"
 
 
 def otm_enabled() -> bool:
@@ -79,10 +72,12 @@ def _otm_get(path: str, params: dict[str, Any], client: ExternalClient) -> Any:
     key = str(settings.otm_api_key or "").strip()
     if not key:
         return None
-    params = {**params, "apikey": key}
+    # 密钥绝不进缓存键：它不是缓存身份的一部分，而失败日志会把缓存键原样打出来
+    # ——把 apikey 拼进键里等于把密钥写进生产日志（2026-09-18 量测时实测到）。
+    cache_key = f"{path}:{sorted(params.items(), key=lambda kv: kv[0])}"
     payload = client.call(
-        f"{path}:{sorted(params.items(), key=lambda kv: kv[0])}",
-        lambda: api_client().get(f"{_OTM_BASE}/{path}", params=params).json(),
+        cache_key,
+        lambda: fetch_json(client, api_client(), f"{_OTM_BASE}/{path}", params={**params, "apikey": key}),
     )
     if isinstance(payload, dict) and payload.get("error"):
         logger.warning("otm[%s] error: %s", path, str(payload["error"])[:120])
@@ -219,172 +214,65 @@ def enrich_with_details(places: list[dict[str, Any]], *, top: int = 12) -> list[
 # ---- Nominatim 兜底 ---------------------------------------------------------
 
 
-def geocode_place(name: str, city: str | None = None) -> dict[str, Any] | None:
-    """名称（可带城市）→ 坐标；OTM 是分类检索、兜不了"点名解析"，由 Nominatim 承担。"""
+def geocode_place_rows(name: str, city: str | None = None, *, namedetails: bool = False) -> list[dict[str, Any]] | None:
+    """点名→候选要素列表；**None 与 [] 是两种结论**，不可合并。
+
+    - `None`：未启用 / 请求失败 / 非 200 / 解析失败——"没问到"，不能当成不存在；
+    - `[]`：服务成功应答且明确没有这个要素——provider 的否定结论。
+
+    存在性判定（`app/agent/existence.py`）依赖这个区分：把请求失败当成
+    "景点不存在"去删用户的点位，是本模块最不能犯的错。
+    `namedetails=True` 时带回 OSM 的全部名称标签（name:ja / name:zh-Hans /
+    alt_name…），跨脚本与简繁写法只有靠它才能对上（2026-09-18 量测实测）。
+    """
+    if not settings.nominatim_enabled:  # 离线护栏：eval/CI 不能因为"点名解析"打公网
+        return None
     query = " ".join(part for part in (str(name or "").strip(), str(city or "").strip()) if part)
     if not query:
         return None
+    params: dict[str, Any] = {"q": query[:120], "format": "jsonv2", "limit": 5 if namedetails else 1}
+    if namedetails:
+        params["namedetails"] = "1"
     payload = _nominatim_client.call(
-        f"q:{query[:120]}",
-        lambda: (
-            api_client()
-            .get(
-                _NOMINATIM_BASE,
-                params={"q": query[:120], "format": "jsonv2", "limit": 1},
-                headers={"User-Agent": _NOMINATIM_UA, "Accept-Language": "zh,en"},
-            )
-            .json()
+        f"q:{query[:120]}:{int(namedetails)}",
+        lambda: fetch_json(
+            _nominatim_client,
+            api_client(),
+            _NOMINATIM_BASE,
+            params=params,
+            headers={"User-Agent": _NOMINATIM_UA, "Accept-Language": "zh-CN,zh,en"},
         ),
     )
-    if not isinstance(payload, list) or not payload:
+    if not isinstance(payload, list):
         return None
-    row = payload[0]
-    try:
-        return {
-            "name": str(row.get("name") or name),
-            "display_name": str(row.get("display_name") or ""),
-            "latitude": float(row["lat"]),
-            "longitude": float(row["lon"]),
-            "source": "nominatim",
-        }
-    except (TypeError, ValueError, KeyError):
-        return None
-
-
-# ---- 地图深链（D1-D10 统一口径，2026-09 拍板） -------------------------------
-#
-# 与前端 src/utils/geo.ts 的 externalMapLink/mapDirectionsUrl 语义对齐，双方由
-# tests/golden/deeplink_cases.json 双向钉住（tests/test_deeplink_parity.py +
-# travel-frontend-vue/src/utils/deeplink.parity.test.ts）。
-
-
-def _parse_coords(latitude: Any, longitude: Any) -> tuple[float, float] | None:
-    """坐标有效性谓词（与前端 geo.hasValidCoordinates 同语义）：
-    有限值 + 经纬度范围 + 非 0/0 哨兵；有效则返回 (lat, lon)，无效返回 None。
-    判定与打点共用同一谓词，杜绝"同一坐标两处口径"。
-    """
-    try:
-        lat, lon = float(latitude), float(longitude)
-    except (TypeError, ValueError):
-        return None
-    if not (math.isfinite(lat) and math.isfinite(lon)):
-        return None
-    if abs(lat) > 90 or abs(lon) > 180 or (lat == 0 and lon == 0):
-        return None
-    return lat, lon
-
-
-def _in_china(latitude: float, longitude: float) -> bool:
-    return 18.0 <= latitude <= 54.0 and 73.0 <= longitude <= 135.0
-
-
-def _dict_domestic(city: str) -> bool | None:
-    """city_geo.is_domestic 查询（D3 权威源：V4 保留城市字典即为国内海外判定）。
-
-    未收录 / 城市为空 / 库不可用一律返回 None，由调用方决定默认——统一默认海外：
-    谷歌链接对国内点只是体验次优，高德链接对海外点则是错误国家，两种错误不对称。
-    """
-    name = str(city or "").strip()[:32]
-    if not name:
-        return None
-    try:
-        with session_scope() as session:
-            row = session.execute(
-                text("SELECT is_domestic FROM city_geo WHERE city_name = :name"),
-                {"name": name},
-            ).scalar()
-    except Exception:  # DB 不可用：深链是核实引导，不因字典查询失败打断调用方
-        return None
-    return None if row is None else bool(row)
-
-
-def _is_domestic(latitude: Any, longitude: Any, city: str) -> bool:
-    """坐标优先（国界框，坐标先过有效性谓词）；无/无效坐标查 city_geo 字典。"""
-    coords = _parse_coords(latitude, longitude)
-    if coords is not None:
-        return _in_china(*coords)
-    return bool(_dict_domestic(city))
-
-
-def to_gcj02(latitude: float, longitude: float) -> tuple[float, float]:
-    """WGS-84 → GCJ-02（高德 URI 按 GCJ-02 解释坐标，直传 WGS-84 会偏数百米）。
-
-    与前端 src/utils/coordinates.ts 的 toGcj02 同一公式（两侧测试各钉已知值，
-    改一侧必须同步另一侧）；中国境外原样返回。
-    """
-    if longitude < 72.004 or longitude > 137.8347 or latitude < 0.8293 or latitude > 55.8271:
-        return latitude, longitude
-    x = longitude - 105
-    y = latitude - 35
-    pi = math.pi
-
-    def _wave(v: float, a: float, b: float) -> float:
-        return (a * math.sin(v * pi) + b * math.sin(v / 3 * pi)) * 2 / 3
-
-    common = (20 * math.sin(6 * x * pi) + 20 * math.sin(2 * x * pi)) * 2 / 3
-    lat_offset = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * math.sqrt(abs(x))
-    lat_offset += common + _wave(y, 20, 40) + (160 * math.sin(y / 12 * pi) + 320 * math.sin(y * pi / 30)) * 2 / 3
-    lon_offset = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * math.sqrt(abs(x))
-    lon_offset += common + _wave(x, 20, 40) + (150 * math.sin(x / 12 * pi) + 300 * math.sin(x / 30 * pi)) * 2 / 3
-    rad = latitude / 180 * pi
-    magic = 1 - 0.00669342162296594323 * math.sin(rad) ** 2
-    sqrt_magic = math.sqrt(magic)
-    lat_offset = lat_offset * 180 / ((6378245 * (1 - 0.00669342162296594323)) / (magic * sqrt_magic) * pi)
-    lon_offset = lon_offset * 180 / (6378245 / sqrt_magic * math.cos(rad) * pi)
-    return latitude + lat_offset, longitude + lon_offset
-
-
-def map_search_url(name: str, city: str, *, latitude: float | None = None, longitude: float | None = None) -> str:
-    """单点"地图核实"链接：国内高德、海外谷歌。
-
-    有有效坐标：国内走高德 marker（坐标先换算 GCJ-02），海外走谷歌坐标定位；
-    无/无效坐标一律关键词搜索（名称 + 城市，空格分隔）。
-    """
-    label = str(name or "").strip()
-    city_text = str(city or "").strip()
-    keyword = f"{label} {city_text}".strip()
-    coords = _parse_coords(latitude, longitude)
-    if _is_domestic(latitude, longitude, city_text):
-        if coords is not None:
-            g_lat, g_lon = to_gcj02(*coords)
-            return (
-                f"https://uri.amap.com/marker?position={g_lon},{g_lat}&name={quote(label)}&src={_AMAP_SRC}&callnative=0"
-            )
-        return f"https://uri.amap.com/search?keyword={quote(keyword)}&src={_AMAP_SRC}&callnative=0"
-    query = f"{coords[0]},{coords[1]}" if coords is not None else keyword
-    return f"https://www.google.com/maps/search/?api=1&query={quote(query)}"
-
-
-def map_directions_url(stops: list[dict[str, Any]]) -> str | None:
-    """全天路线链接：取有效坐标的停靠点串 waypoint；少于 2 点返回 None。
-
-    国内走高德 navigation（from/to/via 先换算 GCJ-02；官方 URI 途经点上限
-    1 个，超出返回 None、由界面提示分段核实——与前端同口径）；海外走谷歌 dir
-    （origin/destination 用坐标，waypoints 暂不设上限——D6 已知差异，前端限 3）。
-    """
-    points: list[tuple[float, float]] = []
-    for stop in stops:
-        coords = _parse_coords(stop.get("latitude"), stop.get("longitude"))
-        if coords is not None:
-            points.append(coords)
-    if len(points) < 2:
-        return None
-
-    def _coord(lat: float, lon: float) -> str:
-        g_lat, g_lon = to_gcj02(lat, lon)
-        return f"{g_lon},{g_lat}"
-
-    if _in_china(points[0][0], points[0][1]):
-        middles = points[1:-1]
-        if len(middles) > 1:
-            return None
-        url = (
-            f"https://uri.amap.com/navigation?from={_coord(*points[0])}&to={_coord(*points[-1])}"
-            f"&mode=car&policy=1&src={_AMAP_SRC}&coordinate=gaode&callnative=0"
+    rows: list[dict[str, Any]] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        try:
+            lat, lng = float(item["lat"]), float(item["lon"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        raw_details: Any = item.get("namedetails")
+        details: dict[str, Any] = raw_details if isinstance(raw_details, dict) else {}
+        rows.append(
+            {
+                "name": str(item.get("name") or ""),
+                "display_name": str(item.get("display_name") or ""),
+                "latitude": lat,
+                "longitude": lng,
+                # 别名集合：任何一条名称标签都算同一个实体的写法
+                "aliases": sorted({str(v).strip() for v in details.values() if str(v or "").strip()}),
+                "country_code": str(item.get("country_code") or "").upper() or None,
+                "category": str(item.get("category") or ""),
+                "type": str(item.get("type") or ""),
+                "source": "nominatim",
+            }
         )
-        return f"{url}&via={_coord(*middles[0])}" if middles else url
-    origin = quote(f"{points[0][1]},{points[0][0]}")
-    destination = quote(f"{points[-1][1]},{points[-1][0]}")
-    waypoints = quote("|".join(f"{lon},{lat}" for lat, lon in points[1:-1]))
-    url = f"https://www.google.com/maps/dir/?api=1&origin={origin}&destination={destination}"
-    return f"{url}&waypoints={waypoints}" if waypoints else url
+    return rows
+
+
+def geocode_place(name: str, city: str | None = None) -> dict[str, Any] | None:
+    """名称（可带城市）→ 单个坐标；OTM 是分类检索、兜不了"点名解析"，由 Nominatim 承担。"""
+    rows = geocode_place_rows(name, city)
+    return rows[0] if rows else None

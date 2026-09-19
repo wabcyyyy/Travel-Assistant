@@ -99,7 +99,7 @@ def format_output(state: AgentState) -> dict:
     outcome = judge_output(state, daily_plans, schedule_report, check, fallback_reason)
 
     # 开放模式下模型建议可来自候选池之外（allow_external）：坐标留空的
-    # 条目由前端在加入行程前经高德补齐；候选池保底链路仍保持池内过滤。
+    # 条目由前端在加入行程前经地图检索补齐；候选池保底链路仍保持池内过滤。
     open_research = bool((state.get("schedule_report") or {}).get("open_research"))
     activities = activity_floor(req.city)
     tier_label, _tier_g, _tier_ppd = budget_tier(req.budget, req.persons, req.days)

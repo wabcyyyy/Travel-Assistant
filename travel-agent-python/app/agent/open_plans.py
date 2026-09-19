@@ -25,7 +25,7 @@ from app.agent.generation_core import (
     spread_hotels,
     stay_nights,
 )
-from app.agent.landing import filter_plan_items, ground_item
+from app.agent.landing import drop_refuted_items, filter_plan_items, ground_item
 from app.agent.reference_pool import ReferencePool
 from app.agent.suggestions import activity_floor, floor_suggestions
 from app.agent.trace import record_event
@@ -50,13 +50,14 @@ def draft_state(req: GenerateRequest, reason: str, schedule_report: dict | None 
 
 
 def _generate_drafts(
-    req: GenerateRequest, feedback: str, context: dict, ref_pool: ReferencePool
+    req: GenerateRequest, feedback: str, context: dict, ref_pool: ReferencePool, schedule_report: dict
 ) -> tuple[list[dict], list[dict], list[str]]:
-    """第一段（草案生成）：LLM 一次生成 + 参考落地。
+    """第一段（草案生成）：LLM 一次生成 + 参考落地 + 矛盾点位出局。
 
     多日走 llm_open_trip（整体失败逐日落成「待研究」空草案），单日走
     llm_open_day；命中参考资料的点位由 ref_pool 落地权威字段，未命中交
-    local_ground 补真实坐标。返回 (plans, raw_suggestions, research_errors)。
+    存在性解析器补真实坐标，解析到别处的点位在这里删掉（G5）。
+    返回 (plans, raw_suggestions, research_errors)。
     """
     plans: list[dict] = []
     used: set[str] = set()
@@ -127,12 +128,15 @@ def _generate_drafts(
                 plan = {"note": f"{req.city}第{day_no}天待研究", "items": []}
         else:
             plan = plans_by_day.get(day_no) or {"note": f"{req.city}第{day_no}天待研究", "items": []}
-        ground_cache: dict = {}
         # 结构校验：LLM 可能返回非 dict 项或无 poi_name 的脏项，必须在
         # 落地前过滤，否则 format_output 的 item.get / TripItem(**item) 崩溃。
         plan["items"] = filter_plan_items(plan.get("items"))
         for item in plan["items"]:
-            ground_item(item, city=req.city, ref_pool=ref_pool, ground_cache=ground_cache)
+            ground_item(item, city=req.city, ref_pool=ref_pool)
+        # 与本次行程矛盾的点位（解析到别处 / 权威源否证）在这里出局，剩下
+        # 的"未判定"项保留——09-19 复评：免费源的"查不到"不足以删用户的点。
+        plan["items"] = drop_refuted_items(plan["items"], city=req.city, report=schedule_report)
+        for item in plan["items"]:
             if item.get("poi_name"):
                 used.add(str(item["poi_name"]))
         plans.append(
@@ -227,14 +231,25 @@ def generate_open_plans(
             "weather": weather or [],
         }
         ref_pool = ReferencePool(context)
-        plans, raw_suggestions, research_errors = _generate_drafts(req, feedback, context, ref_pool)
+        plans, raw_suggestions, research_errors = _generate_drafts(req, feedback, context, ref_pool, schedule_report)
         if research_errors and not any(p.get("items") for p in plans):
             # 整段开放研究失败：交由调用方降级，避免把候选库城市打成空草案。
             return None
         raw_suggestions = _postprocess_drafts(
             req, plans, raw_suggestions, candidates, foods, context_hotels, ref_pool, schedule_report
         )
-        schedule_report["destination_status"] = "researched" if not research_errors else "draft_only"
+        # 空池不算 error，但也不能算研究过（P4）：三个候选域全空时唯一的可能
+        # 是"模型凭自身知识写完了"——打成 researched 会让零外部证据的产出
+        # 看起来像经过核实。OTM key 未配、城市中心缺失、联网预算耗尽都会到这里。
+        empty_domains = [
+            name
+            for name, rows in (("candidates", candidates), ("foods", foods), ("hotels", context_hotels))
+            if not rows
+        ]
+        if empty_domains:
+            schedule_report["empty_domains"] = empty_domains
+        researched = not research_errors and len(empty_domains) < 3
+        schedule_report["destination_status"] = "researched" if researched else "draft_only"
         schedule_report["open_research"] = True
         if research_errors:
             schedule_report["research_errors"] = research_errors

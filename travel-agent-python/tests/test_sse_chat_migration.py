@@ -30,7 +30,7 @@ from app.api.business import itinerary as itinerary_routes
 from app.api.business.auth import auth_router
 from app.api.business.itinerary import router as itinerary_router
 from app.api.deps import AuthUser as _AuthUser
-from app.common import event_hub, event_publisher
+from app.common import cache_store, event_hub, event_publisher
 from app.common.config import settings
 from app.common.envelope import ApiError, install_exception_handlers
 from app.common.task_pool import TaskRejected
@@ -46,7 +46,7 @@ from app.db.models import (
 )
 from app.schemas.business.itinerary import ChatEditBody
 from app.schemas.trip import ChatTurnResponse, HotelOption
-from app.services import cache_store, itinerary_chat, state_and_sessions, user_service
+from app.services import itinerary_chat, state_and_sessions, user_service
 
 JWT_MATERIAL = "example-only-hs256-test-signing-material"
 PASSWORD = "example123"

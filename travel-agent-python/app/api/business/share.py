@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request, Response
 
-from app.api.business.auth import client_ip
 from app.api.security import enforce_business_auth
+from app.common.client_ip import client_ip
 from app.common.envelope import ok
 from app.services import share_service
 

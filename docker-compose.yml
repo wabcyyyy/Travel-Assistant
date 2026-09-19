@@ -18,7 +18,8 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-travel_dev_only}
       MYSQL_DATABASE: ${MYSQL_DB:-travel_assistant}
     ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      # 只绑回环：宿主机上的工具照样连，但不会把 3306 开放给整个网络
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
     volumes:
       - ta-mysql-data:/var/lib/mysql
       # 表结构由后端（travel-agent-python）启动时自动迁移创建（见 app/db/migrations/sql/），
@@ -37,14 +38,24 @@ services:
   redis:
     image: redis:7-alpine
     container_name: ta-redis
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-ta_dev_redis_only}
     ports:
-      # 默认与项目 start-all 使用的 6380 对齐，避免与本机已有 6379 冲突
-      - "${REDIS_PORT:-6380}:6379"
-    command: ["redis-server", "--appendonly", "yes", "--protected-mode", "no"]
+      # 默认与项目 start-all 使用的 6380 对齐，避免与本机已有 6379 冲突；
+      # 只绑 127.0.0.1（R1-7）：这个库里放着 JWT 吊销黑名单与登录锁桶，
+      # 之前的 `--protected-mode no` + 无口令 + 0.0.0.0:6380 等于让同网段任意主机
+      # 清空白名单（被踢的票继续有效 24h）并抹掉失败计数。
+      - "127.0.0.1:${REDIS_PORT:-6380}:6379"
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:-ta_dev_redis_only}
     volumes:
       - ta-redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
       timeout: 3s
       retries: 10
@@ -73,16 +84,26 @@ services:
       DB_USER: root
       DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-travel_dev_only}
       DB_NAME: ${MYSQL_DB:-travel_assistant}
-      REDIS_URL: redis://redis:6379/0
+      # 不再写死 REDIS_URL：口令要进 URL，由 REDIS_HOST/PORT/PASSWORD 单点派生
+      # （见 app/common/config.py:_default_redis_url），否则两份地址必然漂移
       REDIS_HOST: redis
       # 容器网络内 Redis 监听 6379（宿主机才映射为 6380）
       REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-ta_dev_redis_only}
+      # XFF 归因：只有这台代理**替换**过 XFF（nginx.conf 用 $remote_addr），
+      # 才允许后端按可信网段从右往左取跳。网段是 compose 默认 bridge 段。
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1,::1,172.16.0.0/12}
+      # compose 的 nginx 只 listen 80（明文），Secure Cookie 会被浏览器丢掉；
+      # 上 TLS 后删掉这行，回到 config.py 的安全默认值（R1-6）。
+      AUTH_COOKIE_SECURE: "false"
     volumes:
       # 封面/上传图（UPLOADS_DIR）与 PDF 导出（EXPORT_DIR）都落 BASE_DIR/data，
       # 容器内即 /app/data——不挂卷则容器重建即丢（S0-7）
       - ./travel-agent-python/data:/app/data
     ports:
-      - "8000:8000"
+      # 只绑回环：前端经容器网络访问 agent-python:8000，宿主机端口留给调试。
+      # 0.0.0.0:8000 会让 /api/agent/** 与 /mcp 绕过 nginx 直接暴露（R1-8）。
+      - "127.0.0.1:8000:8000"
     depends_on:
       mysql:
         condition: service_healthy

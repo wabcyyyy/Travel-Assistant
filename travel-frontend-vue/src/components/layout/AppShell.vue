@@ -55,8 +55,7 @@
       <!-- immersive 路由（详情工作台，v2.7 §20 R1）：整页不滚，页脚让位给视口固定布局 -->
       <footer v-if="route.meta.immersive !== true" class="footer">
         <p>
-          本地演示项目，仅供学习展示。点位数据来自本地点位知识库（Wikivoyage CC BY-SA 等来源已在数据管线标注），
-          图片来自 Wikimedia / Unsplash 等图库并经服务端同源代理。价格与营业时间请以现场或官方渠道为准。
+          本地演示项目，仅供学习展示。{{ DATA_PROVENANCE }}；图片经服务端同源代理。{{ DATA_PROVENANCE_DISCLAIMER }}。
         </p>
       </footer>
     </div>
@@ -70,6 +69,7 @@ import { Compass, Files, HomeFilled, MagicStick, MapLocation, Search, Setting } 
 
 import { logoutApi } from '../../api'
 import { getTemplateCapability } from '../../api/templates'
+import { DATA_PROVENANCE, DATA_PROVENANCE_DISCLAIMER } from '../../constants/data-provenance'
 import { useUserStore } from '../../store/user'
 import AppearancePopover from './AppearancePopover.vue'
 

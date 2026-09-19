@@ -22,7 +22,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from app.common.config import settings
-from app.common.external_client import ExternalClient
+from app.common.external_client import ExternalClient, fetch_json
 from app.common.http_client import api_client
 
 logger = logging.getLogger(__name__)
@@ -111,7 +111,7 @@ def get_weather_forecast(city: str, start_date: str | None, end_date: str | None
     cache_key = f"{params['latitude']}:{params['longitude']}:{params['start_date']}:{params['end_date']}"
     payload = _weather_client.call(
         cache_key,
-        lambda: api_client().get(_OPEN_METEO_BASE, params=params).json(),
+        lambda: fetch_json(_weather_client, api_client(), _OPEN_METEO_BASE, params=params),
     )
     daily = payload.get("daily") if isinstance(payload, dict) else None
     if not isinstance(daily, dict) or not isinstance(daily.get("time"), list):

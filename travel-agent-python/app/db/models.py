@@ -376,3 +376,29 @@ class AddonAudit(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
     changed_by: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+
+
+class ItemFeedback(Base):
+    """条目对/错反馈（V8，SPEC C3.5）：一人一条可改（UNIQUE(item_id,user_id) upsert），
+    撤销=硬删行（Q5，不留墓碑）。**刻意不继承 SoftDelete**：行程/条目软删后反馈行
+    保留（Q6，eval 需要历史），不可见靠投影隔离——本表不进 share/模板/MCP 任何投影。
+    """
+
+    __tablename__ = "item_feedback"
+    __table_args__ = (UniqueConstraint("item_id", "user_id", name="uq_feedback_item_user"),)
+
+    id: Mapped[int] = mapped_column(PkBigInt, primary_key=True, autoincrement=True)
+    itinerary_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, comment="冗余存行程 id,聚合按行程/城市走 join"
+    )
+    item_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="itinerary_item.id")
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="记录实名,展示匿名")
+    value: Mapped[int] = mapped_column(Boolean, nullable=False, comment="1=right 0=wrong")
+    reason: Mapped[str | None] = mapped_column(
+        String(32), comment="value=0 必填:wrong_location/wrong_time/wrong_price/not_interested/closed/other"
+    )
+    note: Mapped[str | None] = mapped_column(String(200), comment="可选备注")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )

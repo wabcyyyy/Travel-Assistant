@@ -186,8 +186,9 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Box, Picture, Plus, Share } from '@element-plus/icons-vue'
 
-import { getItineraryDetail, getItineraryList, setArchived } from '../api'
+import { getItineraryDetail, listItineraries } from '../api'
 import { useAtlasStore } from '../store/atlas'
+import { useTripRowActions } from '../composables/useTripRowActions'
 import CoverDialog from '../components/trip/CoverDialog.vue'
 import ShareDialog from '../components/trip/ShareDialog.vue'
 import AppPanel from '../components/ui/AppPanel.vue'
@@ -195,7 +196,6 @@ import Chip from '../components/ui/Chip.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
 import SkeletonCard from '../components/ui/SkeletonCard.vue'
 import StatTile from '../components/ui/StatTile.vue'
-import { coverForCity } from '../constants/covers'
 import type { AtlasResponse } from '../types/atlas'
 import type { ItineraryDetail, ItinerarySummary } from '../types/itinerary'
 import { daysUntil, tripStatusLabel } from '../utils/tripStatus'
@@ -212,10 +212,9 @@ const summaries = ref<ItinerarySummary[]>([])
 const atlas = ref<AtlasResponse | null>(null)
 const latestDetail = ref<ItineraryDetail | null>(null)
 
-const coverVisible = ref(false)
-const coverTarget = ref<ItinerarySummary | null>(null)
-const shareVisible = ref(false)
-const shareTarget = ref<ItinerarySummary | null>(null)
+// 行操作（换封面/分享/归档）与弹窗态统一走 composable（R5-5）
+const { coverVisible, coverTarget, shareVisible, shareTarget, coverOf, openCover, openShare, onCoverUpdated, archive } =
+  useTripRowActions({ reload: load })
 
 const todayLabel = computed(() =>
   new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }),
@@ -294,44 +293,22 @@ const pendingText = computed(() => {
   return count > 0 ? `出发前需复核 ${count} 项事实（未背书项已降级标注）` : '无需出发前复核'
 })
 
-function coverOf(row: ItinerarySummary): string {
-  return row.coverUrl || coverForCity(row.city)
-}
-
 function openTrip(id: number): void {
   router.push({ name: 'trip-detail', params: { id } })
 }
 
-function openCover(row: ItinerarySummary): void {
-  coverTarget.value = row
-  coverVisible.value = true
-}
-
-function openShare(row: ItinerarySummary): void {
-  shareTarget.value = row
-  shareVisible.value = true
-}
-
-function onCoverUpdated(): void {
-  void load()
-}
-
 async function archiveHero(): Promise<void> {
-  try {
-    await setArchived(heroTrip.value.id, true)
-    ElMessage.success('已归档')
-    void load()
-  } catch {
-    /* 拦截器已提示 */
-  }
+  await archive(heroTrip.value, true)
 }
 
 async function load(): Promise<void> {
   loading.value = true
   loadError.value = false
   try {
-    const list = await getItineraryList()
-    summaries.value = list.data ?? []
+    // 过滤视图（R5-5）：走带 view 的 listItineraries 而非无过滤端点，且本地再排归档——
+    // 归档行程不得漏进首页工作台（即将出发 / 统计 / 最近编辑）。
+    const list = await listItineraries()
+    summaries.value = (list.data ?? []).filter((trip) => !trip.archived)
   } catch {
     // 失败与「没有行程」必须区分：后者是真实空态，前者要能重试
     loadError.value = true

@@ -10,6 +10,12 @@ Wikipedia(zh/en/ja) → Wikimedia Commons → Unsplash → Pexels。
    同一批泛化风景图；错误的图比没有图更伤观感。本文件有测试钉住这一点。
 2. **有界 LRU + 空结果缓存**——匿名端点、高基数名称，无界缓存会被撑爆；
    未命中的名称若不留哨兵，每次开页面都会重放整条外网链路。
+
+为什么 `app/agent/tools.py` 里还有一份相似的图片链（R3-1 的结论，别再"顺手合并"）：
+分层是 `api → services → agent`，**agent 不能反向 import services**。本文件服务匿名的
+`GET /api/poi-photo`（services 面），生成链路要取图只能经 `tools.poi_image`（agent 面）。
+两条链共用同一套纪律（那边的 docstring 指回这里），但共用代码要等"地点事实"这一层
+落到 agent 侧、缓存有非 services 的落点之后才能合并——那是结构决策，不是复制粘贴。
 """
 
 from __future__ import annotations
