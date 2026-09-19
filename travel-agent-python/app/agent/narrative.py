@@ -13,12 +13,13 @@ parse_llm_json 之后经过本函数，而知识/约束链的 items 由服务端
   逐项对齐；
 - 同日同名去重（dedupe_same_day_items）是模型重复拆条的确定性兜底。
 
-依赖：generation_core（norm_poi_key、模型申报字段剥离）、trace.record_event；re。
+依赖：generation_core（模型申报字段剥离）、poi_identity（norm_poi_key）、trace.record_event；re。
 """
 
 import re
 
-from app.agent.generation_core import has_model_claims, norm_poi_key, strip_model_claims
+from app.agent.generation_core import has_model_claims, strip_model_claims
+from app.agent.poi_identity import norm_poi_key
 from app.agent.trace import record_event
 
 # 叙事字段规模上限：与 open_generation 契约、app/schemas/trip.py 的截断口径
@@ -51,7 +52,7 @@ def _strip_instruction_residue(text):
 
 
 def _norm_poi_key(name) -> str:
-    """同日去重键：委托 generation_core.norm_poi_key（剥括号注记/标点/大小写归一）。"""
+    """同日去重键：委托 poi_identity.norm_poi_key（剥括号注记/标点/大小写归一）。"""
     return norm_poi_key(name)
 
 

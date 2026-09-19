@@ -11,14 +11,13 @@
 - 来源值域校验不可省：/v1/generate-day 的 context 由调用方传入属不可信输入，
   不做值域校验则调用方可伪造 "opentripmap" 让幻觉事实获得外部背书。
 
-依赖：generation_core、grounding_labels；无上层依赖。
+依赖：existence（same_entity 名称门槛）、grounding_labels；无上层依赖。
 """
 
 import decimal
 import re
 
 from app.agent.existence import same_entity
-from app.agent.generation_core import norm_poi_key  # noqa: F401  (供上层沿用同一归一)
 from app.agent.grounding_labels import (
     UNTRUSTED_SOURCE,
     apply_label,

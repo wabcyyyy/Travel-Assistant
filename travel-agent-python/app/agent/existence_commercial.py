@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.agent.existence import NOT_FOUND, ResolveResult, pick_row
-from app.agent.generation_core import strip_name_annotation
+from app.agent.poi_identity import strip_name_annotation
 from app.common.config import settings
 from app.common.external_client import ExternalClient, fetch_json
 from app.common.http_client import api_client

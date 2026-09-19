@@ -22,7 +22,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from app.agent.generation_core import haversine_m, norm_poi_key
+from app.agent.poi_identity import haversine_m, norm_poi_key
 from app.common import cache_store
 
 NAMESPACE = "grounding_evidence"

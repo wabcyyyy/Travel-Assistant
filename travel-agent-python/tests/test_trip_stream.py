@@ -3,7 +3,7 @@
 覆盖：
 - DailyPlansStreamParser：整块/逐字符喂入一致性、字符串内花括号与转义、
   截断流的部分产出、trip_theme/suggestions 收割；
-- generation_core 去重：归一化名称变体、近坐标双通道、酒店豁免；
+- poi_identity 去重：归一化名称变体、近坐标双通道、酒店豁免；
 - run_generate_trip_stream：事件序列（day/day_patch/suggestions/done）、
   跨天重复丢弃、城市不符建议过滤。
 """
@@ -12,13 +12,13 @@ import json
 
 import pytest
 
-from app.agent.generation_core import (
+from app.agent.grounding_evidence import issue_evidence
+from app.agent.poi_identity import (
     PoiSeenRegistry,
     drop_cross_day_duplicates,
     haversine_m,
     norm_poi_key,
 )
-from app.agent.grounding_evidence import issue_evidence
 from app.agent.stream_parser import DailyPlansStreamParser
 from app.agent.trip_stream import (
     _filter_suggestions_by_city,

@@ -23,16 +23,11 @@ from app.agent.day_prompts import (
     GENERATION_TEMPERATURE,
     open_trip_prompt,
 )
-from app.agent.generation_core import (
-    PoiSeenRegistry,
-    fill_zero_costs,
-    norm_poi_key,
-    spread_hotels,
-    stay_nights,
-)
+from app.agent.generation_core import fill_zero_costs, spread_hotels, stay_nights
 from app.agent.generators import pick_hotels
 from app.agent.landing import drop_refuted_items, filter_plan_items, ground_item
 from app.agent.narrative import sanitize_narrative
+from app.agent.poi_identity import PoiSeenRegistry, norm_poi_key
 from app.agent.reference_pool import ReferencePool
 from app.agent.stream_parser import DailyPlansStreamParser
 from app.agent.suggestions import build_suggestions, fill_suggestion_gaps

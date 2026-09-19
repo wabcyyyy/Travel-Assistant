@@ -29,8 +29,8 @@ from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
 from app.agent import places
-from app.agent.generation_core import haversine_m, strip_name_annotation
 from app.agent.grounding_evidence import issue_evidence
+from app.agent.poi_identity import haversine_m, strip_name_annotation
 from app.agent.run_limits import RunLimitExceeded, current_limits
 from app.common.config import settings
 

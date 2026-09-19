@@ -156,6 +156,7 @@ forbidden_modules = [
     "app.agent.nl_edit",
     "app.agent.observability",
     "app.agent.places",
+    "app.agent.poi_identity",
     "app.agent.pricing",
     "app.agent.reflect",
     "app.agent.research",

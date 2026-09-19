@@ -20,12 +20,12 @@ from app.agent.day_prompts import llm_open_trip
 from app.agent.day_stream import llm_open_day
 from app.agent.generation_core import (
     draft_day_plans,
-    drop_cross_day_duplicates,
     fill_zero_costs,
     spread_hotels,
     stay_nights,
 )
 from app.agent.landing import drop_refuted_items, filter_plan_items, ground_item
+from app.agent.poi_identity import drop_cross_day_duplicates
 from app.agent.reference_pool import ReferencePool
 from app.agent.suggestions import activity_floor, floor_suggestions
 from app.agent.trace import record_event

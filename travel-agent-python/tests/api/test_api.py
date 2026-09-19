@@ -29,7 +29,10 @@ def register(client, username):
 def login(client, username):
     r = client.post("/api/auth/login", json={"username": username, "password": "pass123"})
     assert r.status_code == 200
-    return r.json()["data"]["token"]
+    assert "token" not in r.json()["data"], "登录响应不回传 JWT，凭据只进 HttpOnly Cookie"
+    # 票从 TA_AUTH Cookie 取，再以 Bearer 头回放：Cookie 带 Secure，活栈跑在
+    # http://127.0.0.1 上时 httpx 不会自动发送它，Cookie 通道由离线契约测试覆盖。
+    return r.cookies.get("TA_AUTH")
 
 
 def auth_headers(token):
@@ -209,7 +212,7 @@ class TestExport:
 
 
 class TestLocalPoiSearch:
-    """本地点位检索（去高德后）：数据来自 poi_knowledge，无需任何外部 key。"""
+    """加点工作台检索（/api/pois）：数据来自 OTM 半径池 + 联网补池，无本地语料。"""
 
     def test_poi_search(self, client):
         u = _uid()

@@ -14,15 +14,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request, Response
 
-from app.api.deps import AuthUser, extract_token
+from app.api.deps import COOKIE_NAME, AuthUser, extract_token
 from app.api.security import enforce_business_auth
 from app.common.client_ip import client_ip
 from app.common.config import settings
 from app.common.envelope import ApiError, ok
 from app.schemas.business.auth import LoginBody, RegisterBody
 from app.services import user_service
-
-COOKIE_NAME = "TA_AUTH"
 
 auth_router = APIRouter(prefix="/api/auth", tags=["auth"])
 user_router = APIRouter(prefix="/api/user", tags=["user"], dependencies=[Depends(enforce_business_auth)])
