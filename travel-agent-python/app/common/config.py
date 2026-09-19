@@ -155,6 +155,14 @@ class Settings(BaseSettings):
     user_daily_llm_runs: int = 100
     # 单次 run 内检索/证据类调用上限（研究补查、联网搜索、外部点位 API）
     max_retrievals: int = 48
+    # 研究阶段自己的额度（PLAN-A1 后续）：`max_retrievals` 是全 run 共用的，
+    # 三域研究的补池循环在它面前没有"给生成留一口"的概念——实测 1 天北京
+    # case 在研究阶段就烧满 max_llm_calls（32/32）与检索道（65/64），生成
+    # 一次 LLM 都没轮到，产出 0 项草案。抬总额是条回头路：8→32 已经走过一次（见上面
+    # max_llm_calls 的注释），而且再抬也会先撞 agent_deadline_seconds=120 的实测墙
+    # （这次 32 次调用用了 67s）。所以给研究划一道子预算：用完就带着已有证据如实
+    # 降级，不继续挤占生成与落地。0 = 不限（退化成只有全局限额）。
+    research_call_limit: int = 12
     max_replans: int = 3
     no_progress_limit: int = 2
 
@@ -338,6 +346,7 @@ _NUMERIC_RULES: tuple[tuple[str, str, float, float], ...] = (
     ("user_llm_runs_per_minute", "必须 >= 1", 0, float("inf")),
     ("user_daily_llm_runs", "必须 >= 1", 0, float("inf")),
     ("max_retrievals", "必须 >= 1", 0, float("inf")),
+    ("research_call_limit", "必须 >= 0", -1, float("inf")),
     ("max_replans", "必须 >= 0", -1, float("inf")),
     ("jwt_expire_hours", "必须 >= 1", 0, float("inf")),
     ("cover_upload_max_bytes", "必须 > 0", 0, float("inf")),

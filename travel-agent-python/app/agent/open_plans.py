@@ -213,8 +213,12 @@ def generate_open_plans(
     candidates: list[dict] | None = None,
     foods: list[dict] | None = None,
     weather: list[dict] | None = None,
-) -> dict | None:
+) -> tuple[dict | None, list[str]]:
     """开放模式生成（三段编排：草案生成 → 后处理 → 失败即降级）。
+
+    返回 ``(状态增量 | None, 研究错误)``：整体失败时错误必须跟着返回——调用方
+    只剩一个 ``None`` 可看，就只能写一句"重试耗尽"，把 deadline / 配额这类真因
+    盖在底下（夜里排障的人会照着那句话去查研究层）。
 
     引用式生成：本地知识库检索结果（candidates/foods）作为带编号参考
     资料注入 Prompt，模型选点输出 refs 引用，生成后由 ReferencePool 落地
@@ -234,7 +238,7 @@ def generate_open_plans(
         plans, raw_suggestions, research_errors = _generate_drafts(req, feedback, context, ref_pool, schedule_report)
         if research_errors and not any(p.get("items") for p in plans):
             # 整段开放研究失败：交由调用方降级，避免把候选库城市打成空草案。
-            return None
+            return None, research_errors
         raw_suggestions = _postprocess_drafts(
             req, plans, raw_suggestions, candidates, foods, context_hotels, ref_pool, schedule_report
         )
@@ -253,18 +257,21 @@ def generate_open_plans(
         schedule_report["open_research"] = True
         if research_errors:
             schedule_report["research_errors"] = research_errors
-        return {
-            "daily_plans": plans,
-            "budget_estimate": {},
-            "raw_suggestions": raw_suggestions,
-            "error": None,
-            "schedule_report": schedule_report,
-            "degraded_reason": (
-                "已使用开放研究生成；关键事实需出发前复核"
-                if not research_errors
-                else "开放研究部分失败，已返回待研究草案；关键事实需出发前复核"
-            ),
-        }
+        return (
+            {
+                "daily_plans": plans,
+                "budget_estimate": {},
+                "raw_suggestions": raw_suggestions,
+                "error": None,
+                "schedule_report": schedule_report,
+                "degraded_reason": (
+                    "已使用开放研究生成；关键事实需出发前复核"
+                    if not research_errors
+                    else "开放研究部分失败，已返回待研究草案；关键事实需出发前复核"
+                ),
+            },
+            research_errors,
+        )
     except Exception as exc:
         logger.warning("open generation crashed for %s: %s", req.city, exc)
-        return None
+        return None, [f"开放研究异常：{exc}"]

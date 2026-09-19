@@ -77,12 +77,12 @@ def generate_itinerary(state: AgentState) -> dict:
     feedback = state.get("feedback", "")
     schedule_report: dict = {}
 
-    # LLM-only 生成：开放模式（LLM 知识 + 权威参考资料注入 + 高德落坐标）
+    # LLM-only 生成：开放模式（LLM 知识 + 权威参考资料注入 + 存在性解析落坐标）
     # 是唯一的行程内容来源；知识库只作为证据引导与事实校准，绝不直接
     # 拼装行程。开放失败时记 error 走 fix 循环重试一次（与 days 无关），
     # 重试耗尽或未配置 LLM 则返回结构化待研究草案——如实降级，不冒充生成结果。
     if settings.llm_api_key and attempts < MAX_GENERATION_ATTEMPTS:
-        open_state = generate_open_plans(
+        open_state, research_errors = generate_open_plans(
             req,
             feedback,
             state.get("hotels"),
@@ -92,14 +92,22 @@ def generate_itinerary(state: AgentState) -> dict:
         )
         if open_state is not None:
             return open_state
+        # 降级原因取自研究阶段真实抛出的那一句（Deadline / 配额 / 解析失败各是各的
+        # 病），而不是写死的"重试耗尽"——后者会把排障的人引向研究层。错误串自带
+        # "开放研究失败："/"第N天开放研究失败："前缀，这里不再叠一层。
+        detail = research_errors[-1] if research_errors else "开放研究失败：所有天均未产出草案"
         if attempts + 1 >= MAX_GENERATION_ATTEMPTS:
             # 重试耗尽：草案必须可达（多日行程此前因 attempts 预算与 days
             # 挂钩而直接落到空 plans，草案分支成为死代码）。
-            return draft_state(req, "开放研究重试耗尽，已返回待研究草案", schedule_report)
-        record_event("route", "retry", metadata={"reason": "open_research_failed"})
-        return {"error": "开放研究失败", "attempts": attempts + 1, "schedule_report": schedule_report}
+            return draft_state(req, detail, schedule_report)
+        record_event("route", "retry", metadata={"reason": "open_research_failed", "error": detail[:160]})
+        return {"error": detail, "attempts": attempts + 1, "schedule_report": schedule_report}
 
-    reason = "未配置 LLM，无法生成行程内容" if not settings.llm_api_key else "开放研究重试耗尽，已返回待研究草案"
+    reason = (
+        "未配置 LLM，无法生成行程内容"
+        if not settings.llm_api_key
+        else str(state.get("error") or "开放研究重试耗尽，已返回待研究草案")
+    )
     return draft_state(req, reason, schedule_report)
 
 

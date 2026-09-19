@@ -119,7 +119,9 @@ def test_multi_day_open_failure_retries_once_and_returns_draft(monkeypatch):
     response = workflow.run_generate(GenerateRequest(city="杭州", days=3))
 
     assert len(calls) == 2  # 定稿口径：失败→重试一次
-    assert "重试耗尽" in (response.status_reason or "")
+    # 降级原因必须带上真实错因：以前只会说一句写死的"重试耗尽"，
+    # deadline / 配额 / 解析失败全被盖在同一句话下面（排障时按它去查研究层就错了）。
+    assert "llm down" in (response.status_reason or "")
     assert response.destination_status == "draft_only"
     # 草案必须逐日带"待研究"标注，而不是空 plans
     assert [day.note for day in response.daily_plans] == ["杭州第1天待研究", "杭州第2天待研究", "杭州第3天待研究"]

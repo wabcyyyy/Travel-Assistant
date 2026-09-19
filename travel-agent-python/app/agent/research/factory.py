@@ -11,7 +11,10 @@
   单测 patch.object(tools, ...) 持续生效；
 - LLM 规划/评估在 research.reasoning 模块级函数内实现，测试直接 patch 该模块；
 - 补查轮次上限 RESEARCH_LLM_ROUNDS=2：规划+检索为第 1 轮，评估不足时再补 1 轮；
-- 补充检索词经高德查询并按名称去重并入证据，不改变权威主路径。
+- 研究取数另受 `run_limits` 的 research 道（`settings.research_call_limit`）约束：
+  主检索照记但不停，补池/兜底在额度用完后停下并把原因写进证据包 gaps——研究
+  只受全 run 检索上限约束时，三域补池能把生成与落地的额度整个饿死（实测）；
+- 补充检索词走联网搜索（POI 库退役）并按名称去重并入证据，不改变权威主路径。
 """
 
 from __future__ import annotations
@@ -29,7 +32,7 @@ from app.agent.research.evidence import (
     ResearchDomain,
     ResearchTask,
 )
-from app.agent.run_limits import current_limits
+from app.agent.run_limits import RunLimitExceeded, current_limits
 from app.agent.tool_registry import registry
 from app.agent.trace import record_event, trace_span
 
@@ -50,7 +53,31 @@ class ResearchAgentState(TypedDict):
     round: int
     sufficient: bool
     extra_keywords: list[str]
+    quota_note: str
     pack: EvidencePack | None
+
+
+def _spend_research(limits, domain: ResearchDomain) -> bool:
+    """扣一次研究取数额度。
+
+    返回 False 表示额度已用完——**必须响亮**：静默停止补池会让"研究到额度为止"
+    和"这个城市就是没有更多点"在证据包里长成同一个样子（与 PLAN-A1 P4 同源的那类
+    谎）。用完不是失败：已有的证据照样交付，剩下的额度留给生成与落地。
+    """
+    if not limits:
+        return True
+    try:
+        limits.check("research")
+        limits.record_research(1)
+        return True
+    except RunLimitExceeded as exc:
+        record_event(
+            "decision",
+            f"research.{domain}.quota_exhausted",
+            status="error",
+            metadata={"error": str(exc)[:120], "research_calls": limits.research_calls},
+        )
+        return False
 
 
 def _plan_node(state: ResearchAgentState) -> dict:
@@ -75,6 +102,7 @@ def _run_search(state: ResearchAgentState) -> dict:
     """检索节点：按领域配置调用检索工具，并执行规划/评估给出的补充关键词。"""
     task = state["task"]
     config = DOMAINS[task.domain]
+    limits = current_limits()
     plan = state.get("plan") or {}
     params = config.params(task)
     if task.domain == "attraction" and plan.get("preferences"):
@@ -84,8 +112,10 @@ def _run_search(state: ResearchAgentState) -> dict:
         params = {**params, "limit": int(plan["limit"])}
     # 统一经注册表派发（G-1.4）：预算/审计/校验全覆盖；handler 调用期读
     # tools 模块属性，patch.object(tools, "search_*") 注入持续生效。
+    # 主检索一定执行（它是这个域的最小可用证据），但照样记账——研究额度
+    # 记的就是"研究一共取了多少次数"，超了之后停的是补池，不是主检索。
+    _spend_research(limits, task.domain)
     items = registry.invoke(config.tool_name, params) or []
-    limits = current_limits()
     if limits:
         limits.record_retrieval(1)
     extras = list(dict.fromkeys((plan.get("extra_keywords") or []) + (state.get("extra_keywords") or [])))
@@ -93,8 +123,14 @@ def _run_search(state: ResearchAgentState) -> dict:
     extras = list(dict.fromkeys(extras + list(task.intent_keywords or [])))
     from app.agent.web_search import search_places_via_web, web_search_enabled
 
-    if extras:
+    quota_note = state.get("quota_note") or ""
+    # 联网入口关着时补池必然返回空（search_places_via_web 自己就早退），所以这里
+    # 直接不进循环：既省一次无用的记账，也让"离线评测不占研究额度"成为结构事实。
+    if extras and web_search_enabled():
         for keyword in extras:
+            if not _spend_research(limits, task.domain):
+                quota_note = f"研究额度已用完，补池停在关键词「{keyword}」之前"
+                break
             if limits:
                 limits.check("retrieval")
             # 关键词补池走联网搜索（POI 库退役）：意图词补真实地点名，不保证坐标
@@ -103,7 +139,7 @@ def _run_search(state: ResearchAgentState) -> dict:
                 limits.record_retrieval(1)
             items = _merge_supplement(items, supplement)
     # 外部池仍偏少时：联网搜索补真实地点名（池空/海外城市的证据缺口）
-    if len(items) < 3 and web_search_enabled():
+    if len(items) < 3 and web_search_enabled() and _spend_research(limits, task.domain):
         web_rows = search_places_via_web(
             task.city,
             task.domain,
@@ -111,7 +147,7 @@ def _run_search(state: ResearchAgentState) -> dict:
             intent_keywords=task.intent_keywords,
         )
         items = _merge_supplement(items, web_rows)
-    return {"items": items, "round": int(state.get("round", 0)) + 1}
+    return {"items": items, "round": int(state.get("round", 0)) + 1, "quota_note": quota_note}
 
 
 def _evaluate_node(state: ResearchAgentState) -> dict:
@@ -161,12 +197,13 @@ def _finalize_pack(state: ResearchAgentState) -> dict:
     else:
         confidence = _DEFAULT_CONFIDENCE if items else 0.0
     gap = config.gap_hint(items)
+    quota_note = state.get("quota_note") or ""
     pack = EvidencePack(
         domain=task.domain,
         items=items,
         confidence=confidence,
         rounds=int(state.get("round", 1)),
-        gaps=[gap] if gap else [],
+        gaps=[note for note in (gap, quota_note) if note],
         degraded=not items,
     )
     record_event("decision", f"research.{task.domain}", metadata=pack.to_dict())
@@ -213,6 +250,7 @@ def run_research(task: ResearchTask) -> EvidencePack:
                 "round": 0,
                 "sufficient": True,
                 "extra_keywords": [],
+                "quota_note": "",
                 "pack": None,
             }
         )

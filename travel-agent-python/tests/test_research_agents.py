@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.agent import landing, open_plans, tools, workflow
+from app.agent import landing, open_plans, tools, web_search, workflow
 from app.agent.research import (
     ResearchTask,
     decompose,
@@ -16,6 +16,8 @@ from app.agent.research import (
 from app.agent.research.reasoning import (
     evaluate_research as _real_evaluate,
 )
+from app.agent.run_limits import begin_limits, current_limits, end_limits
+from app.agent.trace import trace_run
 from app.schemas.trip import GenerateRequest
 from tests.agent_eval import mock_llm
 
@@ -183,6 +185,10 @@ def test_research_evaluate_insufficient_triggers_refine_round(monkeypatch):
 
     monkeypatch.setattr(tools, "search_attractions", fake_search)
     monkeypatch.setattr(web_search_mod, "search_places_via_web", fake_web)
+    # 补池前提是联网入口开着（autouse fixture 默认关）：以前这条用例是靠
+    # `_run_search` 不看哨兵、直接把补丁函数当真来通过的，等于断言了一个生产
+    # 不可能出现的状态；现在哨兵在调用点就生效，用例如实把它打开。
+    monkeypatch.setattr(web_search_mod.settings, "web_search_enabled", True)
     monkeypatch.setattr(reasoning, "plan_research", lambda task: {})
     monkeypatch.setattr(
         reasoning,
@@ -378,3 +384,57 @@ def test_run_refill_task_is_more_aggressive(monkeypatch):
     assert captured["limit"] == 60
     assert "热门" in captured["preferences"]
     assert len(pack.items) == 1
+
+
+def _drive_research_supplements(monkeypatch, *, max_research_calls: int):
+    """把「三域补池只受全 run 检索上限约束」这条路径跑起来：联网开、补池词给足。
+
+    返回（证据包，实际补池的关键词，本次 run 的事件）。研究额度是这次改动加的，
+    断言点在于：停下之后已有的证据照样交付，且停的原因进了 gaps。
+    """
+    monkeypatch.setattr(web_search.settings, "web_search_enabled", True)
+    monkeypatch.setattr(tools, "search_attractions", lambda *_a, **_k: [{"name": "西湖"}])
+    monkeypatch.setattr(reasoning, "plan_research", lambda _task: {"extra_keywords": ["亲子", "夜游", "小众"]})
+    monkeypatch.setattr(reasoning, "evaluate_research", lambda *_a, **_k: {"sufficient": True})
+    fetched: list[str] = []
+
+    def _fake_web(_city, _domain, limit=4, *, intent_keywords=None, **_kw):
+        keyword = str((intent_keywords or ["-"])[0])
+        fetched.append(keyword)
+        return [{"name": f"{keyword}补点", "category": "attraction"}]
+
+    monkeypatch.setattr(web_search, "search_places_via_web", _fake_web)
+    token = begin_limits()
+    try:
+        with trace_run("research-quota") as trace:
+            limits = current_limits()
+            assert limits is not None, "begin_limits() 之后必须有一次活动的 run 预算"
+            limits.max_research_calls = max_research_calls
+            pack = run_research(ResearchTask(domain="attraction", city="杭州", limit=30))
+            events = trace.to_dict()["events"]
+    finally:
+        end_limits(token)
+    return pack, fetched, events
+
+
+def test_research_quota_stops_supplements_and_says_so(monkeypatch):
+    """额度 2 = 主检索 + 一次补池：第三条关键词起停手，并把「到额度为止」写进 gaps。
+
+    这条测试钉的是研究阶段不再有能力把生成/落地的额度饿死（实测 1 天 case 研究
+    单独烧满 max_llm_calls 后产出 0 项草案），以及"停在半路"不被冒充成"没有更多点"。
+    """
+    pack, fetched, events = _drive_research_supplements(monkeypatch, max_research_calls=2)
+    assert fetched == ["亲子"]
+    assert [item["name"] for item in pack.items] == ["西湖", "亲子补点"]
+    assert pack.degraded is False
+    assert any("研究额度已用完" in gap for gap in pack.gaps)
+    exhausted = [event for event in events if event["name"] == "research.attraction.quota_exhausted"]
+    assert exhausted and "研究额度" in exhausted[0]["metadata"]["error"]
+
+
+def test_research_quota_zero_keeps_the_old_unbounded_shape(monkeypatch):
+    """0 = 不限：补池照跑满，gaps 里不该出现额度说明（配置项关掉时不留幽灵文本）。"""
+    pack, fetched, events = _drive_research_supplements(monkeypatch, max_research_calls=0)
+    assert fetched == ["亲子", "夜游", "小众"]
+    assert pack.gaps == []
+    assert not [event for event in events if event["name"].endswith("quota_exhausted")]
