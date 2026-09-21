@@ -139,10 +139,17 @@ def _from_pois(
     normalized = [
         row for row in (_normalize_external_row(item, spellings_of) for item in rows if isinstance(item, dict)) if row
     ]
-    if not normalized:
+    if not rows:
+        # 只有"源回了一个空列表"才是否证（authoritative_negative 的唯一正当来源）
         return ResolveResult(
             state=NOT_FOUND, provider=provider, reason="provider_empty", authoritative_negative=authoritative_negative
         )
+    if not normalized:
+        # 有行但一条都没解析成功 = 我们没读懂它的形状，不是"这个地方不存在"。
+        # 与本函数 docstring 的"缺字段/形状异常 = 未判定"同一条线：落到 NOT_FOUND
+        # 会让 deletable=True，`landing.drop_refuted_items` 直接删掉用户的点位
+        # （上游改字段名 / 少给一个键的代价是行程少一个点）。
+        return ResolveResult.unknown("provider_row_unparseable")
     return pick_row(
         normalized, name, city, provider=provider, spellings_of=lambda row: list(row.get("spellings") or [])
     )

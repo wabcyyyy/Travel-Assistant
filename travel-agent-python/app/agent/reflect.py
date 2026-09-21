@@ -9,7 +9,7 @@
 - 全部为无副作用的确定性规则，配合 workflow 的“生成 → 校验 → 修复”循环；
 - 单日饱和度由阈值常量（MAX_DAILY_MINUTES / MAX_DAILY_ATTRACTIONS）控制。
 
-依赖：无内部依赖（叶子模块）。
+依赖：generation_core / geo / route_service（时长与路线口径共用唯一实现）。
 """
 
 import math

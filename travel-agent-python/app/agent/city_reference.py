@@ -37,12 +37,6 @@ def get_city_geo(city: str) -> dict | None:
         return None
 
 
-def is_domestic_city(city: str) -> bool:
-    """国内/海外判定：字典 country_code=CN；未命中按海外处理。"""
-    row = get_city_geo(city)
-    return bool(row and row.get("is_domestic"))
-
-
 def get_city_consumption(city: str) -> dict | None:
     """城市消费基准（餐饮/交通/酒店价格档），预算与 Reflect 的城市级依据。"""
     sql = "SELECT city, level, meal_price, transport_price, hotel_price FROM city_consumption WHERE city = %s LIMIT 1"

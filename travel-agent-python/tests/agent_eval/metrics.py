@@ -146,10 +146,15 @@ def evaluate_response(response, case: dict, catalog: dict, trace: dict) -> dict:
     refuted = len((response.schedule_report or {}).get("refuted_pois_dropped") or [])
     field_matches = []
     for item in authoritative:
-        source = all_known[item["poi_name"]]
+        # 有票但不在本次评测目录里的点位（真实 LLM 自选点几乎都在这档）没有独立的
+        # 参照字段可比：跳过，而不是塞进分母或当成"对上了"。
+        source = all_known.get(item["poi_name"])
+        if source is None:
+            continue
         if item.get("item_type") in ("attraction", "food"):
             field_matches.append(item.get("cost") == source.get("ticket_price"))
-    field_reference_rate = sum(field_matches) / len(field_matches) if field_matches else 1.0
+    # 一个可比样本都没有 → None（报告里显示 "-"）。返回 1.0 会把"无从核对"报成满分。
+    field_reference_rate = sum(field_matches) / len(field_matches) if field_matches else None
 
     conflicts = 0
     pairs = 0
@@ -226,7 +231,7 @@ def evaluate_response(response, case: dict, catalog: dict, trace: dict) -> dict:
         # 只算票会漏掉"查到过但这一版没落上坐标"——两个一起才看得清接地质量。
         "poi_grounded_rate": round(len(grounded) / max(len(poi_items), 1), 4),
         "poi_refuted_count": refuted,
-        "field_reference_rate": round(field_reference_rate, 4),
+        "field_reference_rate": round(field_reference_rate, 4) if field_reference_rate is not None else None,
         "time_conflict_rate": round(conflicts / pairs, 4) if pairs else 0.0,
         "route_violation_rate": round(route_violations / route_pairs, 4) if route_pairs else 0.0,
         "attraction_duplicate_rate": round(duplicate_count / max(len(attractions), 1), 4),

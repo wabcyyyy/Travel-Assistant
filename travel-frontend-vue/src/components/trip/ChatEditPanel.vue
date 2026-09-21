@@ -80,7 +80,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Loading } from '@element-plus/icons-vue'
 
 import HotelOptionsDialog from '../HotelOptionsDialog.vue'
@@ -125,6 +125,10 @@ const nlLoadingHint = ref('正在理解需求并核对当前行程，请稍候�
 const nlOpen = ref(false)
 const applying = ref(false)
 const chatMsgs = ref<ItineraryChatMessage[]>([])
+// 在途的聊天请求：本组件被路由复用（同实例换 itineraryId）时，卸载必须中止它，
+// 否则它的 onDraft 会继续往全局 store.chatDraft 里写上一个行程的方案。
+let activeController: AbortController | null = null
+onBeforeUnmount(() => activeController?.abort())
 // 草稿数据源收敛到 store.chatDraft，computed 桥接保持模板与拆分前一致
 const draftPlans = computed<ChatDayPlan[]>(() => store.chatDraft.plans ?? [])
 const draftChanged = computed(() => !!store.chatDraft.changed)
@@ -156,7 +160,9 @@ watch([chatMsgs, nlLoading], ([msgs, loading]) => {
 
 /** 拉取对话历史并初始化酒店选择/草稿（与拆分前 loadDetail 的对话侧逻辑一致）。 */
 async function loadHistory() {
-  const historyRes = await getItineraryChatHistory(props.itineraryId)
+  const requestedId = props.itineraryId
+  const historyRes = await getItineraryChatHistory(requestedId)
+  if (props.itineraryId !== requestedId) return
   chatMsgs.value = historyRes.data || []
   // 酒店选择恢复经 store 单点（解析失败按空处理，与既有行为一致）
   store.loadHotelSelections(props.itineraryId)
@@ -167,8 +173,18 @@ async function loadHistory() {
   store.setChatDraft({ plans: actionMessage?.plans || [], changed: !!actionMessage?.changed })
 }
 
-// 路由复用切换行程时随 itineraryId 重载（immediate 承接首次挂载）
-watch(() => props.itineraryId, () => loadHistory(), { immediate: true })
+// 路由复用切换行程时随 itineraryId 重载（immediate 承接首次挂载）。
+// 组件不重建 ⇒ onBeforeUnmount 在这条路径上不会触发，中止必须挂在这里。
+watch(
+  () => props.itineraryId,
+  () => {
+    activeController?.abort()
+    activeController = null
+    nlLoading.value = false
+    void loadHistory()
+  },
+  { immediate: true },
+)
 
 async function onChatSend() {
   const message = nlInstruction.value.trim()
@@ -179,6 +195,8 @@ async function onChatSend() {
   nlLoading.value = true
   nlLoadingHint.value = '正在理解需求并核对当前行程，请稍候…'
   const controller = new AbortController()
+  const sendItineraryId = detail.value.id
+  activeController = controller
   // Agent 自身最多等待模型 60 秒，再为服务间返回预留 10 秒，避免页面无限转圈。
   const hintTimer = window.setTimeout(() => {
     nlLoadingHint.value = '正在生成结构化修改草稿，复杂行程可能需要几十秒…'
@@ -204,6 +222,9 @@ async function onChatSend() {
             placeholder.content += delta
           },
           onDraft: (payload) => {
+            // 迟到的草稿不能落到切换后的行程：store.chatDraft 是全局单点，
+            // 「应用到行程」用 detail.id + 这份 plans 提交，错配等于把 A 的方案写进 B。
+            if (detail.value?.id !== sendItineraryId) return
             const plans = payload.plans || []
             const hotelOptions = payload.hotelOptions || []
             if (plans.length || hotelOptions.length) {
@@ -243,6 +264,7 @@ async function onChatSend() {
       // 其它失败（网络/协议/Agent error 事件）→ 走阻塞端点
     }
     const res = await chatEditItinerary(detail.value.id, message, history, controller.signal)
+    if (detail.value?.id !== sendItineraryId) return
     const plans = res.data.plans || []
     const hotelOptions = res.data.hotelOptions || []
     if (plans.length || hotelOptions.length) {

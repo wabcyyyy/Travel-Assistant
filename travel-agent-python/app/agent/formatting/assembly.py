@@ -66,7 +66,9 @@ def format_output(state: AgentState) -> dict:
         items = []
         # LLM 可能输出 souvenir/activity 等扩展类型：归一到 TripItem 契约，避免 Pydantic 500
         for item in sanitize_itinerary_items(plan.get("items")):
-            apply_item_facts(item, lookup.get(str(item.get("poi_name") or "")), source_records)
+            # city 必须传：证据票按 `name:{城市}|{归一名}` 建键，漏传等于查询侧换了
+            # 一把键去取，服务端已接地的字段反被降级成 client-context。
+            apply_item_facts(item, lookup.get(str(item.get("poi_name") or "")), source_records, city=req.city)
             if item.get("item_type") == "hotel":
                 prices.price_hotel(item)
                 if count_hotel_nights_in_budget(plan["day_no"], req.days, "hotel"):

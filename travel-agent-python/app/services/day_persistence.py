@@ -226,18 +226,6 @@ def unfinished_day_nos(itinerary_id: int) -> list[int]:
     return sorted(day_no for day_no, status in rows if status != "SUCCEEDED")
 
 
-def day_statuses(itinerary_id: int) -> list[tuple[int, str | None, datetime | None]]:
-    """恢复任务需要 (dayNo, generation_status, updated_at) 三元组做活跃/可续跑判定。"""
-    with session_scope() as session:
-        return list(
-            session.execute(
-                select(ItineraryDay.day_no, ItineraryDay.generation_status, ItineraryDay.updated_at)
-                .where(ItineraryDay.itinerary_id == itinerary_id)
-                .order_by(ItineraryDay.day_no)
-            ).all()
-        )
-
-
 # ---------- 内部工具 ----------
 
 

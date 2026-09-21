@@ -198,7 +198,7 @@ import SkeletonCard from '../components/ui/SkeletonCard.vue'
 import StatTile from '../components/ui/StatTile.vue'
 import type { AtlasResponse } from '../types/atlas'
 import type { ItineraryDetail, ItinerarySummary } from '../types/itinerary'
-import { daysUntil, tripStatusLabel } from '../utils/tripStatus'
+import { daysUntil, localTodayISO, tripStatusLabel } from '../utils/tripStatus'
 
 // dashboard（SPEC §7.2 + 设计对齐 TREK §18）：主列（海报式登机牌 / 统计行 / 即将出发）
 // + 400px 粘性右栏。页头只留一行日期：dashboard 的主角是登机牌本身，
@@ -219,7 +219,7 @@ const { coverVisible, coverTarget, shareVisible, shareTarget, coverOf, openCover
 const todayLabel = computed(() =>
   new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }),
 )
-const today = new Date().toISOString().slice(0, 10)
+const today = localTodayISO()
 
 /** 即将出发：endDate >= today 的前 3 趟，按出发日升序 */
 const upcoming = computed(() =>

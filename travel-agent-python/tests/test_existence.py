@@ -499,3 +499,52 @@ def test_geocode_place_rows_separates_failure_from_empty_answer(monkeypatch):
     assert rows is not None and len(rows) == 1  # 缺坐标的行丢弃
     assert rows[0]["latitude"] == 30.24 and rows[0]["country_code"] == "CN"
     assert "灵隐寺" in rows[0]["aliases"]
+
+
+def test_reference_hit_without_coordinates_still_reaches_the_resolver(monkeypatch):
+    """参考资料命中 ≠ 位置落地：联网池行按设计没有坐标，解析器必须仍被问一次。
+
+    钉的是真实链路量出来的形状（1 天北京 `coord_valid_rate=0.25` 而
+    `existence_checks=1/24`——只有资料没命中的点位被解析过）。命中即早退会让
+    "有来源、没坐标"成为最终产出，地图钉与路线深链都拿不到位置。
+    """
+    from typing import cast
+
+    from app.agent.landing import ground_item
+    from app.agent.reference_pool import ReferencePool
+
+    asked: list[str] = []
+    monkeypatch.setattr("app.agent.landing.local_ground", lambda item, city: asked.append(item["poi_name"]) or False)
+
+    class _WebSearchOnlyPool:
+        def ground(self, item):
+            item["source"] = "web.search"
+            item["cost"] = 80
+            return True
+
+    item = {"poi_name": "卤煮火烧", "item_type": "food"}
+    # 鸭子类型的池：这条用例钉的是 ground_item 的控制流，不是 ReferencePool 的解析协议
+    assert ground_item(item, city="北京", ref_pool=cast("ReferencePool", _WebSearchOnlyPool())) is True
+    assert asked == ["卤煮火烧"]
+
+
+def test_hit_with_coordinates_does_not_pay_a_second_lookup(monkeypatch):
+    """无条件调 local_ground 不等于多花外呼：坐标已有效时它的守卫必须挡在解析前。"""
+    from typing import cast
+
+    from app.agent import grounding
+    from app.agent.landing import ground_item
+    from app.agent.reference_pool import ReferencePool
+
+    def _forbidden(name, _city):
+        raise AssertionError(f"坐标已有效，不该再问解析器：{name}")
+
+    monkeypatch.setattr(grounding, "resolve_poi", _forbidden)
+
+    class _AnchoredPool:
+        def ground(self, item):
+            item.update({"source": "opentripmap", "latitude": 39.9, "longitude": 116.4})
+            return True
+
+    item = {"poi_name": "故宫博物院", "item_type": "attraction"}
+    assert ground_item(item, city="北京", ref_pool=cast("ReferencePool", _AnchoredPool())) is True

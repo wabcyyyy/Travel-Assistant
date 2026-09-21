@@ -39,10 +39,8 @@ export const useUserStore = defineStore('user', {
         localStorage.removeItem('role')
       }
     },
-    logout() {
-      // 离线快照（C2.5）：退出即清本账号私有快照（按 username 隔离，异步尽力而为）
-      const name = this.username
-      if (name) void clearUserSnapshots(name).catch(() => {})
+    /** 会话过期（401）：只清凭据，**不动**离线快照。 */
+    expireSession() {
       this.token = ''
       this.username = ''
       this.role = ''
@@ -50,9 +48,13 @@ export const useUserStore = defineStore('user', {
       localStorage.removeItem('username')
       localStorage.removeItem('role')
     },
-    /** 401/过期时与拦截器共用：清本地凭证并复位 store。 */
-    clearSession() {
-      this.logout()
+    logout() {
+      // 离线快照（C2.5）：只有**用户主动退出**才清本账号私有快照（按 username 隔离）。
+      // 这条必须是主动语义：401 是日常事件（JWT 到期，默认 72h），若在此清库，
+      // "令牌一过期就把用户的离线行程快照全抹掉"会让 C2.5 变成数据丢失功能。
+      const name = this.username
+      if (name) void clearUserSnapshots(name).catch(() => {})
+      this.expireSession()
     },
   },
 })

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, File, Header, Path, Query, UploadFile
@@ -33,10 +32,10 @@ from app.schemas.business.itinerary import (
 )
 from app.services import (
     cover_service,
-    day_persistence,
     itinerary_chat,
     itinerary_city,
     itinerary_command,
+    itinerary_events,
     itinerary_generation,
     itinerary_nl_edit,
     itinerary_plan_apply,
@@ -267,53 +266,15 @@ async def events(
     # 归属查询进线程池，登记订阅必须在事件循环里做（要捕获 loop 才能跨线程投递）
     main = await run_in_threadpool(itinerary_query.find_readable_main, user.id, id)
     subscription, _rejected = event_hub.subscribe(id, event_publisher.too_many_connections_envelope(id))
-    snapshot = await run_in_threadpool(_terminal_snapshot, id, main)
-    return _sse(_event_frames(id, subscription, snapshot))
-
-
-def _terminal_snapshot(itinerary_id: int, main) -> str | None:
-    """订阅时行程已经终态 → 补一帧收尾，别让这条连接永远只发心跳（R2-2）。
-
-    总线只广播、不留历史（`event_hub` 无回放缓冲），所以"生成结束之后才连上"
-    （EventSource 瞬时断线重连、或用户在结果页重新打开）的客户端永远等不到
-    终态帧。终态判定读库里的 `gen_state`，不猜缓存。
-    """
-    gen_state = getattr(main, "gen_state", None)
-    if gen_state == "FAILED":
-        return event_publisher.error_envelope(itinerary_id, "GENERATION_FAILED", "生成未完成，可重新发起生成")
-    if gen_state not in ("COMPLETED", "PARTIAL"):
-        return None
-    expected = int(getattr(main, "days", 0) or 0)
-    missing = set(day_persistence.unfinished_day_nos(itinerary_id))
-    return event_publisher.build_envelope(
-        itinerary_id,
-        "done",
-        {
-            "daysExpected": expected,
-            "daysEmitted": [day_no for day_no in range(1, expected + 1) if day_no not in missing],
-            "tripTheme": getattr(main, "trip_theme", None),
-            "complete": gen_state == "COMPLETED",
-            "message": "该行程已生成完成",
-        },
-    )
-
-
-async def _event_frames(itinerary_id: int, subscription, snapshot: str | None = None):
     try:
-        if snapshot is not None:
-            yield f"data:{snapshot}\n\n"
-            return
-        while True:
-            envelope = await subscription.take()
-            if envelope is event_hub.CLOSED:
-                return
-            if envelope is None:
-                # 空闲一个心跳周期才补心跳帧：连接保持活跃，但业务事件永远优先
-                envelope = event_publisher.heartbeat_envelope(itinerary_id)
-            yield f"data:{envelope}\n\n"
-    finally:
-        # 客户端断开/服务收尾都要摘除，否则注册表里留死连接
+        snapshot = await run_in_threadpool(itinerary_events.terminal_snapshot, id, main)
+    except BaseException:
+        # 订阅已登记，但 `itinerary_events.event_frames` 的 finally 永远不会跑（生成器从未被进入）。
+        # 漏这一次就少一个名额：MAX_SUBSCRIBERS_PER_ITINERARY=5，而终态行程不再广播，
+        # 泄漏的队列不会自愈——5 次之后这条行程的进度流彻底打死到重启。
         event_hub.unsubscribe(subscription)
+        raise
+    return itinerary_events.sse_response(itinerary_events.event_frames(id, subscription, snapshot))
 
 
 @router.post("/{id}/chat-edit")
@@ -331,23 +292,8 @@ async def chat_edit_stream(
     """对话编辑的 SSE 变体：与非阻塞版同参构造、同一条落库收尾路径。"""
     quota_service.enforce_llm_budget(user.id)
     await run_in_threadpool(itinerary_query.find_writable_main, user.id, id)
-    return _sse(_sse_frames(itinerary_chat.chat_edit_stream(user.id, id, body.message, body.history)))
-
-
-async def _sse_frames(envelopes) -> AsyncIterator[str]:
-    async for envelope in envelopes:
-        yield f"data:{envelope}\n\n"
-
-
-def _sse(frames) -> StreamingResponse:
-    return StreamingResponse(
-        frames,
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            # 反向代理默认会缓冲响应，SSE 会被攒成一坨；这个头让 nginx 对该连接关掉缓冲
-            "X-Accel-Buffering": "no",
-        },
+    return itinerary_events.sse_response(
+        itinerary_events.sse_frames(itinerary_chat.chat_edit_stream(user.id, id, body.message, body.history))
     )
 
 

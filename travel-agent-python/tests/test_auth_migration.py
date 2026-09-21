@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -247,3 +249,24 @@ def test_every_business_route_is_guarded_or_publicly_listed() -> None:
         if not guarded and not is_public_path(route.path):
             unguarded.append(f"{sorted(route.methods)} {route.path}")
     assert not unguarded, f"既无守卫也不在白名单的路由: {unguarded}"
+
+
+def test_register_conflict_does_not_log_credentials(client: TestClient, monkeypatch, caplog) -> None:
+    """落库真撞唯一索引时，日志只准有异常类型。
+
+    `register()` 先做 `_find_user` 预检，重复用户名通常在那儿就返回模糊文案；
+    走到 `except` 的是"预检与落库之间被并发插入抢位"这条竞态。SQLAlchemy 的
+    StatementError 会把 SQL **与绑定参数**一起打进 str(exc)，而注册路径的参数里
+    有 bcrypt 口令哈希（离线可破）——所以异常全文不得进日志。
+    """
+    _register(client)
+    monkeypatch.setattr(user_service, "_find_user", lambda username: None)  # 造竞态：预检说"没有"
+    with caplog.at_level(logging.INFO, logger="app.services.user_service"):
+        body = _register(client, password="example456")
+    assert body["message"] == "注册失败，请检查用户名或稍后重试"
+    # 盯的是"异常正文不进日志"这件事本身：SQLite 下正文只有约束名，MySQL 下
+    # SQLAlchemy 会把它扩成 `[SQL: INSERT ...] [parameters: {...bcrypt 哈希...}]`。
+    # 断言不含正文片段，两驱动下都是真实的收窄。
+    assert "register failed: IntegrityError" in caplog.text
+    assert "constraint" not in caplog.text.lower(), "异常正文（驱动相关，MySQL 下含 SQL 与绑定参数）进了日志"
+    assert "$2a$" not in caplog.text and "example456" not in caplog.text

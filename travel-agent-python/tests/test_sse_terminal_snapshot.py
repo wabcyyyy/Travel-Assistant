@@ -14,8 +14,8 @@ from types import SimpleNamespace
 import anyio
 import pytest
 
-from app.api.business import itinerary as itinerary_api
 from app.common import event_hub
+from app.services import itinerary_events
 
 
 def _main(gen_state: str | None, days: int = 3) -> SimpleNamespace:
@@ -26,7 +26,7 @@ def _collect_frames(itinerary_id: int, subscription, snapshot: str | None) -> li
     out: list[str] = []
 
     async def _run() -> None:
-        async for frame in itinerary_api._event_frames(itinerary_id, subscription, snapshot):
+        async for frame in itinerary_events.event_frames(itinerary_id, subscription, snapshot):
             out.append(frame)
 
     anyio.run(_run)
@@ -34,8 +34,8 @@ def _collect_frames(itinerary_id: int, subscription, snapshot: str | None) -> li
 
 
 def test_completed_itinerary_yields_a_done_snapshot(monkeypatch) -> None:
-    monkeypatch.setattr(itinerary_api.day_persistence, "unfinished_day_nos", lambda _id: [3])
-    envelope = json.loads(str(itinerary_api._terminal_snapshot(42, _main("COMPLETED"))))
+    monkeypatch.setattr(itinerary_events.day_persistence, "unfinished_day_nos", lambda _id: [3])
+    envelope = json.loads(str(itinerary_events.terminal_snapshot(42, _main("COMPLETED"))))
     assert envelope["type"] == "done"
     assert envelope["itineraryId"] == 42
     assert envelope["data"]["daysExpected"] == 3
@@ -44,20 +44,20 @@ def test_completed_itinerary_yields_a_done_snapshot(monkeypatch) -> None:
 
 
 def test_partial_itinerary_reports_incomplete_done(monkeypatch) -> None:
-    monkeypatch.setattr(itinerary_api.day_persistence, "unfinished_day_nos", lambda _id: [2, 3])
-    envelope = json.loads(str(itinerary_api._terminal_snapshot(7, _main("PARTIAL"))))
+    monkeypatch.setattr(itinerary_events.day_persistence, "unfinished_day_nos", lambda _id: [2, 3])
+    envelope = json.loads(str(itinerary_events.terminal_snapshot(7, _main("PARTIAL"))))
     assert envelope["data"]["complete"] is False
 
 
 def test_failed_itinerary_yields_an_error_snapshot() -> None:
-    envelope = json.loads(str(itinerary_api._terminal_snapshot(7, _main("FAILED"))))
+    envelope = json.loads(str(itinerary_events.terminal_snapshot(7, _main("FAILED"))))
     assert envelope["type"] == "error"
     assert envelope["data"]["code"] == "GENERATION_FAILED"
 
 
 @pytest.mark.parametrize("gen_state", ["GENERATING", None])
 def test_still_running_has_no_snapshot(gen_state: str | None) -> None:
-    assert itinerary_api._terminal_snapshot(7, _main(gen_state)) is None
+    assert itinerary_events.terminal_snapshot(7, _main(gen_state)) is None
 
 
 def test_frames_close_after_the_snapshot(monkeypatch) -> None:

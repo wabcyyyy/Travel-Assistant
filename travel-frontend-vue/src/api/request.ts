@@ -49,7 +49,8 @@ request.interceptors.response.use(
     }
     if (error.response?.status === 401) {
       try {
-        useUserStore().clearSession()
+        // 过期 ≠ 退出：只清凭据。离线快照属于用户数据，只有主动 logout 才清。
+        useUserStore().expireSession()
       } catch {
         localStorage.removeItem('username')
         localStorage.removeItem('role')

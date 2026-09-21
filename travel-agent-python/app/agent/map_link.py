@@ -8,16 +8,14 @@ GCJ-02 换算，无/无效坐标一律退化成关键词搜索链接——**不�
 tests/golden/deeplink_cases.json 双向钉住（tests/test_deeplink_parity.py +
 travel-frontend-vue/src/utils/deeplink.parity.test.ts）。
 
-依赖：app.db（仅 city_geo 城市字典的国内判定查询）。
+依赖：app.agent.city_reference（city_geo 城市字典的国内判定唯一入口）。
 """
 
 import math
 from typing import Any
 from urllib.parse import quote
 
-from sqlalchemy import text
-
-from app.db.session import session_scope
+from app.agent import city_reference
 
 _AMAP_SRC = "travel-assistant"
 
@@ -43,23 +41,22 @@ def _in_china(latitude: float, longitude: float) -> bool:
 
 
 def _dict_domestic(city: str) -> bool | None:
-    """city_geo.is_domestic 查询（D3 权威源：V4 保留城市字典即为国内海外判定）。
+    """city_geo.is_domestic 判定，走 `city_reference.get_city_geo` 这个城市字典唯一入口。
 
     未收录 / 城市为空 / 库不可用一律返回 None，由调用方决定默认——统一默认海外：
     谷歌链接对国内点只是体验次优，高德链接对海外点则是错误国家，两种错误不对称。
+
+    此前这里自己开 `session_scope` 裸查 `city_geo`，是 agent 层唯一一处直连业务库的
+    读路径，也是同一张表的第三种读法（`city_reference` 走 db_pool、services 走 ORM），
+    三份各自的失败语义（None / False / 吞异常）互不一致（单一真源）。
     """
     name = str(city or "").strip()[:32]
     if not name:
         return None
-    try:
-        with session_scope() as session:
-            row = session.execute(
-                text("SELECT is_domestic FROM city_geo WHERE city_name = :name"),
-                {"name": name},
-            ).scalar()
-    except Exception:  # DB 不可用：深链是核实引导，不因字典查询失败打断调用方
+    row = city_reference.get_city_geo(name)
+    if row is None:
         return None
-    return None if row is None else bool(row)
+    return bool(row.get("is_domestic"))
 
 
 def _is_domestic(latitude: Any, longitude: Any, city: str) -> bool:

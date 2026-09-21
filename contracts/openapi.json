@@ -4355,6 +4355,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "minimum": 1,
               "default": 1,
               "title": "Page"
             }
@@ -4365,6 +4366,8 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
               "default": 10,
               "title": "Size"
             }
@@ -4520,6 +4523,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "minimum": 1,
               "default": 1,
               "title": "Page"
             }
@@ -4530,6 +4534,8 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
               "default": 10,
               "title": "Size"
             }
@@ -4697,6 +4703,8 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
               "default": 200,
               "title": "Limit"
             }
@@ -4707,6 +4715,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "default": 0,
               "title": "Offset"
             }

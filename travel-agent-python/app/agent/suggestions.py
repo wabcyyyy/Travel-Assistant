@@ -10,6 +10,7 @@
 
 import logging
 
+from app.agent.poi_identity import norm_ws_key
 from app.agent.trace import record_event
 
 logger = logging.getLogger(__name__)
@@ -83,8 +84,7 @@ def floor_suggestions(raw: list[dict], extra_pool: list[dict]) -> list[dict]:
     max_per = 20
     min_per = 4
 
-    def _norm_name(name: str) -> str:
-        return "".join(str(name or "").lower().split())
+    _norm_name = norm_ws_key
 
     by_cat: dict[str, list[dict]] = {}
     used_names: set[str] = set()

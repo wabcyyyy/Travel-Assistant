@@ -123,6 +123,8 @@ def matches_any(query: str, spellings: list[str] | tuple[str, ...] | None) -> bo
 # ---- 目的地范围闸 -----------------------------------------------------------
 
 _center_memo: dict[str, tuple[float, float] | None] = {}
+#: 表本身也必须有界（按城市数天然不大，但它是进程级、只增不减的）
+_CENTER_MEMO_MAX = 256
 
 
 def city_center(city: str, memo: dict[str, Any] | None = None) -> tuple[float, float] | None:
@@ -141,6 +143,14 @@ def city_center(city: str, memo: dict[str, Any] | None = None) -> tuple[float, f
         hit = places.geocode_place(name)
         if hit:
             center = (float(hit["latitude"]), float(hit["longitude"]))
+    if center is None:
+        # 只记忆化成功解析。None 既可能是"这城市确实没有中心点"，也可能是 geocoder
+        # 超时/并发下抢不到槽位（`places` 对这类负答案刻意配了 negative_ttl=300s，
+        # 就是不许把它当永久事实），而进程级永久缓存会让目的地范围闸对该城市
+        # **永久失效**——out_of_area 是本模块唯一任何时候都成立的否证信号。
+        return None
+    if len(store) >= _CENTER_MEMO_MAX:
+        store.clear()
     store[name] = center
     return center
 
@@ -306,9 +316,14 @@ def resolve_poi(name: str, city: str) -> ResolveResult:
                 "longitude": result.longitude,
             }
         )
-    if len(_memo) >= _MEMO_MAX:  # 有界：判定结果稳定，最旧的 1024 条之外直接丢
-        _memo.clear()
-    _memo[key] = result
+    if result.state != UNKNOWN:
+        # 只记忆化**判定**（VERIFIED / NOT_FOUND）。UNKNOWN 绝大多数是"没问到"：
+        # 额度耗尽、源不可用、超时。_memo 是进程级、跨 run 的，缓存它等于让一次
+        # 限流把该 (城市,名字) 永久钉死成解析不出来，并传染给之后每个用户。
+        # 不缓存也不会失控：每次重问都照样 `record_existence()` 扣额度。
+        if len(_memo) >= _MEMO_MAX:  # 有界：判定结果稳定，最旧的 1024 条之外直接丢
+            _memo.clear()
+        _memo[key] = result
     return result
 
 

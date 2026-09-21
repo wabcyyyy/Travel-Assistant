@@ -112,8 +112,8 @@ def add_item(user_id: int, itinerary_id: int, request: ItemUpsertRequest | None)
         itinerary_chat.invalidate_pending_actions(user_id, itinerary_id)
         budget_engine.recalculate(itinerary_id)
         _apply_suggestion_used(session, itinerary_id, request.poiId, request.poiName, True)
-    itinerary_version.create_snapshot(user_id, itinerary_id, "add_item", "新增行程项完成")
-    return _fresh_detail(user_id, itinerary_id)
+    itinerary_version.record_snapshot_or_log(user_id, itinerary_id, "add_item", "新增行程项完成")
+    return fresh_detail(user_id, itinerary_id)
 
 
 def update_item(user_id: int, item_id: int, request: ItemUpsertRequest | None) -> dict[str, Any]:
@@ -151,8 +151,8 @@ def update_item(user_id: int, item_id: int, request: ItemUpsertRequest | None) -
         session.flush()
         itinerary_chat.invalidate_pending_actions(user_id, itinerary_id)
         budget_engine.recalculate(itinerary_id)
-    itinerary_version.create_snapshot(user_id, itinerary_id, operation, after_summary)
-    return _fresh_detail(user_id, itinerary_id)
+    itinerary_version.record_snapshot_or_log(user_id, itinerary_id, operation, after_summary)
+    return fresh_detail(user_id, itinerary_id)
 
 
 def _move_to_day(session, item: ItineraryItem, target_day_id: int) -> None:
@@ -180,8 +180,8 @@ def delete_item(user_id: int, item_id: int) -> dict[str, Any]:
         itinerary_chat.invalidate_pending_actions(user_id, itinerary_id)
         budget_engine.recalculate(itinerary_id)
         _apply_suggestion_used(session, itinerary_id, poi_id, poi_name, False)
-    itinerary_version.create_snapshot(user_id, itinerary_id, "delete_item", "删除行程项完成")
-    return _fresh_detail(user_id, itinerary_id)
+    itinerary_version.record_snapshot_or_log(user_id, itinerary_id, "delete_item", "删除行程项完成")
+    return fresh_detail(user_id, itinerary_id)
 
 
 def reorder_items(user_id: int, itinerary_id: int, day_id: int | None, item_ids: list[int] | None) -> dict[str, Any]:
@@ -207,8 +207,8 @@ def reorder_items(user_id: int, itinerary_id: int, day_id: int | None, item_ids:
         session.flush()
         itinerary_chat.invalidate_pending_actions(user_id, itinerary_id)
         budget_engine.recalculate(itinerary_id)
-    itinerary_version.create_snapshot(user_id, itinerary_id, "reorder", "调整行程顺序完成")
-    return _fresh_detail(user_id, itinerary_id)
+    itinerary_version.record_snapshot_or_log(user_id, itinerary_id, "reorder", "调整行程顺序完成")
+    return fresh_detail(user_id, itinerary_id)
 
 
 def optimize_day(user_id: int, itinerary_id: int, day_id: int) -> dict[str, Any]:
@@ -278,8 +278,8 @@ def optimize_day(user_id: int, itinerary_id: int, day_id: int) -> dict[str, Any]
             session.get(ItineraryItem, row_id).sort_no = index
         session.flush()
         itinerary_chat.invalidate_pending_actions(user_id, itinerary_id)
-    itinerary_version.create_snapshot(user_id, itinerary_id, "optimize", f"优化路线完成（第 {day_no} 天）")
-    return _fresh_detail(user_id, itinerary_id)
+    itinerary_version.record_snapshot_or_log(user_id, itinerary_id, "optimize", f"优化路线完成（第 {day_no} 天）")
+    return fresh_detail(user_id, itinerary_id)
 
 
 def update_day(user_id: int, itinerary_id: int, day_id: int, theme: str | None) -> dict[str, Any]:
@@ -307,8 +307,8 @@ def update_day(user_id: int, itinerary_id: int, day_id: int, theme: str | None) 
         day.metadata_json = json.dumps(metadata, ensure_ascii=False) if metadata else None
         session.flush()
         itinerary_chat.invalidate_pending_actions(user_id, itinerary_id)
-    itinerary_version.create_snapshot(user_id, itinerary_id, "update_day", f"编辑日标题（第 {day_no} 天）")
-    return _fresh_detail(user_id, itinerary_id)
+    itinerary_version.record_snapshot_or_log(user_id, itinerary_id, "update_day", f"编辑日标题（第 {day_no} 天）")
+    return fresh_detail(user_id, itinerary_id)
 
 
 def _time_text(value) -> str | None:
@@ -418,7 +418,7 @@ def set_favorite(user_id: int, itinerary_id: int, favorite: bool) -> dict[str, A
     itinerary_query.find_owned_main(user_id, itinerary_id)
     with session_scope() as session:
         session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(favorite=bool(favorite)))
-    return _fresh_detail(user_id, itinerary_id)
+    return fresh_detail(user_id, itinerary_id)
 
 
 def set_archived(user_id: int, itinerary_id: int, archived: bool) -> dict[str, Any]:
@@ -426,7 +426,7 @@ def set_archived(user_id: int, itinerary_id: int, archived: bool) -> dict[str, A
     itinerary_query.find_owned_main(user_id, itinerary_id)
     with session_scope() as session:
         session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(archived=bool(archived)))
-    return _fresh_detail(user_id, itinerary_id)
+    return fresh_detail(user_id, itinerary_id)
 
 
 def _validate(request: ItemUpsertRequest) -> None:
@@ -440,8 +440,11 @@ def _validate(request: ItemUpsertRequest) -> None:
         raise ApiError(400, "时长必须在 0 到 1440 分钟之间")
 
 
-def _fresh_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
-    """写后立即回源：evict 由 detail() 的缓存重建完成，与 Java 末尾的 CacheEvict 等价。"""
+def fresh_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
+    """写后立即回源：evict 由 detail() 的缓存重建完成（与 Java 末尾的 CacheEvict 等价）。
+
+    跨模块 API：`itinerary_nl_edit` 也用它（按约定提级去下划线，不靠私有名跨模块引用）。
+    """
     itinerary_query.evict_detail(user_id, itinerary_id)
     return itinerary_query.detail(user_id, itinerary_id)
 

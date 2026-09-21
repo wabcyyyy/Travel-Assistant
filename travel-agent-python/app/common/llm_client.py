@@ -335,6 +335,22 @@ class LLMClient:
         completion = int(stream_usage.get("completion_tokens") or 0)
         metrics.record_llm_call(prompt, completion)
         _record_usage(model, prompt, completion, started, True)
+        # 流式与阻塞式共用同一份 RunLimits：不记这一次，max_llm_calls / max_tokens
+        # 在产品主路径（逐日流式）上永远读不到消耗，额度门等于只装了非流式那半边。
+        # 顺序照抄 `chat_response`：**先**记用量与账单，**后**扣额度——
+        # 否则恰好触发上限的那一次调用（最贵的一次）从用量表里消失，成本报表偏低。
+        if limits:
+            try:
+                limits.record_llm(prompt, completion)
+            except RunLimitExceeded as exc:
+                record_event(
+                    "llm",
+                    "llm.stream_request",
+                    status="error",
+                    error=str(exc),
+                    metadata={"budget_exhausted": True, "prompt_tokens": prompt, "completion_tokens": completion},
+                )
+                raise
         record_event(
             "llm",
             "llm.stream_request",

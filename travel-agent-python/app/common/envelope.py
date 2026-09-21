@@ -5,9 +5,8 @@
 裸 JSON / HTTP-only 语义，都会让前端静默拿到 undefined。因此信封必须原样保留，
 直到前端一并改造（本期不改）。
 
-错误语义同 Java：`ApiError.status` **既作 HTTP 状态码、也作 body.code**
-（见 `GlobalExceptionHandler.java:23,56-62`）；归属/存在性校验失败一律 404，
-不用 403 暴露资源是否存在。
+`ApiError.status` **既作 HTTP 状态码、也作 body.code**；归属/存在性校验失败
+一律 404，不用 403 暴露资源是否存在。
 """
 
 from __future__ import annotations
@@ -19,9 +18,6 @@ from fastapi.responses import JSONResponse
 
 CODE_SUCCESS = 200
 CODE_BAD_REQUEST = 400
-CODE_UNAUTHORIZED = 401
-CODE_FORBIDDEN = 403
-CODE_NOT_FOUND = 404
 CODE_ERROR = 500
 
 

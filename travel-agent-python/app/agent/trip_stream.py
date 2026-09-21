@@ -293,6 +293,18 @@ def run_generate_trip_stream(req: GenerateDayRequest, cancel: threading.Event | 
     suggestion_rows = fill_suggestion_gaps(suggestion_rows, req.city, budget_tier=tier_label or None)
     yield to_wire(SuggestionsEvent(type="suggestions", items=_suggestion_models(suggestion_rows)))
 
+    if stream_error is not None:
+        # 中途报错也要留三态：`observability.record()` 只从 run_status 事件判定
+        # degraded/failed，缺这条就把报错的 run 记进 successes。
+        # 没有任何一天 = failed（没有可交付）；已出几天 = degraded（如实带原因）。
+        interrupted_status = "failed" if not emitted_nos else "degraded"
+        record_event(
+            "decision",
+            "run_status",
+            status=interrupted_status,
+            metadata={"status": interrupted_status, "error": stream_error, "days_emitted": emitted_nos},
+        )
+
     record_event(
         "decision",
         "trip_stream_done",

@@ -34,6 +34,7 @@ ROUTE_FIXED_BUFFER_MIN = 10
 RouteFetcher = Callable[[dict, dict, str, str | None], dict | None]
 
 _route_cache: dict[tuple, tuple[float, dict]] = {}
+_route_lock = threading.Lock()
 # 缓存只在读时判 TTL，过期项永不清理会无界增长（每次路线查询写一条）。
 # 写入时做一次轻量清扫，并设硬上限兜底。
 _ROUTE_CACHE_MAX = 2000
@@ -232,8 +233,13 @@ class RouteService:
                 reason=fallback_reason,
             )
         if result is not None:
-            _prune_route_cache(now)
-            _route_cache[cache_key] = (now, dict(result))
+            # 清扫要遍历整张表，必须与写入互斥：generation_pool 的多个 worker 同时
+            # 走到这里时，未加锁的迭代会在表被改大的一瞬间抛
+            # `RuntimeError: dictionary changed size during iteration`，
+            # 症状却远在千里之外——当天生成中断 → plan_days 上抛 → 整趟行程判 FAILED。
+            with _route_lock:
+                _prune_route_cache(now)
+                _route_cache[cache_key] = (now, dict(result))
             record_event(
                 "tool",
                 "route.get",

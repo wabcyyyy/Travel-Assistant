@@ -71,8 +71,6 @@ ignore = [
 "tests/*" = ["SIM117", "RUF012", "RUF001", "RUF002", "RUF003"]
 # agent_eval 的评测/回放脚本先做 sys.path 注入再 import app，E402 是既定结构。
 "tests/agent_eval/*" = ["E402"]
-# chat_draft 门面：显式 re-export 旧导入路径（docstring 有说明），G-1.2 边界收敛时统一处理。
-"app/agent/chat_draft/__init__.py" = ["F401"]
 
 [tool.pyright]
 include = ["app", "tests", "scripts", "main.py"]

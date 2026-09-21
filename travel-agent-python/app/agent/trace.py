@@ -161,10 +161,6 @@ def record_event(
         )
 
 
-def current_span_id() -> str | None:
-    return _active_span.get()
-
-
 def current_run_id() -> str | None:
     """当前 trace 上下文的 run_id；无上下文返回 None。
 

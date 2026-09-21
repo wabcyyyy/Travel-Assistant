@@ -39,10 +39,6 @@ def release_day_lock(itinerary_id: int, day_no: int) -> None:
     state_and_sessions.unmark(day_lock_key(itinerary_id, day_no))
 
 
-def is_day_locked(itinerary_id: int, day_no: int) -> bool:
-    return state_and_sessions.is_marked(day_lock_key(itinerary_id, day_no))
-
-
 def try_resume_lock(itinerary_id: int) -> bool:
     return state_and_sessions.try_mark(RESUME_KEY_PREFIX + str(int(itinerary_id)), RESUME_LOCK_TTL_SECONDS)
 

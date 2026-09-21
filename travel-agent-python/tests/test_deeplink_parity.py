@@ -52,37 +52,23 @@ def _pin_city_dict(monkeypatch):
 
 
 def test_place_dict_lookup_reads_city_geo(monkeypatch):
-    """_dict_domestic 的 DB 路径：命中返回布尔、未收录返回 None、库不可用返回 None。"""
+    """_dict_domestic 的字典路径：命中→布尔、未收录→None、库不可用→None。
+
+    读法已从 map_link 自带的 `session_scope` 裸查收敛到 `city_reference.get_city_geo`
+    （城市字典唯一入口，含"失败吞成 None、不中断生成链路"的既有契约）。
+    """
     monkeypatch.setattr(map_link, "_dict_domestic", _real_dict_domestic)
 
-    class _FakeCtx:
-        def __init__(self, result):
-            self._result = result
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
-
-        def execute(self, _stmt, _params):
-            return self
-
-        def scalar(self):
-            return self._result
-
-    monkeypatch.setattr(map_link, "session_scope", lambda: _FakeCtx(True))
+    rows = {
+        "杭州": {"city_name": "杭州", "is_domestic": 1},
+        "巴厘岛": {"city_name": "巴厘岛", "is_domestic": 0},
+        # "不存在城" 故意不在表里：字典未收录必须与"库不可用"同样回 None
+    }
+    monkeypatch.setattr(map_link.city_reference, "get_city_geo", lambda city: rows.get(city))
     assert map_link._dict_domestic("杭州") is True
-    monkeypatch.setattr(map_link, "session_scope", lambda: _FakeCtx(None))
-    assert map_link._dict_domestic("不存在城") is None
-    monkeypatch.setattr(map_link, "session_scope", lambda: _FakeCtx(False))
     assert map_link._dict_domestic("巴厘岛") is False
-
-    def _boom():
-        raise RuntimeError("db down")
-
-    monkeypatch.setattr(map_link, "session_scope", _boom)
-    assert map_link._dict_domestic("杭州") is None
+    assert map_link._dict_domestic("不存在城") is None
+    assert map_link._dict_domestic("") is None, "空城市不打字典"
 
 
 def test_to_gcj02_matches_frontend_known_values():

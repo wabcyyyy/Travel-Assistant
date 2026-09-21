@@ -388,7 +388,11 @@ def poi_intros(req: PoiIntrosRequest, _auth: None = Depends(require_internal_tok
         names = [n for n in req.names if n]
         # M3-②：intent 透传进介绍 Prompt（为空时由 butler 层降级为口碑/地理理由）
         return ApiResponse.ok(PoiIntrosResponse(intros=run_poi_intros(req.city, names, intent=req.intent)))
-    except Exception:
+    except Exception as exc:
+        # 空结果是被测试钉住的降级契约（`test_poi_intros_degrades_to_empty_on_error`），
+        # 不改；但"静默吞掉"不是契约的一部分——没有这行日志，故障与"确实没有介绍"
+        # 在两侧都无从区分。
+        logger.warning("poi_intros failed: %s", exc)
         return ApiResponse.ok(PoiIntrosResponse())
 
 
@@ -412,7 +416,8 @@ def poi_nearby(req: PoiNearbyRequest, _auth: None = Depends(require_internal_tok
             category=(req.category or None),
         )
         return ApiResponse.ok(PoiNearbyResponse(items=[PoiNearbyItem.model_validate(r) for r in rows]))
-    except Exception:
+    except Exception as exc:
+        logger.warning("poi_nearby failed: %s", exc)
         return ApiResponse.ok(PoiNearbyResponse())
 
 

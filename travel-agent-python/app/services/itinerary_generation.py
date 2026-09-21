@@ -494,7 +494,8 @@ def generate(user_id: int, body: GenerateTripRequest, idempotency_key: str | Non
                 )
             )
     preferences_service.record_preferences(user_id, command.preferences)
-    itinerary_version.create_snapshot(user_id, itinerary_id, "create", "创建行程草稿")
+    # 壳已提交：这里若抛 500，submit_planning 就跑不到，留下一个 GENERATING 空壳等 5 分钟续跑扫描。
+    itinerary_version.record_snapshot_or_log(user_id, itinerary_id, "create", "创建行程草稿")
     # 建壳成功后回填幂等占位值：此后同键重试拿回这个 itinerary_id
     if idempotency_key and idempotency_key.strip():
         cache_store.set_json(

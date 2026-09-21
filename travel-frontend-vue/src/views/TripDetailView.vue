@@ -175,6 +175,7 @@
         <section class="panel panel-right" :style="{ '--lp-panel-w': rightHidden ? '0px' : `${rightWidth}px` }">
           <div class="panel-fill">
             <DiscoverPanel
+              :key="`discover-${detail.id}`"
               :preset-day-id="presetDiscoverDayId"
               @select="onPanelItemSelect"
               @clear-preset="presetDiscoverDayId = null"
@@ -405,8 +406,12 @@ function onHeadMenu(key: string): void {
 async function loadDetail() {
   loading.value = true
   loadError.value = false
+  const requestedId = String(route.params.id)
   try {
-    const res = await getItineraryDetail(route.params.id as string)
+    const res = await getItineraryDetail(requestedId)
+    // 快进快退切换行程时，先发后到的旧响应不能覆盖新行程：`detail.value.id` 是
+    // useItineraryActions 所有写操作的目标，被旧数据顶掉就等于把编辑写进别的行程。
+    if (String(route.params.id) !== requestedId) return
     // 行程详情落 store 单一数据源；对话/草稿/酒店选择由 ChatEditPanel 随 itineraryId 自行装载
     store.setDetail(res.data)
     collapsedDays.value = []
@@ -415,6 +420,7 @@ async function loadDetail() {
     const username = userStore.username
     if (username) void saveDetailSnapshot(username, res.data.id, res.data)
   } catch (err) {
+    if (String(route.params.id) !== requestedId) return
     // 离线快照回退（C2.5）：断网时回退到本人最近一次成功读取的快照（只读）
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       const username = userStore.username

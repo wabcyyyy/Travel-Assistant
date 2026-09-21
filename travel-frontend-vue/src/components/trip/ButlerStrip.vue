@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ChevronDown, MessageCircle } from 'lucide-vue-next'
 
 import { fetchItineraryWeather } from '../../api/weather'
@@ -74,14 +74,22 @@ const expanded = ref(false)
 // 不进 statusChip 的状态语义，也不触发错误提示（接口侧 skipErrorMessage）。
 const weather = ref<WeatherVO | null>(null)
 
-onMounted(async () => {
+// 天气属于"这条行程"的事实：本组件在 /trips/1 → /trips/2 之间是被复用的
+// （父级只 v-if="detail"，实例不重建），只在 onMounted 取一次会让 B 显示 A 的天气。
+// 口径照抄 ExpensePanel 的既有写法：watch id + 请求序号，旧响应不得覆盖新值。
+let weatherRequestId = 0
+async function loadWeather(itineraryId: number) {
+  const id = ++weatherRequestId
+  weather.value = null // 换行程先撤下上一个城市的天气，别在新响应落地前继续挂着它
   try {
-    const res = await fetchItineraryWeather(props.detail.id)
-    weather.value = res.data
+    const res = await fetchItineraryWeather(itineraryId)
+    if (id === weatherRequestId) weather.value = res.data
   } catch {
-    weather.value = null
+    if (id === weatherRequestId) weather.value = null
   }
-})
+}
+
+watch(() => props.detail.id, (id) => void loadWeather(id), { immediate: true })
 
 function shortDay(iso: string): string {
   const d = new Date(iso)

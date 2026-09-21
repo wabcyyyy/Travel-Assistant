@@ -27,10 +27,57 @@ MAX_REGISTER_ATTEMPTS = 5
 SESSION_KEY_PREFIX = "auth:sess:"
 
 _lock = threading.Lock()
-_windows: dict[str, deque[float]] = {}
+#: 值 = (该键自己窗口的失效时刻, 命中时间戳队列)。**必须逐键带窗口**：
+#: 本表的窗口不止 15 分钟——`quota:llm:day:{uid}` 用的是 86400s，
+#: 用一个全局 cutoff 扫表会把"15 分钟前打过一次"的当日额度桶整条删掉，
+#: 当日限额在 Redis 熔断期里退化成 15 分钟限额（等于无限刷付费调用）。
+_windows: dict[str, tuple[float, deque[float]]] = {}
 _marks: dict[str, float] = {}
 _session_sets: dict[str, set[str]] = {}
 _jti_to_token: dict[str, str] = {}
+
+# 兜底表的条目上限（R2-10 的同一课，当时补了 `cache_store._local` 与
+# `ExternalClient._cache`，漏了本文件）。这里的键里有**匿名可控**的一段：
+# `auth:login:fail:{ip}|{user}`、`public:{bucket}:{ip}`、`share:view:{ip}`，
+# 而条目只在 `reset_counter` / `unmark` 时回收。Redis 熔断期内每个不同 IP 的
+# 一次请求都新增一条且无人清理——刷 IP 就能让 RSS 单调涨到 OOM，
+# "降级"于是变成 DoS 靶子。
+LOCAL_STATE_MAX_ENTRIES = 4096
+
+
+def _bound_windows(now: float) -> None:
+    """把滑动窗口表压回上限：先扔各自已过期的，再仍超限时扔**最快过期**的。
+
+    调用方必须持 `_lock`；只在超限时才扫，避免每次写入 O(n)。
+    淘汰顺序按失效时刻升序，也就是优先扔"本来马上就过期"的 15 分钟桶，
+    而刚被命中的当日额度桶（失效时刻在 24 小时后）排在最后，不会先被扔掉。
+
+    方向如实写明：被淘汰的键等于"窗口内计数从头再来"，是**放松**限速不是打死进程。
+    这不因"Redis 恢复后接管"而变——熔断期落在本地的计数永远不会回灌 Redis，
+    恢复后 Redis 从自己的（空的）计数重新开始。
+    """
+    if len(_windows) < LOCAL_STATE_MAX_ENTRIES:  # 严格小于才不动：本函数在插入**前**调用，要留出一格
+        return
+    for key in [k for k, (expiry, _q) in _windows.items() if expiry <= now]:
+        _windows.pop(key, None)
+    overflow = len(_windows) - LOCAL_STATE_MAX_ENTRIES + 1  # +1：为目标键留出那一格
+    if overflow > 0:
+        by_expiry = sorted(_windows.items(), key=lambda kv: kv[1][0])
+        for key, (_expiry, _q) in by_expiry[:overflow]:
+            _windows.pop(key, None)
+
+
+def _bound_marks(now: float) -> int:
+    """一次性标记表的同一条纪律，但**方向相反**：这是锁，不能被淘汰。
+
+    扔一个未到期的 `gen:day:*` / 续跑锁 = 同一把锁交给两个 worker 同时持有，
+    症状是重复生成与互相覆盖，比内存涨一点严重得多。所以这里只清理已过期的；
+    返回清理后仍占用的条目数，由 `_try_mark_local` 在满表时**拒绝**新占用
+    （fail-closed：那一次生成不做，可见且可重试）。
+    """
+    for key in [k for k, expires_at in _marks.items() if expires_at <= now]:
+        _marks.pop(key, None)
+    return len(_marks)
 
 
 def _redis():
@@ -78,11 +125,14 @@ def sliding_hit(key: str, window_seconds: int) -> int:
         redis_client.note_failure(exc)
         logger.debug("sliding_hit redis fallback (%s): %s", key, exc)
     with _lock:
-        queue = _windows.setdefault(key, deque())
+        _bound_windows(now)
+        entry = _windows.get(key)
+        queue = entry[1] if entry is not None else deque()
         queue.append(now)
         cutoff = now - window_seconds
         while queue and queue[0] <= cutoff:
             queue.popleft()
+        _windows[key] = (now + window_seconds, queue)
         return len(queue)
 
 
@@ -94,7 +144,8 @@ def sliding_count(key: str, window_seconds: int) -> int:
         redis_client.note_failure(exc)
         logger.debug("sliding_count redis fallback (%s): %s", key, exc)
     with _lock:
-        queue = _windows.get(key)
+        entry = _windows.get(key)
+        queue = entry[1] if entry is not None else None
         if not queue:
             return 0
         cutoff = time.time() - window_seconds
@@ -135,11 +186,17 @@ def try_mark(key: str, ttl_seconds: int) -> bool:
 def _try_mark_local(key: str, ttl_seconds: int) -> bool:
     now = time.time()
     with _lock:
+        occupied = _bound_marks(now)
         expires_at = _marks.get(key)
-        if expires_at is None or expires_at < now:
-            _marks[key] = now + ttl_seconds
-            return True
-    return False
+        if expires_at is not None and expires_at >= now:
+            return False  # 已被占用（不续期别人的占用）
+        if occupied >= LOCAL_STATE_MAX_ENTRIES:
+            # 表满且没有到期的可清理：拒绝这次占用。锁被挤掉 = 同一把锁交给两个
+            # worker（重复生成、互相覆盖），比"这一单先不做"严重一个量级。
+            logger.warning("local mark table full (%d); refusing new mark %s", occupied, key)
+            return False
+        _marks[key] = now + ttl_seconds
+        return True
 
 
 def is_marked(key: str) -> bool:
@@ -231,15 +288,6 @@ def revoke_all(username: str) -> int:
                 token_revocation.revoke(token, 86_400)
                 revoked += 1
     return revoked
-
-
-def list_jtis(username: str) -> list[str]:
-    try:
-        return sorted(_redis().smembers(SESSION_KEY_PREFIX + username) or set())
-    except Exception as exc:
-        redis_client.note_failure(exc)
-        with _lock:
-            return sorted(_session_sets.get(username, set()))
 
 
 def reset_for_tests() -> None:

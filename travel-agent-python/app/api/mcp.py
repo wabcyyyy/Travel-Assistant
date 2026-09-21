@@ -334,11 +334,6 @@ def build_server() -> FastMCP:
     return server
 
 
-async def list_tool_names() -> list[str]:
-    """对外可见的工具名（供自检与测试；与 build_server 同一取数口径）。"""
-    return [spec.name for spec in exposed_specs()]
-
-
 def _authorized(headers: dict[bytes, bytes]) -> bool:
     """`AGENT_INTERNAL_TOKEN` 校验（Bearer 或 X-Agent-Token，二选一）。"""
     expected = settings.agent_internal_token

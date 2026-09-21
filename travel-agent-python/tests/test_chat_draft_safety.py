@@ -1,19 +1,25 @@
-from app.agent.chat_draft import (
+from app.agent.chat_draft.hotel_intent import (
     HotelIntent,
-    _apply_decision_patches,
-    _apply_plan_update,
-    _decision_reply,
-    _dedupe_plans,
-    _deterministic_reduce,
     _fallback_hotel_intent,
     _hotel_comparison_base_tier,
+    _with_stay_scope,
+)
+from app.agent.chat_draft.intent import (
     _increase_target_days,
     _is_vague_poi_browse_request,
-    _plan_conflict,
     _reduce_target_days,
     _requested_day_count,
+)
+from app.agent.chat_draft.plan_edit import (
+    _apply_decision_patches,
+    _apply_plan_update,
+    _dedupe_plans,
+    _deterministic_reduce,
+)
+from app.agent.chat_draft.validate import (
+    _decision_reply,
+    _plan_conflict,
     _substantive_plan_signature,
-    _with_stay_scope,
 )
 from app.schemas.trip import ChatTurnRequest
 

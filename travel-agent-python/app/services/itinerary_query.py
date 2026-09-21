@@ -222,7 +222,7 @@ def detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
     cached = cache_store.get_json(DETAIL_CACHE_NAMESPACE, cache_key)
     if cached is not None:
         return cached
-    payload = _build_detail(user_id, itinerary_id)
+    payload = build_detail(user_id, itinerary_id)
     cache_store.set_json(DETAIL_CACHE_NAMESPACE, cache_key, payload, DETAIL_CACHE_TTL_SECONDS)
     return payload
 
@@ -247,7 +247,14 @@ def evict_detail(user_id: int, itinerary_id: int) -> None:
         cache_store.delete(DETAIL_CACHE_NAMESPACE, f"{reader_id}:{itinerary_id}")
 
 
-def _build_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
+def build_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
+    """回源组装详情，**不读写缓存**。
+
+    跨模块 API：`itinerary_version._write_snapshot` 用它取快照载荷。快照是在调用者
+    **尚未提交**的事务里读的，若经 `detail()` 就会把未提交状态写进按用户缓存 600s 的
+    详情表 —— 外层事务一旦回滚（唯一键冲突、锁等待超时），用户的
+    `/api/itinerary/{id}` 会在接下来 10 分钟里显示一笔并不存在的修改。
+    """
     main = find_readable_main(user_id, itinerary_id)
     with session_scope() as session:
         role = _member_role(session, itinerary_id, user_id)
@@ -329,13 +336,16 @@ def _build_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
         "status": main.status,
         "planNote": main.plan_note,
         "tripTheme": main.trip_theme,
-        # S1：封面快照 / 收藏 / 归档 / 分享（详情是本人视角，shareToken 仅此处可回）
+        # S1：封面快照 / 收藏 / 归档 / 分享。shareToken **只回给 owner**：详情面
+        # 对协作者（viewer/editor）也可读，而拿到 token 就等于拿到匿名可访问的
+        # 公开分享链接——`GET /{id}/share` 刻意是 owner-only，这里不能绕过它。
+        # 详情缓存按 user 分键（`detail` 的 cache_key），逐人裁剪不会互相污染。
         "coverUrl": main.cover_url,
         "coverSource": main.cover_source,
         "coverCredit": _loads_object(main.cover_credit),
         "favorite": bool(main.favorite),
         "archived": bool(main.archived),
-        "shareToken": main.share_token,
+        "shareToken": main.share_token if main.user_id == user_id else None,
         # 模板（C2.4）：owner 详情里可见发布状态（menu 出「发布/下架」）
         "templatePublishedAt": iso_datetime(main.template_published_at),
         "destinationStatus": _destination_status(items),

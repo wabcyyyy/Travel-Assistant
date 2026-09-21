@@ -220,7 +220,9 @@ def generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False) 
 
     trip_date = parse_date(req.start_date)
     factor = season_factor(trip_date)
-    label = season_label(trip_date)
+    # 旺季系数的文字标签。刻意不与下面的溯源 `label` 共用名字：同名会让酒店 remark
+    # 拼进 ItemLabel 的 repr（见 l.295 处历史事故）。
+    season_name = season_label(trip_date)
 
     drafts = sanitize_itinerary_items(plan.get("items"))
     for item in drafts:
@@ -292,7 +294,7 @@ def generate_day_once(req: GenerateDayRequest, *, force_fallback: bool = False) 
         if item.get("item_type") == "hotel" and factor != 1.0 and item.get("cost"):
             base = float(item["cost"])
             item["cost"] = round(base * factor, 2)
-            remark = f"{label}估算：系数×{factor}（基准价￥{base:g}）"
+            remark = f"{season_name}估算：系数×{factor}（基准价￥{base:g}）"
             item["remark"] = f"{item['remark']}；{remark}" if item.get("remark") else remark
 
         # 餐饮：实时价（可选）+ 城市均价硬钳制，抑制离谱估值

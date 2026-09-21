@@ -1,4 +1,8 @@
-"""酒店季节定价：与后端 SeasonPrice.java 保持完全一致的规则。"""
+"""酒店季节定价：系数与窗口是本模块的常量真源（原 Java 侧实现已随该模块退役）。
+
+注意：改动这四个系数会直接改变估价与预算口径，`day_stream` 的旺季 remark 与
+eval 的 budget_deviation 都以它们为基线。
+"""
 
 from datetime import date
 

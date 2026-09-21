@@ -97,7 +97,10 @@ def register(username: str, password: str, nickname: str | None, ip: str) -> dic
             session.flush()
             vo = to_vo(user)
     except Exception as exc:  # 唯一键冲突等一律回同一句模糊文案
-        logger.info("register failed (%s): %s", type(exc).__name__, exc)
+        # 只记异常类型：SQLAlchemy 的 StatementError 会把 SQL 与**绑定参数**一起
+        # 打进 str(exc)，注册失败路径上的参数含 bcrypt 口令哈希——离线可破，
+        # 等于把凭据写进 INFO 日志。原因另用 type/参数名定位，不外拷全文。
+        logger.info("register failed: %s", type(exc).__name__)
         raise ApiError(400, "注册失败，请检查用户名或稍后重试") from exc
     return vo
 

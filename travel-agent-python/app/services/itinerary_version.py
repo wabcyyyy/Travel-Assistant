@@ -57,13 +57,35 @@ def create_snapshot(user_id: int, itinerary_id: int, operation: str | None, summ
     raise ApiError(500, "版本快照写入冲突，请稍后重试") from last_exc
 
 
+def record_snapshot_or_log(user_id: int, itinerary_id: int, operation: str | None, summary: str | None) -> None:
+    """**业务写已提交之后**的快照：失败只 WARN，不得把已成功的写报成 500。
+
+    为什么要有这一份而不是就地 try：`create_snapshot` 在 3 次 `version_no` 冲突后
+    抛 `ApiError(500)`。写在前面时 500 是诚实的（那笔写还没发生）；写在后面时行已
+    落库，用户却看到"保存失败"→ 再点一次 → **重复条目**，这正是 R2-3 后半句要消除
+    的行为（此前只有 `itinerary_generation._finish` 一处做到了）。
+    代价如实记录在案：这一次的版本历史缺失，宁可少一个可回滚点，不可骗用户写失败。
+    """
+    try:
+        create_snapshot(user_id, itinerary_id, operation, summary)
+    except Exception as exc:
+        logger.warning(
+            "version snapshot failed after write (itinerary %s, %s): %s",
+            itinerary_id,
+            operation,
+            exc,
+        )
+
+
 def _write_snapshot(
     session: Session, user_id: int, itinerary_id: int, operation: str | None, summary: str | None
 ) -> dict[str, Any]:
     main = itinerary_query.require_writable_main(session, user_id, itinerary_id)
     latest = _latest(session, itinerary_id)
     itinerary_query.evict_detail(user_id, itinerary_id)
-    detail = itinerary_query.detail(user_id, itinerary_id)
+    # 用 build_detail 而不是 detail()：此刻外层事务尚未提交，经 detail() 会把未提交
+    # 状态写进 600s 的用户详情缓存，一旦回滚就成了 10 分钟的幻影数据（快照本身仍取当前读视图）。
+    detail = itinerary_query.build_detail(user_id, itinerary_id)
     version = ItineraryVersion(
         itinerary_id=itinerary_id,
         user_id=user_id,
@@ -210,7 +232,8 @@ def restore(user_id: int, itinerary_id: int, version_id: int) -> dict[str, Any]:
         budget_engine.recalculate(itinerary_id)
 
     itinerary_query.evict_detail(user_id, itinerary_id)
-    create_snapshot(user_id, itinerary_id, "restore", f"恢复到版本 {version_no}")
+    # 恢复本身已经提交：再让快照冲突把整笔操作报成 500，用户重试就是二次破坏性恢复。
+    record_snapshot_or_log(user_id, itinerary_id, "restore", f"恢复到版本 {version_no}")
     return itinerary_query.detail(user_id, itinerary_id)
 
 

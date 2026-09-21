@@ -38,7 +38,10 @@ _SNIFF_BYTES = 1024
 _ALLOWED_EXACT = {
     "images.unsplash.com",
     "images.pexels.com",
-    "images.weserv.nl",
+    # images.weserv.nl 曾在此列，已删：它是"按 query 参数替你抓取任意目标"的
+    # 图片代理，放行这个主机等于让白名单不再约束**实际被抓取的对象**
+    # （`https://images.weserv.nl/?url=http://169.254.169.254/...` 直接通过校验）。
+    # 全仓没有任何一处产出 weserv 图片地址，删它不损功能。
     "upload.wikimedia.org",
     "wikipedia.org",
 }

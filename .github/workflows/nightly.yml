@@ -103,9 +103,10 @@ jobs:
           DB_NAME: travel_assistant
           REDIS_URL: redis://127.0.0.1:6379/0
         run: |
-          uv run python tests/agent_eval/llm_eval.py --limit 3 | tee llm_eval_small.json
-          # 防倒退门禁（SPEC v2.3 §8 A2）：failed run / Prompt 版本漂移 / 一致率低于基线 → 红；
-          # degraded 如实呈现，不判失败
+          uv run python tests/agent_eval/llm_eval.py --path stream --limit 3 | tee llm_eval_small.json
+          # 防倒退门禁（SPEC v2.3 §8 A2）：failed run / Prompt 或生成路径漂移 / 一致率低于基线 → 红；
+          # degraded 如实呈现，不判失败。--path stream 是刻意的：量产品实际走的逐日流式，
+          # 同步 /v1/generate 那条共用预算的遗留面用 `--path graph` 单独测。
           uv run python tests/agent_eval/eval_gate.py
       - uses: actions/upload-artifact@v4
         if: steps.guard.outputs.skip != 'true'

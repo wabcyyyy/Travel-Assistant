@@ -5,14 +5,14 @@
 **不得**断言成失败——设成失败会逼出口径造假。只在三类硬信号上判红：
 
 1. 出现 failed run（生成链路真的炸了）；
-2. Prompt 口径漂移：报告里的 `prompt_version` / 两套开放 Prompt 版本与**本文件的
-   期望常量**不一致——改 Prompt 必须同步改这里，逼作者有意识地认账（刻意不 import
-   源码常量，否则「改了自动通过」等于没有门禁）；
+2. Prompt 口径漂移：报告里的 `prompt_version` / 两套开放 Prompt 版本 / **生成路径**与
+   **本文件的期望常量**不一致——改 Prompt 或换被测路径必须同步改这里，逼作者有意识地
+   认账（刻意不 import 源码常量，否则「改了自动通过」等于没有门禁）；
 3. 两遍一致率低于记录基线（现值 16.67% 记为基线，只准升不准降）。
 
 用法（应与「刚跑出来的报告」配对使用；历史/过期报告不适用）：
     uv run python tests/agent_eval/eval_gate.py [报告 json 路径]
-默认读 `report/llm_report.json`（nightly 的非主题化 `--limit 3` run 即写它）。
+默认读 `report/llm_report.json`（nightly 的非主题化 `--path stream --limit 3` run 即写它）。
 无 LLM_API_KEY 时直接跳过（与 `llm_eval.py` 同一 guard：不冒充、不误红）。
 """
 
@@ -34,12 +34,18 @@ DEFAULT_REPORT = REPORT_DIR / "llm_report.json"
 EXPECTED_PROMPT_VERSION = "workflow-v2-authority-route-20260828"
 EXPECTED_OPEN_DAY_PROMPT_VERSION = "v1.1.narrative"
 EXPECTED_OPEN_TRIP_PROMPT_VERSION = "v1.1.narrative"
+# 门禁认的是**产品路径**：逐日流式（研究另算一个 run、预算各一份）。同步图路径
+# 共用一份 deadline，数值与流式不可跨路径比较，所以换路径必须同时重定基线。
+EXPECTED_GENERATION_PATH = "stream"
 
 # 一致性基线：记录现值 16.67%（themed_report.md / themed_report.json）。语义 = 防倒退。
 CONSISTENCY_BASELINE = 0.1667
 
 # C3.2 深度指标下限（防倒退，非达标线；nightly 真实 LLM 样本仅 3 例，阈值从宽，
 # 超过下限的现值也不代表"够好"，只代表不比记录时更差——作者按现值人工认账）。
+# ⚠ 待重新认账：这三个数是**同步图路径**时代记下的，而门禁现在认流式路径
+# （`EXPECTED_GENERATION_PATH`）。在流式路径上拿到第一批可信数值之前，这里
+# 判红是如实而非误报——不要为了让门禁绿而改常数（那正是本仓在治的那类自欺）。
 COORD_VALID_BASELINE = 0.80
 DEEPLINK_RESOLVABLE_BASELINE = 0.80
 CATEGORY_REASONABLE_BASELINE = 0.95
@@ -68,6 +74,13 @@ def check(report: dict) -> list[str]:
         actual = report.get(field)
         if actual != expected:
             problems.append(f"{field} 漂移：期望 {expected!r}，报告 {actual!r}（改 Prompt 请同步门禁常量）")
+
+    actual_path = report.get("generation_path")
+    if actual_path != EXPECTED_GENERATION_PATH:
+        problems.append(
+            f"generation_path 漂移：期望 {EXPECTED_GENERATION_PATH!r}（产品路径=逐日流式），"
+            f"报告 {actual_path!r}——两条路径共用预算的形状不同，深度基线不可跨路径套用"
+        )
 
     rate = report.get("consistency_rate")
     if not isinstance(rate, (int, float)):

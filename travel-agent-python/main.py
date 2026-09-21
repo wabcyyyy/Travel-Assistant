@@ -16,6 +16,7 @@
   app.services.generation_recovery / itinerary_generation。
 """
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -59,8 +60,8 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        # 滚动发布时不先把在跑的生成切掉：先停周期任务，再等在跑的任务收尾（上限 30s，
-        # 同 Java 的 awaitTerminationSeconds），最后才关池。
+        # 滚动发布时不先把在跑的生成切掉：先停周期任务，再等在跑的任务收尾（上限 30s），
+        # 最后才关池。
         cron.stop_all()
         for pool in (
             itinerary_generation.generation_pool,
@@ -69,7 +70,13 @@ async def lifespan(app: FastAPI):
             itinerary_chat.chat_pool,
         ):
             try:
-                pool.shutdown()
+                # `SlotExecutor.shutdown()` 是无超时的 `wait=True`，且会等在跑的 LLM
+                # 调用（`llm_timeout=240s`）。直接 await 会冻住事件循环：健康检查失败 →
+                # 容器被 SIGKILL → 留下成批 GENERATING 行等续跑。放到线程里并限时 30s，
+                # 超时如实记日志继续关（旧注释写的"上限 30s"此前只是愿望，没有实现）。
+                await asyncio.wait_for(asyncio.to_thread(pool.shutdown), timeout=30)
+            except TimeoutError:
+                logging.getLogger(__name__).warning("executor shutdown exceeded 30s; abandoning drain")
             except Exception as exc:
                 logging.getLogger(__name__).warning("executor shutdown failed: %s", exc)
 

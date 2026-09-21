@@ -10,11 +10,8 @@ count 已无本地语料可数，恒为 null（字段保留是为了前端契约
 
 from __future__ import annotations
 
-from sqlalchemy import select
-
 from app.agent import workbench_search
-from app.db.models import CityGeo
-from app.db.session import session_scope
+from app.services import itinerary_city
 
 CATEGORY_LABELS: dict[str, str] = {"attraction": "景点", "food": "餐饮", "hotel": "住宿"}
 MAX_LIMIT = 30
@@ -38,17 +35,11 @@ def _to_vo(row: dict) -> dict:
     }
 
 
-def _covered_cities() -> list[str]:
-    with session_scope() as session:
-        stmt = select(CityGeo.city_name).order_by(CityGeo.city_name)
-        return [str(city) for city in session.execute(stmt).scalars().all() if city]
-
-
 def search_local(city: str, keywords: str = "", category: str | None = None) -> dict:
     rows = workbench_search(city, keywords=keywords, category=category, limit=MAX_LIMIT)
     return {
         "city": city,
         "category": category,
         "items": [_to_vo(row) for row in rows],
-        "coveredCities": [{"city": name, "count": None} for name in _covered_cities()],
+        "coveredCities": [{"city": name, "count": None} for name in itinerary_city.supported_cities()],
     }

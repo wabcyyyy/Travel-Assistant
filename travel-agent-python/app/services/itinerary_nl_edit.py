@@ -10,7 +10,7 @@
 模型调用放在事务之外（读快照 → 调模型 → 一个 scope 内应用），避免一次 LLM
 调用占住连接池连接。
 
-依赖：itinerary_command（共享 helper：_require_main/_fresh_detail/_time_text 等）、
+依赖：itinerary_query（owner/editor 闸门与详情回源）、itinerary_command.fresh_detail、
 itinerary_city（guard_agent_call）、itinerary_chat/budget_engine/itinerary_version。
 本模块与 itinerary_command 是**单向**依赖（后者只在注释里提到 nl_edit 纪律）。
 """
@@ -31,10 +31,7 @@ from app.db.models import ItineraryDay, ItineraryItem
 from app.db.session import session_scope
 from app.schemas.trip import EditOpRequest
 from app.services import budget_engine, itinerary_chat, itinerary_city, itinerary_query, itinerary_version
-from app.services.itinerary_command import (
-    _fresh_detail,
-    _require_main,
-)
+from app.services.itinerary_command import fresh_detail
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +50,7 @@ def nl_edit(user_id: int, itinerary_id: int, instruction: str) -> dict[str, Any]
     - 时间解析失败会让整个请求以 400「时间格式必须为 HH:mm」中止（不是跳过该条 op）。
     """
     with session_scope() as session:
-        main = _require_main(session, user_id, itinerary_id)
+        main = itinerary_query.require_writable_main(session, user_id, itinerary_id)
         city, trip_days = main.city, main.days
     itinerary_version.create_snapshot(user_id, itinerary_id, "nl_edit", "自然语言编辑前快照")
 
@@ -99,8 +96,8 @@ def nl_edit(user_id: int, itinerary_id: int, instruction: str) -> dict[str, Any]
         session.flush()
         itinerary_chat.invalidate_pending_actions(user_id, itinerary_id)
         budget_engine.recalculate(itinerary_id)
-    itinerary_version.create_snapshot(user_id, itinerary_id, "nl_edit", "自然语言编辑完成")
-    return {"applied": applied, "detail": _fresh_detail(user_id, itinerary_id)}
+    itinerary_version.record_snapshot_or_log(user_id, itinerary_id, "nl_edit", "自然语言编辑完成")
+    return {"applied": applied, "detail": fresh_detail(user_id, itinerary_id)}
 
 
 def _apply_edit_op(session, op, itinerary_id: int, city: str | None, day_ids_by_no: dict[int, int]) -> str | None:

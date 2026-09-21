@@ -37,6 +37,16 @@ def strip_name_annotation(name: Any) -> str:
     return _BRACKET_ANNOTATION_RE.sub("", str(name or "")).strip()
 
 
+def norm_ws_key(name) -> str:
+    """宽松名称键：只去空白 + 小写。
+
+    跨模块 API（`suggestions` 的分组、`memory.working` 的对话内去重用它）。
+    刻意**不**与 `norm_poi_key` 合并：后者还剥括号注释与分隔符并 casefold，
+    换过去会改变判重结果——那是行为决策，不是整理。
+    """
+    return "".join(str(name or "").lower().split())
+
+
 def norm_poi_key(name) -> str:
     """POI 名称归一化键：同名判定（同日/跨天去重）与 used 比对共用。"""
     s = strip_name_annotation(name)
@@ -85,8 +95,13 @@ class PoiSeenRegistry:
         key = norm_poi_key(name)
         if key and key in self._keys:
             return True
+        if latitude is None or longitude is None:
+            # 坐标缺失就只走名称通道。`haversine_m` 本身对 None 返回 inf，
+            # 所以这里是把意图写明，不是补一个崩溃（注释此前说反了）。
+            return False
+        want = str(item_type or "")
         dist = min(
-            (haversine_m(latitude, longitude, la, ln) for _t, la, ln in self._coords),
+            (haversine_m(latitude, longitude, la, ln) for t, la, ln in self._coords if t == want),
             default=float("inf"),
         )
         return dist < self.max_proximity_m

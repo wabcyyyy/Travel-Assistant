@@ -3,7 +3,7 @@
   "case_count": 13,
   "metrics": {
     "poi_authority_rate": 1.0,
-    "poi_grounded_rate": 0.5898,
+    "poi_grounded_rate": 0.6528,
     "poi_refuted_count": 0,
     "field_reference_rate": 1.0,
     "time_conflict_rate": 0.0,
@@ -17,7 +17,7 @@
     "trace_complete_rate": 1.0,
     "research_rounds_avg": 3.0,
     "research_pack_avg": 18.0,
-    "coord_valid_rate": 0.5898,
+    "coord_valid_rate": 0.6528,
     "deeplink_resolvable_rate": 1.0,
     "category_reasonable_rate": 1.0
   },
@@ -87,11 +87,11 @@
         "prompt_version": "v1.1.narrative/v1.1.narrative"
       },
       "status": "degraded",
-      "status_reason": "已使用开放研究生成；关键事实需出发前复核；开放模式结果未通过全部约束校验（见校验日志），已保留但请复核当日时间安排；达到重试上限后仍存在行程约束问题",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
       "days": 2,
-      "total_items": 6,
+      "total_items": 8,
       "poi_authority_rate": 1.0,
-      "poi_grounded_rate": 0.6667,
+      "poi_grounded_rate": 0.75,
       "poi_refuted_count": 0,
       "field_reference_rate": 1.0,
       "time_conflict_rate": 0.0,
@@ -100,19 +100,15 @@
       "budget_deviation_rate": 0.0,
       "fallback_success": true,
       "trace": {
-        "node_count": 14,
-        "tool_count": 4,
+        "node_count": 10,
+        "tool_count": 6,
         "nodes": [
           "format",
           "format",
           "generate",
           "generate",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "reflect",
           "reflect",
           "research",
@@ -120,19 +116,19 @@
         ],
         "tools": [
           "fixture.get_consumption",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
           "search_attractions",
           "search_foods",
           "search_hotels"
         ],
         "routes": [
-          "fix",
-          "pass",
-          "keep_llm_result"
+          "pass"
         ]
       },
       "research_rounds": 3,
       "research_pack": 18,
-      "coord_valid_rate": 0.6667,
+      "coord_valid_rate": 0.75,
       "deeplink_resolvable_rate": 1.0,
       "category_reasonable_rate": 1.0
     },
@@ -147,11 +143,11 @@
         "prompt_version": "v1.1.narrative/v1.1.narrative"
       },
       "status": "degraded",
-      "status_reason": "已使用开放研究生成；关键事实需出发前复核；开放模式结果未通过全部约束校验（见校验日志），已保留但请复核当日时间安排；达到重试上限后仍存在行程约束问题",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
       "days": 3,
-      "total_items": 9,
+      "total_items": 12,
       "poi_authority_rate": 1.0,
-      "poi_grounded_rate": 0.6667,
+      "poi_grounded_rate": 0.75,
       "poi_refuted_count": 0,
       "field_reference_rate": 1.0,
       "time_conflict_rate": 0.0,
@@ -160,19 +156,15 @@
       "budget_deviation_rate": 0.0,
       "fallback_success": true,
       "trace": {
-        "node_count": 14,
-        "tool_count": 4,
+        "node_count": 10,
+        "tool_count": 7,
         "nodes": [
           "format",
           "format",
           "generate",
           "generate",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "reflect",
           "reflect",
           "research",
@@ -180,19 +172,20 @@
         ],
         "tools": [
           "fixture.get_consumption",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
           "search_attractions",
           "search_foods",
           "search_hotels"
         ],
         "routes": [
-          "fix",
-          "pass",
-          "keep_llm_result"
+          "pass"
         ]
       },
       "research_rounds": 3,
       "research_pack": 18,
-      "coord_valid_rate": 0.6667,
+      "coord_valid_rate": 0.75,
       "deeplink_resolvable_rate": 1.0,
       "category_reasonable_rate": 1.0
     },
@@ -207,11 +200,11 @@
         "prompt_version": "v1.1.narrative/v1.1.narrative"
       },
       "status": "degraded",
-      "status_reason": "已使用开放研究生成；关键事实需出发前复核；开放模式结果未通过全部约束校验（见校验日志），已保留但请复核当日时间安排；达到重试上限后仍存在行程约束问题",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
       "days": 4,
-      "total_items": 12,
+      "total_items": 16,
       "poi_authority_rate": 1.0,
-      "poi_grounded_rate": 0.6667,
+      "poi_grounded_rate": 0.75,
       "poi_refuted_count": 0,
       "field_reference_rate": 1.0,
       "time_conflict_rate": 0.0,
@@ -220,19 +213,15 @@
       "budget_deviation_rate": 0.0,
       "fallback_success": true,
       "trace": {
-        "node_count": 14,
-        "tool_count": 4,
+        "node_count": 10,
+        "tool_count": 8,
         "nodes": [
           "format",
           "format",
           "generate",
           "generate",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "reflect",
           "reflect",
           "research",
@@ -240,19 +229,21 @@
         ],
         "tools": [
           "fixture.get_consumption",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
           "search_attractions",
           "search_foods",
           "search_hotels"
         ],
         "routes": [
-          "fix",
-          "pass",
-          "keep_llm_result"
+          "pass"
         ]
       },
       "research_rounds": 3,
       "research_pack": 18,
-      "coord_valid_rate": 0.6667,
+      "coord_valid_rate": 0.75,
       "deeplink_resolvable_rate": 1.0,
       "category_reasonable_rate": 1.0
     },
@@ -267,11 +258,11 @@
         "prompt_version": "v1.1.narrative/v1.1.narrative"
       },
       "status": "degraded",
-      "status_reason": "已使用开放研究生成；关键事实需出发前复核；开放模式结果未通过全部约束校验（见校验日志），已保留但请复核当日时间安排；达到重试上限后仍存在行程约束问题",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
       "days": 2,
-      "total_items": 6,
+      "total_items": 8,
       "poi_authority_rate": 1.0,
-      "poi_grounded_rate": 0.6667,
+      "poi_grounded_rate": 0.75,
       "poi_refuted_count": 0,
       "field_reference_rate": 1.0,
       "time_conflict_rate": 0.0,
@@ -280,19 +271,15 @@
       "budget_deviation_rate": 0.0,
       "fallback_success": true,
       "trace": {
-        "node_count": 14,
-        "tool_count": 4,
+        "node_count": 10,
+        "tool_count": 6,
         "nodes": [
           "format",
           "format",
           "generate",
           "generate",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "reflect",
           "reflect",
           "research",
@@ -300,19 +287,19 @@
         ],
         "tools": [
           "fixture.get_consumption",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
           "search_attractions",
           "search_foods",
           "search_hotels"
         ],
         "routes": [
-          "fix",
-          "pass",
-          "keep_llm_result"
+          "pass"
         ]
       },
       "research_rounds": 3,
       "research_pack": 18,
-      "coord_valid_rate": 0.6667,
+      "coord_valid_rate": 0.75,
       "deeplink_resolvable_rate": 1.0,
       "category_reasonable_rate": 1.0
     },
@@ -329,9 +316,9 @@
       "status": "degraded",
       "status_reason": "已使用开放研究生成；关键事实需出发前复核；开放模式结果未通过全部约束校验（见校验日志），已保留但请复核当日时间安排；达到重试上限后仍存在行程约束问题",
       "days": 5,
-      "total_items": 15,
+      "total_items": 19,
       "poi_authority_rate": 1.0,
-      "poi_grounded_rate": 0.6667,
+      "poi_grounded_rate": 0.7368,
       "poi_refuted_count": 0,
       "field_reference_rate": 1.0,
       "time_conflict_rate": 0.0,
@@ -341,7 +328,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 14,
-        "tool_count": 4,
+        "tool_count": 14,
         "nodes": [
           "format",
           "format",
@@ -360,6 +347,16 @@
         ],
         "tools": [
           "fixture.get_consumption",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
           "search_attractions",
           "search_foods",
           "search_hotels"
@@ -372,7 +369,7 @@
       },
       "research_rounds": 3,
       "research_pack": 18,
-      "coord_valid_rate": 0.6667,
+      "coord_valid_rate": 0.7368,
       "deeplink_resolvable_rate": 1.0,
       "category_reasonable_rate": 1.0
     },
@@ -387,11 +384,11 @@
         "prompt_version": "v1.1.narrative/v1.1.narrative"
       },
       "status": "degraded",
-      "status_reason": "已使用开放研究生成；关键事实需出发前复核；开放模式结果未通过全部约束校验（见校验日志），已保留但请复核当日时间安排；达到重试上限后仍存在行程约束问题",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
       "days": 2,
-      "total_items": 6,
+      "total_items": 8,
       "poi_authority_rate": 1.0,
-      "poi_grounded_rate": 0.6667,
+      "poi_grounded_rate": 0.75,
       "poi_refuted_count": 0,
       "field_reference_rate": 1.0,
       "time_conflict_rate": 0.0,
@@ -400,19 +397,15 @@
       "budget_deviation_rate": 0.0,
       "fallback_success": true,
       "trace": {
-        "node_count": 14,
-        "tool_count": 4,
+        "node_count": 10,
+        "tool_count": 6,
         "nodes": [
           "format",
           "format",
           "generate",
           "generate",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "reflect",
           "reflect",
           "research",
@@ -420,19 +413,19 @@
         ],
         "tools": [
           "fixture.get_consumption",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
           "search_attractions",
           "search_foods",
           "search_hotels"
         ],
         "routes": [
-          "fix",
-          "pass",
-          "keep_llm_result"
+          "pass"
         ]
       },
       "research_rounds": 3,
       "research_pack": 18,
-      "coord_valid_rate": 0.6667,
+      "coord_valid_rate": 0.75,
       "deeplink_resolvable_rate": 1.0,
       "category_reasonable_rate": 1.0
     },
@@ -447,11 +440,11 @@
         "prompt_version": "v1.1.narrative/v1.1.narrative"
       },
       "status": "degraded",
-      "status_reason": "已使用开放研究生成；关键事实需出发前复核；开放模式结果未通过全部约束校验（见校验日志），已保留但请复核当日时间安排；达到重试上限后仍存在行程约束问题",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
       "days": 3,
-      "total_items": 9,
+      "total_items": 12,
       "poi_authority_rate": 1.0,
-      "poi_grounded_rate": 0.6667,
+      "poi_grounded_rate": 0.75,
       "poi_refuted_count": 0,
       "field_reference_rate": 1.0,
       "time_conflict_rate": 0.0,
@@ -460,19 +453,15 @@
       "budget_deviation_rate": 0.0,
       "fallback_success": true,
       "trace": {
-        "node_count": 14,
-        "tool_count": 4,
+        "node_count": 10,
+        "tool_count": 7,
         "nodes": [
           "format",
           "format",
           "generate",
           "generate",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "reflect",
           "reflect",
           "research",
@@ -480,19 +469,20 @@
         ],
         "tools": [
           "fixture.get_consumption",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
           "search_attractions",
           "search_foods",
           "search_hotels"
         ],
         "routes": [
-          "fix",
-          "pass",
-          "keep_llm_result"
+          "pass"
         ]
       },
       "research_rounds": 3,
       "research_pack": 18,
-      "coord_valid_rate": 0.6667,
+      "coord_valid_rate": 0.75,
       "deeplink_resolvable_rate": 1.0,
       "category_reasonable_rate": 1.0
     },
@@ -507,11 +497,11 @@
         "prompt_version": "v1.1.narrative/v1.1.narrative"
       },
       "status": "degraded",
-      "status_reason": "已使用开放研究生成；关键事实需出发前复核；开放模式结果未通过全部约束校验（见校验日志），已保留但请复核当日时间安排；达到重试上限后仍存在行程约束问题",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
       "days": 3,
-      "total_items": 9,
+      "total_items": 12,
       "poi_authority_rate": 1.0,
-      "poi_grounded_rate": 0.6667,
+      "poi_grounded_rate": 0.75,
       "poi_refuted_count": 0,
       "field_reference_rate": 1.0,
       "time_conflict_rate": 0.0,
@@ -520,19 +510,15 @@
       "budget_deviation_rate": 0.0,
       "fallback_success": true,
       "trace": {
-        "node_count": 14,
-        "tool_count": 4,
+        "node_count": 10,
+        "tool_count": 7,
         "nodes": [
           "format",
           "format",
           "generate",
           "generate",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "reflect",
           "reflect",
           "research",
@@ -540,19 +526,20 @@
         ],
         "tools": [
           "fixture.get_consumption",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
           "search_attractions",
           "search_foods",
           "search_hotels"
         ],
         "routes": [
-          "fix",
-          "pass",
-          "keep_llm_result"
+          "pass"
         ]
       },
       "research_rounds": 3,
       "research_pack": 18,
-      "coord_valid_rate": 0.6667,
+      "coord_valid_rate": 0.75,
       "deeplink_resolvable_rate": 1.0,
       "category_reasonable_rate": 1.0
     },
@@ -567,11 +554,11 @@
         "prompt_version": "v1.1.narrative/v1.1.narrative"
       },
       "status": "degraded",
-      "status_reason": "已使用开放研究生成；关键事实需出发前复核；开放模式结果未通过全部约束校验（见校验日志），已保留但请复核当日时间安排；达到重试上限后仍存在行程约束问题",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
       "days": 2,
-      "total_items": 6,
+      "total_items": 8,
       "poi_authority_rate": 1.0,
-      "poi_grounded_rate": 0.6667,
+      "poi_grounded_rate": 0.75,
       "poi_refuted_count": 0,
       "field_reference_rate": 1.0,
       "time_conflict_rate": 0.0,
@@ -580,19 +567,15 @@
       "budget_deviation_rate": 0.0,
       "fallback_success": true,
       "trace": {
-        "node_count": 14,
-        "tool_count": 4,
+        "node_count": 10,
+        "tool_count": 6,
         "nodes": [
           "format",
           "format",
           "generate",
           "generate",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "reflect",
           "reflect",
           "research",
@@ -600,19 +583,19 @@
         ],
         "tools": [
           "fixture.get_consumption",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
           "search_attractions",
           "search_foods",
           "search_hotels"
         ],
         "routes": [
-          "fix",
-          "pass",
-          "keep_llm_result"
+          "pass"
         ]
       },
       "research_rounds": 3,
       "research_pack": 18,
-      "coord_valid_rate": 0.6667,
+      "coord_valid_rate": 0.75,
       "deeplink_resolvable_rate": 1.0,
       "category_reasonable_rate": 1.0
     },
@@ -627,11 +610,11 @@
         "prompt_version": "v1.1.narrative/v1.1.narrative"
       },
       "status": "degraded",
-      "status_reason": "已使用开放研究生成；关键事实需出发前复核；开放模式结果未通过全部约束校验（见校验日志），已保留但请复核当日时间安排；达到重试上限后仍存在行程约束问题",
+      "status_reason": "已使用开放研究生成；关键事实需出发前复核",
       "days": 4,
-      "total_items": 12,
+      "total_items": 16,
       "poi_authority_rate": 1.0,
-      "poi_grounded_rate": 0.6667,
+      "poi_grounded_rate": 0.75,
       "poi_refuted_count": 0,
       "field_reference_rate": 1.0,
       "time_conflict_rate": 0.0,
@@ -640,19 +623,15 @@
       "budget_deviation_rate": 0.0,
       "fallback_success": true,
       "trace": {
-        "node_count": 14,
-        "tool_count": 4,
+        "node_count": 10,
+        "tool_count": 8,
         "nodes": [
           "format",
           "format",
           "generate",
           "generate",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "reflect",
           "reflect",
           "research",
@@ -660,19 +639,21 @@
         ],
         "tools": [
           "fixture.get_consumption",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
           "search_attractions",
           "search_foods",
           "search_hotels"
         ],
         "routes": [
-          "fix",
-          "pass",
-          "keep_llm_result"
+          "pass"
         ]
       },
       "research_rounds": 3,
       "research_pack": 18,
-      "coord_valid_rate": 0.6667,
+      "coord_valid_rate": 0.75,
       "deeplink_resolvable_rate": 1.0,
       "category_reasonable_rate": 1.0
     },
@@ -702,7 +683,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 10,
-        "tool_count": 4,
+        "tool_count": 12,
         "nodes": [
           "format",
           "format",
@@ -717,6 +698,14 @@
         ],
         "tools": [
           "fixture.get_consumption",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
           "search_attractions",
           "search_foods",
           "search_hotels"
@@ -757,7 +746,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 10,
-        "tool_count": 4,
+        "tool_count": 12,
         "nodes": [
           "format",
           "format",
@@ -772,6 +761,14 @@
         ],
         "tools": [
           "fixture.get_consumption",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi",
           "search_attractions",
           "search_foods",
           "search_hotels"

@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import threading
 import time
@@ -229,11 +228,6 @@ class UsageStore:
     def close(self) -> None:
         with self._lock:
             self._conn.close()
-
-
-def export_json(data: object) -> str:
-    """辅助：调试输出。"""
-    return json.dumps(data, ensure_ascii=False)
 
 
 # 模块级单例：全 Agent 共享一个 SQLite 连接（内部有锁）。

@@ -275,6 +275,33 @@ class TestRunGenerateTripStream:
         assert done["complete"] is False
         assert done["message"]
 
+    def test_stream_failure_records_run_status_for_metrics(self, stream_env, monkeypatch):
+        """报错的 run 必须留下三态事件，否则 metrics 把它计进 successes。
+
+        `observability.record()` 只从 `run_status` 事件判 degraded/failed；
+        R2 之前这条流式路径根本不产该事件（取消才有），于是一次都没生成成功的
+        run 也被记成成功。
+        """
+        from app.agent import trip_stream as trip_stream_mod
+
+        stream_env([])
+
+        class BoomClient:
+            def stream_chat_deltas(self, messages, **kwargs):
+                raise RuntimeError("upstream down")
+                yield ""  # pragma: no cover - 使其成为生成器
+
+        monkeypatch.setattr("app.agent.trip_stream.get_llm_client", lambda: BoomClient())
+        recorded: list[tuple[str, dict]] = []
+        monkeypatch.setattr(
+            trip_stream_mod,
+            "record_event",
+            lambda kind, name, **kw: recorded.append((name, {"status": kw.get("status")})),
+        )
+        list(run_generate_trip_stream(_req()))
+        statuses = [kw["status"] for name, kw in recorded if name == "run_status"]
+        assert statuses == ["failed"], f"一天都没出却未记 failed：{statuses}"
+
     def test_missing_llm_key_raises(self, monkeypatch):
         monkeypatch.setattr(settings, "llm_api_key", "")
         with pytest.raises(ValueError):

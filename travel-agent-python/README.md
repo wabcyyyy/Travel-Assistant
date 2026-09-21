@@ -141,9 +141,14 @@ uv run pytest tests/test_cutover_contract.py -q
 真实 LLM 双跑评测：
 
 ```bash
-# 必须配置真实 LLM_API_KEY；脚本会固定当前模型、temperature=0.3、Prompt 版本，逐遍记录 run_id、脱敏 Trace、token、调用/重试/fallback 和失败原因
-uv run python tests/agent_eval/llm_eval.py --limit 6
+# 必须配置真实 LLM_API_KEY；脚本会固定当前模型、temperature（day_prompts.GENERATION_TEMPERATURE）、
+# Prompt 版本，逐遍记录 run_id、脱敏 Trace、token、调用/重试/fallback 和失败原因
+uv run python tests/agent_eval/llm_eval.py --path stream --limit 6
 # 报告：tests/agent_eval/report/llm_report.json
+# --path stream（默认）量的是产品路径：先 run_plan_context 做研究（与生成各算一个 run、
+# 各一份预算，所以报告里 research_* 为 0），再逐日消费 run_generate_trip_stream 的事件；
+# --path graph 量同步 /v1/generate 那张共用预算的遗留图。数值不可跨路径比较，
+# eval_gate.py 用 EXPECTED_GENERATION_PATH 认这条口径。
 # 当前真实 LLM 口径见 themed_report.md（同题双跑）；仓内 llm_report.json 为 2026-08-29 旧 run，
 # 已标 report_status=stale-superseded，不要引用其中的 consistency_rate 与 fallback 描述。
 ```

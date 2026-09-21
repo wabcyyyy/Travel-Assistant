@@ -5,10 +5,8 @@
 「api → services → agent」分层）。common 层对两侧都可见，是唯一不破分层的落点。
 
 
-超时口径迁移说明：Java 的 `imageRestClient` 是 connect 2.5s / read 7s（见
-`RestClientConfig.java:33-40`），这里逐字对齐；而 Java 调高德 Web API 用的默认
-`RestClient` **没有设超时**（挂起时会一直等）。这里给它一个明确上限，属于有意改进，
-不是等价移植——第三方地图服务无超时会在生产上拖死线程池。
+超时口径：图片通道 connect 2.5s / read 7s（沿用迁移时的实测值，逐字保留）；
+通用第三方通道刻意设了明确上限——第三方地图服务无超时会在生产上拖死线程池。
 
 `follow_redirects=False` 与 Java `SimpleClientHttpRequestFactory` 的默认行为一致：
 跨主机重定向不自动跟随，避免白名单被 302 绕过。

@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.agent.poi_identity import norm_ws_key
 
-def _norm(name: str | None) -> str:
-    return "".join(str(name or "").lower().split())
+_norm = norm_ws_key
 
 
 @dataclass

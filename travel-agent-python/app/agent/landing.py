@@ -29,15 +29,21 @@ def filter_plan_items(items: list[Any] | None) -> list[dict]:
 
 
 def ground_item(item: dict, *, city: str, ref_pool: ReferencePool) -> bool:
-    """单个点位的事实落地：参考资料命中即回填权威字段，否则经存在性解析器补点。
+    """单个点位的事实落地：参考资料命中即回填权威字段，随后仍交给存在性解析器补坐标。
 
     返回是否命中参考资料（供调用方决定是否累计 used_names）。解析缓存由
     `existence` 自己按 (城市, 名字) 记忆化，这里不再传 cache。
+
+    命中**不等于位置落地**：联网搜索的池行按设计只有名字/简介/估价，没有坐标
+    （见 `web_search.search_places_via_web`）。命中就早退会让"有来源、没坐标"
+    成为最终产出——地图钉与路线深链都拿不到位置（真实链路实测：
+    `coord_valid_rate=0.25` 而 `existence_checks=1/24`，只有资料未命中的点被解析过）。
+    这里因此照样调一次 `local_ground`：它自己在坐标已有效时早退（OTM 池行不多花
+    一次外呼），记忆化命中也不重复扣解析额度。
     """
-    if ref_pool.ground(item):
-        return True
+    hit = ref_pool.ground(item)
     local_ground(item, city)
-    return False
+    return hit
 
 
 def drop_refuted_items(items: list[dict], *, city: str, report: dict[str, Any] | None = None) -> list[dict]:

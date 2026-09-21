@@ -55,7 +55,7 @@ def stats() -> dict:
 
 
 @router.get("/users")
-def users(page: int = Query(1), size: int = Query(10), keyword: str | None = Query(None)) -> dict:
+def users(page: int = Query(1, ge=1), size: int = Query(10, ge=1, le=500), keyword: str | None = Query(None)) -> dict:
     return ok(admin_service.page_users(page, size, keyword))
 
 
@@ -75,8 +75,8 @@ def delete_user(id: int = Path(...), user: AuthUser = Depends(enforce_business_a
 
 @router.get("/itineraries")
 def itineraries(
-    page: int = Query(1),
-    size: int = Query(10),
+    page: int = Query(1, ge=1),
+    size: int = Query(10, ge=1, le=500),
     keyword: str | None = Query(None),
     status: int | None = Query(None),
     userId: int | None = Query(None),
@@ -96,5 +96,5 @@ def agent_metrics() -> dict:
 
 
 @router.get("/llm-usage")
-def llm_usage(range: str = Query("24h"), limit: int = Query(200), offset: int = Query(0)) -> dict:
+def llm_usage(range: str = Query("24h"), limit: int = Query(200, ge=1, le=1000), offset: int = Query(0, ge=0)) -> dict:
     return ok(admin_service.llm_usage(range, limit, offset))

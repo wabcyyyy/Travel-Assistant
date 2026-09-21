@@ -114,7 +114,7 @@ def apply_plans(
 
         budget_engine.recalculate(itinerary_id)
         itinerary_chat.consume_pending_action(message)
-        itinerary_version.create_snapshot(user_id, itinerary_id, "apply_plans", "应用草稿完成")
+        itinerary_version.record_snapshot_or_log(user_id, itinerary_id, "apply_plans", "应用草稿完成")
 
     itinerary_query.evict_detail(user_id, itinerary_id)
     return itinerary_query.detail(user_id, itinerary_id)
@@ -278,7 +278,7 @@ def apply_hotel_option(user_id: int, itinerary_id: int, request: HotelOptionRequ
 
         budget_engine.recalculate(itinerary_id)
         itinerary_chat.consume_pending_action(message)
-        itinerary_version.create_snapshot(user_id, itinerary_id, "apply_hotel", "应用酒店方案完成")
+        itinerary_version.record_snapshot_or_log(user_id, itinerary_id, "apply_hotel", "应用酒店方案完成")
 
     itinerary_query.evict_detail(user_id, itinerary_id)
     return itinerary_query.detail(user_id, itinerary_id)

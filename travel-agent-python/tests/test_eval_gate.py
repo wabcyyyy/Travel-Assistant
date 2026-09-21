@@ -1,7 +1,7 @@
 """评测防倒退门禁的单测（SPEC v2.3 §8 A2 / §12 / C3.2 深度指标）。
 
-`check()` 是纯函数：这里逐类钉住通过线与红灯（failed / 版本漂移 / 一致率倒退 /
-深度指标倒退 / 字段缺失），并显式钉住「degraded 不判失败」这条纪律——它是防
+`check()` 是纯函数：这里逐类钉住通过线与红灯（failed / 版本或生成路径漂移 / 一致率
+倒退 / 深度指标倒退 / 字段缺失），并显式钉住「degraded 不判失败」这条纪律——它是防
 口径造假的护栏。`main()` 只测 guard 分支（无 key 跳过 / 报告缺失），不触网。
 """
 
@@ -13,6 +13,7 @@ from tests.agent_eval import eval_gate
 def _report(**overrides) -> dict:
     base = {
         "mode": "real-llm",
+        "generation_path": eval_gate.EXPECTED_GENERATION_PATH,
         "prompt_version": eval_gate.EXPECTED_PROMPT_VERSION,
         "open_day_prompt_version": eval_gate.EXPECTED_OPEN_DAY_PROMPT_VERSION,
         "open_trip_prompt_version": eval_gate.EXPECTED_OPEN_TRIP_PROMPT_VERSION,
@@ -51,6 +52,20 @@ def test_prompt_version_drift_is_flagged() -> None:
 
     problems = eval_gate.check(_report(prompt_version="workflow-v3"))
     assert any("prompt_version" in problem for problem in problems)
+
+
+def test_generation_path_drift_is_flagged() -> None:
+    """换被测路径 = 换基线：同步图与逐日流式的预算形状不同，数值不许互相顶替。
+
+    旧报告（没有 generation_path 键）也判红——那正是 2026-08-29 那份 run 的形状，
+    它测的是 graph 路径，不能拿来给 stream 门禁背书。
+    """
+    problems = eval_gate.check(_report(generation_path="graph"))
+    assert any("generation_path" in problem for problem in problems)
+
+    legacy = _report()
+    legacy.pop("generation_path")
+    assert any("generation_path" in problem for problem in eval_gate.check(legacy))
 
 
 def test_consistency_regression_is_flagged() -> None:
