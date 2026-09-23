@@ -9,7 +9,9 @@
 3. 整段流式失败时静默退回逐日循环；单天落库失败不中断整段流；
 4. 流事件契约：未知类型忽略且不计错，违规超 3 条才放弃整段；
 5. 已成功的天只补登记不重写；hotel 项在超过入住晚数那天跳过且不占 sort_no；
-6. 恢复任务的四种判定（补齐终态 / 僵尸重拉 / 失败续跑一次 / 活跃或已续跑则跳过）。
+6. 恢复任务的判定（补齐终态 / 僵尸重拉 / 失败续跑一次 / 活跃或已续跑则跳过）；
+7. PR-3 断点续跑：僵尸行程先从 checkpoint 续（断在图里的天续完、研究上下文找回），
+   续不动才整段重排——≥6 天流断恢复不丢天、不整段重跑。
 """
 
 from __future__ import annotations
@@ -504,3 +506,85 @@ def test_recovery_is_deduplicated_by_resume_lock(broken_trip: int, monkeypatch) 
     monkeypatch.setattr(itinerary_generation.generation_pool, "submit", lambda task, *args: submitted.append(args[1]))
     generation_recovery.recover()
     assert submitted == []
+
+
+def test_recovery_six_day_stream_break_resumes_without_whole_rerun(client: TestClient, monkeypatch) -> None:
+    """≥6 天 trip 流断恢复（PR-3 验收）：不丢天、不整段重跑。
+
+    场景：6 天行程的整段流式只吐出 1-3 天（长行程 8k 截断的实况）后转逐日补齐，
+    第 4 天的图跑到反思节点时"进程死亡"。恢复后：第 4 天从检查点续完（生成节点
+    不重跑）、5-6 天逐日补齐；**整段流式不重跑，研究上下文从第 4 天的检查点找回**
+    （run_plan_context 全程只跑一次——"僵尸整段续跑"的成本主体就此消失）。
+    """
+    from app.agent.generation.orchestration import day_workflow, trip_graph
+
+    class _ProcessDeath(KeyboardInterrupt):
+        """进程死亡模拟：BaseException 穿过节点的 except Exception 兜底。"""
+
+    monkeypatch.setattr(itinerary_generation.generation_pool, "submit", lambda task, *args: None)
+    # 富化池是进程级单例，前面带 main lifespan 的用例退出时会把它关掉（本文件其他用例
+    # 经 _run_inline 绕开提交点）；预算重算/行程富化与本用例断言无关，提交一律空转，
+    # 免得撞上 "cannot schedule new futures after shutdown"（_submit_budget_recalculate
+    # 只挡 TaskRejected，关停期的 RuntimeError 会炸穿 plan_days 主循环）。
+    monkeypatch.setattr(itinerary_generation.enricher_pool, "submit", lambda task, *args: None)
+    detail = _trip(client, {"city": CITY, "days": 6, "stayNights": 5})
+    trip_id = detail["id"]
+
+    counted = {"context": 0, "stream": 0, "days": []}
+
+    def fake_context(*args, **kwargs):
+        counted["context"] += 1
+        return {"candidates": [{"name": "西湖"}], "foods": [], "hotels": [], "consumption": {}, "research_report": {}}
+
+    def fake_stream(request):
+        counted["stream"] += 1
+        for day_no in (1, 2, 3):
+            yield {"type": "day", "plan": _wire_plan(day_no, [f"流点{day_no}"])}
+        yield {
+            "type": "done",
+            "daysExpected": 6,
+            "daysEmitted": [1, 2, 3],
+            "tripTheme": None,
+            "complete": False,
+            "message": "长行程截断：已产出 1-3 天",
+        }
+
+    def fake_once(req, *, force_fallback=False):
+        counted["days"].append(req.day_no)
+        return _plan(req.day_no, [f"点{req.day_no}"]), "llm"
+
+    deaths = {"left": 1}
+
+    def validate_plans(plans, **kwargs):
+        if deaths["left"]:
+            deaths["left"] -= 1
+            raise _ProcessDeath()
+        return [], []
+
+    monkeypatch.setattr(itinerary_generation, "run_plan_context", fake_context)
+    monkeypatch.setattr(itinerary_generation, "run_generate_trip_stream", fake_stream)
+    monkeypatch.setattr(day_workflow, "generate_day_once", fake_once)
+    monkeypatch.setattr(trip_graph, "validate_plans", validate_plans)
+
+    with pytest.raises(_ProcessDeath):
+        itinerary_generation.plan_days(1, trip_id, _command(trip_id))
+    assert counted == {"context": 1, "stream": 1, "days": [4]}, "流断在第 3 天后：1-3 天落库，第 4 天生成完死在反思"
+
+    # 僵尸化：把活跃心跳拨老（天 + 主表），恢复任务才会接（同 broken_trip 的口径）
+    with db_session.session_scope() as session:
+        for row in session.execute(select(ItineraryDay)).scalars().all():
+            row.updated_at = datetime.now() - timedelta(minutes=30)
+        session.get(ItineraryMain, trip_id).updated_at = datetime.now() - timedelta(minutes=30)
+
+    # 重启后续跑：兜底排程在池里同步执行
+    monkeypatch.setattr(itinerary_generation.generation_pool, "submit", lambda task, *args: task(*args))
+    assert generation_recovery.recover() == 1
+
+    _main, days = _rows(trip_id)
+    assert [day.generation_status for day in days] == ["SUCCEEDED"] * 6, "不丢天：6/6 全部补齐"
+    assert _main.status == 2 and _main.gen_state == "COMPLETED"
+    assert counted["stream"] == 1, "不整段重跑：整段流式只跑过一次"
+    assert counted["context"] == 1, "不整段研究重跑：上下文从第 4 天的检查点找回，run_plan_context 不再跑"
+    assert counted["days"] == [4, 5, 6], "第 4 天从检查点续完（生成节点不重跑），5-6 天逐日补齐"
+    assert [item.poi_name for item in _items(days[3].id)] == ["点4"], "第 4 天续出来的正是死前那份产出"
+    assert [item.poi_name for item in _items(days[0].id)] == ["流点1"], "已产出天不重写"

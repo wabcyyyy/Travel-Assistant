@@ -94,9 +94,15 @@ class GenerateCommand:
         return self.requirements or ""
 
 
-def submit_planning(user_id: int, itinerary_id: int, command: GenerateCommand) -> None:
-    """把一次生成排进有界池；满了直接抛 `TaskRejected`（端点转 429）。"""
-    generation_pool.submit(plan_days, user_id, itinerary_id, command, None)
+def submit_planning(
+    user_id: int, itinerary_id: int, command: GenerateCommand, context: dict[str, Any] | None = None
+) -> None:
+    """把一次生成排进有界池；满了直接抛 `TaskRejected`（端点转 429）。
+
+    `context` = 已产出的研究上下文（PR-3 起恢复侧从检查点找回再喂进来，免"僵尸续跑
+    = 整段研究重跑"）；None 由 plan_days 自己跑 `run_plan_context`。
+    """
+    generation_pool.submit(plan_days, user_id, itinerary_id, command, context)
 
 
 # ---------- 编排主体（工作线程内） ----------

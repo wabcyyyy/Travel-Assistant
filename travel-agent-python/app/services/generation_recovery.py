@@ -18,10 +18,11 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import and_, or_, select, update
 
+from app.agent import resume_day
 from app.common import cron
 from app.db.models import ItineraryDay, ItineraryItem, ItineraryMain
 from app.db.session import session_scope
-from app.services import generation_gate, itinerary_generation, itinerary_query
+from app.services import day_persistence, generation_gate, itinerary_generation, itinerary_query
 
 logger = logging.getLogger(__name__)
 
@@ -110,20 +111,10 @@ def recover_one(itinerary_id: int, failed_resume: bool, active_after: datetime |
             .scalars()
             .all()
         }
-        completed_days = sum(
-            1
-            for day in days
-            if day.generation_status == "SUCCEEDED" or (day.generation_status is None and day.id in day_ids_with_items)
-        )
+        completed_days = sum(1 for day in days if _day_done(day, day_ids_with_items))
         if days and completed_days == len(days) and len(days) == main.days:
             # 数据其实齐了，只是终态没写上：补终态，不重跑
-            session.execute(
-                update(ItineraryMain)
-                .where(ItineraryMain.id == itinerary_id)
-                .values(
-                    status=2, gen_state="COMPLETED", gen_finished_at=datetime.now(), title=f"{main.city}{main.days}日游"
-                )
-            )
+            _mark_completed(session, itinerary_id, main.city, main.days)
             logger.info("recovered completed itinerary %s", itinerary_id)
             return True
 
@@ -141,21 +132,64 @@ def recover_one(itinerary_id: int, failed_resume: bool, active_after: datetime |
             )
         command = rebuild_request(main)
         user_id = main.user_id
+        pending = [day.day_no for day in days if not _day_done(day, day_ids_with_items)]
+
+    # PR-3 从 checkpoint 续跑（锁内、会话外：续跑要跑图，不抱着 DB 会话跑 LLM）：
+    # 断在图里的天直接续完落库（已完成超步不重跑、已产出天不重生成），并把研究上下文
+    # 从检查点找回喂给兜底排程——"僵尸整段续跑"（整段研究 + 整段重生成）由此降级为
+    # 无检查点时的兜底，长行程流断后的恢复不再丢天、也不整段重来。
+    context: dict | None = None
+    remaining: list[int] = []
+    resumed_any = False
+    fingerprint = generation_gate.request_fingerprint(command)
+    for day_no in pending:
+        action_id = f"day-{itinerary_id}-{day_no}"
+        resumed = resume_day(action_id)
+        if resumed is not None and resumed.context is not None:
+            context = context or resumed.context
+        if resumed is None or resumed.plan is None:
+            remaining.append(day_no)
+            continue
+        day_persistence.persist(itinerary_id, command, day_no, resumed.plan, action_id, fingerprint)
+        logger.info("resumed itinerary %s day %s from checkpoint", itinerary_id, day_no)
+        resumed_any = True
+
+    if pending and not remaining:
+        # 全部从检查点续完：补终态（与"数据齐了"分支同口径），不整段重排
+        with session_scope() as session:
+            _mark_completed(session, itinerary_id, command.city, command.days)
+        generation_gate.release_resume_lock(itinerary_id)
+        return True
 
     try:
-        itinerary_generation.submit_planning(user_id, itinerary_id, command)
+        itinerary_generation.submit_planning(user_id, itinerary_id, command, context=context)
     except itinerary_generation.TaskRejected as rejected:
         generation_gate.release_resume_lock(itinerary_id)
         logger.warning("could not resume itinerary %s: %s", itinerary_id, rejected)
         return False
     # failedResume 分支返回 True（这条行程确实被重拉了）；僵尸分支保持 Java 的返回值
-    return failed_resume
+    # ——除非本轮真从检查点续出了天，那确实动了状态。
+    return failed_resume or resumed_any
 
 
 def _resumable_failed_trip(days: list[ItineraryDay]) -> bool:
     """可续跑的失败行程：每一天都已终态且失败原因非空（否则交给生成中分支处理）。"""
     return bool(days) and all(
         day.generation_status == "FAILED" and day.generation_error and day.generation_error.strip() for day in days
+    )
+
+
+def _day_done(day: ItineraryDay, day_ids_with_items: set[int]) -> bool:
+    """ "这一天已经有产出"的判定（补终态与续跑挑选共用一处口径）。"""
+    return day.generation_status == "SUCCEEDED" or (day.generation_status is None and day.id in day_ids_with_items)
+
+
+def _mark_completed(session, itinerary_id: int, city: str, days: int) -> None:
+    """补终态（数据齐了 / 检查点续完两个分支共用一处口径）。"""
+    session.execute(
+        update(ItineraryMain)
+        .where(ItineraryMain.id == itinerary_id)
+        .values(status=2, gen_state="COMPLETED", gen_finished_at=datetime.now(), title=f"{city}{days}日游")
     )
 
 

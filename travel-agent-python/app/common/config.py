@@ -170,6 +170,8 @@ class Settings(BaseSettings):
     trace_storage_enabled: bool = True
     trace_storage_path: str = Field(default_factory=lambda: str(BASE_DIR / "data" / "agent_traces.jsonl"))
     usage_db_path: str = Field(default_factory=lambda: str(BASE_DIR / "data" / "llm_usage.db"))
+    # 图检查点存储（PR-3 / D2）：SqliteSaver 文件库自管建表，不动 MySQL 迁移（INV-3）
+    checkpoint_db_path: str = Field(default_factory=lambda: str(BASE_DIR / "data" / "checkpoints.sqlite3"))
 
     # ---- 导出与上传 ----
     # PDF 导出（M6）。字体全仓只有一份 9.7MB 的 simhei.ttf：今天在 Java 模块的 resources 下，

@@ -24,6 +24,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.agent.runtime import checkpoint
 from app.agent.runtime.usage_store import usage_store
 from app.api import agent, mcp
 from app.api.business import business_routers
@@ -46,6 +47,13 @@ def _cleanup_usage() -> None:
         logger.info("[usage] cleaned %d rows older than 90d", removed)
 
 
+def _cleanup_checkpoints() -> None:
+    """清理保留期之外的图检查点 thread（PR-3；LangGraph 官方告警：checkpoints 无限增长需定期清理）。"""
+    removed = checkpoint.cleanup_old_threads(7 * 86400)
+    if removed:
+        logger.info("[checkpoint] cleaned %d threads older than 7d", removed)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动期配置校验（G-1.5）：安全 fail-fast（非回环绑定必须配内部令牌、
@@ -55,6 +63,7 @@ async def lifespan(app: FastAPI):
     # 周期任务统一登记（G-3.3）：usage 清理每天一次、生成续跑 60s 一轮。
     # 两个任务都经 app.common.cron——pytest 环境自动 no-op，不再各写各的线程。
     cron.register("usage-cleanup", 86400, _cleanup_usage)
+    cron.register("checkpoint-cleanup", 86400, _cleanup_checkpoints)
     generation_recovery.register_loop()
     cron.start_all()
     try:

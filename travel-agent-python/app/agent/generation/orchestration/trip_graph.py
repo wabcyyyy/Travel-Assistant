@@ -18,13 +18,15 @@ HTTP 契约不变。测试可 monkeypatch ``day_workflow.generate_day_once``
 from __future__ import annotations
 
 import logging
-from typing import cast
+from typing import NamedTuple, cast
+from uuid import uuid4
 
 from langgraph.graph import END, StateGraph
 
 from app.agent.generation.content.reflect import build_feedback, validate_plans
 from app.agent.generation.rules.generation_core import MAX_DAY_ATTEMPTS
 from app.agent.research.agent_state import UnifiedAgentState
+from app.agent.runtime import checkpoint
 from app.agent.runtime.trace import record_event, traced
 from app.schemas.trip import DailyPlan, GenerateDayRequest, GenerateRequest, GenerateResponse
 
@@ -258,7 +260,10 @@ def build_unified_graph() -> StateGraph:
     return graph
 
 
-unified_agent_graph = build_unified_graph().compile()
+# 挂检查点（PR-3）：断点续跑与 time-travel 的地基（thread = 生成任务标识，
+# 见 runtime/checkpoint.py 的 thread_id 约定）。checkpoint 自建 SQLite 表，
+# 不动 MySQL 迁移（INV-3 不受影响）。
+unified_agent_graph = build_unified_graph().compile(checkpointer=checkpoint.get_checkpointer())
 
 
 def empty_trip_state(req: GenerateRequest) -> dict:
@@ -302,13 +307,49 @@ def empty_day_state(req: GenerateDayRequest) -> dict:
     }
 
 
-def run_trip(req: GenerateRequest) -> GenerateResponse:
-    result = unified_agent_graph.invoke(empty_trip_state(req))
+def run_trip(req: GenerateRequest, *, thread_id: str | None = None) -> GenerateResponse:
+    config = checkpoint.run_config(thread_id or f"trip-{uuid4().hex}")
+    result = unified_agent_graph.invoke(empty_trip_state(req), config)
     return result["result"]
 
 
-def run_day(req: GenerateDayRequest) -> DailyPlan:
-    result = unified_agent_graph.invoke(empty_day_state(req))
+def run_day(req: GenerateDayRequest, *, thread_id: str | None = None) -> DailyPlan:
+    # 默认 thread = action_id（`day-{itinerary_id}-{day_no}`）：确定性任务标识，
+    # 进程重启后恢复侧找得到（PR-3）；一次性调用（无 action_id）退化为随机 thread。
+    config = checkpoint.run_config(thread_id or req.action_id or f"day-{uuid4().hex}")
+    result = unified_agent_graph.invoke(empty_day_state(req), config)
     if result.get("plan") is None:
         raise ValueError(result.get("error") or "单日行程生成失败")
     return result["plan"]
+
+
+class DayResume(NamedTuple):
+    """从检查点续出来的单日产出（PR-3）。
+
+    plan=None = 续完仍无产出（交给兜底重排）；context = 该天携带的研究上下文——
+    找回它，兜底排程就不必整段研究重跑（"僵尸整段续跑"的成本主体）。
+    """
+
+    plan: DailyPlan | None
+    context: dict | None
+
+
+def resume_run(thread_id: str) -> dict | None:
+    """把断在图里的 run 从检查点**续跑到完成**；无可续检查点返回 None。
+
+    已完成的超步不重跑（langgraph 检查点语义：只补没落盘的部分），所以续跑 ≠ 整段重来。
+    """
+    config = checkpoint.run_config(thread_id)
+    if checkpoint.get_checkpointer().get(config) is None:
+        return None
+    return unified_agent_graph.invoke(None, config)
+
+
+def resume_day(thread_id: str) -> DayResume | None:
+    """单日生成的断点续跑入口（generation_recovery 消费）；无可续检查点返回 None。"""
+    result = resume_run(thread_id)
+    if result is None:
+        return None
+    day_request = result.get("day_request")
+    context = day_request.context if day_request is not None else None
+    return DayResume(plan=result.get("plan"), context=context)

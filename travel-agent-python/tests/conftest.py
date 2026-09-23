@@ -4,12 +4,21 @@
 """
 
 import os
+import tempfile
+from pathlib import Path
 
 import pytest
 
 # 会话签名密钥：少数用例用 TestClient(main.app) 会触发 lifespan，而启动守卫要求
 # ≥32 字符（切流量后本服务自己签发 TA_AUTH）。带 example 标记，属占位符不是真密钥。
 os.environ.setdefault("JWT_SECRET", "example-only-pytest-jwt-signing-material")
+
+# 图检查点库是进程级 SQLite（图编译期绑死，PR-3）：测试进程指向一次性文件，
+# 免得 data/checkpoints.sqlite3 里旧 thread 的确定性 id（day-{id}-{n}）跨进程串味。
+os.environ.setdefault(
+    "CHECKPOINT_DB_PATH",
+    str(Path(tempfile.mkdtemp(prefix="pytest-checkpoints-")) / "checkpoints.sqlite3"),
+)
 
 
 @pytest.fixture(autouse=True)
