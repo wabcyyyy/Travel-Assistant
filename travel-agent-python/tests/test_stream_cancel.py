@@ -15,7 +15,7 @@ import time
 
 import pytest
 
-from app.agent.generation.orchestration.trip_stream import run_generate_trip_stream
+from app.agent.generation.orchestration.stream_branch import run_generate_trip_stream
 from app.agent.runtime.observability import metrics, observe_run
 from app.api.agent import _bridge_worker_events
 from app.common import llm_client
@@ -104,30 +104,6 @@ class TestStreamChatDeltasCancel:
         assert metrics.snapshot()["llm_calls"] == 0
 
 
-class _CancelAfterFirstChunkClient:
-    """模拟 llm_client 语义：cancel 置位即抛 StreamCancelled 并统计产出。"""
-
-    def __init__(self, cancel: threading.Event, cancel_at_chunk: int = 1) -> None:
-        self._cancel = cancel
-        self._cancel_at = cancel_at_chunk
-        self.chunks = 0
-
-    def stream_chat_deltas(self, messages, **kwargs):
-        first = (
-            '{"trip_theme":"测试主题","daily_plans":['
-            '{"day_no":1,"items":[{"item_type":"attraction","poi_name":"测试点",'
-            '"latitude":30.0,"longitude":120.0}]}'
-        )
-        yield first
-        self.chunks += 1
-        for _ in range(100):
-            self._cancel.set()
-            if self._cancel.is_set():
-                raise StreamCancelled("客户端断开，LLM 流已中断")
-            self.chunks += 1
-            yield ""
-
-
 def _req(days: int = 3) -> GenerateDayRequest:
     return GenerateDayRequest(city="杭州", persons=1, days=days, day_no=1, needs_hotel=False)
 
@@ -150,10 +126,20 @@ class TestTripStreamCancel:
         assert metrics.snapshot()["cancelled_runs"] == 1
 
     def test_cancel_mid_stream_keeps_emitted_days_and_skips_done(self, stream_env, monkeypatch):
+        """取消信号经 run config 进节点（PR-3 后 cancel 不入 state）：第一天落地后
+        客户端断开 → 已产出的天保留、不再产出 done/suggestions、记 cancelled_runs。"""
         metrics.reset()
         cancel = threading.Event()
-        fake = _CancelAfterFirstChunkClient(cancel)
-        monkeypatch.setattr("app.agent.generation.orchestration.trip_stream.get_llm_client", lambda: fake)
+        from app.agent.generation.orchestration import open_plans
+
+        def drive(req, feedback, context_hotels, candidates=None, foods=None, weather=None, on_day=None, on_patch=None):
+            assert on_day is not None
+            on_day(1, {"day_no": 1, "items": [{"item_type": "attraction", "poi_name": "西湖"}]})
+            cancel.set()  # 第一天落地后客户端断开
+            on_day(2, {"day_no": 2, "items": [{"item_type": "attraction", "poi_name": "灵隐寺"}]})
+            return {"daily_plans": []}, []
+
+        monkeypatch.setattr(open_plans, "generate_open_plans", drive)
         started = time.monotonic()
         with observe_run("cancel-stream-run"):
             events = list(run_generate_trip_stream(_req(3), cancel=cancel))

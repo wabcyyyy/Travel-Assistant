@@ -93,10 +93,12 @@ def generate_itinerary(state: UnifiedAgentState) -> dict:
         )
         if open_state is not None:
             return open_state
-        # 降级原因取自研究阶段真实抛出的那一句（Deadline / 配额 / 解析失败各是各的
-        # 病），而不是写死的"重试耗尽"——后者会把排障的人引向研究层。错误串自带
-        # "开放研究失败："/"第N天开放研究失败："前缀，这里不再叠一层。
-        detail = research_errors[-1] if research_errors else "开放研究失败：所有天均未产出草案"
+        # 降级原因取自研究阶段真实抛出的**第一宗罪**——整段失败是根因（Deadline /
+        # 配额 / 解析失败各是各的病），而不是写死的"重试耗尽"；PR-4 截断逐日兜底后
+        # per-day 错误是次生、排在队尾，根因在首（旧链每次 run 至多一条错误，
+        # [-1] 与 [0] 等价）。错误串自带"开放研究失败："/"第N天开放研究失败："
+        # 前缀，这里不再叠一层。
+        detail = research_errors[0] if research_errors else "开放研究失败：所有天均未产出草案"
         if attempts + 1 >= MAX_GENERATION_ATTEMPTS:
             # 重试耗尽：草案必须可达（多日行程此前因 attempts 预算与 days
             # 挂钩而直接落到空 plans，草案分支成为死代码）。

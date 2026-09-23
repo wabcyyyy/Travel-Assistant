@@ -5,7 +5,8 @@
 day_stream 提供逐日节点函数）：
 
 ```text
-dispatch ──mode=day──► day_generate ⇄ day.reflect/retry/fallback ──► END
+dispatch ──mode=stream──► stream_generate（见 stream_branch.py）──► END
+        ├─mode=day──► day_generate ⇄ day.reflect/retry/fallback ──► END
         └─mode=trip─► parse → research → generate → reflect ⇄ fix/refill → format ──► END
 ```
 
@@ -24,16 +25,14 @@ from uuid import uuid4
 from langgraph.graph import END, StateGraph
 
 from app.agent.generation.content.reflect import build_feedback, validate_plans
+from app.agent.generation.orchestration.stream_branch import stream_generate
 from app.agent.generation.rules.generation_core import MAX_DAY_ATTEMPTS
-from app.agent.research.agent_state import UnifiedAgentState
+from app.agent.research.agent_state import MODE_DAY, MODE_STREAM, MODE_TRIP, UnifiedAgentState
 from app.agent.runtime import checkpoint
 from app.agent.runtime.trace import record_event, traced
 from app.schemas.trip import DailyPlan, GenerateDayRequest, GenerateRequest, GenerateResponse
 
 logger = logging.getLogger(__name__)
-
-MODE_DAY = "day"
-MODE_TRIP = "trip"
 
 
 def _is_day(state: UnifiedAgentState) -> bool:
@@ -52,6 +51,8 @@ def dispatch(state: UnifiedAgentState) -> dict:
 
 
 def route_entry(state: UnifiedAgentState) -> str:
+    if state.mode == MODE_STREAM:
+        return "stream_generate"
     return "day_generate" if _is_day(state) else "parse"
 
 
@@ -203,6 +204,10 @@ def build_unified_graph() -> StateGraph:
 
     graph.add_node("dispatch", dispatch)
 
+    # stream（PR-4 归一：原旁路 trip_stream 收编，逐天 custom stream，见 stream_branch）
+    graph.add_node("stream_generate", stream_generate)
+    graph.add_edge("stream_generate", END)
+
     # day
     graph.add_node("day_generate", day_generate)
     graph.add_node("day.reflect", day_reflect)
@@ -223,6 +228,7 @@ def build_unified_graph() -> StateGraph:
         route_entry,
         {
             "day_generate": "day_generate",
+            "stream_generate": "stream_generate",
             "parse": "parse",
         },
     )

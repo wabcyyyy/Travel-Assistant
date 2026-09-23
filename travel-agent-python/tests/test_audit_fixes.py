@@ -118,6 +118,14 @@ def test_multi_day_open_failure_retries_once_and_returns_draft(monkeypatch):
     monkeypatch.setattr(reasoning, "plan_research", mock_llm.plan_research)
     monkeypatch.setattr(reasoning, "evaluate_research", mock_llm.evaluate_research)
     monkeypatch.setattr(open_plans, "llm_open_trip", failing_trip)
+    # PR-4 截断逐日兜底：整段失败后缺口天会走 llm_open_day——本用例只关心
+    # "整段失败的真因要传出来"，兜底入口同样打桩（不计入 calls：calls 只数
+    # 整段调用），保持离线且不混入次生错误
+
+    def failing_day(req, used):
+        raise ValueError("llm down")
+
+    monkeypatch.setattr(open_plans, "llm_open_day", failing_day)
 
     response = workflow.run_generate(GenerateRequest(city="杭州", days=3))
 

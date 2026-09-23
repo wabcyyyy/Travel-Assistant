@@ -11,7 +11,7 @@ suggestions 里而不是日计划里），所以只有这里能挡住回归。
 
 from __future__ import annotations
 
-from app.agent.core.poi_identity import PoiSeenRegistry
+from app.agent.core.poi_identity import PoiSeenRegistry, haversine_m, norm_poi_key
 
 # 相距约 22m（纬度差 0.0002）——同一栋建筑里的两个不同业态
 ATTRACTION = ("圣家堂", "attraction", 41.4030, 2.1740)
@@ -45,3 +45,17 @@ def test_far_apart_same_type_is_kept() -> None:
     registry = PoiSeenRegistry()
     registry.register("甲景点", "attraction", 41.40, 2.17)
     assert not registry.is_duplicate("乙景点", "attraction", 41.50, 2.27)
+
+
+class TestNameAndDistancePrimitives:
+    """（PR-4 自 test_trip_stream 迁入）归一键与球面距离的边界口径。"""
+
+    def test_norm_poi_key_variants(self) -> None:
+        assert norm_poi_key("圣家堂（Sagrada Família）") == norm_poi_key("圣家堂")
+        assert norm_poi_key(" Park Güell ") == norm_poi_key("park Güell")
+        assert norm_poi_key("西湖文化广场") != norm_poi_key("西湖")
+
+    def test_haversine_invalid_coords(self) -> None:
+        assert haversine_m(0, 0, 41.4, 2.17) == float("inf")
+        assert haversine_m(None, None, 1, 1) == float("inf")
+        assert abs(haversine_m(41.4036, 2.1744, 41.4036, 2.1744)) < 1e-6

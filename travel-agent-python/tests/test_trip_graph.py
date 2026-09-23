@@ -1,13 +1,12 @@
 """统一生成图冒烟：day / trip 两种 mode 均可从同一张图进入。"""
 
 from app.agent.generation.orchestration.trip_graph import (
-    MODE_DAY,
-    MODE_TRIP,
     empty_day_state,
     empty_trip_state,
     run_day,
     unified_agent_graph,
 )
+from app.agent.research.agent_state import MODE_DAY, MODE_TRIP
 from app.schemas.trip import GenerateDayRequest, GenerateRequest
 
 

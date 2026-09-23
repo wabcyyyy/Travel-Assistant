@@ -21,8 +21,8 @@ from app.agent.editing.nl_edit import run_edit_ops
 from app.agent.generation.content.butler import run_butler_note, run_poi_intros
 from app.agent.generation.orchestration.day_stream import run_generate_day
 from app.agent.generation.orchestration.plan_context import run_plan_context
+from app.agent.generation.orchestration.stream_branch import run_generate_trip_stream
 from app.agent.generation.orchestration.trip_graph import DayResume, resume_day
-from app.agent.generation.orchestration.trip_stream import run_generate_trip_stream
 from app.agent.generation.orchestration.workflow import run_adjust, run_generate
 from app.agent.generation.output.schedule_optimizer import optimize_daily_plan
 from app.agent.grounding.existence import resolve_poi

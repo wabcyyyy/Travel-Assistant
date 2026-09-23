@@ -1,24 +1,25 @@
-"""P2 安全网（G-2.0）：trip / day 两条流式链路的端到端事件序列快照。
+"""P2 安全网（G-2.0）：trip / day 两条链路的端到端事件序列快照。
 
-为什么需要它：P2 会拆分 day_stream.py / generators.py / workflow.py 并归一
-图与流式两条链路。这类"等积拆分"最容易犯的错不是崩溃，而是**事件序列悄悄
-变样**——少一天的 day_patch、多一条被去重拦下的重复项、done 的
-daysEmitted 顺序变化。离线单测断言的是单点字段，抓不到这种漂移；本快照
-逐字节比对完整序列。
+为什么需要它：PR-4 把旁路 trip_stream 收编进统一图（mode=stream 分支，custom
+stream 逐天 yield）。这次「等积搬家 + 归一」最容易犯的错不是崩溃，而是**事件序列
+悄悄变样**——少一天的 day_patch、多一条被去重拦下的重复项、done 的 daysEmitted
+顺序变化。离线单测断言的是单点字段，抓不到这种漂移；本快照逐字节比对完整序列。
 
 覆盖范围（两条链路各一份 golden）：
-- trip：`run_generate_trip_stream` 产出的完整 NDJSON 事件列表
-  （day / day_patch / suggestions / done），含**酒店摊铺触发的 day_patch 粒度**；
+- trip：`run_generate_trip_stream`（统一图 mode=stream）产出的完整 NDJSON 事件
+  列表（day / day_patch / suggestions / done），含**酒店摊铺触发的 day_patch 粒度**；
 - day：单日链路的 observable 序列——`run_generate_day` 的结果 DailyPlan
   wire 形状 + 该次运行的 trace 事件序列（节点/工具/决策顺序）。
 
-有意不覆盖：业务面 SSE 信封（`app/services/generation_events.py`）是薄封装，
-其键名口径由 `tests/api` 活栈契约与 stream_events schema 兜底；P2 的手术刀
-落点是上面两条 agent 侧链路。
+有意不覆盖：业务侧 SSE 信封（`app/services/generation_events.py`）是薄封装，
+其键名口径由 `tests/api` 活栈契约与 `stream_events` schema 兜底；手术刀落点是
+上面两条 agent 侧链路。
 
-确定性来源：LLM 输出取自 `tests/agent_eval/mock_llm.py` 的 fixture（不手写
-JSON），检索/研究/补池全部 mock，联网关闭；trace 中的 run_id/request_id 由
-本测试固定，duration/span/uuid 类字段在归一化时剔除。
+确定性来源：LLM 输出取自 `tests/agent_eval/mock_llm.py` 的 fixture（trip 走
+`open_plans.llm_open_trip` 替身、day 走 `llm_open_day` 替身），检索/研究/补池
+全部 mock，联网关闭；trace 中的 run_id/request_id 在本测试固定，duration/span/
+uuid 类字段在归一化时剔除。PR-4 后增量解析已不存在（手写状态机退役），旧的
+64 字符切片夹具随之退役——逐天产出由生成期挂点（open_plans.on_day）保证。
 
 重生成基线（**必须人工复核 diff**）：
     GOLDEN_REGENERATE=1 uv run pytest tests/test_stream_snapshot.py
@@ -33,7 +34,7 @@ from contextlib import ExitStack
 from unittest.mock import patch
 
 from app.agent.generation.content import landing
-from app.agent.generation.orchestration import day_stream, trip_stream
+from app.agent.generation.orchestration import day_stream, open_plans, stream_branch
 from app.agent.research import reasoning
 from app.agent.runtime.trace import trace_run
 from app.agent.tools import impl as tools
@@ -100,13 +101,13 @@ def _patch_fixture_stack(stack, city: str) -> None:
     # 绕过开关的实时价调用，这里立刻炸而不是变成环境相关的漂移快照。
     stack.enter_context(patch("app.agent.generation.output.prices.query_live_price", _forbid_network_call))
     stack.enter_context(patch("app.agent.generation.output.prices.query_live_food_price", _forbid_network_call))
-    stack.enter_context(patch.object(trip_stream, "fill_suggestion_gaps", lambda rows, city, **kw: rows))
+    stack.enter_context(patch.object(stream_branch, "fill_suggestion_gaps", lambda rows, city, **kw: rows))
     stack.enter_context(patch.object(landing, "local_ground", lambda item, city: None))
     assert data  # 保持 fixture 数据被显式构造（城市名参与生成，非法城市会在此暴露）
 
 
-def _trip_payload(city: str, days: int) -> str:
-    """用 mock_llm 的单日 fixture 展开成 trip 流式链路的整段 JSON 输出。
+def _trip_plans(city: str, days: int) -> tuple[list[dict], list[dict]]:
+    """从 mock_llm 的单日 fixture 展开成 trip 生成入口（llm_open_trip 替身）的输出。
 
     有意只让第 1 天带酒店（第 2 天起剥掉）：这正是 day_patch 存在的场景——
     LLM 漏排某晚入住时由 spread_hotels 确定性补齐，只对补了酒店的天发 patch。
@@ -117,15 +118,15 @@ def _trip_payload(city: str, days: int) -> str:
     for plan in plans:
         if int(plan.get("day_no") or 0) > 1:
             plan["items"] = [it for it in plan.get("items") or [] if it.get("item_type") != "hotel"]
-    return json.dumps(
-        {"trip_theme": f"{city}·快照基线", "daily_plans": plans, "suggestions": suggestions},
-        ensure_ascii=False,
-    )
+    # 注：生产的 llm_open_trip 会把顶层 trip_theme 注入每一天的 plan（第 1 天为权威），
+    # done.tripTheme 因此有值；本替身不模拟那一步注入，golden 的 done.tripTheme 为
+    # null 是**替身形状**而非链路差异（PR-4 重认账的唯一 diff 即此一行，生产等价）。
+    return plans, suggestions
 
 
 def _trip_stream_events() -> list[dict]:
-    """跑一次整段流式生成，返回完整 NDJSON 事件列表。"""
-    payload = _trip_payload(CITY, DAYS)
+    """跑一次整段流式生成（统一图 mode=stream 分支），返回完整 NDJSON 事件列表。"""
+    plans, suggestions = _trip_plans(CITY, DAYS)
     req = GenerateDayRequest(
         city=CITY,
         persons=2,
@@ -137,8 +138,8 @@ def _trip_stream_events() -> list[dict]:
     )
     with ExitStack() as stack:
         _patch_fixture_stack(stack, CITY)
-        stack.enter_context(patch.object(trip_stream, "get_llm_client", lambda: _FixtureLLMClient(payload)))
-        return [dict(event) for event in trip_stream.run_generate_trip_stream(req)]
+        stack.enter_context(patch.object(open_plans, "llm_open_trip", lambda req: (plans, suggestions)))
+        return [dict(event) for event in stream_branch.run_generate_trip_stream(req)]
 
 
 def _normalize_trace(events: list[dict]) -> list[dict]:

@@ -1,14 +1,15 @@
 """两条生成链路共用的落地步骤（G-2.5 ① 治因）。
 
-为什么单独成模块：图节点链路（open_plans）与整段流式链路（trip_stream）此前
-各自实现「过滤脏项 + 参考资料落地 + 本地补点」——同一业务两份逻辑，改一处忘
+为什么单独成模块：图节点链路（open_plans）与整段流式链路此前各自实现
+「过滤脏项 + 参考资料落地 + 本地补点」——同一业务两份逻辑，改一处忘
 另一处就会出现**流式与图产出不一致**（同一行程走两条路径结果不同）。这里收敛
 为唯一实现，两处调用同一函数。
 
-边界（有意不抽的部分）：逐日去重仍留在各链路——图路径用一次性
-`drop_cross_day_duplicates` 后处理（事件名 duplicate_cross_day_dropped），
-流式路径必须**边流边判**（事件名 stream_duplicate_dropped，且要阻止重复项
-触发网络落地），两者的可观测行为不同，强行合并会改变事件序列（INV-2）。
+去重语义（PR-4 归一）：同日/跨天双通道判重统一为**生成期边判**
+（`core/poi_identity.PoiSeenRegistry`：归一化同名 + 落地后同类型近距离 <80m，
+酒店豁免）——流式逐天 yield 不可回收，边判是两条链通用的唯一语义；原图路径的
+批处理 `drop_cross_day_duplicates` 与流式 `stream_duplicate_dropped` 双轨退场，
+统一遥测事件名 `duplicate_dropped`（PR-4 事件序列重认账见 golden）。
 
 依赖：generation_core（脏项过滤）、reference_pool（参考资料池）、grounding
 （本地补点）、existence（存在性判定）；无上层依赖。

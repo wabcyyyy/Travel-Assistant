@@ -20,6 +20,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.agent.research.evidence import EvidencePack, ResearchTask
 from app.schemas.trip import DailyPlan, GenerateDayRequest, GenerateRequest, GenerateResponse
 
+#: `UnifiedAgentState.mode` 的取值词表（图 dispatch 按此分流，全仓共用一份）。
+MODE_TRIP = "trip"
+MODE_DAY = "day"
+MODE_STREAM = "stream"
+
 
 class UnifiedAgentState(BaseModel):
     """day / trip / research 共用状态；未用到的字段保持默认即可。

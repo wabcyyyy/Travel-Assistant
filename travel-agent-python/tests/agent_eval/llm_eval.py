@@ -31,7 +31,7 @@ sys.path.insert(0, str(ROOT))
 from app.agent.generation.content.day_prompts import GENERATION_TEMPERATURE
 from app.agent.generation.orchestration import workflow
 from app.agent.generation.orchestration.plan_context import run_plan_context
-from app.agent.generation.orchestration.trip_stream import run_generate_trip_stream
+from app.agent.generation.orchestration.stream_branch import run_generate_trip_stream
 from app.agent.generation.rules.generation_core import estimate_plans_total, stay_nights
 from app.agent.runtime.observability import observe_run
 from app.agent.tools import impl as tools

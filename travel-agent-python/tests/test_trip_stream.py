@@ -1,79 +1,138 @@
-"""整段流式生成（trip_stream）单元测试。
+"""整段流式生成（PR-4 归一后：统一图 mode=stream 分支）单元测试。
 
 覆盖：
-- DailyPlansStreamParser：整块/逐字符喂入一致性、字符串内花括号与转义、
-  截断流的部分产出、trip_theme/suggestions 收割；
-- poi_identity 去重：归一化名称变体、近坐标双通道、酒店豁免；
-- run_generate_trip_stream：事件序列（day/day_patch/suggestions/done）、
-  跨天重复丢弃、城市不符建议过滤。
-"""
+- run_generate_trip_stream：事件序列（day / day_patch / suggestions / done）、
+  同日/跨天重复的边判丢弃（统一去重语义）、城市不符建议过滤、wire 形状；
+- 截断/失败兜底：整段 llm_open_trip 失败 → 缺口天 llm_open_day 逐日兜底，两侧
+  都失败 done 才如实带错（suggestions 随天收集，不可能从截断文本里丢——PR-4）；
+- LLM 未配置抛 ValueError（业务侧据此降级逐日）。
 
-import json
+旧旁路 trip_stream + 手写 JSON 状态机已删除，解析器测试随之退役——增量解析已
+不存在，逐天产出由生成期挂点（open_plans.on_day）保证；poi_identity 原语测试
+移居 tests/test_poi_identity.py。
+"""
 
 import pytest
 
-from app.agent.core.poi_identity import (
-    PoiSeenRegistry,
-    drop_cross_day_duplicates,
-    haversine_m,
-    norm_poi_key,
-)
-from app.agent.generation.orchestration.stream_parser import DailyPlansStreamParser
-from app.agent.generation.orchestration.trip_stream import (
-    _filter_suggestions_by_city,
-    run_generate_trip_stream,
-)
+from app.agent.generation.content import landing
+from app.agent.generation.content.narrative import sanitize_narrative
+from app.agent.generation.orchestration import open_plans, stream_branch
+from app.agent.generation.orchestration.stream_branch import filter_suggestions_by_city, run_generate_trip_stream
 from app.agent.grounding.grounding_evidence import issue_evidence
 from app.common.config import settings
 from app.schemas.trip import GenerateDayRequest
 
-TRIP_JSON = (
-    '{"trip_theme":"巴塞罗那·高迪之光","daily_plans":['
-    '{"day_no":1,"theme":"高迪代表作日：圣家堂与格拉西亚大道","note":"经典地标日",'
-    '"items":[{"item_type":"attraction","poi_name":"圣家堂（Sagrada Família）",'
-    '"latitude":41.4036,"longitude":2.1744,'
-    '"start_time":"09:00","end_time":"11:30","cost":26,"tag":"地标","why_this":"必看","refs":[1]},'
-    '{"item_type":"hotel","poi_name":"文华东方酒店巴塞罗那","start_time":"15:00","end_time":"23:00","cost":1800}]}'
-    ',{"day_no":2,"theme":"哥特区漫游","note":"老城历史",'
-    '"items":[{"item_type":"attraction","poi_name":"巴塞罗那大教堂",'
-    '"start_time":"10:00","end_time":"11:00","cost":9,"tag":"人文","why_this":"哥特区核心"},'
-    '{"item_type":"food","poi_name":"Los Toreros","start_time":"13:00","end_time":"14:00","cost":35}]}'
-    ',{"day_no":3,"theme":"再访圣家堂周边","note":"补漏",'
-    '"items":[{"item_type":"attraction","poi_name":"圣家堂大教堂",'
-    '"latitude":41.40362,"longitude":2.17438,'
-    '"start_time":"09:30","end_time":"11:00","cost":26,"tag":"地标","why_this":"变体重复"},'
-    '{"item_type":"attraction","poi_name":"古埃尔公园","start_time":"14:00","end_time":"16:00","cost":10}]}'
-    '],"suggestions":['
-    '{"poi_name":"米拉之家","city":"巴塞罗那","category":"attraction","intro":"高迪代表作之一","need_reservation":true,"estimated_cost":24},'
-    '{"poi_name":"唐吉诃德涩谷","city":"东京","category":"shopping","intro":"东京连锁免税店","need_reservation":false}'
-    "]}"
-)
+# 与旧 TRIP_JSON 同一批语义负载：day1 圣家堂（含模型自报坐标，落地边界剥离）、
+# day3 圣家堂大教堂（名称变体，接地后坐标通道判重命中）、东京建议（城市过滤）。
+PLANS = [
+    {
+        "day_no": 1,
+        "theme": "高迪代表作日：圣家堂与格拉西亚大道",
+        "note": "经典地标日",
+        "trip_theme": "巴塞罗那·高迪之光",
+        "items": [
+            {
+                "item_type": "attraction",
+                "poi_name": "圣家堂（Sagrada Família）",
+                "latitude": 41.4036,
+                "longitude": 2.1744,
+                "start_time": "09:00",
+                "end_time": "11:30",
+                "cost": 26,
+                "tag": "地标",
+                "why_this": "必看",
+                "refs": [1],
+            },
+            {
+                "item_type": "hotel",
+                "poi_name": "文华东方酒店巴塞罗那",
+                "start_time": "15:00",
+                "end_time": "23:00",
+                "cost": 1800,
+            },
+        ],
+    },
+    {
+        "day_no": 2,
+        "theme": "哥特区漫游",
+        "note": "老城历史",
+        "items": [
+            {
+                "item_type": "attraction",
+                "poi_name": "巴塞罗那大教堂",
+                "start_time": "10:00",
+                "end_time": "11:00",
+                "cost": 9,
+                "tag": "人文",
+                "why_this": "哥特区核心",
+            },
+            {
+                "item_type": "food",
+                "poi_name": "Los Toreros",
+                "start_time": "13:00",
+                "end_time": "14:00",
+                "cost": 35,
+            },
+        ],
+    },
+    {
+        "day_no": 3,
+        "theme": "再访圣家堂周边",
+        "note": "补漏",
+        "items": [
+            {
+                "item_type": "attraction",
+                "poi_name": "圣家堂大教堂",
+                "latitude": 41.40362,
+                "longitude": 2.17438,
+                "start_time": "09:30",
+                "end_time": "11:00",
+                "cost": 26,
+                "tag": "地标",
+                "why_this": "变体重复",
+            },
+            {
+                "item_type": "attraction",
+                "poi_name": "古埃尔公园",
+                "start_time": "14:00",
+                "end_time": "16:00",
+                "cost": 10,
+            },
+        ],
+    },
+]
 
-
-class FakeLLMClient:
-    def __init__(self, chunks: list[str]) -> None:
-        self._chunks = chunks
-
-    def stream_chat_deltas(self, messages, **kwargs):
-        yield from self._chunks
+TRIP_SUGGESTIONS = [
+    {
+        "poi_name": "米拉之家",
+        "city": "巴塞罗那",
+        "category": "attraction",
+        "intro": "高迪代表作之一",
+        "need_reservation": True,
+        "estimated_cost": 24,
+    },
+    {
+        "poi_name": "唐吉诃德涩谷",
+        "city": "东京",
+        "category": "shopping",
+        "intro": "东京连锁免税店",
+        "need_reservation": False,
+    },
+]
 
 
 @pytest.fixture
 def stream_env(monkeypatch):
-    """通用桩：LLM key/客户端注入，禁用联网补齐，点名解析按名字给坐标。
+    """通用桩：LLM key/整段生成注入，禁用联网补齐，点名解析按名字给坐标。
 
-    解析桩必须给坐标：D6=C 之后模型自报的经纬度在 LLM 输出边界就被剥掉，
-    坐标通道判重只可能由**接地后的坐标**触发（这才是生产语义）。fixture 的
-    TRIP_JSON 里两条圣家堂都带了模型自报坐标，正好用来验证剥离生效。
+    解析桩必须给坐标：模型自报的经纬度在 LLM 输出边界被剥离（D6=C，替身按
+    llm_open_trip 的输出契约先过 sanitize_narrative），坐标通道判重只可能由
+    **接地后的坐标**触发——PLANS 里两条圣家堂带模型自报坐标，正好验证剥离生效。
     """
     monkeypatch.setattr(settings, "llm_api_key", "test-key")
     monkeypatch.setattr(settings, "llm_generation_web_search", False)
 
-    def _install(chunks: list[str]):
-        fake = FakeLLMClient(chunks)
-        monkeypatch.setattr("app.agent.generation.orchestration.trip_stream.get_llm_client", lambda: fake)
-
-    # 服务端解析出的权威坐标（与 TRIP_JSON 里模型自填的那对不同），两个名称变体同点
+    # 服务端解析出的权威坐标（与 PLANS 里模型自填的那对不同），两个名称变体同点
     grounded = (41.40362, 2.17438)
 
     def _ground(item, city):
@@ -83,140 +142,32 @@ def stream_env(monkeypatch):
             # 与真实 local_ground 同形状：解析成功当场签票
             issue_evidence({**item, "name": item["poi_name"], "city": city})
 
-    monkeypatch.setattr("app.agent.generation.content.landing.local_ground", _ground)
-    monkeypatch.setattr(
-        "app.agent.generation.orchestration.trip_stream.fill_suggestion_gaps", lambda rows, city, **kw: rows
-    )
+    monkeypatch.setattr(landing, "local_ground", _ground)
+    monkeypatch.setattr(stream_branch, "fill_suggestion_gaps", lambda rows, city, **kw: rows)
+
+    def _install(plans=None, sugg=None):
+        def open_trip(req):
+            rows = plans if plans is not None else PLANS
+            cleaned = [sanitize_narrative(_copy(plan)) for plan in rows]
+            return cleaned, [dict(s) for s in (sugg if sugg is not None else TRIP_SUGGESTIONS)]
+
+        monkeypatch.setattr(open_plans, "llm_open_trip", open_trip)
+
     return _install
+
+
+def _copy(plan: dict) -> dict:
+    items = [dict(it) for it in plan.get("items") or []]
+    return {**{k: v for k, v in plan.items() if k != "items"}, "items": items}
 
 
 def _req(days: int = 3) -> GenerateDayRequest:
     return GenerateDayRequest(city="巴塞罗那", persons=2, days=days, day_no=1, needs_hotel=True, hotel_tier="豪华型")
 
 
-class TestDailyPlansStreamParser:
-    def test_feed_whole_chunk(self):
-        parser = DailyPlansStreamParser()
-        days = parser.feed(TRIP_JSON)
-        assert [d["day_no"] for d in days] == [1, 2, 3]
-        final = parser.finish()
-        assert final["complete"] is True
-        assert final["trip_theme"] == "巴塞罗那·高迪之光"
-        assert len(final["suggestions"]) == 2
-
-    def test_feed_char_by_char_matches_whole(self):
-        whole = DailyPlansStreamParser()
-        whole.feed(TRIP_JSON)
-        slow = DailyPlansStreamParser()
-        slow_days: list[dict] = []
-        for ch in TRIP_JSON:
-            slow_days.extend(slow.feed(ch))
-        assert slow_days == whole.days
-        assert slow.finish() == whole.finish()
-
-    def test_strings_with_braces_and_escapes_do_not_break_scan(self):
-        payload = {
-            "trip_theme": '花括号}{与"引号"主题',
-            "daily_plans": [
-                {
-                    "day_no": 1,
-                    "note": '转义\\"与{嵌套}',
-                    "items": [{"item_type": "attraction", "poi_name": "国泰艺术中心"}],
-                }
-            ],
-            "suggestions": [],
-        }
-        parser = DailyPlansStreamParser()
-        days = parser.feed(json.dumps(payload, ensure_ascii=False))
-        assert len(days) == 1
-        assert days[0]["note"] == '转义\\"与{嵌套}'
-        assert parser.finish()["trip_theme"] == '花括号}{与"引号"主题'
-
-    def test_truncated_stream_keeps_completed_days(self):
-        cut = TRIP_JSON[: TRIP_JSON.index('"day_no":3')]
-        parser = DailyPlansStreamParser()
-        days = parser.feed(cut)
-        assert [d["day_no"] for d in days] == [1, 2]
-        final = parser.finish()
-        assert final["complete"] is False
-
-
-class TestDedupPrimitives:
-    def test_norm_poi_key_variants(self):
-        assert norm_poi_key("圣家堂（Sagrada Família）") == norm_poi_key("圣家堂")
-        assert norm_poi_key(" Park Güell ") == norm_poi_key("park Güell")
-        assert norm_poi_key("西湖文化广场") != norm_poi_key("西湖")
-
-    def test_haversine_invalid_coords(self):
-        assert haversine_m(0, 0, 41.4, 2.17) == float("inf")
-        assert haversine_m(None, None, 1, 1) == float("inf")
-        assert abs(haversine_m(41.4036, 2.1744, 41.4036, 2.1744)) < 1e-6
-
-    def test_registry_name_and_coord_channels(self):
-        reg = PoiSeenRegistry()
-        assert not reg.is_duplicate("圣家堂", "attraction")
-        reg.register("圣家堂", "attraction", 41.4036, 2.1744)
-        # 名称通道
-        assert reg.is_duplicate("圣家堂", "attraction")
-        # 坐标通道（名称变体）
-        assert reg.is_duplicate("圣家堂大教堂", "attraction", 41.40362, 2.17438)
-        # 远坐标不同名：不判重（西湖 vs 西湖文化广场场景）
-        assert not reg.is_duplicate("西湖文化广场", "attraction", 30.25, 120.16)
-        # 酒店豁免：同名合法
-        assert not reg.is_duplicate("文华东方酒店巴塞罗那", "hotel")
-        reg.register("文华东方酒店巴塞罗那", "hotel", 41.39, 2.16)
-        assert not reg.is_duplicate("文华东方酒店巴塞罗那", "hotel", 41.39, 2.16)
-
-    def test_drop_cross_day_duplicates_keeps_first(self):
-        plans = [
-            {
-                "day_no": 1,
-                "items": [{"item_type": "attraction", "poi_name": "圣家堂", "latitude": 41.4036, "longitude": 2.1744}],
-            },
-            {
-                "day_no": 2,
-                "items": [
-                    {"item_type": "attraction", "poi_name": "圣家堂大教堂", "latitude": 41.40362, "longitude": 2.17438},
-                    {"item_type": "attraction", "poi_name": "古埃尔公园", "latitude": 41.4145, "longitude": 2.1527},
-                ],
-            },
-            {
-                "day_no": 3,
-                "items": [
-                    {
-                        "item_type": "attraction",
-                        "poi_name": "圣家堂（Sagrada Família）",
-                        "latitude": 41.4036,
-                        "longitude": 2.1744,
-                    }
-                ],
-            },
-        ]
-        dropped = drop_cross_day_duplicates(plans)
-        assert [d["poi_name"] for d in dropped] == ["圣家堂大教堂", "圣家堂（Sagrada Família）"]
-        assert [it["poi_name"] for it in plans[1]["items"]] == ["古埃尔公园"]
-        assert plans[2]["items"] == []
-
-
-class TestCityFilter:
-    def test_mismatched_city_dropped(self):
-        rows = [
-            {"poi_name": "米拉之家", "city": "巴塞罗那"},
-            {"poi_name": "唐吉诃德涩谷", "city": "东京"},
-            {"poi_name": "无城市标注", "city": ""},
-        ]
-        kept = _filter_suggestions_by_city(rows, "巴塞罗那")
-        assert [r["poi_name"] for r in kept] == ["米拉之家", "无城市标注"]
-
-    def test_containment_allows_bilingual_annotation(self):
-        rows = [{"poi_name": "米拉之家", "city": "巴塞罗那（Barcelona）"}]
-        assert _filter_suggestions_by_city(rows, "Barcelona")
-
-
 class TestRunGenerateTripStream:
     def test_event_sequence_and_dedup(self, stream_env):
-        chunks = [TRIP_JSON[i : i + 64] for i in range(0, len(TRIP_JSON), 64)]
-        stream_env(chunks)
+        stream_env(PLANS)
         events = list(run_generate_trip_stream(_req()))
         types = [e["type"] for e in events]
         assert types.count("day") == 3
@@ -228,7 +179,7 @@ class TestRunGenerateTripStream:
 
         # 跨天变体重复（圣家堂大教堂）由**接地后的坐标**通道拦截：模型自报的
         # 经纬度已在 LLM 输出边界剥离（D6=C），所以下面 day1 的坐标必须是桩给的
-        # 那一对，而不是 TRIP_JSON 里的 41.4036/2.1744。
+        # 那一对，而不是 PLANS 里的 41.4036/2.1744。
         day3 = next(e for e in events if e["type"] == "day" and e["plan"]["dayNo"] == 3)
         names = [it["poiName"] for it in day3["plan"]["items"]]
         assert "圣家堂大教堂" not in names
@@ -246,7 +197,7 @@ class TestRunGenerateTripStream:
         assert "唐吉诃德涩谷" not in names
 
     def test_day1_wire_shape_matches_generate_day_contract(self, stream_env):
-        stream_env([TRIP_JSON])
+        stream_env(PLANS)
         events = list(run_generate_trip_stream(_req()))
         day1 = next(e for e in events if e["type"] == "day")["plan"]
         assert day1["dayNo"] == 1
@@ -257,19 +208,52 @@ class TestRunGenerateTripStream:
         # refs 是模型内部引用编号，不应对外透传
         assert "refs" not in item
 
-    def test_stream_failure_reports_error_for_repair(self, stream_env, monkeypatch):
-        stream_env([])
+    def test_one_shot_failure_falls_back_to_per_day_without_losing_suggestions(self, stream_env, monkeypatch):
+        """截断兜底（PR-4 定案）：整段失败 → 缺口天逐日兜底，天齐、建议不丢。"""
+        stream_env(None)
 
-        def _boom():
+        def boom_trip(req):
+            raise RuntimeError("upstream truncated")
+
+        per_day = {
+            1: {
+                "day_no": 1,
+                "note": "兜底 1",
+                "items": [{"item_type": "attraction", "poi_name": "古埃尔公园"}],
+                "suggestions": [{"poi_name": "米拉之家", "city": "巴塞罗那", "category": "attraction"}],
+            },
+            2: {
+                "day_no": 2,
+                "note": "兜底 2",
+                "items": [{"item_type": "attraction", "poi_name": "巴塞罗那大教堂"}],
+                "suggestions": [],
+            },
+        }
+
+        def fallback_day(req, used):
+            return {**per_day[req.day_no], "items": [dict(it) for it in per_day[req.day_no]["items"]]}
+
+        monkeypatch.setattr(open_plans, "llm_open_trip", boom_trip)
+        monkeypatch.setattr(open_plans, "llm_open_day", fallback_day)
+        events = list(run_generate_trip_stream(_req(days=2)))
+        done = events[-1]
+        assert done["daysEmitted"] == [1, 2], "截断后缺口天逐日兜底补齐"
+        assert done["complete"] is True
+        assert done["message"] is None
+        suggestions = next(e for e in events if e["type"] == "suggestions")
+        assert "米拉之家" in [s["name"] for s in suggestions["items"]], "兜底天携带的建议随天收集，不丢"
+
+    def test_stream_failure_reports_error_for_repair(self, stream_env, monkeypatch):
+        stream_env(None)
+
+        def boom_trip(req):
             raise RuntimeError("upstream down")
 
-        # 覆盖 stream_env 里已安装的 fake：让流式调用直接抛错
-        class BoomClient:
-            def stream_chat_deltas(self, messages, **kwargs):
-                raise RuntimeError("upstream down")
-                yield ""  # pragma: no cover - 使其成为生成器
+        def boom_day(req, used):
+            raise RuntimeError("upstream down")
 
-        monkeypatch.setattr("app.agent.generation.orchestration.trip_stream.get_llm_client", lambda: BoomClient())
+        monkeypatch.setattr(open_plans, "llm_open_trip", boom_trip)
+        monkeypatch.setattr(open_plans, "llm_open_day", boom_day)
         events = list(run_generate_trip_stream(_req()))
         done = events[-1]
         assert done["type"] == "done"
@@ -280,23 +264,21 @@ class TestRunGenerateTripStream:
     def test_stream_failure_records_run_status_for_metrics(self, stream_env, monkeypatch):
         """报错的 run 必须留下三态事件，否则 metrics 把它计进 successes。
 
-        `observability.record()` 只从 `run_status` 事件判 degraded/failed；
-        R2 之前这条流式路径根本不产该事件（取消才有），于是一次都没生成成功的
-        run 也被记成成功。
+        `observability.record()` 只从 `run_status` 事件判 degraded/failed。
         """
-        from app.agent.generation.orchestration import trip_stream as trip_stream_mod
+        stream_env(None)
 
-        stream_env([])
+        def boom_trip(req):
+            raise RuntimeError("upstream down")
 
-        class BoomClient:
-            def stream_chat_deltas(self, messages, **kwargs):
-                raise RuntimeError("upstream down")
-                yield ""  # pragma: no cover - 使其成为生成器
+        def boom_day(req, used):
+            raise RuntimeError("upstream down")
 
-        monkeypatch.setattr("app.agent.generation.orchestration.trip_stream.get_llm_client", lambda: BoomClient())
+        monkeypatch.setattr(open_plans, "llm_open_trip", boom_trip)
+        monkeypatch.setattr(open_plans, "llm_open_day", boom_day)
         recorded: list[tuple[str, dict]] = []
         monkeypatch.setattr(
-            trip_stream_mod,
+            stream_branch,
             "record_event",
             lambda kind, name, **kw: recorded.append((name, {"status": kw.get("status")})),
         )
@@ -308,3 +290,18 @@ class TestRunGenerateTripStream:
         monkeypatch.setattr(settings, "llm_api_key", "")
         with pytest.raises(ValueError):
             list(run_generate_trip_stream(_req()))
+
+
+class TestCityFilter:
+    def test_mismatched_city_dropped(self):
+        rows = [
+            {"poi_name": "米拉之家", "city": "巴塞罗那"},
+            {"poi_name": "唐吉诃德涩谷", "city": "东京"},
+            {"poi_name": "无城市标注", "city": ""},
+        ]
+        kept = filter_suggestions_by_city(rows, "巴塞罗那")
+        assert [r["poi_name"] for r in kept] == ["米拉之家", "无城市标注"]
+
+    def test_containment_allows_bilingual_annotation(self):
+        rows = [{"poi_name": "米拉之家", "city": "巴塞罗那（Barcelona）"}]
+        assert filter_suggestions_by_city(rows, "Barcelona")

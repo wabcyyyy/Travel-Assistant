@@ -2,8 +2,8 @@
 
 「这两个名字/这两个坐标是不是同一个地方」是生成链路里被问得最多的一件事：存在性
 解析器（`existence`）用它挡「解析到了另一个点」，证据票（`grounding_evidence`）用
-它比对签发坐标，整段生成的后处理（本模块的 `drop_cross_day_duplicates`）用它判跨天
-重复。判定口径只留一份实现：各写一份归一时，分歧会以「重复点位没删掉」或「把真实
+它比对签发坐标，整段生成的边判去重（`PoiSeenRegistry`，PR-4 起两条链共用）判同日与
+跨天重复。判定口径只留一份实现：各写一份归一时，分歧会以「重复点位没删掉」或「把真实
 点位当重复删掉」两种形式出现在产出里，而后者正好砸在 A1 的真实性上。
 
 `haversine_m` 与 `app.agent.core.geo.haversine_meters` 不是一条语义，故不复用：本函数把
@@ -122,25 +122,3 @@ class PoiSeenRegistry:
             return
         if abs(lat) > 1e-6 and abs(lng) > 1e-6:
             self._coords.append((str(item_type or ""), lat, lng))
-
-
-def drop_cross_day_duplicates(plans: list[dict], *, max_proximity_m: float = 80.0) -> list[dict]:
-    """对整组日计划做跨天重复清洗（原地修改），返回被丢弃项的遥测列表。
-
-    用于整段一次生成的后处理：同名/同地不同名的重复只保留首次出现。
-    """
-    registry = PoiSeenRegistry(max_proximity_m=max_proximity_m)
-    dropped: list[dict] = []
-    for plan in sorted(plans, key=lambda p: int(p.get("day_no") or 0)):
-        kept: list[dict] = []
-        for item in plan.get("items") or []:
-            name = str(item.get("poi_name") or "").strip()
-            item_type = str(item.get("item_type") or "")
-            if name and registry.is_duplicate(name, item_type, item.get("latitude"), item.get("longitude")):
-                dropped.append({"day_no": plan.get("day_no"), "poi_name": name})
-                continue
-            if name:
-                registry.register(name, item_type, item.get("latitude"), item.get("longitude"))
-            kept.append(item)
-        plan["items"] = kept
-    return dropped
