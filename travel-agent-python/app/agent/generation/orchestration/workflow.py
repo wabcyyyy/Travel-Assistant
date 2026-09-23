@@ -5,7 +5,8 @@
 - 节点函数由 graph_nodes 实现、经本模块导出——trip_graph 经 ``workflow.X``
   调用，测试据此 monkeypatch，**改归属时须同步访问路径**；
 - generate_open_plans 由 open_plans 实现（草案生成 / 失败重试 / 待研究降级三段）；
-- format_output 由 formatting.assembly 实现；AgentState 在 graph_state。
+- format_output 由 formatting.assembly 实现；UnifiedAgentState 在 research.agent_state
+  （PR-2 后全仓唯一图状态定义）。
 
 **可 mock 契约（勿随意搬移）**：下列名字被测试经 `workflow.<name>` 注入桩，
 必须在本模块命名空间可解析——settings、llm_open_day、llm_open_trip、
@@ -14,7 +15,6 @@ local_ground、generate_open_plans、以及全部节点函数。为此按「调�
 """
 
 from app.agent.generation.content.day_prompts import llm_open_trip
-from app.agent.generation.content.graph_state import AgentState
 from app.agent.generation.orchestration.day_stream import llm_open_day
 from app.agent.generation.orchestration.graph_nodes import (
     generate_itinerary,
@@ -32,7 +32,6 @@ from app.common.config import settings
 from app.schemas.trip import AdjustRequest, AdjustResponse, GenerateRequest, GenerateResponse, PoiOption
 
 __all__ = [
-    "AgentState",
     "format_output",
     "generate_itinerary",
     "generate_open_plans",

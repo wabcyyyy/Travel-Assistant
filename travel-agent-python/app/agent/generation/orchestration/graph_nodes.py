@@ -12,8 +12,8 @@ research_refill（补查）→ format（装配见 formatting.assembly）。
 """
 
 import logging
+from typing import cast
 
-from app.agent.generation.content.graph_state import AgentState
 from app.agent.generation.content.reflect import build_feedback, validate_plans
 from app.agent.generation.content.route_matrix import route_matrix_for_plans
 from app.agent.generation.orchestration.open_plans import draft_state, generate_open_plans
@@ -25,6 +25,7 @@ from app.agent.generation.output.assembly import (
 )
 from app.agent.generation.rules.generation_core import MAX_GENERATION_ATTEMPTS, MAX_REFILLS
 from app.agent.research import merge_candidates, run_refill, run_research_context
+from app.agent.research.agent_state import UnifiedAgentState
 from app.agent.research.evidence import ResearchDomain
 from app.agent.runtime.observability import metrics
 from app.agent.runtime.trace import record_event, traced
@@ -36,8 +37,8 @@ logger = logging.getLogger(__name__)
 
 
 @traced("node", "parse")
-def parse_requirements(state: AgentState) -> dict:
-    req: GenerateRequest = state["request"]
+def parse_requirements(state: UnifiedAgentState) -> dict:
+    req: GenerateRequest = cast("GenerateRequest", state.request)
     requirements = {
         "city": req.city,
         "days": req.days,
@@ -50,7 +51,7 @@ def parse_requirements(state: AgentState) -> dict:
 
 
 @traced("node", "research")
-def research_pois(state: AgentState) -> dict:
+def research_pois(state: UnifiedAgentState) -> dict:
     """研究阶段：Supervisor 并行派发酒店/景点/美食研究 Agent，整合证据上下文。
 
     多 Agent 化后，检索不再是单一工具调用，而是三个领域研究 Agent 各自产出
@@ -58,7 +59,7 @@ def research_pois(state: AgentState) -> dict:
     {candidates, foods, hotels, consumption}；research_report 随状态流转，
     由 format_output 写入 schedule_report 供观测与演示。
     """
-    req: GenerateRequest = state["request"]
+    req: GenerateRequest = cast("GenerateRequest", state.request)
     context = run_research_context(req)
     return {
         "candidates": context["candidates"],
@@ -71,10 +72,10 @@ def research_pois(state: AgentState) -> dict:
 
 
 @traced("node", "generate")
-def generate_itinerary(state: AgentState) -> dict:
-    req: GenerateRequest = state["request"]
-    attempts = state.get("attempts", 0)
-    feedback = state.get("feedback", "")
+def generate_itinerary(state: UnifiedAgentState) -> dict:
+    req: GenerateRequest = cast("GenerateRequest", state.request)
+    attempts = state.attempts
+    feedback = state.feedback
     schedule_report: dict = {}
 
     # LLM-only 生成：开放模式（LLM 知识 + 权威参考资料注入 + 存在性解析落坐标）
@@ -85,10 +86,10 @@ def generate_itinerary(state: AgentState) -> dict:
         open_state, research_errors = generate_open_plans(
             req,
             feedback,
-            state.get("hotels"),
-            candidates=state.get("candidates"),
-            foods=state.get("foods"),
-            weather=state.get("weather"),
+            state.hotels,
+            candidates=state.candidates,
+            foods=state.foods,
+            weather=state.weather,
         )
         if open_state is not None:
             return open_state
@@ -106,24 +107,24 @@ def generate_itinerary(state: AgentState) -> dict:
     reason = (
         "未配置 LLM，无法生成行程内容"
         if not settings.llm_api_key
-        else str(state.get("error") or "开放研究重试耗尽，已返回待研究草案")
+        else str(state.error or "开放研究重试耗尽，已返回待研究草案")
     )
     return draft_state(req, reason, schedule_report)
 
 
 @traced("node", "reflect")
-def reflect(state: AgentState) -> dict:
-    plans = state.get("daily_plans") or []
+def reflect(state: UnifiedAgentState) -> dict:
+    plans = state.daily_plans or []
     issues: list[str] = []
     log: list[str] = []
-    if state.get("error"):
+    if state.error:
         log.append("生成失败，跳过校验")
-        return {"validation_issues": issues, "validation_log": log, "fix_count": state.get("fix_count", 0)}
+        return {"validation_issues": issues, "validation_log": log, "fix_count": state.fix_count}
     if plans:
         route_matrix = None
         if settings.route_service_enabled and addons.is_enabled("route_service"):
             route_matrix = route_matrix_for_plans(plans)
-        req = state.get("request")
+        req = state.request
         budget = getattr(req, "budget", None) if req is not None else None
         persons = getattr(req, "persons", 1) or 1 if req is not None else 1
         issues, log = validate_plans(
@@ -131,7 +132,7 @@ def reflect(state: AgentState) -> dict:
             route_matrix=route_matrix,
             budget=budget if settings.budget_hard_constraint else None,
             persons=persons,
-            consumption=state.get("consumption"),
+            consumption=state.consumption,
             budget_overage_ratio=settings.budget_overage_ratio,
         )
     record_event(
@@ -146,22 +147,22 @@ def reflect(state: AgentState) -> dict:
         "validation_issues": issues,
         "validation_log": log,
         "feedback": build_feedback(issues),
-        "fix_count": state.get("fix_count", 0) + (1 if issues else 0),
+        "fix_count": state.fix_count + (1 if issues else 0),
     }
 
 
-def needs_fix(state: AgentState) -> str:
+def needs_fix(state: UnifiedAgentState) -> str:
     attempt_limit = generation_attempt_limit(state)
     # 生成失败的重试次数与 days 无关（定稿口径：失败→重试一次→草案）；
     # 校验修复次数才按 attempt_limit 收窄。
-    if state.get("error") and state.get("attempts", 0) < MAX_GENERATION_ATTEMPTS:
+    if state.error and state.attempts < MAX_GENERATION_ATTEMPTS:
         route = "fix"
         record_event("route", route, metadata={"reason": "generation_error"})
         return route
-    if state.get("validation_issues") and state.get("fix_count", 0) <= attempt_limit:
+    if state.validation_issues and state.fix_count <= attempt_limit:
         # Supervisor 缺口补查优先于整体重生成：仅当校验问题属于"证据型缺口"
         # （如未安排任何景点）且补查预算未耗尽时，重派发对应研究 Agent。
-        if _refillable(state) and state.get("refill_count", 0) < MAX_REFILLS:
+        if _refillable(state) and state.refill_count < MAX_REFILLS:
             route = "refill"
             record_event("route", route, metadata={"reason": "evidence_gap"})
             return route
@@ -179,24 +180,24 @@ def _refill_domain(issues: list[str]) -> ResearchDomain | None:
     return None
 
 
-def _refillable(state: AgentState) -> bool:
-    return _refill_domain(state.get("validation_issues") or []) is not None
+def _refillable(state: UnifiedAgentState) -> bool:
+    return _refill_domain(state.validation_issues or []) is not None
 
 
 @traced("node", "refill_research")
-def research_refill(state: AgentState) -> dict:
+def research_refill(state: UnifiedAgentState) -> dict:
     """Supervisor 缺口补查：重派发缺口域研究 Agent，合并补查证据后重新生成。
 
     只补证据不生成内容（LLM-only）：补查结果并入 candidates，随
     research_report 记录补查域统计，供观测与演示。
     """
-    domain = _refill_domain(state.get("validation_issues") or [])
+    domain = _refill_domain(state.validation_issues or [])
     if domain is None:
-        return {"refill_count": state.get("refill_count", 0)}
-    req: GenerateRequest = state["request"]
+        return {"refill_count": state.refill_count}
+    req: GenerateRequest = cast("GenerateRequest", state.request)
     pack = run_refill(domain, req)
-    candidates = merge_candidates(state.get("candidates") or [], pack.items)
-    research_report = dict(state.get("research_report") or {})
+    candidates = merge_candidates(state.candidates or [], pack.items)
+    research_report = dict(state.research_report or {})
     agents = dict(research_report.get("agents") or {})
     agents[domain] = {**pack.to_dict(), "refilled": True}
     research_report["agents"] = agents
@@ -207,5 +208,5 @@ def research_refill(state: AgentState) -> dict:
     return {
         "candidates": candidates,
         "research_report": research_report,
-        "refill_count": state.get("refill_count", 0) + 1,
+        "refill_count": state.refill_count + 1,
     }

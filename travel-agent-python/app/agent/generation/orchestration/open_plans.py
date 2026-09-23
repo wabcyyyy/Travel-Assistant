@@ -223,7 +223,7 @@ def generate_open_plans(
     引用式生成：本地知识库检索结果（candidates/foods）作为带编号参考
     资料注入 Prompt，模型选点输出 refs 引用，生成后由 ReferencePool 落地
     为权威字段并回填真实来源；未命中资料的地点由 local_ground 补真实坐标
-    并保持 unverified。返回 AgentState 增量；开放研究整体失败（所有天均为
+    并保持 unverified。返回 UnifiedAgentState 增量；开放研究整体失败（所有天均为
     空草案）时返回 None，由调用方降级到候选池约束链路或草案。
     """
     schedule_report: dict = {"destination_status": "draft_only", "research_mode": "open"}

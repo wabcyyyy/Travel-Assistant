@@ -9,7 +9,8 @@
 - ``butler``：管家式讲解与景点详细介绍生成；
 - ``reflect``：生成结果的自我校验（纯规则检查行程是否合理）；
 - ``route_matrix``：按日路线时间矩阵（reflect 与输出层共用）；
-- ``graph_state``：统一图的状态定义（编排层与输出层共用的纯结构）。
+- 图状态单一定义在 ``app.agent.research.agent_state``（UnifiedAgentState，PR-2 State 单一化）：
+  编排层与输出层共用的纯结构，本模块原有的 ``graph_state`` 已并入该定义。
 
 后三个之所以在本层而不在 ``orchestration``：它们被 ``output``（装配/终检）与
 ``orchestration`` 同时消费，必须落在 ``output`` 之下，否则阶梯会反向。

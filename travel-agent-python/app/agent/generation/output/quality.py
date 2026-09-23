@@ -6,14 +6,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any, Literal, NamedTuple
+from typing import Literal, NamedTuple
 
 from app.agent.data.route_service import is_estimated
 from app.agent.generation.content.reflect import validate_plans
 from app.agent.generation.content.route_matrix import route_matrix_for_plans
 from app.agent.generation.output.critic import critique_plans
+from app.agent.research.agent_state import UnifiedAgentState
 from app.agent.runtime.trace import record_event
 from app.common.addons import addons
 from app.common.config import settings
@@ -101,18 +101,18 @@ def run_final_validation(
 
 
 def judge_output(
-    state: Mapping[str, Any],
+    state: UnifiedAgentState,
     daily_plans: list[DailyPlan],
     schedule_report: dict,
     check: FinalCheck,
     quality_fallback_reason: str | None,
 ) -> QualityOutcome:
     """汇总降级原因、质量报告与最终状态。"""
-    validation_log = list(state.get("validation_log") or [])
+    validation_log = list(state.validation_log or [])
     validation_log.extend(check.validation_log)
     degraded_reasons: list[str] = []
-    if state.get("degraded_reason"):
-        degraded_reasons.append(state["degraded_reason"] or "")
+    if state.degraded_reason:
+        degraded_reasons.append(state.degraded_reason or "")
     if schedule_report.get("degraded") and settings.route_service_enabled:
         degraded_reasons.append("真实路线服务部分不可用，已使用坐标估算")
     if quality_fallback_reason:
@@ -179,7 +179,7 @@ def judge_output(
         status = "failed"
     destination_status = schedule_report.get("destination_status")
     if destination_status not in _KNOWN_DESTINATION_STATUSES:
-        destination_status = "knowledge_backed" if state.get("candidates") else "draft_only"
+        destination_status = "knowledge_backed" if state.candidates else "draft_only"
     record_event(
         "decision",
         "run_status",

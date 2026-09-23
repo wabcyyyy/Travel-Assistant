@@ -7,8 +7,8 @@
 """
 
 import logging
+from typing import cast
 
-from app.agent.generation.content.graph_state import AgentState
 from app.agent.generation.content.suggestions import activity_floor, build_suggestions, fill_suggestion_gaps
 from app.agent.generation.output.facts import (
     apply_item_facts,
@@ -23,21 +23,22 @@ from app.agent.generation.rules.generation_core import (
     count_hotel_nights_in_budget,
     sanitize_itinerary_items,
 )
+from app.agent.research.agent_state import UnifiedAgentState
 from app.agent.runtime.trace import record_event, traced
 from app.schemas.trip import DailyPlan, GenerateRequest, GenerateResponse, SourceRecord, Suggestion, TripItem
 
 logger = logging.getLogger(__name__)
 
 
-def generation_attempt_limit(state: AgentState) -> int:
-    request = state.get("request")
+def generation_attempt_limit(state: UnifiedAgentState) -> int:
+    request = state.request
     return 1 if request is not None and request.days > 1 else MAX_FIX_ATTEMPTS
 
 
 @traced("node", "format")
-def quality_fallback_reason(state: AgentState) -> str | None:
+def quality_fallback_reason(state: UnifiedAgentState) -> str | None:
     """重试耗尽时的口径：保留开放模式结果并如实降级标注，不用知识库候选替换模型。"""
-    if state.get("validation_issues") and state.get("fix_count", 0) > generation_attempt_limit(state):
+    if state.validation_issues and state.fix_count > generation_attempt_limit(state):
         # LLM-only 原则：重试耗尽也不允许用知识库候选拼装行程替换模型结果
         # （那是"直接使用知识库"）。保留开放模式结果，把未修复的约束问题
         # 如实降级标注，交给用户复核。
@@ -46,21 +47,21 @@ def quality_fallback_reason(state: AgentState) -> str | None:
     return None
 
 
-def format_output(state: AgentState) -> dict:
+def format_output(state: UnifiedAgentState) -> dict:
     """组装 GenerateResponse：回填权威事实 → 定价 → 终检 → 质量结论 → 建议池。
 
     各阶段实现见 app.agent.generation.output；本函数只保留跨阶段的编排与状态流转。
     """
-    req: GenerateRequest = state["request"]
-    raw_plans = state["daily_plans"]
-    schedule_report: dict = dict(state.get("schedule_report") or {})
+    req: GenerateRequest = cast("GenerateRequest", state.request)
+    raw_plans = state.daily_plans
+    schedule_report: dict = dict(state.schedule_report or {})
     # 多 Agent 研究阶段统计随 schedule_report 透出（证据包规模/置信度/缺口）。
-    if state.get("research_report"):
-        schedule_report["research"] = state["research_report"]
+    if state.research_report:
+        schedule_report["research"] = state.research_report
     fallback_reason = quality_fallback_reason(state)
-    consumption = state.get("consumption") or {}
+    consumption = state.consumption or {}
 
-    lookup = build_lookup(state.get("candidates"), state.get("foods"), state.get("hotels"))
+    lookup = build_lookup(state.candidates, state.foods, state.hotels)
     prices = PriceStage.create(req)
     source_records: dict[str, SourceRecord] = {}
     daily_plans: list[DailyPlan] = []
@@ -99,23 +100,23 @@ def format_output(state: AgentState) -> dict:
         )
 
     budget_estimate = prices.recompute_budget(
-        state["budget_estimate"], daily_plans, hotel_total, attraction_total, consumption
+        state.budget_estimate, daily_plans, hotel_total, attraction_total, consumption
     )
-    check = run_final_validation(req, daily_plans, schedule_report, state.get("consumption"))
+    check = run_final_validation(req, daily_plans, schedule_report, state.consumption)
     outcome = judge_output(state, daily_plans, schedule_report, check, fallback_reason)
 
     # 开放模式下模型建议可来自候选池之外（allow_external）：坐标留空的
     # 条目由前端在加入行程前经地图检索补齐；候选池保底链路仍保持池内过滤。
-    open_research = bool((state.get("schedule_report") or {}).get("open_research"))
+    open_research = bool((state.schedule_report or {}).get("open_research"))
     activities = activity_floor(req.city)
     tier_label, _tier_g, _tier_ppd = budget_tier(req.budget, req.persons, req.days)
     suggestion_rows = fill_suggestion_gaps(
         build_suggestions(
             raw_plans,
-            (state.get("candidates") or []) + activities,
-            state.get("foods"),
-            state.get("hotels") or [],
-            state.get("raw_suggestions") or [],
+            (state.candidates or []) + activities,
+            state.foods,
+            state.hotels or [],
+            state.raw_suggestions or [],
             allow_external=open_research,
         ),
         req.city,

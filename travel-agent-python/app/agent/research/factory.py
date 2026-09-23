@@ -20,11 +20,11 @@
 from __future__ import annotations
 
 import logging
-from typing import TypedDict
 
 from langgraph.graph import END, StateGraph
 
 from app.agent.research import reasoning
+from app.agent.research.agent_state import UnifiedAgentState
 from app.agent.research.domains import DOMAINS
 from app.agent.research.evidence import (
     RESEARCH_DOMAINS,
@@ -46,15 +46,16 @@ RESEARCH_LLM_ROUNDS = 2
 _DEFAULT_CONFIDENCE = 1.0
 
 
-class ResearchAgentState(TypedDict):
-    task: ResearchTask
-    plan: dict
-    items: list[dict]
-    round: int
-    sufficient: bool
-    extra_keywords: list[str]
-    quota_note: str
-    pack: EvidencePack | None
+def _require_task(state: UnifiedAgentState) -> ResearchTask:
+    """研究子图必须携带 task（run_research 入口注入）；缺失是编程错误，响亮失败。
+
+    沿用双轨错误边界：抛 ValueError 由 Supervisor 按域降级接住（run_research 的
+    未知域报错同款语义），不静默空跑。
+    """
+    task = state.task
+    if task is None:
+        raise ValueError("research 子图缺少 task（应由 run_research 入口注入）")
+    return task
 
 
 def _spend_research(limits, domain: ResearchDomain) -> bool:
@@ -80,10 +81,10 @@ def _spend_research(limits, domain: ResearchDomain) -> bool:
         return False
 
 
-def _plan_node(state: ResearchAgentState) -> dict:
+def _plan_node(state: UnifiedAgentState) -> dict:
     """规划节点：LLM 决定检索策略；失败/未配置返回空计划（退化确定性检索）。"""
     # 运行时经 reasoning 模块属性解析，保证单测 patch 注入生效（与 tools 同一约定）。
-    return {"plan": reasoning.plan_research(state["task"])}
+    return {"research_plan": reasoning.plan_research(_require_task(state))}
 
 
 def _merge_supplement(items: list[dict], remote: list[dict]) -> list[dict]:
@@ -98,12 +99,12 @@ def _merge_supplement(items: list[dict], remote: list[dict]) -> list[dict]:
     return merged
 
 
-def _run_search(state: ResearchAgentState) -> dict:
+def _run_search(state: UnifiedAgentState) -> dict:
     """检索节点：按领域配置调用检索工具，并执行规划/评估给出的补充关键词。"""
-    task = state["task"]
+    task = _require_task(state)
     config = DOMAINS[task.domain]
     limits = current_limits()
-    plan = state.get("plan") or {}
+    plan = state.research_plan or {}
     params = config.params(task)
     if task.domain == "attraction" and plan.get("preferences"):
         prefs = list(dict.fromkeys((task.preferences or []) + [str(p) for p in plan["preferences"]]))
@@ -118,12 +119,12 @@ def _run_search(state: ResearchAgentState) -> dict:
     items = registry.invoke(config.tool_name, params) or []
     if limits:
         limits.record_retrieval(1)
-    extras = list(dict.fromkeys((plan.get("extra_keywords") or []) + (state.get("extra_keywords") or [])))
+    extras = list(dict.fromkeys((plan.get("extra_keywords") or []) + (state.extra_keywords or [])))
     # M3-②（AD5）最小增量：任务卡携带的意图关键词并入补池链（新旧行为兼容，仅追加）
     extras = list(dict.fromkeys(extras + list(task.intent_keywords or [])))
     from app.agent.data.web_search import search_places_via_web, web_search_enabled
 
-    quota_note = state.get("quota_note") or ""
+    quota_note = state.quota_note or ""
     # 联网入口关着时补池必然返回空（search_places_via_web 自己就早退），所以这里
     # 直接不进循环：既省一次无用的记账，也让"离线评测不占研究额度"成为结构事实。
     if extras and web_search_enabled():
@@ -147,14 +148,14 @@ def _run_search(state: ResearchAgentState) -> dict:
             intent_keywords=task.intent_keywords,
         )
         items = _merge_supplement(items, web_rows)
-    return {"items": items, "round": int(state.get("round", 0)) + 1, "quota_note": quota_note}
+    return {"items": items, "round": state.round + 1, "quota_note": quota_note}
 
 
-def _evaluate_node(state: ResearchAgentState) -> dict:
+def _evaluate_node(state: UnifiedAgentState) -> dict:
     """评估节点：LLM 判定证据充分性；不足时给出补充检索词。"""
-    task = state["task"]
-    items = state.get("items") or []
-    round_no = int(state.get("round", 1))
+    task = _require_task(state)
+    items = state.items or []
+    round_no = state.round
     verdict = reasoning.evaluate_research(task, items, round_no)
     return {
         "sufficient": bool(verdict.get("sufficient", True)),
@@ -162,33 +163,31 @@ def _evaluate_node(state: ResearchAgentState) -> dict:
     }
 
 
-def _refine_node(state: ResearchAgentState) -> dict:
+def _refine_node(state: UnifiedAgentState) -> dict:
     """补查节点：把评估给出的补充词并入检索计划，进入下一轮检索。"""
-    plan = dict(state.get("plan") or {})
-    plan["extra_keywords"] = list(
-        dict.fromkeys((plan.get("extra_keywords") or []) + (state.get("extra_keywords") or []))
-    )
-    return {"plan": plan}
+    plan = dict(state.research_plan or {})
+    plan["extra_keywords"] = list(dict.fromkeys((plan.get("extra_keywords") or []) + (state.extra_keywords or [])))
+    return {"research_plan": plan}
 
 
-def _route_after_search(state: ResearchAgentState) -> str:
+def _route_after_search(state: UnifiedAgentState) -> str:
     """第 1 轮检索后评估充分性；补查轮（已达轮次上限）直接收尾，不再重复评估。"""
-    if int(state.get("round", 0)) < RESEARCH_LLM_ROUNDS:
+    if state.round < RESEARCH_LLM_ROUNDS:
         return "evaluate"
     return "finalize"
 
 
-def _route_after_evaluate(state: ResearchAgentState) -> str:
-    if state.get("sufficient"):
+def _route_after_evaluate(state: UnifiedAgentState) -> str:
+    if state.sufficient:
         return "finalize"
-    record_event("decision", f"research.{state['task'].domain}.refine", metadata={"round": state.get("round")})
+    record_event("decision", f"research.{_require_task(state).domain}.refine", metadata={"round": state.round})
     return "refine"
 
 
-def _finalize_pack(state: ResearchAgentState) -> dict:
+def _finalize_pack(state: UnifiedAgentState) -> dict:
     """评估收尾：计算置信度/缺口/降级标记，产出证据包。"""
-    task = state["task"]
-    items = state.get("items") or []
+    task = _require_task(state)
+    items = state.items or []
     config = DOMAINS[task.domain]
     flagged = [p for p in items if p.get("_authoritative") is not None]
     if flagged:
@@ -197,12 +196,12 @@ def _finalize_pack(state: ResearchAgentState) -> dict:
     else:
         confidence = _DEFAULT_CONFIDENCE if items else 0.0
     gap = config.gap_hint(items)
-    quota_note = state.get("quota_note") or ""
+    quota_note = state.quota_note or ""
     pack = EvidencePack(
         domain=task.domain,
         items=items,
         confidence=confidence,
-        rounds=int(state.get("round", 1)),
+        rounds=state.round,
         gaps=[note for note in (gap, quota_note) if note],
         degraded=not items,
     )
@@ -211,7 +210,7 @@ def _finalize_pack(state: ResearchAgentState) -> dict:
 
 
 def build_research_graph(domain: ResearchDomain):
-    graph = StateGraph(ResearchAgentState)
+    graph = StateGraph(UnifiedAgentState)
     graph.add_node("plan_query", _plan_node)
     graph.add_node("search", _run_search)
     graph.add_node("evaluate", _evaluate_node)
@@ -245,7 +244,7 @@ def run_research(task: ResearchTask) -> EvidencePack:
         result = _research_graphs[task.domain].invoke(
             {
                 "task": task,
-                "plan": {},
+                "research_plan": {},
                 "items": [],
                 "round": 0,
                 "sufficient": True,

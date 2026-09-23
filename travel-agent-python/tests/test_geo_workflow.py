@@ -1,6 +1,7 @@
 from app.agent.core.geo import haversine_meters, nearest_neighbor_order
 from app.agent.generation.content.reflect import parse_time
 from app.agent.generation.orchestration.workflow import needs_fix
+from app.agent.research.agent_state import UnifiedAgentState
 
 
 def test_haversine_known_distance():
@@ -42,11 +43,12 @@ def test_nearest_neighbor_empty():
 
 
 def test_workflow_route_needs_fix_logic():
-    assert needs_fix({"validation_issues": ["x"], "fix_count": 1}) == "fix"
-    assert needs_fix({"validation_issues": ["x"], "fix_count": 3}) == "pass"
-    assert needs_fix({"error": "boom", "attempts": 1}) == "fix"
-    assert needs_fix({"error": "boom", "attempts": 3}) == "pass"
-    assert needs_fix({"error": None, "validation_issues": []}) == "pass"
+    # PR-2 后节点只收 UnifiedAgentState（属性访问）：直调点同步改构造模型
+    assert needs_fix(UnifiedAgentState(validation_issues=["x"], fix_count=1)) == "fix"
+    assert needs_fix(UnifiedAgentState(validation_issues=["x"], fix_count=3)) == "pass"
+    assert needs_fix(UnifiedAgentState(error="boom", attempts=1)) == "fix"
+    assert needs_fix(UnifiedAgentState(error="boom", attempts=3)) == "pass"
+    assert needs_fix(UnifiedAgentState(error=None, validation_issues=[])) == "pass"
 
 
 def test_parse_time_roundtrip():

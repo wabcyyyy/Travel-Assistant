@@ -1,6 +1,6 @@
 """format_output 输出口径的回归基线（characterization test）。
 
-用手工构造的 AgentState 直接驱动 format_output，锁住定价（联网实时价×季节系数、
+用手工构造的 UnifiedAgentState 直接驱动 format_output，锁住定价（联网实时价×季节系数、
 人均价钳制）、权威事实回填与溯源标注、预算重算、质量结论这些没有其它覆盖的路径。
 基线快照在 tests/golden/format_output.json；有意改口径时用
 GOLDEN_REGENERATE=1 重写并复核 git diff。
@@ -19,6 +19,7 @@ import pytest
 from app.agent.data import pricing
 from app.agent.generation.orchestration.workflow import format_output
 from app.agent.grounding.grounding_evidence import issue_evidence
+from app.agent.research.agent_state import UnifiedAgentState
 from app.agent.tools import registry as tool_registry
 from app.schemas.trip import GenerateRequest
 
@@ -181,7 +182,7 @@ def _item(item_type, name, *, start, end, cost=None, lat=None, lon=None, duratio
     }
 
 
-def _state(req, *, plans, live_price=False, live_food=False, **overrides):
+def _state(req, *, plans, live_price=False, live_food=False, **overrides) -> tuple[UnifiedAgentState, bool, bool]:
     base = {
         "request": req,
         "daily_plans": plans,
@@ -197,7 +198,8 @@ def _state(req, *, plans, live_price=False, live_food=False, **overrides):
         "validation_issues": [],
     }
     base.update(copy.deepcopy(overrides))
-    return base, live_price, live_food
+    # PR-2：节点只收 UnifiedAgentState（属性访问），state 构造即模型构造
+    return UnifiedAgentState(**base), live_price, live_food
 
 
 # ---------------------------------------------------------------- 场景定义
@@ -212,7 +214,7 @@ def all_scenarios():
     req_multi = GenerateRequest(city="杭州", days=3, persons=3, budget=5000, start_date="2026-10-01")
     req_lj = GenerateRequest(city="丽江", days=1, persons=2, budget=3000)
 
-    s: list[tuple[str, dict, bool, bool]] = []
+    s: list[tuple[str, tuple[UnifiedAgentState, bool, bool]]] = []
 
     # 1 权威命中：坐标/票价/营业时间回填 + partially_verified/fresh
     s.append(

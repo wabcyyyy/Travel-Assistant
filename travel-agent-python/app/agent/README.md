@@ -28,6 +28,7 @@ core          零依赖原语：json_utils / geo / poi_identity / intent  已落
 |---|---|---|
 | 一个纯计算 / 纯解析原语 | `core/` | 只准 stdlib / `app.common` / `core` 自身 |
 | 一次运行边界（deadline、计数） | `runtime/run_limits.py` | 沿用既有 `check(kind)` 口径，不新开预算通道 |
+| 一次 agent run 的图状态（day/trip/research 共用） | `research/agent_state.py`（`UnifiedAgentState`，全仓唯一） | 节点一律属性访问、无兼容访问器；落 research 是因为状态携带 `ResearchTask`/`EvidencePack` 域内类型（PR-2） |
 | 一份跨模块共享的计数状态 | `runtime/tool_budget.py` | 开/占用分离：observability 开、消费方就地自增 |
 | 一条轨迹事件 / 一个指标 | `runtime/trace.py` / `runtime/observability.py` | 不新开采集通道 |
 | 一类外部数据源（HTTP / DB / 第三方插件） | `data/` | 只取数据、不下结论；失败如实降级不冒充成功 |
@@ -49,7 +50,8 @@ core          零依赖原语：json_utils / geo / poi_identity / intent  已落
 > （层序由依赖图 SCC + 拓扑排序算出；机检 = pyproject 的 "Generation sublayers" 契约）。
 > 下表的平铺名对应关系：`generation_core`/`budget` → `rules/`；`generators`/`suggestions`/
 > `reference_pool`/`narrative`/`day_prompts`/`landing` → `content/`；`reflect`/`route_matrix`/
-> `graph_state` → `content/`；`formatting/`（assembly/facts/prices/quality）/`critic`/
+> `graph_state` → `content/`（`graph_state` 已随 PR-2 并入 `research/agent_state.py` 的
+> `UnifiedAgentState`，全仓唯一图状态定义）；`formatting/`（assembly/facts/prices/quality）/`critic`/
 > `schedule_optimizer` → `output/`；其余编排模块 → `orchestration/`。
 >
 > 注意蓝图里"formatting 是 workflow 的下游"指**执行顺序**，不是 import 方向：
