@@ -9,7 +9,7 @@
  * - 本地存储损坏或出现未知值时逐字段回落默认，不让脏数据把界面卡死。
  */
 
-export type SchemeId = 'default' | 'teal' | 'contrast'
+export type SchemeId = 'default' | 'teal' | 'contrast' | 'indigo' | 'rose' | 'amber' | 'violet'
 export type DensityId = 'comfortable' | 'compact'
 
 export interface AppearanceConfig {
@@ -29,7 +29,15 @@ export const DEFAULT_APPEARANCE: AppearanceConfig = {
   reduceMotion: false,
 }
 
-const SCHEME_IDS = new Set<unknown>(['default', 'teal', 'contrast'])
+const SCHEME_IDS = new Set<unknown>([
+  'default',
+  'teal',
+  'contrast',
+  'indigo',
+  'rose',
+  'amber',
+  'violet',
+])
 const DENSITY_IDS = new Set<unknown>(['comfortable', 'compact'])
 
 export function normalizeAppearance(raw: unknown): AppearanceConfig {

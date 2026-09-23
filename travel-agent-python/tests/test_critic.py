@@ -1,4 +1,4 @@
-from app.agent.critic import critique_plans
+from app.agent.generation.output.critic import critique_plans
 
 
 def test_critic_reports_soft_quality_without_replacing_hard_validator():

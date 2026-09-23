@@ -15,14 +15,15 @@ import logging
 import pytest
 from pydantic import ValidationError
 
-from app.agent import day_prompts, day_stream
-from app.agent import intent as intent_module
-from app.agent.day_prompts import (
+from app.agent.core import intent as intent_module
+from app.agent.generation.content import day_prompts
+from app.agent.generation.content.day_prompts import (
     _distill_cached,
     clear_distill_cache,
     intent_clause,
     requirements_clause,
 )
+from app.agent.generation.orchestration import day_stream
 from app.agent.research.evidence import ResearchTask
 from app.agent.research.supervisor import decompose
 from app.schemas.agent_ops import ButlerNoteRequest, PoiIntrosRequest

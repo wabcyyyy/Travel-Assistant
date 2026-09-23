@@ -113,16 +113,18 @@ function fmt(value: number | null | undefined) {
 }
 
 .strip-label {
-  font-size: 12.5px;
-  color: var(--lp-muted);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lp-text-muted);
 }
 
 .strip-amount {
-  font-family: var(--lp-font-ui);
-  font-weight: 700;
-  font-size: 24px;
-  line-height: 1.1;
-  color: var(--lp-ink);
+  font-family: var(--lp-font-display);
+  font-weight: 600;
+  font-size: 28px;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--lp-text-1);
   font-variant-numeric: tabular-nums;
 }
 

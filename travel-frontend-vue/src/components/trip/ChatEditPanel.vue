@@ -458,7 +458,7 @@ async function onApply() {
 }
 
 .nl-toggle-hint {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--lp-muted);
 }

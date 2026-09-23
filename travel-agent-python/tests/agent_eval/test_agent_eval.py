@@ -24,7 +24,7 @@ def test_authority_is_evidence_based_not_directory_membership():
     指标什么都证明不了。现在认的是**本服务签发的证据票**：同样两个目录内的名字，
     没票的那个不再算权威——真实 LLM 自选点位就落在这一档。
     """
-    from app.agent.grounding_evidence import issue_evidence
+    from app.agent.grounding.grounding_evidence import issue_evidence
     from app.common import cache_store
     from app.schemas.trip import DailyPlan, GenerateResponse, TripItem
     from tests.agent_eval import mock_llm

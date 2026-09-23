@@ -20,7 +20,7 @@
 - 调用一律经 `registry.invoke`：预算、参数校验、审计事件与内部工具调用同一套，
   不存在"外部调用绕过治理"的第二条路径。
 
-依赖：mcp（FastMCP）、app.agent.tool_registry、app.common.{addons,config,envelope}、
+依赖：mcp（FastMCP）、app.agent.tools.registry、app.common.{addons,config,envelope}、
 app.services（C3.3 写面）。
 """
 

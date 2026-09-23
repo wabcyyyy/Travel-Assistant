@@ -9,7 +9,7 @@
 - run_research_context：整段生成（workflow.search）与逐日（plan-context）共用的入口。
 
 实现要点：
-- 工具调用统一走 app.agent.tools 模块属性（运行时解析），单测注入契约不变；
+- 工具调用统一走 app.agent.tools.impl 模块属性（运行时解析），单测注入契约不变；
 - 城市级消费数据（get_consumption）不属于任何 POI 域，由 Supervisor 直接获取；
 - 输出形状与旧 search_pois 完全一致，下游 generate/format 零改动。
 """
@@ -21,13 +21,13 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 
-from app.agent import tools
-from app.agent import weather as weather_module
-from app.agent.intent import build_intent_keywords
-from app.agent.observability import metrics
+from app.agent.core.intent import build_intent_keywords
+from app.agent.data import weather as weather_module
 from app.agent.research.evidence import EvidencePack, ResearchDomain, ResearchTask
 from app.agent.research.factory import run_research
-from app.agent.trace import record_event
+from app.agent.runtime.observability import metrics
+from app.agent.runtime.trace import record_event
+from app.agent.tools import impl as tools
 from app.schemas.trip import GenerateRequest
 
 logger = logging.getLogger(__name__)

@@ -4,13 +4,14 @@
 - app/schemas/trip.py：PhotoSpot/BackupRule/DayOption 子模型 + why_this/
   day_options/trip_theme 叙事字段（超长截断不抛错）；
 - app/prompts/open_generation.py：v1.1.narrative 契约升级；
-- app/agent/day_stream.py：sanitize_narrative 轻量清洗 + max_tokens 上调；
-- app/agent/workflow.py：叙事层装配透传。
+- app/agent/generation/orchestration/day_stream.py：sanitize_narrative 轻量清洗 + max_tokens 上调；
+- app/agent/generation/orchestration/workflow.py：叙事层装配透传。
 """
 
 import json
 
-from app.agent import day_prompts, day_stream, narrative
+from app.agent.generation.content import day_prompts, narrative
+from app.agent.generation.orchestration import day_stream
 from app.prompts import open_generation
 from app.schemas.trip import (
     BackupRule,

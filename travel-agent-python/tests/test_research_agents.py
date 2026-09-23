@@ -4,7 +4,9 @@ from unittest.mock import patch
 
 import pytest
 
-from app.agent import landing, open_plans, tools, web_search, workflow
+from app.agent.data import web_search
+from app.agent.generation.content import landing
+from app.agent.generation.orchestration import open_plans, workflow
 from app.agent.research import (
     ResearchTask,
     decompose,
@@ -16,8 +18,9 @@ from app.agent.research import (
 from app.agent.research.reasoning import (
     evaluate_research as _real_evaluate,
 )
-from app.agent.run_limits import begin_limits, current_limits, end_limits
-from app.agent.trace import trace_run
+from app.agent.runtime.run_limits import begin_limits, current_limits, end_limits
+from app.agent.runtime.trace import trace_run
+from app.agent.tools import impl as tools
 from app.schemas.trip import GenerateRequest
 from tests.agent_eval import mock_llm
 
@@ -34,7 +37,7 @@ def _disable_web_refill(monkeypatch):
     """研究 Agent 单测关闭联网补池：.env 带 LLM_API_KEY 时 _run_search 的
     web 分支会真实出网（成功/401 均有可能），导致证据条数断言环境性抖动。
     基线行为即"联网不可用"，这里显式固定，保证单测封闭可复现。"""
-    monkeypatch.setattr("app.agent.web_search.settings.web_search_enabled", False)
+    monkeypatch.setattr("app.agent.data.web_search.settings.web_search_enabled", False)
 
 
 def _patch_catalog():
@@ -178,7 +181,7 @@ def test_research_evaluate_insufficient_triggers_refine_round(monkeypatch):
         calls["n"] += 1
         return [{"name": f"{city}景点{calls['n']}", "latitude": 30.0, "longitude": 120.0}]
 
-    import app.agent.web_search as web_search_mod
+    import app.agent.data.web_search as web_search_mod
 
     def fake_web(city, category, limit=4, intent_keywords=None):
         return [{"name": f"{kw}补充点", "latitude": 30.1, "longitude": 120.1} for kw in (intent_keywords or [])]

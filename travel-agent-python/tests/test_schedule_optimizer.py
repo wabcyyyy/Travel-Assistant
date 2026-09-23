@@ -1,4 +1,4 @@
-from app.agent.schedule_optimizer import optimize_daily_plan
+from app.agent.generation.output.schedule_optimizer import optimize_daily_plan
 
 
 def _item(name, start="09:00", end="10:00", duration=60, open_time=None, kind="attraction"):

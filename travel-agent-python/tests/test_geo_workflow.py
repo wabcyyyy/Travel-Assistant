@@ -1,6 +1,6 @@
-from app.agent.geo import haversine_meters, nearest_neighbor_order
-from app.agent.reflect import parse_time
-from app.agent.workflow import needs_fix
+from app.agent.core.geo import haversine_meters, nearest_neighbor_order
+from app.agent.generation.content.reflect import parse_time
+from app.agent.generation.orchestration.workflow import needs_fix
 
 
 def test_haversine_known_distance():

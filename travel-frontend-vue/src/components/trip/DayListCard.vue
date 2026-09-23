@@ -345,10 +345,10 @@ function onDrop(event: DragEvent) {
   gap: 14px;
   align-items: center;
   margin: 0 -12px;
-  padding: 16px 12px;
+  padding: 18px 14px;
   border-radius: var(--lp-radius-sm);
   background: color-mix(in oklch, var(--day-color) var(--lp-day-tint-header), transparent);
-  border-bottom: 1px solid var(--lp-edge-faint);
+  border-bottom: 1px solid var(--lp-edge-1);
   cursor: pointer;
   list-style: none;
   transition: background 0.15s ease;
@@ -362,38 +362,40 @@ function onDrop(event: DragEvent) {
   display: none;
 }
 
-/* 编号徽（day-tint badge 档）：替代旧衬线斜体序号 */
+/* 编号徽（day-tint badge 档） */
 .day-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 40px;
-  height: 40px;
-  padding: 0 8px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 10px;
   border-radius: var(--lp-radius-sm);
   background: color-mix(in oklch, var(--day-color) var(--lp-day-tint-badge), transparent);
   color: color-mix(in oklch, var(--day-color) 70%, var(--lp-text-1));
-  font-family: var(--lp-font-mono);
-  font-size: 14px;
-  font-weight: 700;
+  font-family: var(--lp-font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
 .day-meta {
   display: block;
   font-size: 12px;
-  color: var(--lp-muted);
+  font-weight: 500;
+  color: var(--lp-text-muted);
 }
 
 .day-title {
   display: block;
   margin: 4px 0 3px;
-  font-family: var(--lp-font-ui);
-  font-weight: 700;
-  font-size: 17px;
-  line-height: 1.3;
-  color: var(--lp-ink);
-  letter-spacing: -0.01em;
+  font-family: var(--lp-font-display);
+  font-weight: 600;
+  font-size: 18px;
+  line-height: 1.25;
+  color: var(--lp-text-1);
+  letter-spacing: -0.02em;
 }
 
 /* 标题即可编辑入口（点击开副标题 popover）：视觉不变，hover 虚线提示可编辑 */
@@ -488,7 +490,8 @@ function onDrop(event: DragEvent) {
 .day-count {
   display: block;
   font-size: 13px;
-  color: var(--lp-muted);
+  font-weight: 500;
+  color: var(--lp-text-muted);
 }
 
 /* ---------- 流式生成态（§5.3.5） ---------- */
@@ -540,7 +543,7 @@ function onDrop(event: DragEvent) {
   border: 1px solid var(--lp-rule);
   border-radius: 999px;
   font-family: var(--lp-font-data);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--lp-why-ink);
 }
 

@@ -1,7 +1,6 @@
 <template>
   <div class="stat-tile" :class="`tone-${tone}`">
     <p class="tile-label">
-      <span v-if="en" class="lp-micro label-en">{{ en }}</span>
       <span class="label-cn">{{ label }}</span>
     </p>
     <p class="tile-value">
@@ -12,20 +11,16 @@
 </template>
 
 <script setup lang="ts">
-// 统计格（设计对齐 TREK）：微标签双语（大写英文 + 中文）、大数字带小号单位后缀；
-// tone='ink' 是统计行里的深色「护照卡」，用来打破「四张同款卡」的规整感。
+// 统计格：中文标签 + 大数字 + 小单位；tone='ink' 是深色对比块。
 withDefaults(
   defineProps<{
     label: string
-    /** 大写英文微标签（可选）：只用于统计/票根这类标签层，不铺正文 */
-    en?: string
     value: string | number
-    /** 值的小号单位后缀（段/天/项…） */
     unit?: string
     sub?: string
     tone?: 'default' | 'ink'
   }>(),
-  { en: '', unit: '', sub: '', tone: 'default' },
+  { unit: '', sub: '', tone: 'default' },
 )
 </script>
 
@@ -51,17 +46,11 @@ withDefaults(
   margin: 0;
 }
 
-.label-en {
-  /* 规格来自全局 .lp-micro（大写英文微标签唯一来源），这里只覆盖卡片内的颜色 */
-  color: var(--lp-text-muted);
-}
-
 .label-cn {
   font-size: var(--lp-text-caption);
   color: var(--lp-text-muted);
 }
 
-.tone-ink .label-en,
 .tone-ink .label-cn {
   color: var(--lp-ink-card-muted);
 }

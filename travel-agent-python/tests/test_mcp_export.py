@@ -76,7 +76,7 @@ def test_write_tools_exposed_only_when_mcp_write_enabled(in_memory_addons):
 
 def test_tool_contract_comes_from_registry():
     """描述与参数 schema 自动取自 ToolSpec（单一真源，无第二份）。"""
-    from app.agent.tool_registry import registry
+    from app.agent.tools.registry import registry
 
     server = mcp_api.build_server()
     for spec in mcp_api.exposed_specs():
@@ -146,7 +146,7 @@ def test_end_to_end_list_and_call(monkeypatch, in_memory_addons):
         "ticket_price": 0,
         "open_time": "全天",
     }
-    monkeypatch.setattr("app.agent.tools.search_attractions", lambda city, prefs, limit=30: [fixture_row])
+    monkeypatch.setattr("app.agent.tools.impl.search_attractions", lambda city, prefs, limit=30: [fixture_row])
 
     async def _scenario():
         server = mcp_api.build_server()

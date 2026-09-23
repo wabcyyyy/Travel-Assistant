@@ -20,7 +20,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.agent import weather
+from app.agent.data import city_center as city_center_module
+from app.agent.data import weather
 from app.api import security
 from app.api.business.weather import router as weather_router
 from app.common import cache_store
@@ -62,9 +63,7 @@ def test_forecast_returns_daily_rows(monkeypatch):
 
     configure_clients(api=httpx.Client(transport=httpx.MockTransport(handler)))
     monkeypatch.setattr(weather.settings, "weather_enabled", True)
-    from app.agent import tools
-
-    monkeypatch.setattr(tools, "city_center", lambda city: {"latitude": 30.25, "longitude": 120.16})
+    monkeypatch.setattr(city_center_module, "city_center", lambda city: {"latitude": 30.25, "longitude": 120.16})
     rows = weather.get_weather_forecast("杭州", _TODAY.isoformat(), (_TODAY + timedelta(days=2)).isoformat())
     assert rows is not None and len(rows) == 3
     assert rows[0]["date"] == _TODAY.isoformat()
@@ -82,9 +81,7 @@ def test_forecast_disabled_returns_none(monkeypatch):
 def test_forecast_without_city_center_returns_none(monkeypatch):
     configure_clients(api=httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, json={}))))
     monkeypatch.setattr(weather.settings, "weather_enabled", True)
-    from app.agent import tools
-
-    monkeypatch.setattr(tools, "city_center", lambda city: None)
+    monkeypatch.setattr(city_center_module, "city_center", lambda city: None)
     assert weather.get_weather_forecast("未知城", _TODAY.isoformat(), _TODAY.isoformat()) is None
 
 
@@ -94,18 +91,14 @@ def test_forecast_upstream_failure_returns_none(monkeypatch):
 
     configure_clients(api=httpx.Client(transport=httpx.MockTransport(handler)))
     monkeypatch.setattr(weather.settings, "weather_enabled", True)
-    from app.agent import tools
-
-    monkeypatch.setattr(tools, "city_center", lambda city: {"latitude": 30.25, "longitude": 120.16})
+    monkeypatch.setattr(city_center_module, "city_center", lambda city: {"latitude": 30.25, "longitude": 120.16})
     assert weather.get_weather_forecast("杭州", _TODAY.isoformat(), _TODAY.isoformat()) is None
 
 
 def test_forecast_clips_window_to_capability(monkeypatch):
     """行程窗整体超出预报能力（一年后）→ None；部分重叠只请求交集日期。"""
     monkeypatch.setattr(weather.settings, "weather_enabled", True)
-    from app.agent import tools
-
-    monkeypatch.setattr(tools, "city_center", lambda city: {"latitude": 30.25, "longitude": 120.16})
+    monkeypatch.setattr(city_center_module, "city_center", lambda city: {"latitude": 30.25, "longitude": 120.16})
     far = (_TODAY + timedelta(days=365)).isoformat()
     assert weather.get_weather_forecast("杭州", far, far) is None
 

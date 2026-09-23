@@ -38,9 +38,13 @@ describe('ButlerStrip（管家说条）', () => {
     expect(wrapper.find('.strip-chip').classes()).toContain('tone-success')
   })
 
-  it('展开显示管家信件全文；收起后隐藏', async () => {
+  it('展开显示生成状态面板；收起后隐藏；不再渲染管家信件卡', async () => {
     const wrapper = mount(ButlerStrip, {
-      props: { detail: makeDetail(), doneDays: 3, streamState: makeStream() },
+      props: {
+        detail: makeDetail({ status: 1 }),
+        doneDays: 1,
+        streamState: makeStream({ phase: 'day', dayNo: 2 }),
+      },
     })
     // happy-dom 的 isVisible() 基于布局测量对 display:none 不可靠，直接断言 v-show 的 inline style
     const body = wrapper.find('.strip-body')
@@ -48,7 +52,8 @@ describe('ButlerStrip（管家说条）', () => {
 
     await wrapper.find('.strip-btn').trigger('click')
     expect((body.element as HTMLElement).style.display).not.toBe('none')
-    expect(body.text()).toContain('第二段：晚上去河边。')
+    expect(body.text()).toContain('排版中 · 第 2 / 3 天')
+    expect(wrapper.find('.butler-letter').exists()).toBe(false)
 
     await wrapper.find('.strip-btn').trigger('click')
     expect((body.element as HTMLElement).style.display).toBe('none')

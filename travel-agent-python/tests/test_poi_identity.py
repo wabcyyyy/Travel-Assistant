@@ -11,7 +11,7 @@ suggestions 里而不是日计划里），所以只有这里能挡住回归。
 
 from __future__ import annotations
 
-from app.agent.poi_identity import PoiSeenRegistry
+from app.agent.core.poi_identity import PoiSeenRegistry
 
 # 相距约 22m（纬度差 0.0002）——同一栋建筑里的两个不同业态
 ATTRACTION = ("圣家堂", "attraction", 41.4030, 2.1740)

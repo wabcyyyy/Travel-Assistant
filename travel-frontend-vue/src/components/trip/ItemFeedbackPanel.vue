@@ -170,12 +170,12 @@ async function revoke() {
 
 .fb-q {
   margin-right: auto;
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--lp-text-muted);
 }
 
 .fb-state {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--lp-accent-hover);
 }
@@ -190,7 +190,7 @@ async function revoke() {
   border-radius: var(--lp-radius-xs);
   background: var(--lp-surface-card);
   color: var(--lp-text-2);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
   transition: color 0.15s ease, border-color 0.15s ease;
@@ -217,7 +217,7 @@ async function revoke() {
 
 .fb-form-title {
   margin: 0 0 6px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--lp-text-2);
 }
@@ -234,7 +234,7 @@ async function revoke() {
   border-radius: var(--lp-radius-pill);
   background: var(--lp-surface-card);
   color: var(--lp-text-2);
-  font-size: 12px;
+  font-size: 12.5px;
   cursor: pointer;
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }

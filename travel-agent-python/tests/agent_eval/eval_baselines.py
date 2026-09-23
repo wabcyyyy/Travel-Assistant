@@ -21,9 +21,10 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from app.agent import generators, schedule_optimizer
-from app.agent.reflect import _item_end, _item_start, _route_from_matrix, validate_plans
-from app.agent.route_service import RouteService, clear_route_cache
+from app.agent.data.route_service import RouteService, clear_route_cache
+from app.agent.generation.content import generators
+from app.agent.generation.content.reflect import _item_end, _item_start, _route_from_matrix, validate_plans
+from app.agent.generation.output import schedule_optimizer
 from app.common.config import settings
 from tests.agent_eval import mock_llm
 

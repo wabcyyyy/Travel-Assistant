@@ -5,7 +5,7 @@
       <el-empty :image-size="120" :description="loadErrorDescription">
         <div class="load-error-actions">
           <el-button type="primary" @click="$router.push('/trips')">返回我的行程</el-button>
-          <el-button @click="$router.push('/generate')">去生成新行程</el-button>
+          <el-button @click="ui.openCreateTrip()">新建行程</el-button>
           <el-button text @click="loadDetail">重新加载</el-button>
         </div>
       </el-empty>
@@ -309,6 +309,9 @@ import { getItineraryDetail } from '../api/itinerary'
 import { deleteSnapshot, loadSnapshot, saveDetailSnapshot, snapshotKeyForDetail } from '../utils/offlineSnapshots'
 import { useUserStore } from '../store/user'
 import { useItineraryStore } from '../store/itinerary'
+import { useUiStore } from '../store/ui'
+
+const ui = useUiStore()
 import { useItineraryActions } from '../composables/useItineraryActions'
 import { useItineraryStream, type ItineraryStreamEvent } from '../composables/useItineraryStream'
 import type { DayPlan, ItineraryDetail, TripItem } from '../types/itinerary'
@@ -400,7 +403,7 @@ function onHeadMenu(key: string): void {
   else if (key === 'template') templateVisible.value = true
   else if (key === 'pdf') onExportPdf()
   else if (key === 'image') onExportImage()
-  else if (key === 'similar') router.push('/generate')
+  else if (key === 'similar') ui.openCreateTrip(detail.value?.city || '')
 }
 
 async function loadDetail() {
@@ -882,15 +885,14 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
-/* 面板头条：返回 + 标题/元信息 + 操作菜单（封面 Hero 退役后的收编位，v2.7 §20 R1）——
-   桌面浮层面板与移动壳卡片共用同一条头部 */
+/* 面板头条：返回 + 标题/元信息 + 操作菜单 */
 .panel-head {
   flex: none;
   display: flex;
   align-items: center;
   gap: var(--lp-space-2);
-  padding: var(--lp-space-2) var(--lp-space-3);
-  border-bottom: 1px solid var(--lp-edge-faint);
+  padding: 14px var(--lp-space-3);
+  border-bottom: 1px solid var(--lp-edge-1);
 }
 
 .head-back {
@@ -898,18 +900,19 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: var(--lp-radius-xs);
-  background: transparent;
-  color: var(--lp-text-muted);
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--lp-edge-1);
+  border-radius: 50%;
+  background: var(--lp-surface-card);
+  color: var(--lp-text-2);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .head-back:hover {
   background: var(--lp-surface-hover);
+  border-color: var(--lp-edge-2);
   color: var(--lp-text-1);
 }
 
@@ -918,12 +921,15 @@ onUnmounted(() => {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 3px;
   line-height: 1.25;
 }
 
 .head-title {
-  font-size: 13px;
+  font-family: var(--lp-font-display);
+  font-size: 15px;
   font-weight: 600;
+  letter-spacing: -0.02em;
   color: var(--lp-text-1);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -931,8 +937,9 @@ onUnmounted(() => {
 }
 
 .head-meta {
-  font-size: 10.5px;
-  color: var(--lp-text-faint);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--lp-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

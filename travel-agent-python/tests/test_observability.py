@@ -1,5 +1,5 @@
-from app.agent.observability import metrics, observe_run, use_scene
-from app.agent.trace import record_event
+from app.agent.runtime.observability import metrics, observe_run, use_scene
+from app.agent.runtime.trace import record_event
 
 
 def test_observe_run_aggregates_llm_tools_retries_and_tokens():
@@ -98,7 +98,7 @@ def test_observe_run_keeps_recent_memory_and_persistent_trace_lookup():
 
 def test_trace_has_request_span_parent_and_action_links():
     with observe_run("run-linked", request_id="request-linked", action_id="action-linked") as trace:
-        with __import__("app.agent.trace", fromlist=["trace_span"]).trace_span("node", "parent"):
+        with __import__("app.agent.runtime.trace", fromlist=["trace_span"]).trace_span("node", "parent"):
             record_event("decision", "child")
     data = trace.to_dict()
     assert data["request_id"] == "request-linked"

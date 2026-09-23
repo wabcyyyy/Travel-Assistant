@@ -122,9 +122,9 @@ h3 { margin: 0; font-size: 16px; }
 button, input, select, textarea { font: inherit; color: var(--lp-text); background: var(--lp-bg); border: 1px solid var(--lp-border); border-radius: var(--lp-radius-xs); padding: 6px 8px; }
 button { cursor: pointer; }
 button:disabled { opacity: 0.5; cursor: wait; }
-.totals { padding: 12px 0; list-style: none; font-size: 12px; line-height: 1.8; }
+.totals { padding: 12px 0; list-style: none; font-size: 13px; line-height: 1.8; }
 .over, [role='alert'] { color: var(--lp-danger); }
-.expense-row { border-top: 1px solid var(--lp-border); padding: 12px 0; font-size: 12px; }
+.expense-row { border-top: 1px solid var(--lp-border); padding: 12px 0; font-size: 13px; }
 .expense-row p { margin: 4px 0; overflow-wrap: anywhere; color: var(--lp-text-muted); }
 .actions { display: flex; gap: 4px; }
 .expense-form { display: grid; gap: 10px; }

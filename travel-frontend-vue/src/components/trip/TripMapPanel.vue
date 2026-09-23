@@ -335,10 +335,12 @@ onBeforeUnmount(() => {
   gap: 4px;
   max-width: 260px;
   padding: 6px;
-  border: 1px solid var(--lp-edge-1);
+  border: 1px solid var(--lp-glass-border);
   border-radius: var(--lp-radius-sm);
-  background: var(--lp-surface-elevated);
-  box-shadow: var(--lp-shadow-sm);
+  background: var(--lp-glass-bg);
+  box-shadow: var(--lp-glass-shadow), var(--lp-glass-highlight);
+  backdrop-filter: var(--lp-glass-blur);
+  -webkit-backdrop-filter: var(--lp-glass-blur);
 }
 
 .day-toggle {
@@ -370,10 +372,12 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  border: 1px solid var(--lp-edge-1);
+  border: 1px solid var(--lp-glass-border);
   border-radius: var(--lp-radius-sm);
-  background: var(--lp-surface-elevated);
-  box-shadow: var(--lp-shadow-sm);
+  background: var(--lp-glass-bg);
+  box-shadow: var(--lp-glass-shadow), var(--lp-glass-highlight);
+  backdrop-filter: var(--lp-glass-blur);
+  -webkit-backdrop-filter: var(--lp-glass-blur);
   font-size: 12px;
   font-weight: 600;
   color: var(--lp-text-2);
@@ -390,10 +394,12 @@ onBeforeUnmount(() => {
   margin: 0;
   max-width: 100%;
   padding: 5px 10px;
-  border: 1px solid var(--lp-edge-1);
+  border: 1px solid var(--lp-glass-border);
   border-radius: var(--lp-radius-xs);
-  background: var(--lp-surface-elevated);
-  box-shadow: var(--lp-shadow-sm);
+  background: var(--lp-glass-bg);
+  box-shadow: var(--lp-glass-shadow), var(--lp-glass-highlight);
+  backdrop-filter: var(--lp-glass-blur);
+  -webkit-backdrop-filter: var(--lp-glass-blur);
   font-size: var(--lp-text-caption);
   color: var(--lp-text-muted);
   overflow: hidden;
@@ -423,7 +429,7 @@ onBeforeUnmount(() => {
   background: var(--pin-color, var(--lp-accent));
   box-shadow: var(--lp-shadow-sm);
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform var(--lp-dur-fast) var(--lp-ease-out-quint), box-shadow var(--lp-dur-fast) var(--lp-ease-out-quint);
 }
 
 :deep(.map-pin .pin-num) {

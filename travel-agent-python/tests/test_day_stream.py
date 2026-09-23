@@ -1,7 +1,7 @@
 from pydantic import ValidationError
 
-from app.agent import day_stream
-from app.agent.grounding_evidence import issue_evidence
+from app.agent.generation.orchestration import day_stream
+from app.agent.grounding.grounding_evidence import issue_evidence
 from app.schemas.trip import BackupRule, GenerateDayRequest, GenerateRequest, PhotoSpot
 
 

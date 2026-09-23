@@ -28,12 +28,13 @@ from typing import Literal
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from app.agent import tools, workflow
-from app.agent.day_prompts import GENERATION_TEMPERATURE
-from app.agent.generation_core import estimate_plans_total, stay_nights
-from app.agent.observability import observe_run
-from app.agent.plan_context import run_plan_context
-from app.agent.trip_stream import run_generate_trip_stream
+from app.agent.generation.content.day_prompts import GENERATION_TEMPERATURE
+from app.agent.generation.orchestration import workflow
+from app.agent.generation.orchestration.plan_context import run_plan_context
+from app.agent.generation.orchestration.trip_stream import run_generate_trip_stream
+from app.agent.generation.rules.generation_core import estimate_plans_total, stay_nights
+from app.agent.runtime.observability import observe_run
+from app.agent.tools import impl as tools
 from app.common.config import settings
 from app.prompts.open_generation import OPEN_DAY_PROMPT_VERSION, OPEN_TRIP_PROMPT_VERSION
 from app.schemas.trip import DailyPlan, GenerateDayRequest, GenerateRequest, GenerateResponse, Suggestion

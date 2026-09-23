@@ -30,9 +30,10 @@
 ## 边界（门禁机检，违反即红）
 
 - **分层**：`app.api → app.services → app.agent`，禁反向与跨层（import-linter 契约 1）。
+- **agent 域阶梯**：agent 层内按域分（`core → runtime → data → grounding → tools/research → generation → editing`），上层可 import 下层，禁反向；未域化的平铺模块视为上层。域地图与"新代码放哪"落位表见 `app/agent/README.md`，机检 = import-linter 的 "Agent domain ladder" 契约 + `tests/test_agent_domain_ladder.py`。
 - **agent 门面**：api/services 只准 `from app.agent import X` 用 `app/agent/__init__.py` 的导出面；深路径 import agent 子模块即红（契约 2）。新增对外能力 = 在 `__init__.py` 登记 re-export + `__all__`。
 - **跨模块共用符号**：agent 层内多模块共用的内部函数由所属模块去下划线提级为「跨模块 API」并在模块 docstring 登记（见 generators/day_stream/tools/workflow）；不搞第二份实现，也不靠门面转发内部符号。
-- **工具面**：全部工具经 `app/agent/tool_registry/` 注册表包派发（预算/参数校验/审计全覆盖），禁 `getattr(tools, name)` 字符串派发。注册 handler 一律调用期读 `tools` 模块属性（晚绑定），保 `patch.object(tools, ...)` 可 mock。
+- **工具面**：全部工具经 `app/agent/tools/registry/` 注册表包派发（预算/参数校验/审计全覆盖），禁 `getattr(tools, name)` 字符串派发。注册 handler 与调用方一律 `from app.agent.tools import impl as tools` 后在**调用期**读 `tools` 模块属性（晚绑定），保 `patch.object(tools, ...)` 可 mock——实现模块叫 `impl` 是为了让域包 `tools/` 与"被 patch 的那个模块对象"仍是同一个。
 
 ## 数据访问选址（新增读写先选对门）
 

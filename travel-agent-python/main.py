@@ -24,7 +24,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.agent.usage_store import usage_store
+from app.agent.runtime.usage_store import usage_store
 from app.api import agent, mcp
 from app.api.business import business_routers
 from app.api.security_headers import SecurityHeadersMiddleware

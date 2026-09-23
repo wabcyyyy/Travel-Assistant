@@ -2,8 +2,8 @@
 
 import json
 
-from app.agent import butler
-from app.agent.function_calling import FunctionCallingError
+from app.agent.generation.content import butler
+from app.agent.tools.function_calling import FunctionCallingError
 
 LONG_INTRO = "西湖" * 100  # ≥180 字：达到 200~300 字契约下限，不触发扩写轮
 
@@ -67,7 +67,7 @@ def test_poi_intros_uses_function_calling_then_returns_intros(monkeypatch):
         invoked.append((name, arguments))
         return {"city": arguments.get("city"), "items": [{"name": "西湖"}]}
 
-    monkeypatch.setattr("app.agent.tool_registry.registry.invoke", fake_invoke)
+    monkeypatch.setattr("app.agent.tools.registry.registry.invoke", fake_invoke)
     intros = butler.run_poi_intros("杭州", ["西湖"])
     assert intros["西湖"].startswith("西湖")  # FC 成功路径返回长介绍（达标，不触发扩写轮）
     assert invoked and invoked[0][0] == "search_pois"

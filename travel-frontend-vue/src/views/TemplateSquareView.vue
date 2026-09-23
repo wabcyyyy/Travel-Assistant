@@ -1,7 +1,7 @@
 <template>
   <div class="template-square" :class="{ wide: true }">
     <header class="square-head">
-      <h1>模板广场</h1>
+      <h1 class="lp-display">模板广场</h1>
       <p class="hint">把别人的行程骨架拿来改成自己的：使用模板后可继续 AI 改造。</p>
     </header>
 
@@ -123,6 +123,12 @@ async function onFork(card: TemplateCardVO) {
   padding: 24px 16px;
 }
 .square-head h1 {
+  font-family: var(--lp-font-display);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  color: var(--lp-text-1);
+  font-variant-numeric: tabular-nums;
   margin: 0 0 4px;
   font-size: 22px;
 }

@@ -1,6 +1,6 @@
 """加点工作台的地点检索（服务层）：OTM 分类池 + 联网补池，无本地语料。
 
-与 Agent 检索的关系：同一份 `app.agent.tools.workbench_search`（OTM 半径池 +
+与 Agent 检索的关系：同一份 `app.agent.tools.impl.workbench_search`（OTM 半径池 +
 联网搜索补池）——「工作台能加的点位」与「生成时能引用的点位」天然同源，不分叉。
 
 空态如实：`coveredCities` 来自 city_geo 字典（supported-cities 同源），前端据此

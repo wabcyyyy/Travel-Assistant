@@ -25,7 +25,7 @@ from app.schemas.common import WireModel
 
 
 class ButlerNoteRequest(WireModel):
-    """管家讲解请求；字段与 run_butler_note（app/agent/butler.py）消费的键逐一对齐。
+    """管家讲解请求；字段与 run_butler_note（app/agent/generation/content/butler.py）消费的键逐一对齐。
 
     兼容性说明：
     - preferences：Java 侧传字符串（原始偏好串），历史行为 str/list 都接受，原值进 prompt；

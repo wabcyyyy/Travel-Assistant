@@ -10,9 +10,9 @@ from typing import Any
 
 import pytest
 
-from app.agent import existence
-from app.agent.existence import NOT_FOUND, VERIFIED, ResolveResult
-from app.agent.suggestion_grounding import verify_suggestion_rows
+from app.agent.grounding import existence
+from app.agent.grounding.existence import NOT_FOUND, VERIFIED, ResolveResult
+from app.agent.grounding.suggestion_grounding import verify_suggestion_rows
 
 VERDICTS: dict[str, ResolveResult] = {
     "已知存在": ResolveResult(

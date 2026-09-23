@@ -32,9 +32,11 @@ import pathlib
 from contextlib import ExitStack
 from unittest.mock import patch
 
-from app.agent import day_stream, landing, tools, trip_stream
+from app.agent.generation.content import landing
+from app.agent.generation.orchestration import day_stream, trip_stream
 from app.agent.research import reasoning
-from app.agent.trace import trace_run
+from app.agent.runtime.trace import trace_run
+from app.agent.tools import impl as tools
 from app.common.config import settings
 from app.schemas.trip import GenerateDayRequest
 from tests.agent_eval import mock_llm
@@ -96,8 +98,8 @@ def _patch_fixture_stack(stack, city: str) -> None:
     # 硬护栏：开关关掉之外，再把实时价函数换成"一旦被调用就报错"。
     # 只关开关是"约定离线"，这条是"证明离线"——将来谁在链路里新加一个
     # 绕过开关的实时价调用，这里立刻炸而不是变成环境相关的漂移快照。
-    stack.enter_context(patch("app.agent.formatting.prices.query_live_price", _forbid_network_call))
-    stack.enter_context(patch("app.agent.formatting.prices.query_live_food_price", _forbid_network_call))
+    stack.enter_context(patch("app.agent.generation.output.prices.query_live_price", _forbid_network_call))
+    stack.enter_context(patch("app.agent.generation.output.prices.query_live_food_price", _forbid_network_call))
     stack.enter_context(patch.object(trip_stream, "fill_suggestion_gaps", lambda rows, city, **kw: rows))
     stack.enter_context(patch.object(landing, "local_ground", lambda item, city: None))
     assert data  # 保持 fixture 数据被显式构造（城市名参与生成，非法城市会在此暴露）

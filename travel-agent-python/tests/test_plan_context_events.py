@@ -9,8 +9,8 @@ import json
 
 import pytest
 
-from app.agent import plan_context
-from app.agent.trace import trace_run
+from app.agent.generation.orchestration import plan_context
+from app.agent.runtime.trace import trace_run
 from app.common import event_publisher
 from app.common.event_publisher import (
     publish_degraded,

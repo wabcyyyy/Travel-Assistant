@@ -18,7 +18,7 @@ defineProps<{
 
 <style scoped>
 .app-panel {
-  padding: var(--lp-space-4);
+  padding: var(--lp-space-5);
   border: 1px solid var(--lp-edge-1);
   border-radius: var(--lp-radius-card);
   background: var(--lp-surface-card);
@@ -35,13 +35,15 @@ defineProps<{
   align-items: center;
   justify-content: space-between;
   gap: var(--lp-space-3);
-  margin-bottom: var(--lp-space-3);
+  margin-bottom: var(--lp-space-4);
 }
 
 .panel-title {
   margin: 0;
-  font-size: var(--lp-text-subtitle);
-  font-weight: 700;
+  font-family: var(--lp-font-display);
+  font-size: var(--lp-text-section);
+  font-weight: 600;
+  letter-spacing: -0.02em;
   color: var(--lp-text-1);
 }
 

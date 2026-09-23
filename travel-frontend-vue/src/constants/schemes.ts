@@ -11,9 +11,13 @@ export interface SchemeMeta {
 }
 
 // default 走「黑白灰」（v2.7 §20 R4，TREK 默认 swatch #111827 / #e4e4e7）；
-// 彩色留给 teal / contrast 两套可选，以及 day-tint / 照片 / 地图（部分 UI 可改色）
+// 彩色 scheme 只覆盖 accent 家族（TREK 2.5），天色相随锚点整体平移
 export const SCHEMES: readonly SchemeMeta[] = [
   { id: 'default', swatch: { light: '#111827', dark: '#e4e4e7' } },
   { id: 'teal', swatch: { light: '#0f766e', dark: '#2dd4bf' } },
+  { id: 'indigo', swatch: { light: '#4f46e5', dark: '#818cf8' } },
+  { id: 'violet', swatch: { light: '#7c3aed', dark: '#a78bfa' } },
+  { id: 'rose', swatch: { light: '#e11d48', dark: '#fb7185' } },
+  { id: 'amber', swatch: { light: '#d97706', dark: '#fbbf24' } },
   { id: 'contrast', swatch: { light: '#155e75', dark: '#67e8f9' } },
 ]

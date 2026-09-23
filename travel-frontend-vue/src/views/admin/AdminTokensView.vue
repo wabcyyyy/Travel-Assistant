@@ -318,7 +318,10 @@ onBeforeUnmount(() => {
 
 .stat-card :deep(.stat-value) {
   white-space: nowrap;
-  font-size: 26px;
+  font-family: var(--lp-font-display);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
   font-family: var(--lp-font-display);
 }
 

@@ -97,7 +97,7 @@ const activeMenu = computed(() => route.path)
 }
 
 .menu-group {
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;

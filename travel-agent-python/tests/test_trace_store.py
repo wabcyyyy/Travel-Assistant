@@ -1,4 +1,4 @@
-from app.agent.trace_store import TraceStore
+from app.agent.runtime.trace_store import TraceStore
 
 
 def test_trace_store_round_trips_deidentified_trace(tmp_path):

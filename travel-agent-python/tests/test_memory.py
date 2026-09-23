@@ -1,9 +1,9 @@
 """memory 模块单测：WorkingMemory 过滤与 dialogue 滑窗。"""
 
-from app.agent.memory import WorkingMemory, dialogue_messages, recent_turns
-from app.agent.memory.dialogue import dialogue_fence_block
-from app.agent.observability import observe_run
-from app.agent.plan_context import filter_used as _filter_used
+from app.agent.generation.orchestration.plan_context import filter_used as _filter_used
+from app.agent.runtime.memory import WorkingMemory, dialogue_messages, recent_turns
+from app.agent.runtime.memory.dialogue import dialogue_fence_block
+from app.agent.runtime.observability import observe_run
 
 
 def test_working_memory_filter_and_mark():

@@ -88,11 +88,14 @@
   --lp-surface-selected: #ecfeff;
   /* 玻璃面四件套（trek .tool 实测：白 72%→暖白 50% 渐变 + 暖灰边 + 内高光 + 暖调双层影）；
      消费方只声明 backdrop-filter: var(--lp-glass-blur) 与 background/border/shadow 四个令牌 */
-  --lp-glass-bg: linear-gradient(135deg, rgb(255 255 255 / 72%), rgb(255 251 247 / 50%));
-  --lp-glass-border: rgb(219 215 210 / 70%);
-  --lp-glass-highlight: inset 0 1px 0 rgb(255 255 255 / 80%);
-  --lp-glass-shadow: 0 1px 2px rgb(80 69 61 / 5%), 0 12px 32px -14px rgb(54 44 36 / 20%);
-  --lp-glass-blur: blur(22px) saturate(1.7);
+  --lp-glass-bg: linear-gradient(135deg, rgb(255 255 255 / 74%), rgb(248 250 252 / 56%));
+  --lp-glass-border: rgb(226 232 240 / 75%);
+  --lp-glass-highlight: inset 0 1px 0 rgb(255 255 255 / 85%);
+  --lp-glass-shadow: 0 1px 2px rgb(15 23 42 / 4%), 0 12px 32px -14px rgb(15 23 42 / 14%);
+  --lp-glass-blur: blur(22px) saturate(1.4);
+  /* 滚动加深档（TREK Navbar 240ms）：内容掠过后抬不透明度与影深 */
+  --lp-glass-scrolled-bg: linear-gradient(135deg, rgb(255 255 255 / 92%), rgb(248 250 252 / 86%));
+  --lp-glass-scrolled-shadow: 0 1px 2px rgb(15 23 42 / 5%), 0 16px 40px -16px rgb(15 23 42 / 20%);
   /* 浮层面板（v2.7 §20 R1，TREK sidebar 实测原值）：详情工作台左右两栏的面与影。
      底与影不随 scheme 变，只有暗色档另给一套（TREK 同款语义） */
   --lp-panel-bg: rgb(250 250 250 / 82%);
@@ -176,10 +179,14 @@
   --lp-fs-scale-subtitle: 1;
   --lp-fs-scale-body: 1;
   --lp-fs-scale-caption: 1;
-  --lp-text-title: calc(24px * var(--lp-fs-scale-title));
+  --lp-text-display: calc(40px * var(--lp-fs-scale-title));
+  --lp-text-display-xl: calc(56px * var(--lp-fs-scale-title));
+  --lp-text-title: calc(22px * var(--lp-fs-scale-title));
+  --lp-text-section: calc(18px * var(--lp-fs-scale-subtitle));
   --lp-text-subtitle: calc(18px * var(--lp-fs-scale-subtitle));
   --lp-text-body: calc(14px * var(--lp-fs-scale-body));
   --lp-text-caption: calc(12px * var(--lp-fs-scale-caption));
+  --lp-text-micro: 11px;
   /* 形状刻度（trek 实测：8/12/16/20/28 + hero 32） */
   --lp-radius-xs: 8px;
   --lp-radius-sm: 12px;
@@ -229,7 +236,7 @@
   --lp-sand: var(--lp-surface-2);
   --lp-accent-soft: var(--lp-accent-subtle);
   --lp-accent-warm: var(--lp-accent); /* 陶土橙退役：随页面重做删除消费点 */
-  --lp-font-display: var(--lp-font-ui); /* 衬线展示字退役：随页面重做删除消费点 */
+  --lp-font-display: var(--lp-font-ui);
   --lp-font-body: var(--lp-font-ui);
   --lp-font-data: var(--lp-font-mono);
   --lp-rule: var(--lp-edge-faint);
@@ -272,6 +279,68 @@
   --lp-edge-2: #64748b;
 }
 
+[data-scheme='indigo'] {
+  --lp-accent: #4f46e5;
+  --lp-accent-hover: #4338ca;
+  --lp-accent-subtle: #eef2ff;
+  --lp-surface-selected: #eef2ff;
+  --lp-day-h-1: 250;
+  --lp-day-h-2: 295;
+  --lp-day-h-3: 340;
+  --lp-day-h-4: 25;
+  --lp-day-h-5: 70;
+  --lp-day-h-6: 115;
+  --lp-day-h-7: 160;
+  --lp-day-h-8: 205;
+}
+
+[data-scheme='rose'] {
+  --lp-accent: #e11d48;
+  --lp-accent-hover: #be123c;
+  --lp-accent-subtle: #ffe4e6;
+  --lp-surface-selected: #ffe4e6;
+  --lp-day-h-1: 350;
+  --lp-day-h-2: 35;
+  --lp-day-h-3: 80;
+  --lp-day-h-4: 125;
+  --lp-day-h-5: 170;
+  --lp-day-h-6: 215;
+  --lp-day-h-7: 260;
+  --lp-day-h-8: 305;
+}
+
+[data-scheme='amber'] {
+  --lp-accent: #d97706;
+  --lp-accent-hover: #b45309;
+  --lp-accent-subtle: #fef3c7;
+  --lp-surface-selected: #fef3c7;
+  /* 琥珀底上白字对比不足，主按钮用深字（WCAG AA） */
+  --lp-accent-on-fill: #1c1917;
+  --lp-day-h-1: 40;
+  --lp-day-h-2: 85;
+  --lp-day-h-3: 130;
+  --lp-day-h-4: 175;
+  --lp-day-h-5: 220;
+  --lp-day-h-6: 265;
+  --lp-day-h-7: 310;
+  --lp-day-h-8: 355;
+}
+
+[data-scheme='violet'] {
+  --lp-accent: #7c3aed;
+  --lp-accent-hover: #6d28d9;
+  --lp-accent-subtle: #ede9fe;
+  --lp-surface-selected: #ede9fe;
+  --lp-day-h-1: 280;
+  --lp-day-h-2: 325;
+  --lp-day-h-3: 10;
+  --lp-day-h-4: 55;
+  --lp-day-h-5: 100;
+  --lp-day-h-6: 145;
+  --lp-day-h-7: 190;
+  --lp-day-h-8: 235;
+}
+
 /* ---------- 暗色（.dark 由 appearance.ts / 引导脚本写在 <html> 上；trek 实测为
    中性 zinc 系：body #121215、bg #0f0f0f、card #131316、text #f4f4f5、edge #27272a） ---------- */
 .dark {
@@ -283,10 +352,12 @@
   --lp-surface-input: #141416;
   --lp-surface-hover: #1d1d20;
   --lp-surface-selected: #27272a;
-  --lp-glass-bg: linear-gradient(135deg, rgb(48 48 48 / 58%), rgb(33 33 33 / 42%));
+  --lp-glass-bg: linear-gradient(135deg, rgb(30 41 59 / 62%), rgb(15 23 42 / 48%));
   --lp-glass-border: rgb(255 255 255 / 10%);
   --lp-glass-highlight: inset 0 1px 0 rgb(255 255 255 / 8%);
   --lp-glass-shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 12px 32px -14px rgb(0 0 0 / 55%);
+  --lp-glass-scrolled-bg: linear-gradient(135deg, rgb(15 23 42 / 90%), rgb(2 6 23 / 84%));
+  --lp-glass-scrolled-shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 16px 40px -16px rgb(0 0 0 / 68%);
   --lp-panel-bg: rgb(19 19 22 / 82%);
   --lp-panel-shadow: 0 4px 32px rgb(0 0 0 / 45%), 0 0 0 1px rgb(255 255 255 / 5%);
   /* 票根 / 护照卡（暗色下把对比反过来：卡片面比页面底色亮一档） */
@@ -344,6 +415,34 @@
   --lp-text-muted: #cbd5e1;
   --lp-edge-1: #64748b;
   --lp-edge-2: #94a3b8;
+}
+
+.dark[data-scheme='indigo'] {
+  --lp-accent: #818cf8;
+  --lp-accent-hover: #a5b4fc;
+  --lp-accent-subtle: #1e1b4b;
+  --lp-accent-on-fill: #0f0a1e;
+}
+
+.dark[data-scheme='rose'] {
+  --lp-accent: #fb7185;
+  --lp-accent-hover: #fda4af;
+  --lp-accent-subtle: #4c0519;
+  --lp-accent-on-fill: #1c0508;
+}
+
+.dark[data-scheme='amber'] {
+  --lp-accent: #fbbf24;
+  --lp-accent-hover: #fcd34d;
+  --lp-accent-subtle: #451a03;
+  --lp-accent-on-fill: #1c1917;
+}
+
+.dark[data-scheme='violet'] {
+  --lp-accent: #a78bfa;
+  --lp-accent-hover: #c4b5fd;
+  --lp-accent-subtle: #2e1065;
+  --lp-accent-on-fill: #0f0a1e;
 }
 
 /* ---------- 密度：只改间距令牌 + 字号倍率 + EP 组件尺寸 ---------- */
@@ -440,6 +539,102 @@ h3 {
   color: var(--lp-accent-hover);
 }
 
+/* ---------- TREK 动效签名：quint 曲线 + 按压手感 + 页面入场 ---------- */
+:root {
+  --lp-ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
+  --lp-ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --lp-dur-press: 80ms;
+  --lp-dur-fast: 150ms;
+  --lp-dur-base: 180ms;
+  --lp-dur-modal: 220ms;
+  --lp-dur-theme: 320ms;
+}
+
+button:not(:disabled):not([data-no-press]),
+[role='button']:not([aria-disabled='true']):not([data-no-press]) {
+  transition-property: transform, color, background-color, border-color, box-shadow, opacity, filter;
+  transition-duration: var(--lp-dur-base);
+  transition-timing-function: var(--lp-ease-out-quint);
+}
+
+button:not(:disabled):not([data-no-press]):active,
+[role='button']:not([aria-disabled='true']):not([data-no-press]):active,
+[data-press]:active {
+  transform: scale(0.97);
+  transition-duration: var(--lp-dur-press);
+}
+
+.transition,
+.transition-all,
+.transition-colors,
+.transition-opacity,
+.transition-transform,
+.transition-shadow {
+  transition-timing-function: var(--lp-ease-out-quint);
+}
+
+.lp-glass {
+  background: var(--lp-glass-bg);
+  border: 1px solid var(--lp-glass-border);
+  box-shadow: var(--lp-glass-shadow), var(--lp-glass-highlight);
+  -webkit-backdrop-filter: var(--lp-glass-blur);
+  backdrop-filter: var(--lp-glass-blur);
+}
+
+.lp-eyebrow {
+  font-family: var(--lp-font-ui);
+  font-size: var(--lp-text-micro);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--lp-text-faint);
+}
+
+.lp-label {
+  font-family: var(--lp-font-ui);
+  font-size: var(--lp-text-caption);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--lp-text-muted);
+}
+
+.lp-display {
+  font-family: var(--lp-font-display);
+  font-size: var(--lp-text-display);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+  color: var(--lp-text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-display-md {
+  font-family: var(--lp-font-display);
+  font-size: var(--lp-text-title);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  color: var(--lp-text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-display-xl {
+  font-family: var(--lp-font-display);
+  font-size: var(--lp-text-display-xl);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 0.98;
+  color: var(--lp-text-1);
+}
+
+.lp-num {
+  font-family: var(--lp-font-ui);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--lp-text-1);
+}
+
 :focus-visible {
   outline: 2px solid var(--lp-accent);
   outline-offset: 2px;
@@ -523,6 +718,8 @@ h3 {
 
 .el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link) {
   box-shadow: var(--lp-shadow-xs);
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link):hover {
@@ -532,6 +729,53 @@ h3 {
 
 .el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link):active {
   transform: translateY(0) scale(0.98);
+}
+
+/* 自研主/次按钮（与 Generate/Login 同一套手感） */
+.lp-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 22px;
+  border: none;
+  border-radius: var(--lp-radius-sm);
+  background: var(--lp-accent);
+  color: var(--lp-accent-on-fill);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--lp-dur-fast) var(--lp-ease-out-quint);
+}
+
+.lp-btn-primary:hover:not(:disabled) {
+  background: var(--lp-accent-hover);
+}
+
+.lp-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lp-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--lp-edge-1);
+  border-radius: var(--lp-radius-sm);
+  background: transparent;
+  color: var(--lp-text-2);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lp-btn-ghost:hover {
+  background: var(--lp-surface-hover);
 }
 
 /* ---------- 卡片：细边框 + --lp-radius-card（经 EP 变量，不再用 !important） ---------- */
@@ -576,7 +820,9 @@ h3 {
 }
 
 .el-dialog__title {
-  font-weight: 800;
+  font-family: var(--lp-font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 /* ---------- 表格 ---------- */
@@ -587,18 +833,17 @@ h3 {
 }
 
 .el-table th.el-table__cell {
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  color: var(--lp-muted);
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--lp-text-muted);
   font-size: 12px;
 }
 
 /* ---------- 微标签（大写英文 + 宽字距）：统计 / 票根 / 计数等标签层共用的唯一规格 ---------- */
 .lp-micro {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--lp-text-muted);
 }
@@ -634,10 +879,11 @@ h3 {
 }
 
 .lp-logo .zh {
+  font-family: var(--lp-font-display);
   font-size: 18px;
-  font-weight: 800;
-  color: var(--lp-ink);
-  letter-spacing: 0.04em;
+  font-weight: 600;
+  color: var(--lp-text-1);
+  letter-spacing: -0.02em;
 }
 
 .lp-logo .en {
@@ -666,8 +912,13 @@ h3 {
 
 .lp-page-head h2 {
   margin: 0;
-  font-size: 24px;
-  font-weight: 800;
+  font-family: var(--lp-font-display);
+  font-size: var(--lp-text-display);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+  color: var(--lp-text-1);
+  font-variant-numeric: tabular-nums;
 }
 
 .lp-page-head .sub {
@@ -698,9 +949,11 @@ h3 {
 
 .stat-value {
   margin: 0;
+  font-family: var(--lp-font-display);
   font-size: 28px;
-  font-weight: 800;
-  color: var(--lp-ink);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--lp-text-1);
   font-variant-numeric: tabular-nums;
 }
 
@@ -711,7 +964,10 @@ h3 {
 }
 
 .card-title {
-  font-weight: 700;
+  font-family: var(--lp-font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--lp-text-1);
 }
 
 .card-header {
@@ -750,8 +1006,13 @@ h3 {
 
 .lp-page-head.stack h2 {
   display: block;
-  font-size: 26px;
-  letter-spacing: -0.01em;
+  font-family: var(--lp-font-display);
+  font-size: var(--lp-text-display);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+  color: var(--lp-text-1);
+  font-variant-numeric: tabular-nums;
 }
 
 .lp-page-head.stack .sub {
@@ -954,6 +1215,23 @@ h3 {
   display: none !important;
 }
 
+/* 减弱动效：压掉 press 缩放与 lift（transition 已被上面压成瞬时，transform 仍需显式关掉） */
+@media (prefers-reduced-motion: reduce) {
+  button:not(:disabled):not([data-no-press]):active,
+  [role='button']:not([aria-disabled='true']):not([data-no-press]):active,
+  [data-press]:active,
+  .stat-card.clickable:hover {
+    transform: none !important;
+  }
+}
+
+[data-reduce-motion='true'] button:not(:disabled):not([data-no-press]):active,
+[data-reduce-motion='true'] [role='button']:not([aria-disabled='true']):not([data-no-press]):active,
+[data-reduce-motion='true'] [data-press]:active,
+[data-reduce-motion='true'] .stat-card.clickable:hover {
+  transform: none !important;
+}
+
 /* ============================================================
    管理端令牌级统一（M4-③ §5.5）：AdminLayout + 五子路由
    - 密度：.admin-content 内表格统一紧凑行高（前台 11px 节奏不受影响）
@@ -970,8 +1248,12 @@ h3 {
 /* 数字列：data mono 字体 */
 .admin-content .el-table td.num .cell {
   font-family: var(--lp-font-data);
-  font-size: 12.5px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
+}
+
+.admin-content .el-table .cell {
+  font-size: 13.5px;
 }
 
 /* 主按钮令牌对齐：--lp-accent 家族（与全局 --el-color-primary 同源，显式声明防漂移） */

@@ -1,46 +1,48 @@
 <template>
   <div class="login-page">
     <div class="login-card">
-      <!-- 左侧品牌面板 -->
       <div class="brand-panel">
         <div class="brand">
-          <span class="mark"></span>
+          <span class="mark" aria-hidden="true"></span>
           <span class="brand-name">旅行助手</span>
-          <span class="brand-en">TRAVEL ASSISTANT</span>
         </div>
         <p class="brand-lede">把下一次旅行，<br />交给一次生成。</p>
         <p class="brand-foot">AI 规划每日行程 · 预算 · 地图路线</p>
       </div>
-      <!-- 右侧表单 -->
       <div class="form-panel">
-        <h2 class="title">{{ isRegister ? '创建账号' : '欢迎回来' }}</h2>
+        <h2 class="lp-display-md title">{{ isRegister ? '创建账号' : '欢迎回来' }}</h2>
         <p class="subtitle">{{ isRegister ? '注册后立即开始规划行程' : '登录以继续你的行程' }}</p>
-        <el-form ref="formRef" :model="form" :rules="rules" label-position="top" size="large">
-          <el-form-item prop="username" label="用户名">
-            <el-input v-model="form.username" placeholder="3-32 个字符" :prefix-icon="User" />
-          </el-form-item>
-          <el-form-item prop="password" label="密码">
-            <el-input
+
+        <form class="fields" @submit.prevent="onSubmit">
+          <div class="field">
+            <label class="field-label" for="login-user">用户名</label>
+            <AppInput id="login-user" v-model="form.username" placeholder="3-32 个字符" aria-label="用户名" />
+            <p v-if="errors.username" class="field-error">{{ errors.username }}</p>
+          </div>
+          <div class="field">
+            <label class="field-label" for="login-pass">密码</label>
+            <AppInput
+              id="login-pass"
               v-model="form.password"
               type="password"
               placeholder="请输入密码"
-              show-password
-              :prefix-icon="Lock"
+              aria-label="密码"
             />
-          </el-form-item>
-          <el-form-item v-if="isRegister" prop="nickname" label="昵称">
-            <el-input v-model="form.nickname" placeholder="选填" :prefix-icon="Avatar" />
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" :loading="loading" style="width: 100%" @click="onSubmit">
-              {{ isRegister ? '注册并登录' : '登录' }}
-            </el-button>
-          </el-form-item>
-        </el-form>
+            <p v-if="errors.password" class="field-error">{{ errors.password }}</p>
+          </div>
+          <div v-if="isRegister" class="field">
+            <label class="field-label" for="login-nick">昵称</label>
+            <AppInput id="login-nick" v-model="form.nickname" placeholder="选填" aria-label="昵称" />
+          </div>
+          <button type="submit" class="btn-primary" :disabled="loading">
+            {{ loading ? '请稍候…' : isRegister ? '注册并登录' : '登录' }}
+          </button>
+        </form>
+
         <div class="switch">
-          <el-link type="primary" @click="toggleMode">
+          <button type="button" class="link-btn" @click="toggleMode">
             {{ isRegister ? '已有账号？去登录' : '没有账号？去注册' }}
-          </el-link>
+          </button>
         </div>
       </div>
     </div>
@@ -48,19 +50,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Avatar, Lock, User } from '@element-plus/icons-vue'
-// ElMessage 由 AutoImport resolver 按需注入（含样式）；表单类型仍显式声明
-import type { FormInstance, FormRules } from 'element-plus'
 
 import { login, register } from '../api'
+import AppInput from '../components/ui/AppInput.vue'
 import { useUserStore } from '../store/user'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
-const formRef = ref<FormInstance>()
 const isRegister = ref(false)
 const loading = ref(false)
 
@@ -70,66 +69,43 @@ const form = reactive({
   nickname: '',
 })
 
-const rules = computed<FormRules>(() => ({
-  username: [
-    { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 3, max: 32, message: '用户名长度 3-32', trigger: 'blur' },
-  ],
-  password: isRegister.value
-    ? [
-        { required: true, message: '请输入密码', trigger: 'blur' },
-        { min: 6, max: 24, message: '密码长度 6-24', trigger: 'blur' },
-        {
-          validator: (_rule, value, callback) => {
-            if (!value || value.length < 6) {
-              callback()
-              return
-            }
-            if (!/[A-Za-z]/.test(value) || !/\d/.test(value)) {
-              callback(new Error('密码需同时包含字母和数字'))
-            } else {
-              callback()
-            }
-          },
-          trigger: 'blur',
-        },
-      ]
-    : // 登录只校验非空：历史/演示账号（如管理员 123456）不应被注册策略挡住
-      [{ required: true, message: '请输入密码', trigger: 'blur' }],
-}))
+const errors = reactive({ username: '', password: '' })
 
-function toggleMode() {
-  isRegister.value = !isRegister.value
-  formRef.value?.clearValidate()
+function validate(): boolean {
+  errors.username = ''
+  errors.password = ''
+  const u = form.username.trim()
+  if (!u) errors.username = '请输入用户名'
+  else if (u.length < 3 || u.length > 32) errors.username = '用户名长度 3-32'
+  if (!form.password) errors.password = '请输入密码'
+  else if (isRegister.value && form.password.length < 6) errors.password = '密码至少 6 位'
+  return !errors.username && !errors.password
 }
 
-async function onSubmit() {
-  const valid = await formRef.value?.validate().catch(() => false)
-  if (!valid) return
+function toggleMode(): void {
+  isRegister.value = !isRegister.value
+  errors.username = ''
+  errors.password = ''
+}
+
+async function onSubmit(): Promise<void> {
+  if (loading.value || !validate()) return
   loading.value = true
   try {
+    const username = form.username.trim()
+    const nickname = form.nickname.trim()
     if (isRegister.value) {
-      await register({
-        username: form.username,
-        password: form.password,
-        nickname: form.nickname || null,
-      })
-      ElMessage.success('注册成功')
+      await register({ username, password: form.password, nickname: nickname || null })
     }
-    const res = await login({ username: form.username, password: form.password })
-    // 凭据在 HttpOnly Cookie；不再把 JWT 写入 localStorage/内存
+    const res = await login({ username, password: form.password })
+    const user = res.data.user
     userStore.setToken('')
-    userStore.setUsername(res.data.user.username)
-    userStore.setRole(res.data.user.role)
-    // 回跳登录前访问的页面（如分享链接 /trips/58）；仅接受站内路径防开放跳转
-    const redirect = route.query.redirect
-    if (typeof redirect === 'string' && redirect.startsWith('/')) {
-      router.push(redirect)
-    } else {
-      router.push({ name: 'home' })
-    }
-  } catch {
-    /* 错误提示已由拦截器处理 */
+    userStore.setUsername(user.username)
+    userStore.setRole(user.role)
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
+    router.replace(redirect || '/')
+  } catch (err) {
+    errors.password = err instanceof Error ? err.message : '登录失败'
   } finally {
     loading.value = false
   }
@@ -145,16 +121,14 @@ async function onSubmit() {
   min-height: calc(100vh - 108px);
 }
 
-/* 双栏卡片：墨黑品牌面板 + 白色表单 */
 .login-card {
-  position: relative;
   display: flex;
   width: 100%;
   max-width: 760px;
   overflow: hidden;
-  border-radius: 16px;
-  border: 1px solid var(--lp-border);
-  background: var(--lp-surface);
+  border-radius: var(--lp-radius-card);
+  border: 1px solid var(--lp-edge-1);
+  background: var(--lp-surface-card);
   box-shadow: var(--lp-shadow-md);
 }
 
@@ -165,8 +139,8 @@ async function onSubmit() {
   width: 300px;
   flex: none;
   padding: 36px 28px;
-  background: linear-gradient(165deg, #0b3d39 0%, var(--lp-ink-deep) 100%);
-  color: #f2f8f7;
+  background: var(--lp-ink-card-bg);
+  color: var(--lp-ink-card-ink);
 }
 
 .brand {
@@ -184,35 +158,19 @@ async function onSubmit() {
 }
 
 .brand-name {
+  font-family: var(--lp-font-display);
   font-size: 20px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-}
-
-.brand-en {
-  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.22em;
-  color: #9dc3be;
-}
-
-/* 手册风渐变点缀（§5.5，纯 CSS 不引入图片）：品牌名下 --lp-theme-accent 渐变细条 */
-.brand::after {
-  content: '';
-  display: block;
-  width: 48px;
-  height: 3px;
-  margin-top: 6px;
-  border-radius: 2px;
-  background: var(--lp-theme-accent);
+  letter-spacing: -0.02em;
 }
 
 .brand-lede {
   margin: 0;
   font-family: var(--lp-font-display);
   font-size: 24px;
-  line-height: 1.5;
-  font-weight: 700;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.03em;
 }
 
 .brand-foot {
@@ -220,11 +178,9 @@ async function onSubmit() {
   padding-top: 14px;
   position: relative;
   font-size: 12px;
-  color: #b9d4d0;
-  letter-spacing: 0.04em;
+  color: var(--lp-ink-card-muted);
 }
 
-/* 留白节奏：底部注脚上方发丝渐变线，与主题渐变条呼应 */
 .brand-foot::before {
   content: '';
   position: absolute;
@@ -232,71 +188,96 @@ async function onSubmit() {
   left: 0;
   width: 100%;
   height: 1px;
-  background: linear-gradient(90deg, rgb(242 248 247 / 0%), rgb(242 248 247 / 32%));
+  background: color-mix(in srgb, var(--lp-ink-card-ink) 18%, transparent);
 }
 
 .form-panel {
   flex: 1;
-  padding: 40px 40px 32px;
-}
-
-.form-panel :deep(.el-form-item) {
-  margin-bottom: 20px;
-}
-
-/* 表单规范对齐（§5.5）：label 在上（placeholder 不作 label）、字重与全站一致 */
-.form-panel :deep(.el-form-item__label) {
-  font-weight: 600;
-  color: var(--lp-ink-soft);
-  padding-bottom: 6px;
-}
-
-/* 焦点环对齐全站规范：--lp-accent 描边 + 浅底外环 */
-.form-panel :deep(.el-input__wrapper.is-focus) {
-  box-shadow:
-    0 0 0 1px var(--lp-accent) inset,
-    0 0 0 3px var(--lp-accent-soft);
-}
-
-.form-panel :deep(.el-button) {
-  letter-spacing: 0.08em;
+  padding: 40px 36px;
 }
 
 .title {
   margin: 0 0 4px;
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
 }
 
 .subtitle {
-  color: var(--lp-muted);
-  font-size: 13px;
-  margin: 0 0 24px;
+  margin: 0 0 28px;
+  color: var(--lp-text-muted);
+  font-size: var(--lp-text-body);
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: var(--lp-text-caption);
+  font-weight: 500;
+  color: var(--lp-text-muted);
+}
+
+.field-error {
+  margin: 6px 0 0;
+  color: var(--lp-danger);
+  font-size: 12px;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 8px;
+  border: none;
+  border-radius: var(--lp-radius-sm);
+  background: var(--lp-accent);
+  color: var(--lp-accent-on-fill);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--lp-accent-hover);
+}
+
+.btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .switch {
+  margin-top: 20px;
   text-align: center;
-  margin-top: 4px;
 }
 
-@media (max-width: 720px) {
+.link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--lp-accent);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
   .login-card {
     flex-direction: column;
   }
 
   .brand-panel {
     width: auto;
-    padding: 24px 28px;
-    gap: 12px;
-  }
-
-  .brand-lede {
-    font-size: 18px;
+    padding: 24px;
   }
 
   .form-panel {
-    padding: 28px 20px 24px;
+    padding: 28px 22px;
   }
 }
 </style>

@@ -12,18 +12,18 @@ import json
 
 import pytest
 
-from app.agent.grounding_evidence import issue_evidence
-from app.agent.poi_identity import (
+from app.agent.core.poi_identity import (
     PoiSeenRegistry,
     drop_cross_day_duplicates,
     haversine_m,
     norm_poi_key,
 )
-from app.agent.stream_parser import DailyPlansStreamParser
-from app.agent.trip_stream import (
+from app.agent.generation.orchestration.stream_parser import DailyPlansStreamParser
+from app.agent.generation.orchestration.trip_stream import (
     _filter_suggestions_by_city,
     run_generate_trip_stream,
 )
+from app.agent.grounding.grounding_evidence import issue_evidence
 from app.common.config import settings
 from app.schemas.trip import GenerateDayRequest
 
@@ -71,7 +71,7 @@ def stream_env(monkeypatch):
 
     def _install(chunks: list[str]):
         fake = FakeLLMClient(chunks)
-        monkeypatch.setattr("app.agent.trip_stream.get_llm_client", lambda: fake)
+        monkeypatch.setattr("app.agent.generation.orchestration.trip_stream.get_llm_client", lambda: fake)
 
     # 服务端解析出的权威坐标（与 TRIP_JSON 里模型自填的那对不同），两个名称变体同点
     grounded = (41.40362, 2.17438)
@@ -83,8 +83,10 @@ def stream_env(monkeypatch):
             # 与真实 local_ground 同形状：解析成功当场签票
             issue_evidence({**item, "name": item["poi_name"], "city": city})
 
-    monkeypatch.setattr("app.agent.landing.local_ground", _ground)
-    monkeypatch.setattr("app.agent.trip_stream.fill_suggestion_gaps", lambda rows, city, **kw: rows)
+    monkeypatch.setattr("app.agent.generation.content.landing.local_ground", _ground)
+    monkeypatch.setattr(
+        "app.agent.generation.orchestration.trip_stream.fill_suggestion_gaps", lambda rows, city, **kw: rows
+    )
     return _install
 
 
@@ -267,7 +269,7 @@ class TestRunGenerateTripStream:
                 raise RuntimeError("upstream down")
                 yield ""  # pragma: no cover - 使其成为生成器
 
-        monkeypatch.setattr("app.agent.trip_stream.get_llm_client", lambda: BoomClient())
+        monkeypatch.setattr("app.agent.generation.orchestration.trip_stream.get_llm_client", lambda: BoomClient())
         events = list(run_generate_trip_stream(_req()))
         done = events[-1]
         assert done["type"] == "done"
@@ -282,7 +284,7 @@ class TestRunGenerateTripStream:
         R2 之前这条流式路径根本不产该事件（取消才有），于是一次都没生成成功的
         run 也被记成成功。
         """
-        from app.agent import trip_stream as trip_stream_mod
+        from app.agent.generation.orchestration import trip_stream as trip_stream_mod
 
         stream_env([])
 
@@ -291,7 +293,7 @@ class TestRunGenerateTripStream:
                 raise RuntimeError("upstream down")
                 yield ""  # pragma: no cover - 使其成为生成器
 
-        monkeypatch.setattr("app.agent.trip_stream.get_llm_client", lambda: BoomClient())
+        monkeypatch.setattr("app.agent.generation.orchestration.trip_stream.get_llm_client", lambda: BoomClient())
         recorded: list[tuple[str, dict]] = []
         monkeypatch.setattr(
             trip_stream_mod,

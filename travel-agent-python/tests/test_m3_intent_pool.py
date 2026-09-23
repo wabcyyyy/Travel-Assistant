@@ -13,13 +13,15 @@
 
 import json
 
-from app.agent import butler, tools, web_search
-from app.agent.function_calling import FunctionCallingError
-from app.agent.intent import build_intent_keywords
+from app.agent.core.intent import build_intent_keywords
+from app.agent.data import web_search
+from app.agent.generation.content import butler
 from app.agent.research import reasoning
 from app.agent.research.evidence import ResearchTask
 from app.agent.research.factory import run_research
 from app.agent.research.supervisor import decompose
+from app.agent.tools import impl as tools
+from app.agent.tools.function_calling import FunctionCallingError
 from app.schemas.trip import GenerateRequest
 
 # ---------- 1. build_intent_keywords：纯规则抽词 ----------
@@ -128,7 +130,7 @@ def test_run_search_merges_task_intent_keywords_into_extras(monkeypatch):
         # ≥3 条避免触发联网补池分支
         return [{"name": f"{city}景点{i}", "latitude": 30.0, "longitude": 120.0} for i in range(4)]
 
-    import app.agent.web_search as web_search_mod
+    import app.agent.data.web_search as web_search_mod
 
     def fake_web(city, category, limit=4, intent_keywords=None):
         for keyword in intent_keywords or []:

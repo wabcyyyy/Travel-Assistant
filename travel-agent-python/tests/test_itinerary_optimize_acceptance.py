@@ -10,7 +10,7 @@ import pytest
 from _optimize_support import _day_ids, _trip_id
 from sqlalchemy import select
 
-from app.agent import route_service
+from app.agent.data import route_service
 from app.common import addons as addons_module
 from app.common import cache_store
 from app.common.config import settings

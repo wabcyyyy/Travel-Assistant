@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia } from 'pinia'
 import { nextTick } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -120,7 +121,7 @@ async function mountAtlas(narrow: boolean, payload: AtlasResponse = ATLAS) {
     history: createMemoryHistory(),
     routes: [{ path: '/', component: { template: '<div />' } }],
   })
-  const wrapper = mount(AtlasView, { global: { plugins: [router] } })
+  const wrapper = mount(AtlasView, { global: { plugins: [router, createPinia()] } })
   await flushPromises()
   await nextTick()
   await flushPromises()

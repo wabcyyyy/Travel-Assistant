@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 
-from app.agent.json_utils import parse_llm_json_or_none
+from app.agent.core.json_utils import parse_llm_json_or_none
 from app.agent.research.evidence import ResearchTask
 from app.common.config import settings
 from app.common.llm_client import get_llm_client

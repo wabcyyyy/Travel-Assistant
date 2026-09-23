@@ -3,7 +3,7 @@
 地图深链存在前后端两份实现,用 `deeplink_cases.json`(同目录,16 个共享 case)把两侧
 各自钉住,任何一侧单方面改语义都会显形:
 
-- 后端断言:`travel-agent-python/tests/test_deeplink_parity.py`(`app.agent.places.map_search_url` / `map_directions_url`)
+- 后端断言:`travel-agent-python/tests/test_deeplink_parity.py`(`app.agent.data.places.map_search_url` / `map_directions_url`)
 - 前端断言:`travel-frontend-vue/src/utils/deeplink.parity.test.ts`(`src/utils/geo.ts` 的 `externalMapLink` / `mapDirectionsUrl`)
 
 断言粒度 = 协议 host + path 前缀 + 关键查询参数存在/缺席;`src`/`callnative`/`policy`/

@@ -3,7 +3,8 @@
     <div class="shell-main">
       <!-- trek 形态（v2.8 复刻）：全宽顶栏 + 居中胶囊导航；同一份 nav DOM 在
            <768px 折为底部 BottomBar（CSS 切布局，不做第二套 shell） -->
-      <header class="topbar lp-header">
+      <div ref="scrollSentinel" class="scroll-sentinel" aria-hidden="true"></div>
+      <header class="topbar lp-header" :class="{ 'is-scrolled': scrolled }">
         <div class="topbar-left">
           <div class="crumbs" aria-label="面包屑">
             <span class="crumb-brand">旅行助手</span>
@@ -52,6 +53,8 @@
         <div class="content-inner" :class="{ 'is-wide': route.meta.wide === true }"><slot /></div>
       </main>
 
+      <CreateTripDialog />
+
       <!-- immersive 路由（详情工作台，v2.7 §20 R1）：整页不滚，页脚让位给视口固定布局 -->
       <footer v-if="route.meta.immersive !== true" class="footer">
         <p>
@@ -63,31 +66,57 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Compass, Files, HomeFilled, MagicStick, MapLocation, Search, Setting } from '@element-plus/icons-vue'
+import { Compass, Files, HomeFilled, MapLocation, Search, Setting } from '@element-plus/icons-vue'
 
 import { logoutApi } from '../../api'
 import { getTemplateCapability } from '../../api/templates'
 import { DATA_PROVENANCE, DATA_PROVENANCE_DISCLAIMER } from '../../constants/data-provenance'
 import { useUserStore } from '../../store/user'
+import { useUiStore } from '../../store/ui'
 import AppearancePopover from './AppearancePopover.vue'
+import CreateTripDialog from '../trip/CreateTripDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+const ui = useUiStore()
 
 const keyword = ref('')
 // 模板广场可见性：登录后探测一次（探测端点恒 200，addon 关时 enabled=false）
 const templateEnabled = ref(false)
+// 顶栏滚动加深（TREK Navbar）：sentinel 离开视口即抬玻璃不透明度/影深
+const scrollSentinel = ref<HTMLElement | null>(null)
+const scrolled = ref(false)
+let scrollObserver: IntersectionObserver | null = null
 
 onMounted(async () => {
+  // /generate 深链重定向后带 city：落到首页并唤起新建弹窗
+  const cityFromQuery = typeof route.query.city === 'string' ? route.query.city.trim() : ''
+  if (cityFromQuery) {
+    ui.openCreateTrip(cityFromQuery)
+  }
+  if (scrollSentinel.value) {
+    scrollObserver = new IntersectionObserver(
+      ([entry]) => {
+        scrolled.value = entry ? !entry.isIntersecting : false
+      },
+      { threshold: 0 },
+    )
+    scrollObserver.observe(scrollSentinel.value)
+  }
   if (!userStore.username) return
   try {
     templateEnabled.value = (await getTemplateCapability()).data.enabled
   } catch {
     templateEnabled.value = false
   }
+})
+
+onUnmounted(() => {
+  scrollObserver?.disconnect()
+  scrollObserver = null
 })
 
 interface NavItem {
@@ -101,7 +130,6 @@ const navItems = computed<NavItem[]>(() => {
     { path: '/', label: '今日', icon: HomeFilled },
     { path: '/trips', label: '旅程', icon: Compass },
     { path: '/atlas', label: '图鉴', icon: MapLocation },
-    { path: '/generate', label: '生成', icon: MagicStick },
   ]
   // 模板广场（C2.4）：addon 开启时才出现在导航（自托管默认关）
   if (templateEnabled.value) {
@@ -160,6 +188,11 @@ async function onLogout(): Promise<void> {
 
 /* ---------- 顶栏（v2.8 trek 复刻）：全宽白玻璃条 h64，三段 grid（左线索/中导航/右操作），
    中列放同一份 nav DOM；<768px 该 nav 折为底部 BottomBar ---------- */
+.scroll-sentinel {
+  height: 0;
+  pointer-events: none;
+}
+
 .topbar {
   position: sticky;
   top: 0;
@@ -170,6 +203,19 @@ async function onLogout(): Promise<void> {
   gap: var(--lp-space-4);
   height: 64px;
   padding: 0 var(--lp-space-4);
+  background: var(--lp-glass-bg);
+  backdrop-filter: var(--lp-glass-blur);
+  -webkit-backdrop-filter: var(--lp-glass-blur);
+  border-bottom: 1px solid var(--lp-glass-border);
+  box-shadow: var(--lp-glass-shadow), var(--lp-glass-highlight);
+  transition:
+    background var(--lp-dur-theme) var(--lp-ease-out-quint),
+    box-shadow var(--lp-dur-theme) var(--lp-ease-out-quint);
+}
+
+.topbar.is-scrolled {
+  background: var(--lp-glass-scrolled-bg);
+  box-shadow: var(--lp-glass-scrolled-shadow), var(--lp-glass-highlight);
 }
 
 .topbar-left {
@@ -185,19 +231,23 @@ async function onLogout(): Promise<void> {
   align-items: center;
   gap: 2px;
   padding: 4px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--lp-text-1) 4%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lp-text-1) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lp-text-1) 4%, transparent);
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  border-radius: 10px;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: 999px;
   color: var(--lp-text-muted);
   text-decoration: none;
-  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    background var(--lp-dur-fast) var(--lp-ease-out-quint),
+    color var(--lp-dur-fast) var(--lp-ease-out-quint),
+    box-shadow var(--lp-dur-fast) var(--lp-ease-out-quint);
 }
 
 .nav-item:hover {
@@ -205,7 +255,7 @@ async function onLogout(): Promise<void> {
 }
 
 .nav-item.active {
-  background: var(--lp-surface-elevated);
+  background: var(--lp-surface-card);
   color: var(--lp-text-1);
   box-shadow: var(--lp-shadow-xs);
 }
@@ -213,6 +263,7 @@ async function onLogout(): Promise<void> {
 .nav-label {
   font-size: 13.5px;
   font-weight: 500;
+  letter-spacing: -0.01em;
   white-space: nowrap;
 }
 
@@ -224,18 +275,21 @@ async function onLogout(): Promise<void> {
 }
 
 .crumb-brand {
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  font-family: var(--lp-font-display);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   color: var(--lp-text-1);
 }
 
 .crumb-sep {
   color: var(--lp-text-faint);
+  font-weight: 300;
 }
 
 .crumb-current {
   font-size: 13px;
+  font-weight: 500;
   color: var(--lp-text-muted);
 }
 
@@ -277,7 +331,7 @@ async function onLogout(): Promise<void> {
 
 /* ---------- 内容与页脚 ---------- */
 .content {
-  padding: var(--lp-space-5);
+  padding: var(--lp-space-5) var(--lp-space-5) 48px;
 }
 
 /* 视口固定路由（详情工作台）：页内自管滚动，内容区不留白 */

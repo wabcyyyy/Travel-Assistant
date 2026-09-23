@@ -263,9 +263,9 @@ async function onDeleteItem(item: TripItem) {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 12px;
+  padding: 3px 12px;
   color: var(--lp-text-faint);
-  font-size: 9.5px;
+  font-size: 11.5px;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
@@ -384,17 +384,17 @@ async function onDeleteItem(item: TripItem) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 3px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
   border-radius: var(--lp-radius-pill);
   background: var(--lp-surface-card);
   color: color-mix(in oklch, var(--day-color) 75%, var(--lp-text-1));
   box-shadow: 0 0 0 1.5px color-mix(in oklch, var(--day-color) var(--lp-day-tint-badge), transparent);
-  font-family: var(--lp-font-mono);
-  font-size: 9px;
+  font-family: var(--lp-font-display);
+  font-size: 10.5px;
   font-style: normal;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -406,7 +406,7 @@ async function onDeleteItem(item: TripItem) {
 .row-top {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -416,17 +416,17 @@ async function onDeleteItem(item: TripItem) {
 }
 
 .row-name {
-  font-family: var(--lp-font-body);
-  font-weight: 500;
-  font-size: 12.5px;
-  line-height: 1.2;
+  font-family: var(--lp-font-display);
+  font-weight: 600;
+  font-size: 14.5px;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
   color: var(--lp-text-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 时间 10px 纯文本（v2.7 §20 R3：不再常显 chip），点开即改 */
 .row-time {
   flex: none;
   display: inline-flex;
@@ -436,10 +436,10 @@ async function onDeleteItem(item: TripItem) {
   padding: 0;
   border: none;
   background: none;
-  color: var(--lp-text-faint);
+  color: var(--lp-text-muted);
   font-family: inherit;
-  font-size: 10px;
-  font-weight: 400;
+  font-size: 12px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
@@ -450,30 +450,30 @@ async function onDeleteItem(item: TripItem) {
 
 .row-time.is-empty {
   color: var(--lp-text-faint);
-  opacity: 0.75;
+  opacity: 0.85;
 }
 
-/* 描述行：10px 单行省略（全文在贴底详情卡） */
+/* 描述行：单行省略（全文在贴底详情卡） */
 .row-desc {
-  margin: 2px 0 0;
-  max-height: 1.2em;
-  font-size: 10px;
-  line-height: 1.2;
-  color: var(--lp-text-faint);
+  margin: 4px 0 0;
+  max-height: 1.35em;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--lp-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 备注行：10px + StickyNote 9px（TREK 同款单行） */
+/* 备注行 */
 .row-remark {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin: 2px 0 0;
-  font-size: 10px;
-  line-height: 1.2;
-  color: var(--lp-text-faint);
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--lp-text-muted);
   overflow: hidden;
 }
 
@@ -493,8 +493,9 @@ async function onDeleteItem(item: TripItem) {
   border: none;
   background: none;
   color: var(--lp-text-muted);
-  font-family: var(--lp-font-mono);
-  font-size: 10.5px;
+  font-family: var(--lp-font-data);
+  font-size: 12px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }

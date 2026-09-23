@@ -1,6 +1,6 @@
 """统一生成图冒烟：day / trip 两种 mode 均可从同一张图进入。"""
 
-from app.agent.trip_graph import (
+from app.agent.generation.orchestration.trip_graph import (
     MODE_DAY,
     MODE_TRIP,
     empty_day_state,
@@ -16,7 +16,7 @@ def test_unified_graph_exists():
 
 
 def test_day_state_mode(monkeypatch):
-    from app.agent import day_workflow
+    from app.agent.generation.orchestration import day_workflow
 
     def fake_once(req, *, force_fallback=False):
         from app.schemas.trip import DailyPlan, TripItem

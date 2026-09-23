@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.agent import existence
-from app.agent.existence import (
+from app.agent.grounding import existence
+from app.agent.grounding.existence import (
     NOT_FOUND,
     UNKNOWN,
     VERIFIED,
@@ -26,7 +26,7 @@ from app.agent.existence import (
     resolve_poi,
     same_entity,
 )
-from app.agent.run_limits import begin_limits, end_limits
+from app.agent.runtime.run_limits import begin_limits, end_limits
 from app.common.config import settings
 
 
@@ -305,7 +305,7 @@ def _item(name: str, **overrides) -> dict:
 
 
 def test_drops_only_out_of_area_and_authoritative_refutation(monkeypatch):
-    from app.agent.landing import drop_refuted_items
+    from app.agent.generation.content.landing import drop_refuted_items
 
     verdicts = {
         "真在东京": ResolveResult(
@@ -320,7 +320,7 @@ def test_drops_only_out_of_area_and_authoritative_refutation(monkeypatch):
         ),
         "没查到": ResolveResult.unknown("provider_unavailable"),
     }
-    monkeypatch.setattr("app.agent.landing._resolve", lambda name, city: verdicts.get(name))
+    monkeypatch.setattr("app.agent.generation.content.landing._resolve", lambda name, city: verdicts.get(name))
     report: dict = {}
     items = [_item(name) for name in verdicts]
     kept = drop_refuted_items(items, city="东京", report=report)
@@ -331,10 +331,10 @@ def test_drops_only_out_of_area_and_authoritative_refutation(monkeypatch):
 
 def test_already_grounded_items_are_not_asked_again(monkeypatch):
     """有权威来源的项直接保留：预算要留给真正没有证据的名字。"""
-    from app.agent.landing import drop_refuted_items
+    from app.agent.generation.content.landing import drop_refuted_items
 
     calls = []
-    monkeypatch.setattr("app.agent.landing._resolve", lambda name, city: calls.append(name) or None)
+    monkeypatch.setattr("app.agent.generation.content.landing._resolve", lambda name, city: calls.append(name) or None)
     items = [_item("西湖", source="opentripmap"), _item("某店", source="llm.open_day")]
     kept = drop_refuted_items(items, city="杭州")
     assert len(kept) == 2
@@ -342,10 +342,10 @@ def test_already_grounded_items_are_not_asked_again(monkeypatch):
 
 
 def test_transport_items_are_never_resolved(monkeypatch):
-    from app.agent.landing import drop_refuted_items
+    from app.agent.generation.content.landing import drop_refuted_items
 
     calls = []
-    monkeypatch.setattr("app.agent.landing._resolve", lambda name, city: calls.append(name) or None)
+    monkeypatch.setattr("app.agent.generation.content.landing._resolve", lambda name, city: calls.append(name) or None)
     items = [_item("步行", item_type="transport"), _item("杭州东")]
     kept = drop_refuted_items(items, city="杭州")
     assert len(kept) == 2 and calls == ["杭州东"]
@@ -356,7 +356,7 @@ def test_budget_exhaustion_keeps_everything(monkeypatch):
     rows = [{"name": "灵隐寺", "latitude": 30.24, "longitude": 120.1}]
     provider = _FakeNominatim(rows)
     _install(monkeypatch, [provider])
-    from app.agent.landing import drop_refuted_items
+    from app.agent.generation.content.landing import drop_refuted_items
 
     token = begin_limits()
     try:
@@ -374,7 +374,7 @@ def test_budget_exhaustion_keeps_everything(monkeypatch):
 
 def _stub_fetch(monkeypatch, payload):
     """把两家商业源的取数口换成回放 payload，并清掉客户端缓存保证用例互不影响。"""
-    from app.agent import existence_commercial as paid
+    from app.agent.grounding import existence_commercial as paid
 
     calls: list[dict] = []
 
@@ -389,7 +389,7 @@ def _stub_fetch(monkeypatch, payload):
 
 
 def test_amap_resolves_and_refutes_like_the_other_providers(monkeypatch):
-    from app.agent import existence_commercial as paid
+    from app.agent.grounding import existence_commercial as paid
 
     monkeypatch.setattr(settings, "amap_web_key", "k")
     monkeypatch.setattr(existence, "city_center", lambda city, memo=None: (30.25, 120.1))
@@ -414,7 +414,7 @@ def test_amap_resolves_and_refutes_like_the_other_providers(monkeypatch):
 
 
 def test_amap_without_key_never_calls_out(monkeypatch):
-    from app.agent import existence_commercial as paid
+    from app.agent.grounding import existence_commercial as paid
 
     monkeypatch.setattr(settings, "amap_web_key", "")
     calls = _stub_fetch(monkeypatch, {"status": "1", "pois": []})
@@ -423,7 +423,7 @@ def test_amap_without_key_never_calls_out(monkeypatch):
 
 
 def test_google_places_posts_and_refutes(monkeypatch):
-    from app.agent import existence_commercial as paid
+    from app.agent.grounding import existence_commercial as paid
 
     monkeypatch.setattr(settings, "google_places_api_key", "k")
     monkeypatch.setattr(existence, "city_center", lambda city, memo=None: (48.86, 2.35))
@@ -453,7 +453,7 @@ def test_google_places_posts_and_refutes(monkeypatch):
 
 def test_malformed_paid_provider_payload_is_unknown_not_not_found(monkeypatch):
     """HTTP 200 但形状不对：算未判定——绝不让解析失败冒充"这个点不存在"。"""
-    from app.agent import existence_commercial as paid
+    from app.agent.grounding import existence_commercial as paid
 
     monkeypatch.setattr(settings, "amap_web_key", "k")
     _stub_fetch(monkeypatch, {"status": "0", "info": "INVALID_USER_KEY"})
@@ -466,7 +466,7 @@ def test_malformed_paid_provider_payload_is_unknown_not_not_found(monkeypatch):
 
 def test_geocode_place_rows_separates_failure_from_empty_answer(monkeypatch):
     """None=没问到 / []=问到且没有 / 行=带别名与坐标的候选。"""
-    from app.agent import places
+    from app.agent.data import places
 
     monkeypatch.setattr(settings, "nominatim_enabled", True)
 
@@ -510,11 +510,13 @@ def test_reference_hit_without_coordinates_still_reaches_the_resolver(monkeypatc
     """
     from typing import cast
 
-    from app.agent.landing import ground_item
-    from app.agent.reference_pool import ReferencePool
+    from app.agent.generation.content.landing import ground_item
+    from app.agent.generation.content.reference_pool import ReferencePool
 
     asked: list[str] = []
-    monkeypatch.setattr("app.agent.landing.local_ground", lambda item, city: asked.append(item["poi_name"]) or False)
+    monkeypatch.setattr(
+        "app.agent.generation.content.landing.local_ground", lambda item, city: asked.append(item["poi_name"]) or False
+    )
 
     class _WebSearchOnlyPool:
         def ground(self, item):
@@ -532,9 +534,9 @@ def test_hit_with_coordinates_does_not_pay_a_second_lookup(monkeypatch):
     """无条件调 local_ground 不等于多花外呼：坐标已有效时它的守卫必须挡在解析前。"""
     from typing import cast
 
-    from app.agent import grounding
-    from app.agent.landing import ground_item
-    from app.agent.reference_pool import ReferencePool
+    from app.agent.generation.content.landing import ground_item
+    from app.agent.generation.content.reference_pool import ReferencePool
+    from app.agent.grounding import facts as grounding
 
     def _forbidden(name, _city):
         raise AssertionError(f"坐标已有效，不该再问解析器：{name}")

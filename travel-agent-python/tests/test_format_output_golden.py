@@ -16,9 +16,10 @@ import pathlib
 
 import pytest
 
-from app.agent import pricing, tool_registry
-from app.agent.grounding_evidence import issue_evidence
-from app.agent.workflow import format_output
+from app.agent.data import pricing
+from app.agent.generation.orchestration.workflow import format_output
+from app.agent.grounding.grounding_evidence import issue_evidence
+from app.agent.tools import registry as tool_registry
 from app.schemas.trip import GenerateRequest
 
 # ---------------------------------------------------------------- 外部依赖打桩
@@ -74,14 +75,18 @@ def _fake_web_search_json(prompt, *_args, **_kwargs):
 def stubbed(monkeypatch):
     """打桩 DB / 外部 HTTP / 路线服务；同时在两个可能持有别名的模块上打，
     使本工具在 format_output 重构前后都能命中真正的调用点。"""
-    import app.agent.web_search as web_search_mod
-    import app.agent.workflow as wf
+    import app.agent.data.web_search as web_search_mod
+    import app.agent.generation.orchestration.workflow as wf
 
     monkeypatch.setattr(pricing, "query_live_price", _query_live_price)
     monkeypatch.setattr(pricing, "query_live_food_price", _query_live_food_price)
     # 实时价的绑定位置随重构迁移（workflow → formatting.prices）：凡当前持有
     # 该名字的宿主模块都就地替换，保证拆分前后命中同一调用点。
-    holder_paths = ["app.agent.workflow", "app.agent.formatting.prices", "app.agent.formatting.costing"]
+    holder_paths = [
+        "app.agent.generation.orchestration.workflow",
+        "app.agent.generation.output.prices",
+        "app.agent.generation.output.costing",
+    ]
     for path in holder_paths:
         try:
             holder = importlib.import_module(path)
@@ -716,7 +721,7 @@ def all_scenarios():
 
 
 def build_snapshot(stubbed) -> dict:
-    import app.agent.workflow as wf
+    import app.agent.generation.orchestration.workflow as wf
 
     snapshot = {}
     for name, (state, live_price, live_food) in all_scenarios():

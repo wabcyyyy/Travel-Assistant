@@ -17,8 +17,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.agent.chat_draft.document import _trip_plan_document
-from app.agent.local_replan import run_local_replan
+from app.agent.editing.chat_draft.document import _trip_plan_document
+from app.agent.editing.local_replan import run_local_replan
 from app.common import cache_store
 from app.common.config import settings
 from app.db import session as db_session

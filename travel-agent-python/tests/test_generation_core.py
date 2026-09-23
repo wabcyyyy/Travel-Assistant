@@ -1,6 +1,6 @@
 """generation_core 单测：产品口径唯一真相源。"""
 
-from app.agent.generation_core import (
+from app.agent.generation.rules.generation_core import (
     MAX_DAY_ATTEMPTS,
     MAX_FIX_ATTEMPTS,
     MAX_GENERATION_ATTEMPTS,
@@ -78,7 +78,7 @@ def test_attempt_constants_aligned():
 
 
 def test_normalize_item_type_and_sanitize():
-    from app.agent.generation_core import normalize_item_type, sanitize_itinerary_items
+    from app.agent.generation.rules.generation_core import normalize_item_type, sanitize_itinerary_items
 
     assert normalize_item_type("souvenir") == "attraction"
     assert normalize_item_type("FOOD") == "food"

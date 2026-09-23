@@ -19,11 +19,13 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from app.agent import grounding, open_plans, tools, workflow
-from app.agent.formatting import prices as pricing
+from app.agent.data.route_service import clear_route_cache
+from app.agent.generation.orchestration import open_plans, workflow
+from app.agent.generation.output import prices as pricing
+from app.agent.grounding import facts as grounding
 from app.agent.research import reasoning
-from app.agent.route_service import clear_route_cache
-from app.agent.trace import trace_run
+from app.agent.runtime.trace import trace_run
+from app.agent.tools import impl as tools
 from app.common.config import settings
 from app.prompts.open_generation import OPEN_DAY_PROMPT_VERSION, OPEN_TRIP_PROMPT_VERSION
 from app.schemas.trip import GenerateRequest

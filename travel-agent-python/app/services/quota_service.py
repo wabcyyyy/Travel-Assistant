@@ -1,6 +1,6 @@
 """按用户的 LLM 花费闸门（R1-9，业务轨：超限抛 ApiError(429)）。
 
-为什么现有的 `app/agent/run_limits.py` 挡不住：那份预算是**按次**的
+为什么现有的 `app/agent/runtime/run_limits.py` 挡不住：那份预算是**按次**的
 （一次生成最多 32 次 LLM 调用 / 8 万 token / 120 秒），一个登录用户循环 POST
 `/api/itinerary/generate` 就能拿到 N 份"每次都不超预算"的额度 → 无上限烧钱。
 全局有界线程池只保证不把进程拖死，不保证单个用户花掉多少。

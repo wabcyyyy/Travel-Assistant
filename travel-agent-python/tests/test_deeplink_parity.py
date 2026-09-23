@@ -1,6 +1,6 @@
 """深链语义 parity（Y4）：用 tests/golden/deeplink_cases.json 钉住后端地图深链口径。
 
-前后端各有一份深链实现（本模块测 app.agent.map_link；前端 src/utils/geo.ts 由
+前后端各有一份深链实现（本模块测 app.agent.data.map_link；前端 src/utils/geo.ts 由
 travel-frontend-vue/src/utils/deeplink.parity.test.ts 读**同一份 case 文件**断言）。
 任何一侧单方面改语义都会让对侧或本侧显形。断言粒度 = 协议 host + path 前缀 +
 关键查询参数存在/缺席——src/callnative/policy/coordinate 与坐标数值（GCJ-02
@@ -16,8 +16,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from app.agent import map_link
-from app.agent.map_link import map_directions_url, map_search_url, to_gcj02
+from app.agent.data import map_link
+from app.agent.data.map_link import map_directions_url, map_search_url, to_gcj02
 
 CASES_PATH = pathlib.Path(__file__).parent / "golden" / "deeplink_cases.json"
 

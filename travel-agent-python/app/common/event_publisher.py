@@ -189,11 +189,11 @@ def publish_event(itinerary_id: int | None, event_type: str, data: dict, run_id:
 def _record_stream_trace(event_type: str, itinerary_id: int, run_id: str) -> None:
     """把一次流式事件发布记入当前 trace（scene=stream）。
 
-    延迟导入 app.agent.trace：本模块属 app.common 公共层，模块级导入会抬高
+    延迟导入 app.agent.runtime.trace：本模块属 app.common 公共层，模块级导入会抬高
     对 Agent 层的静态依赖（防未来循环导入）；record_event 在无 trace 上下文
     时自身静默跳过，这里无需再判空。
     """
-    from app.agent.trace import record_event
+    from app.agent.runtime.trace import record_event
 
     record_event(
         "stream",

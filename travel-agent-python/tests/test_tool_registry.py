@@ -1,13 +1,12 @@
 import pytest
 
-from app.agent.tool_registry import (
+from app.agent.runtime.tool_budget import begin_tool_budget, end_tool_budget
+from app.agent.runtime.trace import trace_run
+from app.agent.tools.registry import (
     ToolInvocationError,
     ToolRegistry,
     ToolSpec,
-    begin_tool_budget,
-    end_tool_budget,
 )
-from app.agent.trace import trace_run
 from app.common.config import settings
 
 

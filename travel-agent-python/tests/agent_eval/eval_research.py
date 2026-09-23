@@ -22,7 +22,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from app.agent import grounding, tools
+from app.agent.grounding import facts as grounding
 from app.agent.research import (
     merge_candidates,
     reasoning,
@@ -31,6 +31,7 @@ from app.agent.research import (
     run_research_context,
 )
 from app.agent.research.evidence import ResearchTask
+from app.agent.tools import impl as tools
 from app.common.config import settings
 from app.schemas.trip import GenerateRequest
 from tests.agent_eval import mock_llm
@@ -55,7 +56,7 @@ def _research_patch():
         # 天气（C3.1）同为外网入口：离线评测整体关闭（synthesize 短路）
         patch.object(settings, "weather_enabled", False),
         # 函数内导入，必须 patch 源模块（factory 模块级没有该属性）
-        patch("app.agent.web_search.search_places_via_web", _forbid_network_call),
+        patch("app.agent.data.web_search.search_places_via_web", _forbid_network_call),
         patch.object(tools, "search_attractions", mock_llm.search_attractions),
         patch.object(tools, "search_foods", mock_llm.search_foods),
         patch.object(tools, "search_hotels", mock_llm.search_hotels),

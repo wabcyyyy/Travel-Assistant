@@ -204,7 +204,7 @@ function shortDay(iso: string): string {
 .stream-hint {
   margin-left: 8px;
   font-weight: 400;
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--lp-muted);
 }
 
@@ -227,7 +227,7 @@ function shortDay(iso: string): string {
   border-radius: 999px;
   background: transparent;
   color: inherit;
-  font-size: 12px;
+  font-size: 12.5px;
   cursor: pointer;
 }
 
@@ -237,7 +237,7 @@ function shortDay(iso: string): string {
   border: 1px dashed var(--lp-rule);
   border-radius: 8px;
   background: var(--lp-sand);
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--lp-why-ink);
 }
 

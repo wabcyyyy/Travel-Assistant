@@ -92,7 +92,8 @@ def _clear_external_client_caches():
     打了桩却拿到缓存的 None，表现为"桩没生效"。这里在用例前后各清一次，
     让每个用例从干净缓存出发（正/负 TTL 的语义由 test_external_client 专门覆盖）。
     """
-    from app.agent import places, pricing, tools, weather, web_search
+    from app.agent.data import places, pricing, weather, web_search
+    from app.agent.tools import impl as tools
 
     clients = (
         tools._image_client,
@@ -115,7 +116,7 @@ def _clear_external_client_caches():
 @pytest.fixture(autouse=True)
 def _reset_existence_memo():
     """存在性判定按 (城市, 名字) 记忆化，跨用例复用会把上一个用例的结论漏进来。"""
-    from app.agent.existence import reset_existence_state
+    from app.agent.grounding.existence import reset_existence_state
 
     reset_existence_state()
     yield

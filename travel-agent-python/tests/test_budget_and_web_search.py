@@ -1,13 +1,13 @@
 """预算硬约束、餐饮钳制、餐次与备选池补全的回归测试。"""
 
-from app.agent.budget import clamp_meal_cost
-from app.agent.generation_core import (
+from app.agent.generation.content.reflect import validate_plans
+from app.agent.generation.content.suggestions import fill_suggestion_gaps
+from app.agent.generation.rules.budget import clamp_meal_cost
+from app.agent.generation.rules.generation_core import (
     estimate_plans_total,
     has_double_lunch,
     meal_slot_of,
 )
-from app.agent.reflect import validate_plans
-from app.agent.suggestions import fill_suggestion_gaps
 
 
 def _plan(day_no=1, items=None):
@@ -158,10 +158,10 @@ def test_fill_suggestion_gaps_adds_missing_categories(monkeypatch):
             for i in range(limit)
         ]
 
-    monkeypatch.setattr("app.agent.web_search.search_places_via_web", fake_search)
-    monkeypatch.setattr("app.agent.web_search.web_search_enabled", lambda: True)
+    monkeypatch.setattr("app.agent.data.web_search.search_places_via_web", fake_search)
+    monkeypatch.setattr("app.agent.data.web_search.web_search_enabled", lambda: True)
     # fill_suggestion_gaps 内部 import 的是模块函数，需 patch 到 generators 的引用路径
-    import app.agent.web_search as ws
+    import app.agent.data.web_search as ws
 
     monkeypatch.setattr(ws, "search_places_via_web", fake_search)
     monkeypatch.setattr(ws, "web_search_enabled", lambda: True)

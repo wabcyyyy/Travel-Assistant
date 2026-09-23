@@ -1,4 +1,4 @@
-from app.agent import day_workflow
+from app.agent.generation.orchestration import day_workflow
 from app.schemas.trip import DailyPlan, GenerateDayRequest, TripItem
 
 

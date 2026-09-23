@@ -3,7 +3,7 @@
     <!-- 内联轻顶栏：公开页不渲染 AppShell（SPEC §1.3） -->
     <header class="share-top">
       <router-link class="brand" to="/">旅行助手</router-link>
-      <router-link class="cta" to="/generate">我也来做一份</router-link>
+      <router-link class="cta" to="/generate?new=1">我也来做一份</router-link>
     </header>
 
     <main class="share-main">
@@ -14,7 +14,7 @@
       <AppPanel v-else-if="error">
         <EmptyState description="链接无效或已失效">
           <router-link class="link-btn" to="/">回首页</router-link>
-          <router-link class="link-btn primary" to="/generate">生成我的行程</router-link>
+          <router-link class="link-btn primary" to="/generate?new=1">生成我的行程</router-link>
         </EmptyState>
       </AppPanel>
 
@@ -28,7 +28,7 @@
           ></div>
           <div class="hero-body">
             <p class="hero-eyebrow">{{ data.city }}</p>
-            <h1 class="hero-title">{{ data.title }}</h1>
+            <h1 class="hero-title lp-display">{{ data.title }}</h1>
             <p class="hero-sub">
               {{ data.days }} 天 · {{ data.persons }} 人
               <template v-if="data.startDate"> · {{ data.startDate }} ~ {{ data.endDate }}</template>
@@ -90,7 +90,7 @@
     </main>
 
     <footer class="share-footer">
-      <router-link class="cta big" to="/generate">生成我的行程</router-link>
+      <router-link class="cta big" to="/generate?new=1">生成我的行程</router-link>
       <p class="foot-note">本地演示项目 · {{ DATA_PROVENANCE }}，仅供学习展示 · {{ DATA_PROVENANCE_DISCLAIMER }}</p>
     </footer>
   </div>
@@ -158,7 +158,9 @@ watch(() => route.params.token, load)
 }
 
 .brand {
-  font-weight: 800;
+  font-family: var(--lp-font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
   letter-spacing: 0.04em;
   color: var(--lp-text-1);
   text-decoration: none;
@@ -241,9 +243,12 @@ watch(() => route.params.token, load)
 
 .hero-title {
   margin: 0 0 8px;
+  font-family: var(--lp-font-display);
   font-size: clamp(26px, 4vw, 40px);
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+  color: var(--lp-text-1);
 }
 
 .hero-sub {
@@ -268,20 +273,22 @@ watch(() => route.params.token, load)
 }
 
 .day-no {
-  font-family: var(--lp-font-mono);
-  font-weight: 700;
+  font-family: var(--lp-font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
   color: var(--lp-accent);
 }
 
 .day-date,
 .day-theme {
-  font-size: var(--lp-text-caption);
+  font-size: 12.5px;
   color: var(--lp-text-muted);
 }
 
 .day-total {
   margin-left: auto;
-  font-weight: 700;
+  font-family: var(--lp-font-display);
+  font-weight: 600;
   color: var(--lp-text-1);
   font-variant-numeric: tabular-nums;
 }

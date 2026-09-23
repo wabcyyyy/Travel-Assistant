@@ -1,14 +1,66 @@
-# 生成链路模块蓝图（G-2.1）
+# Agent 域地图与生成链路蓝图
+
+> 本文件是 agent 层组织方式的**单一真源**：域地图回答"新代码放哪个域"，生成链路蓝图
+> 回答"生成域内放哪一层"。阶梯部分由门禁机检（`pyproject.toml` 的 "Agent domain
+> ladder" 契约 + `tests/test_agent_domain_ladder.py`），改结构必须同步改这里。
+
+## 域地图（2026-09-23 域化改造完成）
+
+阶梯单向：**上层可 import 下层，下层不得 import 上层**。八个域全部落地，`app/agent/` 下已无平铺模块（门面 `__init__.py` 除外）。
+
+```
+editing       自然语言入口：改行程 / 对话 / 问答                   已落地
+generation    生成链路：造行程内容，域内再分四层（见下）            已落地
+research      多 Agent 研究面                                     已落地
+tools         工具面：注册表 / 派发 / FC 循环 / 工具实现            已落地
+grounding     结论层：存在性判定 / 证据票 / 溯源标签                已落地
+data          外部事实面：只取数据、不下结论                       已落地
+runtime       运行期基座：轨迹 / 限额 / 用量 / 指标 / 会话状态       已落地
+core          零依赖原语：json_utils / geo / poi_identity / intent  已落地
+```
+
+（阶梯是**线性**的：research 在 tools 之上、generation 之下——研究面消费工具面，
+生成链路消费研究面。机检按这个线性次序判上/下层。）
+
+落位表（"我要加 X → 放哪"）：
+
+| 我要加… | 放 | 判据 |
+|---|---|---|
+| 一个纯计算 / 纯解析原语 | `core/` | 只准 stdlib / `app.common` / `core` 自身 |
+| 一次运行边界（deadline、计数） | `runtime/run_limits.py` | 沿用既有 `check(kind)` 口径，不新开预算通道 |
+| 一份跨模块共享的计数状态 | `runtime/tool_budget.py` | 开/占用分离：observability 开、消费方就地自增 |
+| 一条轨迹事件 / 一个指标 | `runtime/trace.py` / `runtime/observability.py` | 不新开采集通道 |
+| 一类外部数据源（HTTP / DB / 第三方插件） | `data/` | 只取数据、不下结论；失败如实降级不冒充成功 |
+| 一条"城市 → 坐标 / 点位 → 地址"的解析链 | `data/`（城市中心是 `data/city_center.py`） | 唯一入口，别在消费方各写一份兜底 |
+| 一类"这个点位是否存在 / 是否同一"的判定 | `grounding/`（同一性判定在 `core/poi_identity.py`） | 证据票与溯源标签只准有一份实现 |
+| 一个新工具 | `tools/` + 登记进 `tools/registry/catalog.py` | handler 调用期读 `tools` 模块属性（保 mock） |
+| 一次 LLM 调用入口 | `generation/content/day_prompts.py`（对话 / 编辑侧见 `editing/`） | 未配置即抛、失败向上 |
+| 一条编排分支 / 一个图节点 | `generation/orchestration/` | 节点不抛，一律路由到 fallback |
+| 一类用户自然语言指令的解析 | `editing/` | 解析成结构化操作，不全量重生成 |
+
+域内模块只准 import 同域或更下层的域；平铺模块不在阶梯里，域内 import 它们需要
+在 `tests/test_agent_domain_ladder.py` 登记豁免（并写明消除条件）。
+
+## 生成链路模块蓝图（G-2.1）
 
 > 本文件是 G-2.2~2.4 拆分的**验收依据**：只定义形状与依赖方向，不列清单。
 > 新增生成能力时先读这里，再决定放哪一层。
+> 生成域已迁入 `generation/`，域内四层：`rules → content → output → orchestration`
+> （层序由依赖图 SCC + 拓扑排序算出；机检 = pyproject 的 "Generation sublayers" 契约）。
+> 下表的平铺名对应关系：`generation_core`/`budget` → `rules/`；`generators`/`suggestions`/
+> `reference_pool`/`narrative`/`day_prompts`/`landing` → `content/`；`reflect`/`route_matrix`/
+> `graph_state` → `content/`；`formatting/`（assembly/facts/prices/quality）/`critic`/
+> `schedule_optimizer` → `output/`；其余编排模块 → `orchestration/`。
+>
+> 注意蓝图里"formatting 是 workflow 的下游"指**执行顺序**，不是 import 方向：
+> import 方向是 `orchestration → output`（编排层调用它装配行程）。
 
 ## 一句话职责
 
 | 模块 | 一句话 |
 |---|---|
 | `generation_core.py` | 纯规则骨架：N-1 晚住宿节奏、摊铺、预算估算、脏项与模型申报字段清洗——不 import 上面任何模块 |
-| `poi_identity.py` | 点位同一性判定：名称归一、球面距离（0/0 判缺失）、跨天去重——与 `generation_core` 同层的叶子 |
+| `core/poi_identity.py` | 点位同一性判定：名称归一、球面距离（0/0 判缺失）、跨天去重——域阶梯最底层，被生成与接地两侧共用 |
 | `budget.py` | 预算档位与约束句、餐价钳制、0 价补水 |
 | `suggestions.py` | 备选池：候选组装、类别地板与上限、缺口补齐 |
 | `suggestion_grounding.py` | 备选池的批量后验证（「发现更多」那 24-40 个名字唯一一次被外部数据检验） |
@@ -34,7 +86,7 @@
 
 ```
 trip_stream ──┐
-day_stream ───┼─→ workflow ──→ generators ──→ generation_core / poi_identity
+day_stream ───┼─→ workflow ──→ generators ──→ generation_core / core/poi_identity
               │      │            │  │  │
               │      │            │  │  └─→ budget / suggestions / reference_pool
               │      │            │  └────→ narrative / grounding / day_prompts
@@ -52,12 +104,12 @@ day_stream ───┼─→ workflow ──→ generators ──→ generation
 - **编排与降级**：抄 `research/`——子任务边界清晰、失败响亮降级、全程 trace 事件。
 - **纯规则模块**：抄 `generation_core.py`——不 import 兄弟模块、函数式、可单测。
 - **薄门面**：抄 `day_workflow.py`——只做转发与导出，不承载逻辑。
-- **可 mock 性**：抄 `tool_registry.py` 的 handler 约定——被 patch 的函数经模块属性在调用期解析。
+- **可 mock 性**：抄 `tools/registry/` 的 handler 约定——被 patch 的函数经模块属性（`from app.agent.tools import impl as tools`）在调用期解析。
 
 ## 新增生成能力先抄谁
 
 1. **新增一个纯计算规则**（住宿节奏/摊铺/折算）→ 放 `generation_core.py`，抄它的无依赖风格。
-2. **新增一类"是不是同一个点位"的判定** → 放 `poi_identity.py`：名称归一与距离门槛只准有一份，否则去重与存在性判定会各说一套。
+2. **新增一类"是不是同一个点位"的判定** → 放 `core/poi_identity.py`：名称归一与距离门槛只准有一份，否则去重与存在性判定会各说一套。
 3. **新增一个约束句或档位** → 放 `budget.py` / `day_prompts.py`，抄 `budget_clause` 的"空输入返回空串"契约。
 4. **新增一类备选池条目** → 放 `suggestions.py`，抄它的类别上限与地板守卫。
 5. **新增一次 LLM 调用入口** → 放 `day_prompts.py`，抄 `llm_open_day` 的"未配置即抛、失败向上"口径。

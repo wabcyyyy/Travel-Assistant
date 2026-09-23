@@ -12,8 +12,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from app.agent.reference_pool import ReferencePool
-from app.agent.reflect import validate_plans
+from app.agent.generation.content.reference_pool import ReferencePool
+from app.agent.generation.content.reflect import validate_plans
 from tests.agent_eval.mock_llm import catalog
 
 CASES_PATH = Path(__file__).with_name("replay_cases.json")

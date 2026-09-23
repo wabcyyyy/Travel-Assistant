@@ -1,6 +1,6 @@
 """检索预算计入 run_limits 的回归测试。"""
 
-from app.agent.run_limits import RunLimitExceeded, RunLimits
+from app.agent.runtime.run_limits import RunLimitExceeded, RunLimits
 
 
 def test_retrieval_budget_counts_and_raises():

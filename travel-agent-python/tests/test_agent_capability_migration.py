@@ -19,8 +19,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.agent.existence import VERIFIED, ResolveResult
-from app.agent.nl_edit import EditOp
+from app.agent.editing.nl_edit import EditOp
+from app.agent.grounding.existence import VERIFIED, ResolveResult
 from app.api.business.auth import auth_router
 from app.api.business.itinerary import router as itinerary_router
 from app.common import cache_store

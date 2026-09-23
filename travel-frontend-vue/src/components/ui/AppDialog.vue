@@ -80,8 +80,8 @@ useModalA11y({ open: model, panel, onClose: close })
   flex-direction: column;
   background: var(--lp-surface-card);
   border: 1px solid var(--lp-edge-1);
-  border-radius: var(--lp-radius-card-lg);
-  box-shadow: var(--lp-shadow-modal);
+  border-radius: var(--lp-radius-lg);
+  box-shadow: var(--lp-shadow-modal), var(--lp-shadow-hero);
   outline: none;
 }
 
@@ -134,15 +134,15 @@ useModalA11y({ open: model, panel, onClose: close })
   padding: var(--lp-space-3) var(--lp-space-5) var(--lp-space-4);
 }
 
-/* 入场/出场：150ms 淡入 + 上浮（reduce 偏好下被全局规则压成瞬时） */
+/* 入场/出场：TREK modal 手感——220ms 淡入 + 上浮（reduce 偏好下被全局规则压成瞬时） */
 .lp-dialog-enter-active,
 .lp-dialog-leave-active {
-  transition: opacity 0.15s ease;
+  transition: opacity var(--lp-dur-modal) var(--lp-ease-out-quint);
 }
 
 .lp-dialog-enter-active .dialog-panel,
 .lp-dialog-leave-active .dialog-panel {
-  transition: transform 0.15s ease;
+  transition: transform var(--lp-dur-modal) var(--lp-ease-out-quint);
 }
 
 .lp-dialog-enter-from,

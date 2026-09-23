@@ -2,7 +2,7 @@
 
 import time
 
-from app.agent.usage_store import UsageStore
+from app.agent.runtime.usage_store import UsageStore
 
 
 def _store(tmp_path) -> UsageStore:

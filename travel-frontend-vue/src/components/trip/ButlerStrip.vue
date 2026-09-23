@@ -31,11 +31,6 @@
         :weather="weather"
         @retry="emit('retry')"
       />
-      <ButlerNoteCard
-        v-if="detail.planNote && detail.status !== 3"
-        :note="detail.planNote"
-        :streaming="streamState.phase === 'butler'"
-      />
     </div>
   </section>
 </template>
@@ -48,11 +43,10 @@ import { fetchItineraryWeather } from '../../api/weather'
 import type { StreamState } from '../../store/itinerary'
 import type { ItineraryDetail } from '../../types/itinerary'
 import type { WeatherVO } from '../../types/generated/contracts'
-import ButlerNoteCard from './ButlerNoteCard.vue'
 import HeadStatusPanel from './HeadStatusPanel.vue'
 
 // 「管家说」条（v2.6 §19.3）：页头通栏一行 = 手记首句 + 生成状态 chip + 展开。
-// 展开体 = HeadStatusPanel（进度/降级/重试全量）+ 管家信件（ButlerNoteCard）。
+// 展开体 = HeadStatusPanel（进度/降级/重试全量）。
 // 生成失败自动展开（让重试按钮可见）；对话与版本历史入口收在本条右侧。
 const props = defineProps<{
   detail: ItineraryDetail
@@ -172,7 +166,7 @@ watch(
 .strip-label {
   flex: none;
   font-size: 12.5px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.12em;
   color: var(--lp-accent);
 }

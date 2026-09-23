@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from app.agent.function_calling import FunctionCallingError, run_tool_call_loop
-from app.agent.trace import trace_run
+from app.agent.runtime.trace import trace_run
+from app.agent.tools.function_calling import FunctionCallingError, run_tool_call_loop
 
 
 class FakeClient:
@@ -18,7 +18,7 @@ class FakeClient:
 
 def test_function_calling_executes_registered_read_tool_then_returns_answer(monkeypatch):
     monkeypatch.setattr(
-        "app.agent.tool_registry.registry.invoke", lambda name, arguments: {"city": arguments["city"], "items": []}
+        "app.agent.tools.registry.registry.invoke", lambda name, arguments: {"city": arguments["city"], "items": []}
     )
     client = FakeClient(
         [
@@ -45,7 +45,7 @@ def test_function_calling_executes_registered_read_tool_then_returns_answer(monk
 
 
 def test_function_calling_rejects_same_tool_and_arguments_twice(monkeypatch):
-    monkeypatch.setattr("app.agent.tool_registry.registry.invoke", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr("app.agent.tools.registry.registry.invoke", lambda *_args, **_kwargs: {})
     call = {"id": "call", "type": "function", "function": {"name": "search_pois", "arguments": '{"city":"杭州"}'}}
     client = FakeClient(
         [

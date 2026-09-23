@@ -11,6 +11,6 @@
 - v1.0.migrated = 与搬迁前 day_stream 内联版本逐字符一致。
 
 变更记录：
-- v1.0.migrated（M0）：自 app/agent/day_stream.py 原样迁入 open_day / open_trip 两段
+- v1.0.migrated（M0）：自 app/agent/generation/orchestration/day_stream.py 原样迁入 open_day / open_trip 两段
   system prompt，未做任何文本改动。
 """

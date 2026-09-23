@@ -1,6 +1,6 @@
 from copy import deepcopy
 
-from app.agent.local_replan import run_local_replan
+from app.agent.editing.local_replan import run_local_replan
 from app.schemas.trip import LocalReplanRequest
 
 

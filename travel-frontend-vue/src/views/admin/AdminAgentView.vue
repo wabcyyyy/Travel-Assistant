@@ -176,7 +176,7 @@ onMounted(() => {
 
 .run-id {
   font-family: var(--lp-font-data);
-  font-size: 12px;
+  font-size: 12.5px;
 }
 
 .ml8 {
@@ -203,7 +203,7 @@ onMounted(() => {
 }
 
 .addon-sub {
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--lp-text-muted);
 }
 
@@ -227,7 +227,7 @@ onMounted(() => {
 }
 
 .addon-key {
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--lp-text-faint);
 }
 
@@ -265,12 +265,12 @@ onMounted(() => {
 }
 
 .addon-state {
-  font-size: 12px;
+  font-size: 12.5px;
 }
 
 .addon-error {
   margin: 0;
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--lp-danger);
 }
 </style>

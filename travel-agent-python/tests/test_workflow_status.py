@@ -1,7 +1,9 @@
 from unittest.mock import patch
 
-from app.agent import landing, open_plans, tools, workflow
+from app.agent.generation.content import landing
+from app.agent.generation.orchestration import open_plans, workflow
 from app.agent.research import reasoning
+from app.agent.tools import impl as tools
 from app.schemas.trip import GenerateRequest
 from tests.agent_eval import mock_llm
 

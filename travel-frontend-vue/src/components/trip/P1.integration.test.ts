@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 import DayListCard from './DayListCard.vue'
 import HeadStatusPanel from './HeadStatusPanel.vue'
-import GenerateView from '../../views/GenerateView.vue'
+import CreateTripForm from './CreateTripForm.vue'
 import VerificationNotice from './VerificationNotice.vue'
 import EvidenceBadge from './EvidenceBadge.vue'
 import { useItineraryStore } from '../../store/itinerary'
@@ -54,7 +54,7 @@ describe('P1 集成', () => {
   })
   it('生成页提交区渲染核实说明而不只注册组件', () => {
     const { pinia } = setup()
-    const wrapper = shallowMount(GenerateView, { global: { plugins: [pinia], renderStubDefaultSlot: true,
+    const wrapper = shallowMount(CreateTripForm, { global: { plugins: [pinia], renderStubDefaultSlot: true,
       stubs: { VerificationNotice: false } } })
     expect(wrapper.findComponent(VerificationNotice).exists()).toBe(true)
     expect(wrapper.text()).toContain('费用为参考估算')

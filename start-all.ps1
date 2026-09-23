@@ -34,6 +34,8 @@ function Test-Port([int]$p) {
     return [bool](Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue)
 }
 
+if (-not (Test-Path (Join-Path $root "logs"))) { New-Item -ItemType Directory -Path (Join-Path $root "logs") | Out-Null }
+
 function Start-ServiceWindow([string]$title, [string]$workdir, [string]$cmdline) {
     # Output goes to logs\<title>.log; watch it with: Get-Content logs\<title>.log -Wait -Tail 100
     $logFile = Join-Path $root "logs\$title.log"
@@ -109,3 +111,5 @@ foreach ($t in $pending) { Write-Host "[TIMEOUT] $($t.Name) not responding yet -
 
 Write-Host ""
 Write-Host "Done. Web UI: http://localhost:5173  (register an account on first use)"
+
+

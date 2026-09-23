@@ -115,6 +115,7 @@ function onReduceMotionChange(value: string | number | boolean): void {
 
 .swatch-row {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--lp-space-2);
 }
 

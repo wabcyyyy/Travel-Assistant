@@ -243,7 +243,7 @@ async function onChoose(option: HotelOption) {
 .option-total {
   flex: none;
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 600;
   color: var(--lp-accent);
   font-variant-numeric: tabular-nums;
 }

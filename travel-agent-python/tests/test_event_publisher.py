@@ -142,7 +142,7 @@ def test_publish_event_with_run_id_merges_run_id_and_records_trace(fake_redis, m
     """M5 三向关联：run_id 并入 data 自定义区（runId），并以 scene=stream 落当前 trace。"""
     recorded: list[tuple] = []
     monkeypatch.setattr(
-        "app.agent.trace.record_event", lambda kind, name, **kwargs: recorded.append((kind, name, kwargs))
+        "app.agent.runtime.trace.record_event", lambda kind, name, **kwargs: recorded.append((kind, name, kwargs))
     )
     data = {"domains": ["attraction"]}
     event_publisher.publish_event(9, "research_start", data, run_id="run-abc")
@@ -167,7 +167,7 @@ def test_publish_event_with_run_id_merges_run_id_and_records_trace(fake_redis, m
 def test_publish_event_without_run_id_keeps_legacy_shape(fake_redis, monkeypatch):
     """无 run_id 时行为不变：data 无 runId，也不产生 stream 轨迹事件。"""
     recorded: list[tuple] = []
-    monkeypatch.setattr("app.agent.trace.record_event", lambda *a, **k: recorded.append((a, k)))
+    monkeypatch.setattr("app.agent.runtime.trace.record_event", lambda *a, **k: recorded.append((a, k)))
     event_publisher.publish_event(9, "research_start", {"domains": ["attraction"]})
 
     envelope = json.loads(fake_redis.published[0][1])

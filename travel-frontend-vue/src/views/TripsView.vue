@@ -2,7 +2,7 @@
   <div class="trips">
     <SectionHead title="我的行程" :sub="bandSub">
       <template #actions>
-        <el-button type="primary" @click="$router.push('/generate')">新建行程</el-button>
+        <el-button type="primary" @click="ui.openCreateTrip()">新建行程</el-button>
       </template>
     </SectionHead>
 
@@ -82,22 +82,22 @@
           <div class="trip-counts">
             <div class="count-cell">
               <span class="count-n">{{ row.days }}</span>
-              <span class="lp-micro count-k">天数</span>
+              <span class="count-k">天</span>
             </div>
             <div class="count-cell">
               <span class="count-n">{{ row.persons }}</span>
-              <span class="lp-micro count-k">同行</span>
+              <span class="count-k">人</span>
             </div>
             <div class="count-cell">
               <span class="count-n">￥{{ row.totalAmount }}</span>
-              <span class="lp-micro count-k">预算</span>
+              <span class="count-k">预算</span>
             </div>
           </div>
         </div>
       </article>
 
       <!-- 虚线「新建行程」卡（TREK 借鉴）：空位即入口 -->
-      <button type="button" class="new-trip-card" @click="$router.push('/generate')">
+      <button type="button" class="new-trip-card" @click="ui.openCreateTrip()">
         <el-icon class="new-plus"><Plus /></el-icon>
         <span class="new-label">新建行程</span>
         <span class="new-sub">选目的地与偏好，Agent 整段生成</span>
@@ -107,7 +107,7 @@
     <AppPanel v-else>
       <EmptyState :description="emptyDescription">
         <el-button v-if="loadError" @click="load">重新加载</el-button>
-        <el-button v-else type="primary" @click="$router.push('/generate')">去生成行程</el-button>
+        <el-button v-else type="primary" @click="ui.openCreateTrip()">新建行程</el-button>
       </EmptyState>
     </AppPanel>
 
@@ -140,6 +140,9 @@ import EmptyState from '../components/ui/EmptyState.vue'
 import SectionHead from '../components/ui/SectionHead.vue'
 import SkeletonCard from '../components/ui/SkeletonCard.vue'
 import Toolbar from '../components/ui/Toolbar.vue'
+import { useUiStore } from '../store/ui'
+
+const ui = useUiStore()
 import { useTripRowActions } from '../composables/useTripRowActions'
 import { useAtlasStore } from '../store/atlas'
 import type { ItinerarySummary } from '../types/itinerary'
@@ -384,13 +387,13 @@ async function onDelete(row: ItinerarySummary) {
   border: 1px solid var(--lp-edge-1);
   border-radius: var(--lp-radius-card);
   overflow: hidden;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  transition: border-color var(--lp-dur-modal) var(--lp-ease-out-quint), box-shadow var(--lp-dur-modal) var(--lp-ease-out-quint), transform var(--lp-dur-modal) var(--lp-ease-out-quint);
 }
 
 .trip-card:hover {
-  border-color: var(--lp-accent);
-  box-shadow: var(--lp-shadow-md);
-  transform: translateY(-4px);
+  border-color: var(--lp-edge-2);
+  box-shadow: var(--lp-shadow-lg);
+  transform: translateY(-3px);
 }
 
 .trip-cover {
@@ -411,7 +414,7 @@ async function onDelete(row: ItinerarySummary) {
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.4s ease;
+  transition: transform var(--lp-dur-modal) var(--lp-ease-out-quint);
 }
 
 .trip-card:hover .trip-cover img {
@@ -525,9 +528,9 @@ async function onDelete(row: ItinerarySummary) {
 }
 
 .count-k {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
   color: var(--lp-text-muted);
 }
 
@@ -537,12 +540,12 @@ async function onDelete(row: ItinerarySummary) {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--lp-space-1);
-  min-height: 260px;
-  padding: var(--lp-space-4);
+  gap: 10px;
+  min-height: 320px;
+  padding: var(--lp-space-5);
   border: 1px dashed var(--lp-edge-2);
   border-radius: var(--lp-radius-card);
-  background: transparent;
+  background: color-mix(in srgb, var(--lp-surface-2) 55%, transparent);
   color: var(--lp-text-muted);
   cursor: pointer;
   transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
@@ -555,34 +558,53 @@ async function onDelete(row: ItinerarySummary) {
 }
 
 .new-plus {
-  font-size: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--lp-edge-1);
+  background: var(--lp-surface-card);
+  font-size: 22px;
   line-height: 1;
+  color: var(--lp-text-1);
 }
 
 .new-label {
-  font-size: 15px;
+  font-family: var(--lp-font-display);
+  font-size: 16px;
   font-weight: 600;
+  letter-spacing: -0.02em;
   color: var(--lp-text-1);
 }
 
 .new-sub {
   font-size: var(--lp-text-caption);
+  color: var(--lp-text-muted);
+  text-align: center;
+  max-width: 22ch;
+  line-height: 1.5;
 }
 
 .trip-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px 14px;
+  gap: 8px;
+  padding: 16px 16px 18px;
 }
 
 .trip-title {
+  margin: 0;
   padding: 0;
   border: none;
   background: none;
   text-align: left;
-  font-size: 16px;
-  font-weight: 700;
+  font-family: var(--lp-font-display);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
   color: var(--lp-text-1);
   cursor: pointer;
   overflow: hidden;

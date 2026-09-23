@@ -220,8 +220,10 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 15px;
-  font-weight: 700;
+  font-family: var(--lp-font-display);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   color: var(--lp-text-1);
 }
 
@@ -240,7 +242,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--lp-text-muted);
 }
 
@@ -274,8 +276,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
   line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 12.5px;
-  line-height: 1.7;
+  font-size: 13.5px;
+  line-height: 1.55;
   color: var(--lp-text-2);
 }
 

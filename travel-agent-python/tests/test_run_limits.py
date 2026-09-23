@@ -1,6 +1,6 @@
 import pytest
 
-from app.agent.run_limits import RunLimitExceeded, RunLimits
+from app.agent.runtime.run_limits import RunLimitExceeded, RunLimits
 
 
 def test_run_limits_enforce_llm_and_token_budgets():

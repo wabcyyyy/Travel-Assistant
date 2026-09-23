@@ -15,9 +15,9 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from app.agent.existence import VERIFIED, ResolveResult
-from app.agent.grounding_evidence import issue_evidence
-from app.agent.trace import traced
+from app.agent.grounding.existence import VERIFIED, ResolveResult
+from app.agent.grounding.grounding_evidence import issue_evidence
+from app.agent.runtime.trace import traced
 
 
 def _has_cjk(text: str) -> bool:

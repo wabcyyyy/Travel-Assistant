@@ -219,7 +219,7 @@ async function applyUpload(): Promise<void> {
   right: 0;
   bottom: 0;
   padding: 2px 6px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--lp-text-inverse);
   background: var(--lp-overlay);
   text-align: left;

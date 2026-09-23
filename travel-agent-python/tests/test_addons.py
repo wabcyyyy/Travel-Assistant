@@ -83,7 +83,7 @@ def test_require_addon_raises_404_when_disabled(in_memory_addons):
 
 
 def test_registry_collapses_web_search_when_addon_off(in_memory_addons):
-    from app.agent.tool_registry import ToolInvocationError, registry
+    from app.agent.tools.registry import ToolInvocationError, registry
 
     names = [spec.name for spec in registry.list_specs()]
     assert "web_search_places" in names

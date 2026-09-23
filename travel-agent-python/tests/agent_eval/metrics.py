@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from app.agent.grounding_evidence import lookup_ticket
-from app.agent.intent import build_intent_keywords
-from app.agent.map_link import map_directions_url
-from app.agent.reflect import _item_end, _item_start, estimate_transfer_minutes
+from app.agent.core.intent import build_intent_keywords
+from app.agent.data.map_link import map_directions_url
+from app.agent.generation.content.reflect import _item_end, _item_start, estimate_transfer_minutes
+from app.agent.grounding.grounding_evidence import lookup_ticket
 
 
 def _items(response) -> list[dict]:

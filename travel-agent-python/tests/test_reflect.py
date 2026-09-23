@@ -1,4 +1,9 @@
-from app.agent.reflect import build_feedback, estimate_transfer_minutes, parse_time, validate_plans
+from app.agent.generation.content.reflect import (
+    build_feedback,
+    estimate_transfer_minutes,
+    parse_time,
+    validate_plans,
+)
 
 
 def test_parse_time():

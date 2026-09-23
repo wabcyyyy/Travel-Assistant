@@ -424,8 +424,10 @@ async function confirmAdd(dayId: number): Promise<void> {
 
 .panel-title {
   margin: 0;
-  font-size: 14px;
-  font-weight: 800;
+  font-family: var(--lp-font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   color: var(--lp-text-1);
 }
 
@@ -570,13 +572,15 @@ async function confirmAdd(dayId: number): Promise<void> {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12.5px;
-  font-weight: 500;
+  font-family: var(--lp-font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
   color: var(--lp-text-1);
 }
 
 .poi-unverified {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--lp-text-faint);
 }
 
@@ -585,8 +589,9 @@ async function confirmAdd(dayId: number): Promise<void> {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10px;
-  color: var(--lp-text-faint);
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--lp-text-muted);
 }
 
 .poi-day {
@@ -596,9 +601,9 @@ async function confirmAdd(dayId: number): Promise<void> {
   border-radius: var(--lp-radius-pill);
   background: var(--lp-surface-2);
   color: var(--lp-text-2);
-  font-family: var(--lp-font-mono);
+  font-family: var(--lp-font-display);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   transition: color 0.15s ease, border-color 0.15s ease;
 }

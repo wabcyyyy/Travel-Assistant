@@ -6,7 +6,7 @@
 校验口径（纯静态，不需要数据库）：
 - 解析 db/migration 下**全部** V*.sql（按版本号升序），列集合取并集：
   CREATE TABLE 的列定义 + ALTER TABLE ... ADD COLUMN 新增的列；
-- Python：app/agent/city_reference.py 查询的 city_geo / city_consumption 列
+- Python：app/agent/data/city_reference.py 查询的 city_geo / city_consumption 列
   （下方静态期望表，POI 库退役后 agent 层仅存的城市级数据面）必须在并集中存在；
 - Java：各 @TableName 实体的字段（camelCase→snake_case）必须在对应表的并集列中；
   **Java 模块归档后这一半自动跳过并在输出里注明**（不会静默当全过）；

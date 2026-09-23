@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.agent.usage_store import UsageStore
+from app.agent.runtime.usage_store import UsageStore
 from app.api.business.admin import router as admin_router
 from app.api.business.auth import auth_router
 from app.api.business.itinerary import router as itinerary_router

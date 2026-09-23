@@ -15,10 +15,12 @@ from typing import cast
 
 import pytest
 
-from app.agent.formatting.facts import apply_item_facts
-from app.agent.generation_core import PoiFactRow
-from app.agent.grounding_evidence import issue_evidence, lookup_ticket
-from app.agent.grounding_labels import (
+from app.agent.generation.content.narrative import sanitize_narrative
+from app.agent.generation.content.reference_pool import ReferencePool
+from app.agent.generation.output.facts import apply_item_facts
+from app.agent.generation.rules.generation_core import PoiFactRow
+from app.agent.grounding.grounding_evidence import issue_evidence, lookup_ticket
+from app.agent.grounding.grounding_labels import (
     OPEN_ITEM_SOURCE,
     POOL_UNKNOWN_SOURCE,
     UNTRUSTED_SOURCE,
@@ -28,8 +30,6 @@ from app.agent.grounding_labels import (
     label_for_evidence_row,
     label_for_landed_item,
 )
-from app.agent.narrative import sanitize_narrative
-from app.agent.reference_pool import ReferencePool
 from app.schemas.trip import SourceRecord
 
 

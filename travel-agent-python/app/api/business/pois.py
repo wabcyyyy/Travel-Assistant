@@ -1,7 +1,7 @@
 """加点工作台地点检索：`GET /api/pois`。
 
 数据源 = OTM 半径池 + 联网搜索补池（无本地语料，见 app/services/poi_search.py），
-与 Agent 生成时能引用的点位同源（同一 `app.agent.tools.workbench_search`）。
+与 Agent 生成时能引用的点位同源（同一 `app.agent.tools.impl.workbench_search`）。
 """
 
 from __future__ import annotations

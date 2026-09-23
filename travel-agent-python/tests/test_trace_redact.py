@@ -4,7 +4,7 @@
 落入持久化 trace 文件。这里验证集中脱敏覆盖 error 字段与 metadata 字符串值。
 """
 
-from app.agent.trace import record_event, trace_run
+from app.agent.runtime.trace import record_event, trace_run
 
 
 def test_error_field_redacts_url_api_key():
@@ -45,7 +45,7 @@ def test_metadata_string_values_are_redacted():
 
 
 def test_trace_span_error_redacted_on_exception():
-    from app.agent.trace import trace_span
+    from app.agent.runtime.trace import trace_span
 
     with trace_run("run", "req") as trace:
         try:

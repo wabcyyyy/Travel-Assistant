@@ -102,6 +102,54 @@ type = "layers"
 layers = ["app.api", "app.services", "app.agent"]
 
 [[tool.importlinter.contracts]]
+name = "Agent domain ladder: core -> runtime -> data -> grounding -> tools -> research -> generation -> editing"
+type = "layers"
+# 域地图（app/agent/README.md）：上层可 import 下层，下层不得 import 上层。
+# 本契约随域化改造逐层长大，目标形态
+#   core → runtime → data → grounding → tools/research → generation → editing
+# 每迁一个域就在此加一层（与搬迁同一 commit），未域化的平铺模块不在契约内。
+layers = [
+    "app.agent.editing",
+    "app.agent.generation",
+    "app.agent.research",
+    "app.agent.tools",
+    "app.agent.grounding",
+    "app.agent.data",
+    "app.agent.runtime",
+    "app.agent.core",
+]
+# 已知倒挂（INV-1 豁免，留期限）：app/common/llm_client.py 反向 import agent runtime
+# （用量/限额/轨迹收口），于是任何调用 LLM 的下层模块都会经它间接够到 runtime。
+# 这里豁免的是**根因边**（llm_client → runtime），不是逐个受害模块，所以 data 域的
+# pricing / web_search 落地时不必再加条目。
+# 期限：把 llm_client 的 runtime 依赖改为注入、或把 llm_client 迁入 app.agent.runtime
+# 之后删除这四条（届时阶梯契约会立刻验证）。
+ignore_imports = [
+    "app.common.llm_client -> app.agent.runtime.observability",
+    "app.common.llm_client -> app.agent.runtime.run_limits",
+    "app.common.llm_client -> app.agent.runtime.trace",
+    "app.common.llm_client -> app.agent.runtime.usage_store",
+]
+
+[[tool.importlinter.contracts]]
+name = "Generation sublayers: rules -> content -> output -> orchestration"
+type = "layers"
+# 生成域内四层（自下而上；层序由依赖图 SCC + 拓扑排序算出，不是按语义猜的）：
+#   rules（纯规则）→ content（造内容 + 校验/事实）→ output（输出落地/终检/优化）
+#   → orchestration（图、循环、流式链路、facade）
+# 注意 output 在 orchestration **之下**：是编排层调用它把行程落地。蓝图说的"formatting 是
+# workflow 的下游"指执行顺序，不是 import 方向。
+# reflect / route_matrix / graph_state 在 content：它们被 output 与 orchestration 共用，
+# 必须落在 output 之下；workflow/trip_graph/day_workflow/day_stream 之间的薄门面互调是
+# 懒导入破环，故同层。
+layers = [
+    "app.agent.generation.orchestration",
+    "app.agent.generation.output",
+    "app.agent.generation.content",
+    "app.agent.generation.rules",
+]
+
+[[tool.importlinter.contracts]]
 name = "Agent facade: api/services import app.agent only, never agent internals"
 type = "forbidden"
 source_modules = ["app.api", "app.services"]
@@ -109,71 +157,20 @@ source_modules = ["app.api", "app.services"]
 # 其全部子模块；allow_indirect_imports 切到直接依赖判定，恰好匹配"零深路径"门禁：
 # 深路径一定是直接 import；经 services 转手的间接链由 services 自身的直接 import 拦下。
 allow_indirect_imports = true
-# 豁免：门面 re-export 名与子模块同名的固有解析歧义（实际经 app/agent/__init__.py
-# 转发，非深路径）。unmatched_ignore_imports_alerting 默认 error：改名不删豁免会红。
-ignore_imports = [
-    "app.api.agent -> app.agent.usage_store",
-    "app.services.admin_service -> app.agent.usage_store",
-]
+# 历史上这里豁免过两条 `-> app.agent.usage_store`：门面 re-export 名与同名字模块存在
+# 解析歧义（实际经 app/agent/__init__.py 转发，非深路径）。usage_store 迁入
+# app.agent.runtime 后歧义消失——import-linter 不再把 `from app.agent import usage_store`
+# 记成深路径，两条豁免随之删除（2026-09-23 域化改造，实测 unmatched 后清理）。
 forbidden_modules = [
-    "app.agent.butler",
-    "app.agent.budget",
-    "app.agent.reference_pool",
-    "app.agent.suggestions",
-    "app.agent.stream_parser",
-    "app.agent.chat_draft",
-    "app.agent.city_guide",
-    "app.agent.city_reference",
-    "app.agent.clarify",
-    "app.agent.critic",
-    "app.agent.day_stream",
-    "app.agent.day_prompts",
+    # 域级登记（2026-09-23 域化改造完成）：登记父包即覆盖其全部子模块，域内新增模块
+    # 不必再改本表；登记面完整性由 tests/test_agent_facade_registration.py 机检。
+    # 域地图、"新代码放哪"落位表与域间阶梯见 app/agent/README.md。
+    "app.agent.core",
+    "app.agent.data",
+    "app.agent.editing",
+    "app.agent.generation",
     "app.agent.grounding",
-    "app.agent.graph_nodes",
-    "app.agent.graph_state",
-    "app.agent.open_plans",
-    "app.agent.formatting.assembly",
-    "app.agent.narrative",
-    "app.agent.plan_context",
-    "app.agent.day_workflow",
-    "app.agent.formatting",
-    "app.agent.function_calling",
-    "app.agent.generation_core",
-    "app.agent.existence",
-    "app.agent.existence_commercial",
-    "app.agent.grounding_labels",
-    "app.agent.grounding_evidence",
-    "app.agent.suggestion_grounding",
-    "app.agent.generators",
-    "app.agent.geo",
-    "app.agent.intent",
-    "app.agent.landing",
-    "app.agent.local_replan",
-    "app.agent.map_link",
-    "app.agent.memory",
-    "app.agent.nl_edit",
-    "app.agent.observability",
-    "app.agent.places",
-    "app.agent.poi_identity",
-    "app.agent.pricing",
-    "app.agent.reflect",
     "app.agent.research",
-    "app.agent.route_matrix",
-    "app.agent.route_service",
-    "app.agent.run_limits",
-    "app.agent.schedule_optimizer",
-    "app.agent.tool_registry",
+    "app.agent.runtime",
     "app.agent.tools",
-    "app.agent.trace",
-    "app.agent.trace_store",
-    "app.agent.trip_graph",
-    "app.agent.trip_stream",
-    "app.agent.usage_store",
-    "app.agent.web_search",
-    "app.agent.workflow",
-    # R0-4：这两个是 2026-09-18 自检发现的仅有漏项（app/agent 下 50 个模块只登记了 48）——
-    # 漏登记 = 深路径 import 不会红，正是根 AGENTS.md 警告的"新增子模块必须登记"漂移。
-    # 登记面由 tests/test_agent_facade_registration.py 机检（枚举 app/agent/** 与本表取差集）。
-    "app.agent.weather",
-    "app.agent.json_utils",
 ]

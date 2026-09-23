@@ -32,9 +32,9 @@ from app.agent.research.evidence import (
     ResearchDomain,
     ResearchTask,
 )
-from app.agent.run_limits import RunLimitExceeded, current_limits
-from app.agent.tool_registry import registry
-from app.agent.trace import record_event, trace_span
+from app.agent.runtime.run_limits import RunLimitExceeded, current_limits
+from app.agent.runtime.trace import record_event, trace_span
+from app.agent.tools.registry import registry
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,7 @@ def _run_search(state: ResearchAgentState) -> dict:
     extras = list(dict.fromkeys((plan.get("extra_keywords") or []) + (state.get("extra_keywords") or [])))
     # M3-②（AD5）最小增量：任务卡携带的意图关键词并入补池链（新旧行为兼容，仅追加）
     extras = list(dict.fromkeys(extras + list(task.intent_keywords or [])))
-    from app.agent.web_search import search_places_via_web, web_search_enabled
+    from app.agent.data.web_search import search_places_via_web, web_search_enabled
 
     quota_note = state.get("quota_note") or ""
     # 联网入口关着时补池必然返回空（search_places_via_web 自己就早退），所以这里

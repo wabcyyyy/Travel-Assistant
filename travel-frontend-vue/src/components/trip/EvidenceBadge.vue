@@ -19,7 +19,7 @@ const hint = computed(() => `${props.item.source ? `来源：${props.item.source
   border: 1px solid var(--lp-border);
   border-radius: var(--lp-radius-xs);
   padding: 1px 5px;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 .sourced { color: var(--lp-accent); }

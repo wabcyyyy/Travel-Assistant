@@ -1,6 +1,6 @@
 """G0 量测（PLAN-A1 §3）：模型自选点位名的存在性三值分布。
 
-**跑的是上线用的那条判定**（`app/agent/existence.py`），不是原型：量测与实现
+**跑的是上线用的那条判定**（`app/agent/grounding/existence.py`），不是原型：量测与实现
 分家会让"测出来的比例"和"跑起来的比例"变成两码事。
 
 方法与结论见 `docs/量测-存在性接地-2026-09-18.md`。做法：对每个城市跑一次
@@ -32,10 +32,10 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.agent import existence
-from app.agent.day_prompts import GENERATION_TEMPERATURE
-from app.agent.generation_core import day_hotel_clause
-from app.agent.json_utils import parse_llm_json_or_none
+from app.agent.core.json_utils import parse_llm_json_or_none
+from app.agent.generation.content.day_prompts import GENERATION_TEMPERATURE
+from app.agent.generation.rules.generation_core import day_hotel_clause
+from app.agent.grounding import existence
 from app.common.config import settings
 from app.common.llm_client import get_llm_client
 from app.prompts.open_generation import open_day_system_prompt

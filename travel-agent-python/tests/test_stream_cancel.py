@@ -15,8 +15,8 @@ import time
 
 import pytest
 
-from app.agent.observability import metrics, observe_run
-from app.agent.trip_stream import run_generate_trip_stream
+from app.agent.generation.orchestration.trip_stream import run_generate_trip_stream
+from app.agent.runtime.observability import metrics, observe_run
 from app.api.agent import _bridge_worker_events
 from app.common import llm_client
 from app.common.config import settings
@@ -136,7 +136,7 @@ def _req(days: int = 3) -> GenerateDayRequest:
 def stream_env(monkeypatch):
     monkeypatch.setattr(settings, "llm_api_key", "test-key")
     monkeypatch.setattr(settings, "llm_generation_web_search", False)
-    monkeypatch.setattr("app.agent.landing.local_ground", lambda item, city: None)
+    monkeypatch.setattr("app.agent.generation.content.landing.local_ground", lambda item, city: None)
 
 
 class TestTripStreamCancel:
@@ -153,7 +153,7 @@ class TestTripStreamCancel:
         metrics.reset()
         cancel = threading.Event()
         fake = _CancelAfterFirstChunkClient(cancel)
-        monkeypatch.setattr("app.agent.trip_stream.get_llm_client", lambda: fake)
+        monkeypatch.setattr("app.agent.generation.orchestration.trip_stream.get_llm_client", lambda: fake)
         started = time.monotonic()
         with observe_run("cancel-stream-run"):
             events = list(run_generate_trip_stream(_req(3), cancel=cancel))

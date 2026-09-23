@@ -1,4 +1,4 @@
-from app.agent.route_service import RouteService, clear_route_cache
+from app.agent.data.route_service import RouteService, clear_route_cache
 
 
 def _poi(name, lat=30.0, lng=120.0):
@@ -42,7 +42,7 @@ def test_route_service_falls_back_to_coordinate_estimate(monkeypatch):
 
 
 def test_route_service_peak_factor_is_explicit(monkeypatch):
-    monkeypatch.setattr("app.agent.route_service.settings.route_peak_factor", 1.5)
+    monkeypatch.setattr("app.agent.data.route_service.settings.route_peak_factor", 1.5)
     clear_route_cache()
     service = RouteService(
         fetcher=lambda *_args: {
