@@ -52,7 +52,9 @@ $tmp = Join-Path $pkg ".tmp-pytest"
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 $env:TEMP = $tmp
 $env:TMP = $tmp
-uv run pytest tests/ -q --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval --cov=app --cov-report=xml --cov-report=
+# tests/agent_eval 的度量层单测（PR-0 从 --ignore 解除）已进离线套件：mock 驱动、
+# 零外网，与其余单测同一门禁。tests/api（活栈）与 tests/perf（压测）仍排除。
+uv run pytest tests/ -q --ignore=tests/api --ignore=tests/perf --cov=app --cov-report=xml --cov-report=
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Step "coverage gate on changed lines (diff-cover, G-3.4)"

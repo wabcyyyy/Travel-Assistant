@@ -119,7 +119,7 @@ uv run python main.py  # 127.0.0.1:8000，默认不开启 reload
 # 离线单测与 Agent 评测（零外部依赖：DB/模型/外部 API 全走替身）
 uv run pytest --ignore=tests/api -q
 uv run python tests/agent_eval/eval_agent.py
-# 报告输出：tests/agent_eval/report/report.json / report.md
+# 报告输出：tests/agent_eval/report/offline/report.json / report.md（进 eval_ratchet 指标棘轮）
 uv run python tests/agent_eval/replay.py
 # 回放未知 POI、路线不足、营业时间越界等安全失败案例
 
@@ -136,7 +136,7 @@ uv run pytest tests/test_cutover_contract.py -q
 
 ## 离线评测指标（当前工作树可复现）
 
-固定 fixture 评测覆盖候选引用、事实字段引用、时间冲突、跨天重复、预算一致性、fallback 成功率和轨迹完整率；路线/优化器消融脚本 `tests/agent_eval/eval_baselines.py` 使用固定 `fixture-route` 替身对比坐标基线与路线优化基线，报告写入 `tests/agent_eval/report/baseline_report.md`。检索质量评测（Recall/MRR/NDCG 等）随语料库退役一并移除——外部数据源的质量由其自身服务等级保证，本地不再建索引也不再评测索引。真实 LLM 指标需在固定模型、temperature、Prompt 版本后单独生成，不能直接复用 fixture 报告。
+固定 fixture 评测覆盖候选引用、事实字段引用、时间冲突、跨天重复、预算一致性、fallback 成功率和轨迹完整率；路线/优化器消融脚本 `tests/agent_eval/eval_baselines.py` 使用固定 `fixture-route` 替身对比坐标基线与路线优化基线，报告写入 `tests/agent_eval/report/offline/baseline_report.md`。检索质量评测（Recall/MRR/NDCG 等）随语料库退役一并移除——外部数据源的质量由其自身服务等级保证，本地不再建索引也不再评测索引。真实 LLM 指标需在固定模型、temperature、Prompt 版本后单独生成，不能直接复用 fixture 报告。行为防倒退判据（PR-0 口径）：`scripts/eval_ratchet.py` 逐指标双向棘轮（基线 `tests/agent_eval/metrics_baseline.json`）+ CI `eval-determinism` job 两遍报告 SHA256。
 
 真实 LLM 双跑评测：
 
@@ -144,13 +144,14 @@ uv run pytest tests/test_cutover_contract.py -q
 # 必须配置真实 LLM_API_KEY；脚本会固定当前模型、temperature（day_prompts.GENERATION_TEMPERATURE）、
 # Prompt 版本，逐遍记录 run_id、脱敏 Trace、token、调用/重试/fallback 和失败原因
 uv run python tests/agent_eval/llm_eval.py --path stream --limit 6
-# 报告：tests/agent_eval/report/llm_report.json
+# 报告：tests/agent_eval/report/nightly/llm_report.json（真实 LLM 产物落 nightly/ 面）
 # --path stream（默认）量的是产品路径：先 run_plan_context 做研究（与生成各算一个 run、
 # 各一份预算，所以报告里 research_* 为 0），再逐日消费 run_generate_trip_stream 的事件；
 # --path graph 量同步 /v1/generate 那张共用预算的遗留图。数值不可跨路径比较，
 # eval_gate.py 用 EXPECTED_GENERATION_PATH 认这条口径。
-# 当前真实 LLM 口径见 themed_report.md（同题双跑）；仓内 llm_report.json 为 2026-08-29 旧 run，
-# 已标 report_status=stale-superseded，不要引用其中的 consistency_rate 与 fallback 描述。
+# 当前真实 LLM 口径见 report/nightly/themed_report.md（同题双跑）；2026-08-29 的
+# 非主题化旧 run 已标 report_status=stale-superseded 退役（git 历史可查），不要引用旧 run
+# 的 consistency_rate 与 fallback 描述。
 ```
 
 - 运行接口生成后，可通过 `X-Request-ID` 与响应头 `X-Agent-Run-ID` 关联业务面与 Agent 面（同进程同一次请求）的完整链路；`GET /api/agent/v1/runs/{run_id}` 查询该运行的脱敏 Trace。Trace 事件包含 request/run/span/parent span 关联，Registry 工具事件还包含 tool call/action ID。生成响应的 `status` 为 `success`、`degraded` 或 `failed`：开放模式生成必然标注关键事实需出发前复核（`degraded`），LLM 未配置或重试耗尽返回待研究草案，0 可交付项时 `failed`（质量报告 BLOCKED，编排层不会将其落库为成功）。`GET /api/agent/v1/metrics` 提供互斥的成功率、降级率、失败率、平均事件耗时、LLM/工具/MCP 调用数、token、重试、fallback、工具预算耗尽和 MCP 失败率。当前是进程内指标，生产多实例部署应接入 Prometheus/OpenTelemetry。

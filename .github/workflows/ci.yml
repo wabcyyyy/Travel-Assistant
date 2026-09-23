@@ -70,8 +70,10 @@ jobs:
           LLM_API_KEY: ''
         # coverage.xml 供下一步 diff-cover 用；全量覆盖率不设阈值（存量面有历史
         # 包袱），只对**本次变更行**设门槛——这是 G-3.4 的口径。
+        # tests/agent_eval 度量层单测已进离线套件（PR-0 从 --ignore 解除）：
+        # eval 度量/门禁/棘轮实现改坏 → 这里红（与 CI agent-eval job 的行为面互补）。
         run: |
-          uv run pytest tests/ --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval -q             --cov=app --cov-report=xml --cov-report=
+          uv run pytest tests/ --ignore=tests/api --ignore=tests/perf -q             --cov=app --cov-report=xml --cov-report=
       - name: Coverage gate on changed lines
         # G-3.4：本次变更行覆盖率 ≥70%，门槛只升不降（INV-1）。
         # 故意提交无测试的新函数 → 本步红（与 "门禁只升不降" 同一纪律）。
@@ -113,17 +115,51 @@ jobs:
         env:
           LLM_API_KEY: ''
         run: uv run pytest tests/test_stream_snapshot.py -q
-      - name: Offline eval (agent + research)
-        # 离线护栏已让 eval 完全确定（无外网、fixture 驱动），因此报告本身就是
-        # 基线：跑完与入仓报告逐字节比对 = 行为防倒退门禁（同契约 drift 手法）。
-        # 指标口径见 tests/agent_eval/report/report.md；有意改口径须重生成报告
-        # 并随同一 commit 入仓（人工复核 diff）。
+      - name: Offline eval (agent + research) + per-metric ratchet
+        # 口径升级（PR-0，取代逐字节比对 `git diff --exit-code tests/agent_eval/report/`）：
+        # 字节 diff 区分不了变好/变坏，任何变化都只能"无脑 re-baseline"，是放松而非
+        # 收紧。现在逐指标双向棘轮（scripts/eval_ratchet.py + tests/agent_eval/
+        # metrics_baseline.json）：回归红、显著变好也逼 --update 认账收紧、未冻结指标红；
+        # 报告可复现性拆给 eval-determinism job（同 fixture 两遍 SHA256）单独把关。
+        # 指标口径见 tests/agent_eval/report/offline/report.md。
         env:
           LLM_API_KEY: ''
         run: |
           uv run python tests/agent_eval/eval_agent.py
           uv run python tests/agent_eval/eval_research.py
-          git diff --exit-code -- tests/agent_eval/report/
+          uv run python scripts/eval_ratchet.py
+
+  eval-determinism:
+    needs: preflight
+    # 确定性校验（PR-0）：同一 fixture 连跑 eval 两遍，报告 SHA256 必须逐字节一致。
+    # 报告不确定 = 指标棘轮比对的是噪声；并行研究泳道的到达乱序由 metrics.py 的
+    # 泳道稳定排序规范化（保留调用顺序，不按名丢序），这里验证"可复现"本身。
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: travel-agent-python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+          enable-cache: true
+      - name: Sync deps (lockfile-driven)
+        run: uv sync --frozen
+      - name: Run eval twice, report hashes must match
+        env:
+          LLM_API_KEY: ''
+        run: |
+          run_eval() {
+            uv run python tests/agent_eval/eval_agent.py >/dev/null
+            uv run python tests/agent_eval/eval_research.py >/dev/null
+            (cd tests/agent_eval/report/offline && sha256sum * | sort)
+          }
+          first=$(run_eval)
+          second=$(run_eval)
+          echo "first run:";  echo "$first"
+          echo "second run:"; echo "$second"
+          diff <(echo "$first") <(echo "$second")
 
   frontend:
     needs: preflight

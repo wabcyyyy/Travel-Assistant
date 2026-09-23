@@ -37,6 +37,10 @@ dependencies = [
 dev = [
     "diff-cover>=10.5.1",
     "import-linter>=2.15",
+    # 评测数据集 schema 校验（PR-0 数据集治理，tests/agent_eval/dataset_schema.py）。
+    # 非新增包体：jsonschema 4.26.0 早已在 mcp 的传递闭包里（uv.lock），这里只是
+    # 把"评测工具链直接用它"这层关系显式化（INV-10 理由见 commit message）。
+    "jsonschema>=4.18,<5",
     "pyright>=1.1.414",
     "pytest==8.2.2",
     "pytest-cov>=7.1.0",

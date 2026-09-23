@@ -9,6 +9,57 @@ from app.agent.core.intent import build_intent_keywords
 from app.agent.data.map_link import map_directions_url
 from app.agent.generation.content.reflect import _item_end, _item_start, estimate_transfer_minutes
 from app.agent.grounding.grounding_evidence import lookup_ticket
+from app.agent.research.evidence import RESEARCH_DOMAINS
+
+# 研究泳道序号 = RESEARCH_DOMAINS 序（hotel/attraction/food）；上溯不到
+# research.<domain> 的事件（节点/主线程工具）都归主泳道，排最后。
+_LANE_RANK_OF_NAME = {f"research.{domain}": rank for rank, domain in enumerate(RESEARCH_DOMAINS)}
+_MAIN_LANE_RANK = len(RESEARCH_DOMAINS)
+
+
+def _lane_rank_of_name(name: str) -> int | None:
+    """事件名自身的泳道：`research.<domain>`（agent span）或其下的 `research.<domain>.*`。"""
+    for lane_name, rank in _LANE_RANK_OF_NAME.items():
+        if name == lane_name or name.startswith(lane_name + "."):
+            return rank
+    return None
+
+
+def _lane_rank(event: dict, by_span: dict[str, dict]) -> int:
+    """事件所属研究泳道的序号：先看自身名字，再沿 parent_span_id 上溯到 agent span。"""
+    rank = _lane_rank_of_name(str(event.get("name") or ""))
+    if rank is not None:
+        return rank
+    parent_id = event.get("parent_span_id")
+    for _ in range(8):
+        if not parent_id:
+            break
+        parent = by_span.get(str(parent_id))
+        if parent is None:
+            break
+        rank = _lane_rank_of_name(str(parent.get("name") or ""))
+        if rank is not None:
+            return rank
+        parent_id = parent.get("parent_span_id")
+    return _MAIN_LANE_RANK
+
+
+def ordered_event_names(events: list[dict], universe: list[dict] | None = None) -> list[str]:
+    """泳道稳定排序的事件名序列（单测直接断言其确定性与保序语义）。
+
+    为什么不能 `sorted(名字)`（PR-0 修的丢序问题）：研究三域并行执行，
+    **到达顺序**由线程调度决定（同一 fixture 实测三种排列），按名排序虽稳定了字节
+    却把调用顺序整个丢掉——图路径把 generate 排到 format 前面都看不出来。现在
+    按研究泳道稳定排序：泳道内保到达序（顺序信息），泳道间按域序排（确定性），
+    主泳道（节点/主线程工具）天然单线程、到达序即确定序。
+
+    `universe` = 全量事件（泳道上溯要查 agent span 事件，而调用方往往只喂
+    node/tool 子集）；默认按 events 自身建索引，单测喂小样本即可。
+    """
+    by_span = {
+        str(event.get("span_id")): event for event in (events if universe is None else universe) if event.get("span_id")
+    }
+    return [event["name"] for event in sorted(events, key=lambda event: _lane_rank(event, by_span))]
 
 
 def _items(response) -> list[dict]:
@@ -213,8 +264,9 @@ def evaluate_response(response, case: dict, catalog: dict, trace: dict) -> dict:
     expected_total = sum(expected.values())
     actual_total = sum(float(v) for v in response.budget_estimate.values())
 
-    tool_events = [event for event in trace.get("events", []) if event["kind"] == "tool"]
-    node_events = [event for event in trace.get("events", []) if event["kind"] == "node"]
+    trace_events = trace.get("events", [])
+    tool_events = [event for event in trace_events if event["kind"] == "tool"]
+    node_events = [event for event in trace_events if event["kind"] == "node"]
     # 多 Agent 研究编排（P3）：从 schedule_report 汇总各域证据包规模与推理轮次。
     research = (response.schedule_report or {}).get("research") or {}
     research_agents = research.get("agents") or {}
@@ -243,13 +295,13 @@ def evaluate_response(response, case: dict, catalog: dict, trace: dict) -> dict:
         "trace": {
             "node_count": len(node_events),
             "tool_count": len(tool_events),
-            # 排序而非保留调用顺序：研究三域并行执行，节点/工具事件的**到达
-            # 顺序**由线程调度决定——同一份 fixture 两次运行会得到不同的排列，
-            # 报告因此字节不稳定，无法充当防倒退门禁的比对基准（G-2.0）。
-            # 保留"调过哪些节点/工具、各多少次"，只丢弃不可靠的先后。
-            "nodes": sorted(event["name"] for event in node_events),
-            "tools": sorted(event["name"] for event in tool_events),
-            "routes": [event["name"] for event in trace.get("events", []) if event["kind"] == "route"],
+            # 节点/工具序列经 ordered_event_names 泳道稳定排序：保留调用顺序
+            # （顺序信息是回归绊线的一部分），又对并行研究三域的到达乱序免疫，
+            # 报告字节可复现（CI eval-determinism job 两遍 SHA256 把关）。
+            # 旧口径按名排序把顺序整个丢掉，图路径乱序也测不出来（PR-0 修）。
+            "nodes": ordered_event_names(node_events, trace_events),
+            "tools": ordered_event_names(tool_events, trace_events),
+            "routes": [event["name"] for event in trace_events if event["kind"] == "route"],
         },
         "research_rounds": research_rounds,
         "research_pack": research_pack,

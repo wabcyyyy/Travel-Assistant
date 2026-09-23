@@ -38,11 +38,14 @@ from app.agent.tools import impl as tools
 from app.common.config import settings
 from app.prompts.open_generation import OPEN_DAY_PROMPT_VERSION, OPEN_TRIP_PROMPT_VERSION
 from app.schemas.trip import DailyPlan, GenerateDayRequest, GenerateRequest, GenerateResponse, Suggestion
+from tests.agent_eval.dataset_schema import load_dataset
 from tests.agent_eval.metrics import evaluate_depth, evaluate_narrative, evaluate_response
 
 CASES_PATH = Path(__file__).with_name("cases.json")
 THEMED_CASES_PATH = Path(__file__).with_name("themed_cases.json")
-REPORT_DIR = Path(__file__).with_name("report")
+# 报告分面（PR-0）：真实 LLM 产物落 nightly/（eval_gate 消费），与 mock 离线基线
+# （report/offline/，进指标棘轮）分开——nightly 重跑不得污染基线目录。
+REPORT_DIR = Path(__file__).with_name("report") / "nightly"
 PROMPT_VERSION = "workflow-v2-authority-route-20260828"
 
 # 生成契约字段白名单：case 里的 name/prompt_version 是评测元数据，
@@ -362,7 +365,8 @@ def main() -> int:
     cases_path = Path(args.cases)
     # 文件名以 themed 开头即走主题化报告输出（themed_report.json + .md）
     themed = cases_path.name.startswith("themed")
-    cases = json.loads(cases_path.read_text(encoding="utf-8"))
+    # 数据集过 schema + 指纹（PR-0 数据集治理）：错题在加载点拦下，指纹随报告落盘
+    cases, dataset = load_dataset(cases_path)
     if args.limit:
         cases = cases[: args.limit]
     # prompt_version 占位在运行时填充实际契约版本（M5），随 case 落报告
@@ -406,6 +410,8 @@ def main() -> int:
         # 产物自带新鲜度：口径变更后旧报告可据此识别为过期
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "mode": "real-llm-themed" if themed else "real-llm",
+        # 数据集指纹（PR-0）：真实评测结论同样可回溯到"哪份题"
+        "dataset": dataset,
         # 口径的一部分：同一条 case 在两条路径上的预算形状不同，数值不可跨路径比较
         "generation_path": args.path,
         "model": settings.llm_model,

@@ -68,8 +68,12 @@ def test_generation_path_drift_is_flagged() -> None:
     assert any("generation_path" in problem for problem in eval_gate.check(legacy))
 
 
-def test_consistency_regression_is_flagged() -> None:
-    problems = eval_gate.check(_report(consistency_rate=0.0))
+def test_consistency_regression_is_flagged(monkeypatch) -> None:
+    """低于一致性下限判红。下限现值 0.0（2026-09-23 流式小样本实测零命中，防倒退语义
+    下 0 不可再跌），所以这里把下限抬到 0.5 验证绊线本身——棘轮随稳定性改进抬升后，
+    这条自动获得真实分辨力。"""
+    monkeypatch.setattr(eval_gate, "CONSISTENCY_BASELINE", 0.5)
+    problems = eval_gate.check(_report(consistency_rate=0.4))
     assert any("一致率" in problem for problem in problems)
 
 

@@ -30,10 +30,13 @@ from app.common.config import settings
 from app.prompts.open_generation import OPEN_DAY_PROMPT_VERSION, OPEN_TRIP_PROMPT_VERSION
 from app.schemas.trip import GenerateRequest
 from tests.agent_eval import mock_llm
+from tests.agent_eval.dataset_schema import load_dataset
 from tests.agent_eval.metrics import evaluate_depth, evaluate_response
 
 CASES_PATH = Path(__file__).with_name("cases.json")
-REPORT_DIR = Path(__file__).with_name("report")
+# 报告分两面（PR-0）：offline = mock 离线评测（进指标棘轮 + 确定性校验）；
+# nightly = 真实 LLM（eval_gate 防倒退，不进棘轮）。互不覆盖。
+REPORT_DIR = Path(__file__).with_name("report") / "offline"
 
 
 def _forbid_network_call(*args, **kwargs):
@@ -115,11 +118,13 @@ def _average(results: list[dict], key: str) -> float:
     return round(sum(result[key] for result in results) / max(len(results), 1), 4)
 
 
-def build_report(cases: list[dict]) -> dict:
+def build_report(cases: list[dict], dataset: dict | None = None) -> dict:
     results = [run_case(case) for case in cases]
     return {
         "mode": "offline-fixture-fallback",
         "case_count": len(results),
+        # 数据集指纹（PR-0）：评测结论可回溯到"哪份题"（此前只记 prompt_version）
+        "dataset": dataset,
         "metrics": {
             "poi_authority_rate": _average(results, "poi_authority_rate"),
             "poi_grounded_rate": _average(results, "poi_grounded_rate"),
@@ -162,6 +167,11 @@ def write_report(report: dict) -> None:
         "",
         "- 数据模式：固定权威 fixture + fallback 生成器（不依赖外部服务）",
         f"- 用例数：{report['case_count']}",
+    ]
+    dataset = report.get("dataset")
+    if dataset:
+        lines.append(f"- 数据集：{dataset['file']}（sha256 {dataset['sha256'][:12]}…）")
+    lines += [
         "",
         "| 指标 | 结果 |",
         "| --- | ---: |",
@@ -196,8 +206,10 @@ def main() -> int:
         "--cases", default=str(CASES_PATH), help="用例文件：默认 cases.json；主题化同题评测传 themed_cases.json"
     )
     args = parser.parse_args()
-    cases = json.loads(Path(args.cases).read_text(encoding="utf-8"))
-    report = build_report(cases[: args.limit] if args.limit else cases)
+    cases_path = Path(args.cases)
+    # 数据集过 schema + 指纹（PR-0 数据集治理）：错题在加载点拦下，指纹随报告落盘
+    cases, dataset = load_dataset(cases_path)
+    report = build_report(cases[: args.limit] if args.limit else cases, dataset=dataset)
     write_report(report)
     print(json.dumps(report["metrics"], ensure_ascii=False, indent=2))
     print(f"报告已生成：{REPORT_DIR}")

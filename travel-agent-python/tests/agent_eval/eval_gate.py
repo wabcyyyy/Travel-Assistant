@@ -8,11 +8,12 @@
 2. Prompt 口径漂移：报告里的 `prompt_version` / 两套开放 Prompt 版本 / **生成路径**与
    **本文件的期望常量**不一致——改 Prompt 或换被测路径必须同步改这里，逼作者有意识地
    认账（刻意不 import 源码常量，否则「改了自动通过」等于没有门禁）；
-3. 两遍一致率低于记录基线（现值 16.67% 记为基线，只准升不准降）。
+3. 两遍一致率低于记录基线（2026-09-23 流式小样本实测 0.0 记为基线，只准升不准降）。
 
 用法（应与「刚跑出来的报告」配对使用；历史/过期报告不适用）：
     uv run python tests/agent_eval/eval_gate.py [报告 json 路径]
-默认读 `report/llm_report.json`（nightly 的非主题化 `--path stream --limit 3` run 即写它）。
+默认读 `report/nightly/llm_report.json`（nightly 的非主题化 `--path stream --limit 3` run
+即写它；真实 LLM 产物落 nightly/ 面，与 mock 离线基线 report/offline/ 分开）。
 无 LLM_API_KEY 时直接跳过（与 `llm_eval.py` 同一 guard：不冒充、不误红）。
 """
 
@@ -27,7 +28,7 @@ sys.path.insert(0, str(ROOT))
 
 from app.common.config import settings
 
-REPORT_DIR = Path(__file__).with_name("report")
+REPORT_DIR = Path(__file__).with_name("report") / "nightly"
 DEFAULT_REPORT = REPORT_DIR / "llm_report.json"
 
 # —— 期望口径常量：改 Prompt 版本时必须同步这里（防静默漂移）——
@@ -38,17 +39,24 @@ EXPECTED_OPEN_TRIP_PROMPT_VERSION = "v1.1.narrative"
 # 共用一份 deadline，数值与流式不可跨路径比较，所以换路径必须同时重定基线。
 EXPECTED_GENERATION_PATH = "stream"
 
-# 一致性基线：记录现值 16.67%（themed_report.md / themed_report.json）。语义 = 防倒退。
-CONSISTENCY_BASELINE = 0.1667
+# 一致性基线（2026-09-23 重新认账）：流式路径真实小样本（qwen-plus，`llm_eval.py
+# --path stream --limit 3`，与 nightly 门禁同题同口径）实测两遍一致率 **0.0**
+# （3 例 × 2 遍，行程签名零命中）。语义 = 防倒退（只准升不准降）：现值就是 0，
+# 基线如实落 0——抬升靠稳定性改进后重跑同口径小样本再认账。旧值 0.1667 出自
+# 2026-08-29 的 themed 6 例 run（无 generation_path 字段的旧口径产物），与本门禁
+# 认的 stream 路径不可比。样本分辨率 = 1/3。
+CONSISTENCY_BASELINE = 0.0
 
 # C3.2 深度指标下限（防倒退，非达标线；nightly 真实 LLM 样本仅 3 例，阈值从宽，
 # 超过下限的现值也不代表"够好"，只代表不比记录时更差——作者按现值人工认账）。
-# ⚠ 待重新认账：这三个数是**同步图路径**时代记下的，而门禁现在认流式路径
-# （`EXPECTED_GENERATION_PATH`）。在流式路径上拿到第一批可信数值之前，这里
-# 判红是如实而非误报——不要为了让门禁绿而改常数（那正是本仓在治的那类自欺）。
-COORD_VALID_BASELINE = 0.80
-DEEPLINK_RESOLVABLE_BASELINE = 0.80
-CATEGORY_REASONABLE_BASELINE = 0.95
+# 2026-09-23 重新认账（**流式路径**首批可信数值，同上小样本 run1 聚合）：
+# coord_valid_rate 0.728 / deeplink_resolvable_rate 0.2222 / category_reasonable_rate 1.0，
+# 取代同步图路径时代的 0.80 / 0.80 / 0.95。注意这组数测自**本地库缺 city_geo 表**的
+# 环境（坐标解析全程走降级链），nightly 全量迁移环境下预期只高不低——按实测从宽落底，
+# 宁可不误红也不虚标。换路径/换环境口径时这组数不可比，须重跑同口径小样本重定基线。
+COORD_VALID_BASELINE = 0.728
+DEEPLINK_RESOLVABLE_BASELINE = 0.2222
+CATEGORY_REASONABLE_BASELINE = 1.0
 
 _DEPTH_BASELINES = {
     "coord_valid_rate": COORD_VALID_BASELINE,

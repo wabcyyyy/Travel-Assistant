@@ -141,7 +141,8 @@ def build_report(city: str = "杭州") -> dict:
 
 
 def write_report(report: dict) -> None:
-    report_dir = Path(__file__).with_name("report")
+    # 报告分面（PR-0）：offline = mock 离线评测（进指标棘轮），nightly = 真实 LLM
+    report_dir = Path(__file__).with_name("report") / "offline"
     report_dir.mkdir(parents=True, exist_ok=True)
     (report_dir / "research_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     lines = [
@@ -179,7 +180,7 @@ def main() -> int:
     report = build_report(args.city)
     write_report(report)
     print(json.dumps(report["metrics"], ensure_ascii=False, indent=2))
-    print(f"报告已生成：{Path(__file__).with_name('report')}")
+    print(f"报告已生成：{Path(__file__).with_name('report') / 'offline'}")
     return 0
 
 

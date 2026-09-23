@@ -27,9 +27,10 @@ from app.agent.generation.content.reflect import _item_end, _item_start, _route_
 from app.agent.generation.output import schedule_optimizer
 from app.common.config import settings
 from tests.agent_eval import mock_llm
+from tests.agent_eval.dataset_schema import load_dataset
 
 CASES_PATH = Path(__file__).with_name("cases.json")
-REPORT_DIR = Path(__file__).with_name("report")
+REPORT_DIR = Path(__file__).with_name("report") / "offline"
 
 
 def _fixture_fetcher(first: dict, second: dict, mode: str, departure: str | None) -> dict:
@@ -109,7 +110,7 @@ def _run_variant(case: dict, *, optimizer_enabled: bool, route: RouteService) ->
     }
 
 
-def build_report(cases: list[dict]) -> dict:
+def build_report(cases: list[dict], dataset: dict | None = None) -> dict:
     variants = {}
     for name, enabled in (("baseline_a_coordinate", False), ("baseline_b_route_optimizer", True)):
         rows = []
@@ -134,6 +135,8 @@ def build_report(cases: list[dict]) -> dict:
     return {
         "mode": "offline-ablation",
         "route_provider": "fixture-route (deterministic substitute, not live traffic)",
+        # 数据集指纹（PR-0）：与 eval_agent 同款，评测结论可回溯到"哪份题"
+        "dataset": dataset,
         "variants": variants,
     }
 
@@ -162,8 +165,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=0)
     args = parser.parse_args()
-    cases = json.loads(CASES_PATH.read_text(encoding="utf-8"))
-    report = build_report(cases[: args.limit] if args.limit else cases)
+    cases, dataset = load_dataset(CASES_PATH)
+    report = build_report(cases[: args.limit] if args.limit else cases, dataset=dataset)
     write_report(report)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0

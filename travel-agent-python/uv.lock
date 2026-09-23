@@ -1110,6 +1110,7 @@ dependencies = [
 dev = [
     { name = "diff-cover" },
     { name = "import-linter" },
+    { name = "jsonschema" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -1140,6 +1141,7 @@ requires-dist = [
 dev = [
     { name = "diff-cover", specifier = ">=10.5.1" },
     { name = "import-linter", specifier = ">=2.15" },
+    { name = "jsonschema", specifier = ">=4.18,<5" },
     { name = "pyright", specifier = ">=1.1.414" },
     { name = "pytest", specifier = "==8.2.2" },
     { name = "pytest-cov", specifier = ">=7.1.0" },

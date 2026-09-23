@@ -52,9 +52,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1  # 一键�
 # 单项（check.ps1 的组成，同序）：ruff check . / ruff format --check . /
 #   python scripts/typecheck.py（pyright 基线 ratchet，--update 只减不增）/
 #   lint-imports（分层与门面边界）/ secret scan / 离线 pytest / 契约导出漂移
-uv run pytest tests/ -q --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval  # 离线测试
+uv run pytest tests/ -q --ignore=tests/api --ignore=tests/perf  # 离线测试（含 tests/agent_eval 度量层单测）
 uv run python scripts/export_contracts.py        # 改 schemas 后导出契约（产物入仓）
 uv run python tests/agent_eval/eval_agent.py     # 离线评测（行为改动后对比）
+uv run python scripts/eval_ratchet.py            # eval 指标棘轮（跑完两个 eval 后对照基线）
 uv run pytest tests/api -q                       # 活栈契约（需先起服务）
 ```
 
@@ -65,20 +66,31 @@ uv run pytest tests/api -q                       # 活栈契约（需先起服�
   `GOLDEN_REGENERATE=1 uv run pytest tests/test_stream_snapshot.py`，**人工复核 diff 后**入库
   （同法适用于 `GOLDEN_REGENERATE=1 uv run pytest tests/test_format_output_golden.py`
   重写 `tests/golden/format_output.json`）。
-- **eval ratchet**：跑 `eval_agent.py` + `eval_research.py` 后
-  `git diff --exit-code tests/agent_eval/report/`。离线护栏（实时价/联网入口哨兵）保证
-  报告确定可复现，故报告字节即基线；指标口径见 `report/report.md`。
-  **报告重生成流程**（eval 报告没有 GOLDEN_REGENERATE 等价开关）：改用例
-  （`cases.json`）/改指标口径后直接重跑两个脚本，`report/report.json|md` 与
-  `report/research_report.json|md` 就地重写，**人工复核 diff 后与代码同一 commit 入库**
-  （CI agent-eval job 按字节比对）。cases 可带 `"coords": false` 走无坐标边界变体
+- **eval ratchet**（PR-0 口径，取代报告字节比对）：跑 `eval_agent.py` + `eval_research.py` 后
+  `uv run python scripts/eval_ratchet.py`——逐指标对照 `tests/agent_eval/metrics_baseline.json`
+  双向棘轮：回归红；显著变好也逼 `--update` 认账收紧（基线只跟不松）；未冻结的新指标红。
+  字节比对区分不了变好/变坏，被棘轮 + CI `eval-determinism` job（同 fixture 两遍报告
+  SHA256 必须一致）取代；离线护栏（实时价/联网入口哨兵）保证报告确定可复现。指标口径见
+  `report/offline/report.md`。报告分 `report/offline/`（mock 离线，进棘轮）与
+  `report/nightly/`（真实 LLM，`eval_gate.py` 防倒退下限，不进棘轮、可被 nightly 重跑覆盖）。
+  **报告重生成流程**（eval 报告没有 GOLDEN_REGENERATE 等价开关）：改用例/改指标口径后
+  直接重跑两个脚本，`report/offline/report.json|md` 与 `report/offline/research_report.json|md`
+  就地重写；指标有意变化跑 `scripts/eval_ratchet.py --update` 重落基线（放宽界值属 INV-1
+  豁免，PR 须留注释与期限），**人工复核 diff 后与代码同一 commit 入库**。题集
+  （`cases.json` / `themed_cases.json` / `replay_cases.json`）受 `schemas/datasets.schema.json`
+  校验（加载点统一走 `dataset_schema.load_dataset`），报告记数据集哈希——改题集同样是一次
+  认账。cases 可带 `"coords": false` 走无坐标边界变体
   （C3.2；海外城市直接用非汉字名，mock 坐标按城市名落国内框内/海外）。
   深度指标口径（C3.2）：`coord_valid_rate`=attraction/food/hotel 项坐标有效率
   （0/0 与 None 为缺失哨兵）；`deeplink_resolvable_rate`=按天计的全天路线深链可解析率
   （≥2 个有效坐标停靠点的天必须可解析，不足 2 点自动通过；后端 places 语义，前端
   geo.ts 另有范围校验由 geo.test.ts 覆盖）；`category_reasonable_rate`=item_type
   白名单 + poi_name 非空。真实 LLM 侧同名指标进 `eval_gate.py` 防倒退下限
-  （`depth_metrics`，仅 nightly 生效）。
+  （`depth_metrics`，仅 nightly 生效）。eval_gate 下限 2026-09-23 按流式小样本重认账
+  （`--path stream --limit 3` × 2 遍，qwen-plus）：一致性 16.67%→0%、深度
+  0.80/0.80/0.95→0.728/0.2222/1.0 含**放宽侧**，按 INV-1 记豁免注释于此；口径 =
+  stream 路径 + 本地缺 city_geo 的降级环境（nightly 全量迁移环境预期只高不低），
+  期限 = 下一次同口径小样本重认账时复核（稳定性改进后只准上调）。
 - 改 P2 拆分时先跑这两条：单测断言单点字段，它们断言**端到端行为与事件序列**。
 
 配置：`app/common/config.py` 是 **pydantic-settings 字段定义式**（键名小写即环境变量名，如 `agent_host` ↔ `AGENT_HOST`）；新增键 = 加字段 + 同 PR 更新 `.env.example`（`tests/test_env_example_alignment.py` 会验）。启动校验在 `Settings.validate_boot()`（main.py lifespan 调）；依赖运行语境的安全检查（密钥强度、绑定地址）只放这里，不放 import 期。

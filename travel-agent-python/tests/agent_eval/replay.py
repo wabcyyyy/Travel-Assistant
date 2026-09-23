@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 
 from app.agent.generation.content.reference_pool import ReferencePool
 from app.agent.generation.content.reflect import validate_plans
+from tests.agent_eval.dataset_schema import load_dataset
 from tests.agent_eval.mock_llm import catalog
 
 CASES_PATH = Path(__file__).with_name("replay_cases.json")
@@ -82,7 +83,7 @@ def _run(case: dict) -> dict:
 
 
 def main() -> int:
-    cases = json.loads(CASES_PATH.read_text(encoding="utf-8"))
+    cases, _ = load_dataset(CASES_PATH)
     results = [_run(case) for case in cases]
     print(json.dumps({"case_count": len(results), "results": results}, ensure_ascii=False, indent=2))
     return 0 if all(result["detected"] for result in results) else 1

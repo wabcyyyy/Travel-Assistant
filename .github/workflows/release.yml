@@ -32,7 +32,8 @@ jobs:
         env:
           AGENT_INTERNAL_TOKEN: ''
           LLM_API_KEY: ''
-        run: uv run pytest tests/ --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval -q
+        # tests/agent_eval 度量层单测已进离线套件（PR-0）：eval 度量实现改坏 → 这里红
+        run: uv run pytest tests/ --ignore=tests/api --ignore=tests/perf -q
       - name: Agent / research evals (hashed)
         run: |
           mkdir -p eval-artifacts

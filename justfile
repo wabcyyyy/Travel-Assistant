@@ -26,14 +26,15 @@ default:
 check:
     cd {{py}}; powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
 
-# 后端离线测试（不含覆盖率，快）
+# 后端离线测试（不含覆盖率，快；tests/agent_eval 度量层单测在内，PR-0 收紧）
 test:
-    cd {{py}}; uv run pytest tests/ -q --ignore=tests/api --ignore=tests/perf --ignore=tests/agent_eval
+    cd {{py}}; uv run pytest tests/ -q --ignore=tests/api --ignore=tests/perf
 
-# 离线评测（行为类改动后对比指标）
+# 离线评测（行为类改动后对比指标；跑完即棘轮，指标动了红）
 eval:
     cd {{py}}; uv run python tests/agent_eval/eval_agent.py
     cd {{py}}; uv run python tests/agent_eval/eval_research.py
+    cd {{py}}; uv run python scripts/eval_ratchet.py
 
 # 流式事件快照（P2 拆分/重构的判据）
 snapshot:

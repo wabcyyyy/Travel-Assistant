@@ -1,6 +1,10 @@
 {
   "mode": "offline-fixture-fallback",
   "case_count": 13,
+  "dataset": {
+    "file": "cases.json",
+    "sha256": "6bf7ce311bf320ae1cccf483810ba007e8cda1ce692e519a9853f436a15f5581"
+  },
   "metrics": {
     "poi_authority_rate": 1.0,
     "poi_grounded_rate": 0.6528,
@@ -49,22 +53,22 @@
         "node_count": 10,
         "tool_count": 4,
         "nodes": [
-          "format",
-          "format",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "research",
-          "research"
+          "research",
+          "generate",
+          "generate",
+          "reflect",
+          "reflect",
+          "format",
+          "format"
         ],
         "tools": [
-          "fixture.get_consumption",
+          "search_hotels",
           "search_attractions",
           "search_foods",
-          "search_hotels"
+          "fixture.get_consumption"
         ],
         "routes": [
           "pass"
@@ -103,24 +107,24 @@
         "node_count": 10,
         "tool_count": 6,
         "nodes": [
-          "format",
-          "format",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "research",
-          "research"
+          "research",
+          "generate",
+          "generate",
+          "reflect",
+          "reflect",
+          "format",
+          "format"
         ],
         "tools": [
-          "fixture.get_consumption",
-          "fixture.resolve_poi",
-          "fixture.resolve_poi",
+          "search_hotels",
           "search_attractions",
           "search_foods",
-          "search_hotels"
+          "fixture.get_consumption",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi"
         ],
         "routes": [
           "pass"
@@ -159,25 +163,25 @@
         "node_count": 10,
         "tool_count": 7,
         "nodes": [
-          "format",
-          "format",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "research",
-          "research"
+          "research",
+          "generate",
+          "generate",
+          "reflect",
+          "reflect",
+          "format",
+          "format"
         ],
         "tools": [
+          "search_hotels",
+          "search_attractions",
+          "search_foods",
           "fixture.get_consumption",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
-          "fixture.resolve_poi",
-          "search_attractions",
-          "search_foods",
-          "search_hotels"
+          "fixture.resolve_poi"
         ],
         "routes": [
           "pass"
@@ -216,26 +220,26 @@
         "node_count": 10,
         "tool_count": 8,
         "nodes": [
-          "format",
-          "format",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "research",
-          "research"
+          "research",
+          "generate",
+          "generate",
+          "reflect",
+          "reflect",
+          "format",
+          "format"
         ],
         "tools": [
+          "search_hotels",
+          "search_attractions",
+          "search_foods",
           "fixture.get_consumption",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
-          "fixture.resolve_poi",
-          "search_attractions",
-          "search_foods",
-          "search_hotels"
+          "fixture.resolve_poi"
         ],
         "routes": [
           "pass"
@@ -274,24 +278,24 @@
         "node_count": 10,
         "tool_count": 6,
         "nodes": [
-          "format",
-          "format",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "research",
-          "research"
+          "research",
+          "generate",
+          "generate",
+          "reflect",
+          "reflect",
+          "format",
+          "format"
         ],
         "tools": [
-          "fixture.get_consumption",
-          "fixture.resolve_poi",
-          "fixture.resolve_poi",
+          "search_hotels",
           "search_attractions",
           "search_foods",
-          "search_hotels"
+          "fixture.get_consumption",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi"
         ],
         "routes": [
           "pass"
@@ -330,22 +334,25 @@
         "node_count": 14,
         "tool_count": 14,
         "nodes": [
-          "format",
-          "format",
-          "generate",
-          "generate",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
-          "reflect",
-          "reflect",
           "research",
-          "research"
+          "research",
+          "generate",
+          "generate",
+          "reflect",
+          "reflect",
+          "generate",
+          "generate",
+          "reflect",
+          "reflect",
+          "format",
+          "format"
         ],
         "tools": [
+          "search_hotels",
+          "search_attractions",
+          "search_foods",
           "fixture.get_consumption",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
@@ -356,10 +363,7 @@
           "fixture.resolve_poi",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
-          "fixture.resolve_poi",
-          "search_attractions",
-          "search_foods",
-          "search_hotels"
+          "fixture.resolve_poi"
         ],
         "routes": [
           "fix",
@@ -400,24 +404,24 @@
         "node_count": 10,
         "tool_count": 6,
         "nodes": [
-          "format",
-          "format",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "research",
-          "research"
+          "research",
+          "generate",
+          "generate",
+          "reflect",
+          "reflect",
+          "format",
+          "format"
         ],
         "tools": [
-          "fixture.get_consumption",
-          "fixture.resolve_poi",
-          "fixture.resolve_poi",
+          "search_hotels",
           "search_attractions",
           "search_foods",
-          "search_hotels"
+          "fixture.get_consumption",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi"
         ],
         "routes": [
           "pass"
@@ -456,25 +460,25 @@
         "node_count": 10,
         "tool_count": 7,
         "nodes": [
-          "format",
-          "format",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "research",
-          "research"
+          "research",
+          "generate",
+          "generate",
+          "reflect",
+          "reflect",
+          "format",
+          "format"
         ],
         "tools": [
+          "search_hotels",
+          "search_attractions",
+          "search_foods",
           "fixture.get_consumption",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
-          "fixture.resolve_poi",
-          "search_attractions",
-          "search_foods",
-          "search_hotels"
+          "fixture.resolve_poi"
         ],
         "routes": [
           "pass"
@@ -513,25 +517,25 @@
         "node_count": 10,
         "tool_count": 7,
         "nodes": [
-          "format",
-          "format",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "research",
-          "research"
+          "research",
+          "generate",
+          "generate",
+          "reflect",
+          "reflect",
+          "format",
+          "format"
         ],
         "tools": [
+          "search_hotels",
+          "search_attractions",
+          "search_foods",
           "fixture.get_consumption",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
-          "fixture.resolve_poi",
-          "search_attractions",
-          "search_foods",
-          "search_hotels"
+          "fixture.resolve_poi"
         ],
         "routes": [
           "pass"
@@ -570,24 +574,24 @@
         "node_count": 10,
         "tool_count": 6,
         "nodes": [
-          "format",
-          "format",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "research",
-          "research"
+          "research",
+          "generate",
+          "generate",
+          "reflect",
+          "reflect",
+          "format",
+          "format"
         ],
         "tools": [
-          "fixture.get_consumption",
-          "fixture.resolve_poi",
-          "fixture.resolve_poi",
+          "search_hotels",
           "search_attractions",
           "search_foods",
-          "search_hotels"
+          "fixture.get_consumption",
+          "fixture.resolve_poi",
+          "fixture.resolve_poi"
         ],
         "routes": [
           "pass"
@@ -626,26 +630,26 @@
         "node_count": 10,
         "tool_count": 8,
         "nodes": [
-          "format",
-          "format",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "research",
-          "research"
+          "research",
+          "generate",
+          "generate",
+          "reflect",
+          "reflect",
+          "format",
+          "format"
         ],
         "tools": [
+          "search_hotels",
+          "search_attractions",
+          "search_foods",
           "fixture.get_consumption",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
-          "fixture.resolve_poi",
-          "search_attractions",
-          "search_foods",
-          "search_hotels"
+          "fixture.resolve_poi"
         ],
         "routes": [
           "pass"
@@ -685,18 +689,21 @@
         "node_count": 10,
         "tool_count": 12,
         "nodes": [
-          "format",
-          "format",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "research",
-          "research"
+          "research",
+          "generate",
+          "generate",
+          "reflect",
+          "reflect",
+          "format",
+          "format"
         ],
         "tools": [
+          "search_hotels",
+          "search_attractions",
+          "search_foods",
           "fixture.get_consumption",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
@@ -705,10 +712,7 @@
           "fixture.resolve_poi",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
-          "fixture.resolve_poi",
-          "search_attractions",
-          "search_foods",
-          "search_hotels"
+          "fixture.resolve_poi"
         ],
         "routes": [
           "pass"
@@ -748,18 +752,21 @@
         "node_count": 10,
         "tool_count": 12,
         "nodes": [
-          "format",
-          "format",
-          "generate",
-          "generate",
           "parse",
           "parse",
-          "reflect",
-          "reflect",
           "research",
-          "research"
+          "research",
+          "generate",
+          "generate",
+          "reflect",
+          "reflect",
+          "format",
+          "format"
         ],
         "tools": [
+          "search_hotels",
+          "search_attractions",
+          "search_foods",
           "fixture.get_consumption",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
@@ -768,10 +775,7 @@
           "fixture.resolve_poi",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
-          "fixture.resolve_poi",
-          "search_attractions",
-          "search_foods",
-          "search_hotels"
+          "fixture.resolve_poi"
         ],
         "routes": [
           "pass"
