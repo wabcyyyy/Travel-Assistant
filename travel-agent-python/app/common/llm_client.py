@@ -125,10 +125,17 @@ def _retry_sleep(attempt: int) -> None:
 
 
 class LLMClient:
-    def __init__(self) -> None:
-        self._base_url = settings.llm_base_url
-        self._api_key = settings.llm_api_key
-        self._model = settings.llm_model
+    def __init__(
+        self,
+        *,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        # 显式传入即覆盖（judge 等独立配置键走这里），缺省回落 settings 主配置
+        self._base_url = base_url or settings.llm_base_url
+        self._api_key = api_key or settings.llm_api_key
+        self._model = model or settings.llm_model
         self._timeout = settings.llm_timeout
 
     def chat_response(
@@ -482,3 +489,12 @@ def get_llm_client() -> LLMClient:
     if _llm_client is None:
         _llm_client = LLMClient()
     return _llm_client
+
+
+def get_judge_client() -> LLMClient:
+    """judge 专用 client（PR-7 / D7）：独立配置键，空值回落主配置（同网关跑异家族）。"""
+    return LLMClient(
+        base_url=settings.judge_llm_base_url or None,
+        api_key=settings.judge_llm_api_key or None,
+        model=settings.judge_llm_model or None,
+    )

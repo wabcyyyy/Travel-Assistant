@@ -115,6 +115,44 @@ jobs:
           path: |
             travel-agent-python/llm_eval_small.json
             travel-agent-python/tests/agent_eval/report
+
+  llm-judge:
+    name: LLM-as-judge 校准（仅 nightly，D7：不进 PR 门禁）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: travel-agent-python
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard (require LLM_API_KEY)
+        id: guard
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          if [ -z "$LLM_API_KEY" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::未配置 LLM_API_KEY secret，跳过 judge 校准"
+          fi
+      - uses: astral-sh/setup-uv@v5
+        if: steps.guard.outputs.skip != 'true'
+        with:
+          python-version: '3.12'
+          enable-cache: true
+      - name: Sync deps (lockfile-driven)
+        if: steps.guard.outputs.skip != 'true'
+        run: uv sync --frozen
+      - name: Judge 30 条人工校准集（异家族 judge，四维一致性）
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          JUDGE_LLM_API_KEY: ${{ secrets.JUDGE_LLM_API_KEY }}
+          JUDGE_LLM_MODEL: ${{ vars.JUDGE_LLM_MODEL || 'deepseek-v3' }}
+        run: uv run python tests/agent_eval/judge.py
+      - uses: actions/upload-artifact@v4
+        if: steps.guard.outputs.skip != 'true'
+        with:
+          name: nightly-judge
+          path: travel-agent-python/tests/agent_eval/report/nightly
       - name: Dump service logs on failure
         if: failure()
         run: |

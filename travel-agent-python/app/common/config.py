@@ -172,6 +172,13 @@ class Settings(BaseSettings):
     usage_db_path: str = Field(default_factory=lambda: str(BASE_DIR / "data" / "llm_usage.db"))
     # 图检查点存储（PR-3 / D2）：SqliteSaver 文件库自管建表，不动 MySQL 迁移（INV-3）
     checkpoint_db_path: str = Field(default_factory=lambda: str(BASE_DIR / "data" / "checkpoints.sqlite3"))
+    # ---- LLM-as-judge（PR-7 / D7）----
+    # judge 与被评模型必须**不同家族**（机检在 tests/agent_eval/judge.py），
+    # 防 self-preference；独立配置键：可指向另一家网关/凭据，空值回落主 LLM 配置
+    # （同网关上仍可跑异家族模型，如被评 qwen 系 + judge deepseek 系）。
+    judge_llm_model: str = "deepseek-v3"
+    judge_llm_base_url: str = ""
+    judge_llm_api_key: str = ""
 
     # ---- 导出与上传 ----
     # PDF 导出（M6）。字体全仓只有一份 9.7MB 的 simhei.ttf：今天在 Java 模块的 resources 下，
