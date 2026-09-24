@@ -23,7 +23,7 @@ from typing import Any
 from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
 
-from app.agent import observe_run, run_chat_turn, use_scene
+from app.agent import confirm_thread, observe_run, run_chat_turn, use_scene
 from app.common import event_hub, event_publisher
 from app.common.envelope import ApiError
 from app.common.task_pool import SlotExecutor, TaskRejected
@@ -548,7 +548,11 @@ def run_chat_turn_in_process(ctx: ChatTurnContext, itinerary_id: int) -> dict[st
     request = ctx.chat_body
     with use_scene("chat"), observe_run(request_id=f"itinerary-{itinerary_id}"):
         response = itinerary_city.guard_agent_call(
-            "行程助手暂不可用", lambda: run_chat_turn(ChatTurnRequest.model_validate(request))
+            "行程助手暂不可用",
+            lambda: run_chat_turn(
+                ChatTurnRequest.model_validate(request),
+                confirmation_thread=confirm_thread(itinerary_id),
+            ),
         )
     return response.model_dump(by_alias=True)
 

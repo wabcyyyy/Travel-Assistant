@@ -876,8 +876,25 @@
           "agent"
         ],
         "summary": "Chat Turn",
+        "description": "对话回合（PR-6 确认流）：传 confirmation_thread 时，需确认的提案会在该 thread\n上 interrupt 暂停（提案落 checkpoint）；业务确认端经 resume_confirmation 以\nCommand(resume=…) 续跑复核。不传则为旧直调语义（不进图）。",
         "operationId": "chat_turn_api_agent_v1_chat_turn_post",
         "parameters": [
+          {
+            "name": "confirmation_thread",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Confirmation Thread"
+            }
+          },
           {
             "name": "x-agent-token",
             "in": "header",

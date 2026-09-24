@@ -14,6 +14,7 @@
 
 from app.agent.data.weather import get_weather_forecast
 from app.agent.editing.chat_draft import run_chat_turn
+from app.agent.editing.chat_draft.confirm_graph import ConfirmResume, confirm_thread, resume_confirmation
 from app.agent.editing.city_guide import run_city_guide
 from app.agent.editing.clarify import run_clarify
 from app.agent.editing.local_replan import run_local_replan
@@ -33,9 +34,11 @@ from app.agent.tools.impl import find_nearby_pois, get_poi_detail, search_hotels
 from app.agent.tools.registry import ToolInvocationError, ToolSpec, registry
 
 __all__ = [
+    "ConfirmResume",
     "DayResume",
     "ToolInvocationError",
     "ToolSpec",
+    "confirm_thread",
     "find_nearby_pois",
     "get_poi_detail",
     "get_weather_forecast",
@@ -44,6 +47,7 @@ __all__ = [
     "optimize_daily_plan",
     "registry",
     "resolve_poi",
+    "resume_confirmation",
     "resume_day",
     "run_adjust",
     "run_butler_note",

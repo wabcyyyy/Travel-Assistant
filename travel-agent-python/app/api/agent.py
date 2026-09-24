@@ -360,9 +360,17 @@ def replan_local(
 
 @router.post("/v1/chat-turn")
 @scene("chat")
-def chat_turn(req: ChatTurnRequest, _auth: None = Depends(require_internal_token)) -> ApiResponse[ChatTurnResponse]:
+def chat_turn(
+    req: ChatTurnRequest,
+    confirmation_thread: str | None = None,
+    _auth: None = Depends(require_internal_token),
+) -> ApiResponse[ChatTurnResponse]:
+    """对话回合（PR-6 确认流）：传 confirmation_thread 时，需确认的提案会在该 thread
+    上 interrupt 暂停（提案落 checkpoint）；业务确认端经 resume_confirmation 以
+    Command(resume=…) 续跑复核。不传则为旧直调语义（不进图）。
+    """
     try:
-        return ApiResponse.ok(run_chat_turn(req))
+        return ApiResponse.ok(run_chat_turn(req, confirmation_thread=confirmation_thread))
     except ValueError as e:
         return ApiResponse.fail(str(e))
 

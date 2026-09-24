@@ -21,6 +21,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from app.agent import confirm_thread, resume_confirmation
 from app.common.envelope import ApiError
 from app.db.models import ItineraryDay, ItineraryItem
 from app.db.session import session_scope
@@ -48,6 +49,12 @@ def apply_plans(
         message = itinerary_chat.require_pending_action(
             session, user_id, itinerary_id, action_message_id, base_revision, False
         )
+        # PR-6 确认流薄适配：有待确认提案时以 Command(resume) 续跑，服务端复核
+        # 「确认的确实是要应用的那份草稿」；无待确认提案（超时清理 / 存量消息）
+        # 回退既有 message 级语义，不新增硬失败。
+        verdict = resume_confirmation(confirm_thread(itinerary_id), {"action": "apply_plans"})
+        if verdict is not None and not verdict.confirmed:
+            raise ApiError(409, f"确认与提案不一致：{verdict.reason}")
         plans = itinerary_chat.read_plans(message)
         days = list(
             session.execute(
@@ -199,9 +206,16 @@ def apply_hotel_option(user_id: int, itinerary_id: int, request: HotelOptionRequ
             session, user_id, itinerary_id, request.actionMessageId, request.baseRevision, True
         )
         hotel_name = request.hotelName or ""
+        # PR-6 确认流薄适配：有待确认提案时以 Command(resume) 续跑，服务端复核
+        # 「确认的酒店确实出自当时提案的候选卡片」；无待确认提案（超时清理 / 存量
+        # 消息）回退既有 message 级语义，不新增硬失败。
+        verdict = resume_confirmation(
+            confirm_thread(itinerary_id), {"action": "replace_hotel", "hotel_name": request.hotelName or ""}
+        )
+        if verdict is not None and not verdict.confirmed:
+            raise ApiError(409, f"确认与提案不一致：{verdict.reason}")
         if not hotel_name.strip() or len(hotel_name) > MAX_POI_NAME:
             raise ApiError(400, "酒店名称不合法")
-
         # 语料库退役：酒店事实与房价一律以**待确认消息里的候选卡片**为准
         # （卡片由 chat_draft 生成时写入 hotel_options_json），不回查 poi_knowledge。
         option = next(

@@ -146,7 +146,10 @@ def _stub_turn(monkeypatch, response: ChatTurnResponse) -> list[dict]:
     """把 agent 入口打桩并记录它收到的请求体（形状必须与阻塞/流式两条路径一致）。"""
     seen: list[dict] = []
 
-    def fake_run(request):
+    def fake_run(request, **kwargs):
+        # PR-6 接线契约：服务层必须把确认流 thread 传进来（提案要落 checkpoint）
+        thread = kwargs.get("confirmation_thread")
+        assert isinstance(thread, str) and thread.startswith("chat-"), thread
         seen.append(request.model_dump(by_alias=True))
         return response
 

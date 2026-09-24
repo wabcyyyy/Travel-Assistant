@@ -32,6 +32,7 @@ from app.schemas.trip import (
     ChatTurnResponse,
 )
 
+from .confirm_graph import run_confirmation
 from .document import _decision_plan_document, _trip_plan_document
 from .hotel import (
     _hotel_catalog,
@@ -151,7 +152,7 @@ def _decide_plan_change(req: ChatTurnRequest, hotels: list[dict], feedback: str 
         return _parse_decision_json(repaired)
 
 
-def run_chat_turn(req: ChatTurnRequest) -> ChatTurnResponse:
+def _chat_turn_response(req: ChatTurnRequest) -> ChatTurnResponse:
     hotels = tools.search_hotels(req.city, limit=30)
     if _is_vague_poi_browse_request(req.message) and not _is_hotel_request(req, hotels):
         return ChatTurnResponse(
@@ -322,3 +323,21 @@ def run_chat_turn(req: ChatTurnRequest) -> ChatTurnResponse:
         plan_document=_trip_plan_document(req),
         operations=operations,
     )
+
+
+def run_chat_turn(req: ChatTurnRequest, *, confirmation_thread: str | None = None) -> ChatTurnResponse:
+    """对话回合入口（PR-6 确认流）：需要用户确认的提案进入 interrupt 暂停。
+
+    提案构建在 `_chat_turn_response`（既有路径零改动）；当回复需要确认
+    （`requires_confirmation` / `pending_action` / 草稿待应用）且指定了
+    `confirmation_thread` 时，经 confirm_graph 的 interrupt 把**提案落 checkpoint**
+    并暂停，业务确认端以 `Command(resume=…)` 续跑复核（不再只信前端回显）。
+    未指定 thread 的直调（agent 面裸用 / 存量测试）保持旧行为：直接返回提案。
+    """
+    response = _chat_turn_response(req)
+    needs_confirm = bool(
+        response.requires_confirmation or response.pending_action or (response.changed and response.plans)
+    )
+    if confirmation_thread and needs_confirm:
+        return run_confirmation(response, thread=confirmation_thread)
+    return response

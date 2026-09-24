@@ -18,7 +18,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agent.research.evidence import EvidencePack, ResearchTask
-from app.schemas.trip import DailyPlan, GenerateDayRequest, GenerateRequest, GenerateResponse
+from app.schemas.trip import ChatTurnResponse, DailyPlan, GenerateDayRequest, GenerateRequest, GenerateResponse
 
 #: `UnifiedAgentState.mode` 的取值词表（图 dispatch 按此分流，全仓共用一份）。
 MODE_TRIP = "trip"
@@ -80,6 +80,11 @@ class UnifiedAgentState(BaseModel):
     extra_keywords: list[str] = Field(default_factory=list)
     quota_note: str = ""
     pack: EvidencePack | None = None
+
+    # ---- chat 确认流（PR-6 HITL）----
+    # 提案与确认复核的载体（均为 app.schemas 契约类型，编辑域图跨暂停读写）
+    chat_reply: ChatTurnResponse | None = None
+    chat_confirm: dict | None = None
 
     # ---- shared ----
     attempts: int = 0
