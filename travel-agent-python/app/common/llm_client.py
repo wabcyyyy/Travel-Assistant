@@ -139,6 +139,7 @@ class LLMClient:
         enable_search: bool = False,
         model: str | None = None,
         json_mode: bool = False,
+        response_format: dict | None = None,
         tools: list[dict] | None = None,
         tool_choice: str | dict | None = None,
     ) -> dict:
@@ -156,7 +157,10 @@ class LLMClient:
         if enable_search:
             # dashscope 兼容层：顶层 enable_search 开启百炼联网搜索插件
             payload["enable_search"] = True
-        if json_mode:
+        if response_format is not None:
+            # PR-5：json_schema（含 strict）经网关强约束输出（spike 2026-09-24 实测执行）
+            payload["response_format"] = response_format
+        elif json_mode:
             payload["response_format"] = {"type": "json_object"}
         if tools:
             payload["tools"] = tools
@@ -243,6 +247,7 @@ class LLMClient:
         enable_search: bool = False,
         model: str | None = None,
         json_mode: bool = False,
+        response_format: dict | None = None,
         cancel: threading.Event | None = None,
     ) -> Iterator[str]:
         """流式调用 LLM，逐段 yield 内容增量（不做重试；异常在迭代时抛出）。
@@ -270,7 +275,9 @@ class LLMClient:
         }
         if enable_search:
             payload["enable_search"] = True
-        if json_mode:
+        if response_format is not None:
+            payload["response_format"] = response_format
+        elif json_mode:
             payload["response_format"] = {"type": "json_object"}
         # 让网关在最后一个分片返回 usage，用于 token 统计。
         payload["stream_options"] = {"include_usage": True}
@@ -370,6 +377,7 @@ class LLMClient:
         enable_search: bool = False,
         model: str | None = None,
         json_mode: bool = False,
+        response_format: dict | None = None,
     ) -> str:
         """流式调用 LLM，返回完整响应文本。适用于多日整段生成等长响应场景。"""
         started = time.monotonic()
@@ -382,6 +390,7 @@ class LLMClient:
                 enable_search=enable_search,
                 model=model,
                 json_mode=json_mode,
+                response_format=response_format,
             ):
                 content_parts.append(delta)
         except RunLimitExceeded as exc:
@@ -402,6 +411,7 @@ class LLMClient:
         enable_search: bool = False,
         model: str | None = None,
         json_mode: bool = False,
+        response_format: dict | None = None,
     ) -> str:
         response = self.chat_response(
             messages,
@@ -410,6 +420,7 @@ class LLMClient:
             enable_search=enable_search,
             model=model,
             json_mode=json_mode,
+            response_format=response_format,
         )
         return str(response["message"].get("content") or "")
 
@@ -422,6 +433,7 @@ class LLMClient:
         enable_search: bool = False,
         model: str | None = None,
         json_mode: bool = False,
+        response_format: dict | None = None,
     ) -> str:
         return self.chat(
             [
@@ -433,6 +445,7 @@ class LLMClient:
             enable_search=enable_search,
             model=model,
             json_mode=json_mode,
+            response_format=response_format,
         )
 
     def stream_complete(
@@ -444,6 +457,7 @@ class LLMClient:
         enable_search: bool = False,
         model: str | None = None,
         json_mode: bool = False,
+        response_format: dict | None = None,
     ) -> str:
         """流式单轮调用的便捷封装。"""
         return self.stream_chat(
@@ -456,6 +470,7 @@ class LLMClient:
             enable_search=enable_search,
             model=model,
             json_mode=json_mode,
+            response_format=response_format,
         )
 
 

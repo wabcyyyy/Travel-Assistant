@@ -209,13 +209,16 @@ def test_distill_intent_parses_and_clips_long_fields(monkeypatch):
     assert brief.logistics == "高铁"
 
 
-def test_distill_intent_accepts_fenced_json(monkeypatch):
+def test_distill_intent_fenced_json_is_not_salvaged(monkeypatch):
+    """PR-5：栅栏剥离已退役——带栅栏的输出是坏 JSON，走 `_or_none` 降级而不是被救活。
+
+    全部 LLM 出口都带 response_format（网关保证纯 JSON），栅栏容错只会掩盖
+    「出口没带 response_format」这类真问题。
+    """
     fenced = "```json\n" + json.dumps(_FAKE_DISTILL, ensure_ascii=False) + "\n```"
     fake = FakeDistillClient(reply=fenced)
     monkeypatch.setattr(intent_module, "get_llm_client", lambda: fake)
-    brief = intent_module.distill_intent("亲子去三亚看海玩沙")
-    assert brief is not None
-    assert brief.theme_label == "亲子海边度假"
+    assert intent_module.distill_intent("亲子去三亚看海玩沙") is None
 
 
 def test_distill_intent_short_input_skips_llm(monkeypatch):

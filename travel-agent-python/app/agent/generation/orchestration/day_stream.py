@@ -23,7 +23,6 @@ generation_core、formatting、common.*、schemas.trip。
 
 import logging
 
-from app.agent.core.json_utils import parse_llm_json
 from app.agent.data import pricing as live_pricing
 from app.agent.data.weather import day_clause as weather_day_clause
 from app.agent.generation.content.day_prompts import (
@@ -32,6 +31,8 @@ from app.agent.generation.content.day_prompts import (
     GENERATION_TEMPERATURE,
     destination_line,
     intent_clause,
+    open_day_output_schema,
+    parse_llm_json_with_repair,
     requirements_clause,
 )
 from app.agent.generation.content.generators import pick_hotels
@@ -146,11 +147,19 @@ def llm_open_day(req: GenerateDayRequest, used: set[str]) -> dict:
         # 见 docs/量测-存在性接地-2026-09-18.md §5），8000 后 6/6 城解析成功。
         max_tokens=8000,
         model=settings.llm_fast_model or None,
-        json_mode=True,
+        # PR-5 强约束档（spike 2026-09-24 实测执行）：网关保证符合契约 schema
+        # （含"禁产经纬度/poi_id/来源字段"的闭合约束）；坏输出走修复重试 → 兜底。
+        response_format={
+            "type": "json_schema",
+            "json_schema": {"name": "day_output", "strict": True, "schema": open_day_output_schema(req.day_no)},
+        },
         enable_search=settings.llm_generation_web_search,
     )
-    # 叙事字段轻量清洗（兜底）：超限截断/类型降级，骨架照常交付
-    plan = sanitize_narrative(parse_llm_json(raw))
+    # 三层：严格解析 → 单次修复重试（decide 模式推广）→ 抛 LlmJsonError 交
+    # open_plans 兜底；叙事字段轻量清洗（超限截断/类型降级），骨架照常交付
+    plan = sanitize_narrative(
+        parse_llm_json_with_repair(raw, client, model=settings.llm_fast_model or None, repair_max_tokens=8000)
+    )
     plan.setdefault("items", [])
     # 备选池（发现更多）与行程点位分开返回，避免混入 items 装配
     suggestions = plan.pop("suggestions", None)

@@ -19,13 +19,13 @@ import logging
 from functools import lru_cache
 
 from app.agent.core.intent import IntentBrief, distill_intent
-from app.agent.core.json_utils import parse_llm_json
+from app.agent.core.json_utils import LlmJsonError, parse_llm_json
 from app.agent.data.weather import trip_clause as trip_weather_clause
 from app.agent.generation.content.narrative import NARRATIVE_THEME_MAX, sanitize_narrative
 from app.agent.generation.content.reference_pool import ReferencePool
 from app.agent.generation.rules.budget import budget_clause
 from app.agent.generation.rules.generation_core import hotel_prompt_clause
-from app.agent.runtime.trace import traced
+from app.agent.runtime.trace import record_event, traced
 from app.common.config import settings
 from app.common.llm_client import get_llm_client
 from app.prompts.open_generation import open_trip_system_prompt
@@ -198,6 +198,147 @@ def open_trip_prompt(req: GenerateDayRequest) -> tuple[str, str]:
     return system, destination_line(req, suffix=f"，{days} 天，{req.persons} 人。")
 
 
+# ---------------------------------------------------------------------------
+# LLM 输出 schema（PR-5 强约束档）与「坏 JSON → 修复重试」层
+#
+# 形态按 OpenAI strict 的通行约束构造：对象键全部进 required（可选键以可空
+# 联合表达）、`additionalProperties` 闭合。闭合同时把 system prompt 的
+# 「禁止在 item 中输出经纬度坐标、poi_id 与任何来源/核验字段」（D6=C）从
+# 事后剥离变成**事前禁产**。字段与 prompts/open_generation.py 的输出契约、
+# app/schemas/trip.py 的契约模型一一对应；prompt 承诺面加字段时同步这里。
+# ---------------------------------------------------------------------------
+
+_ITEM_PROPERTIES: dict = {
+    "item_type": {"type": "string", "enum": ["attraction", "food", "hotel"]},
+    "poi_name": {"type": "string"},
+    "why_this": {"type": ["string", "null"]},
+    "start_time": {"type": ["string", "null"]},
+    "end_time": {"type": ["string", "null"]},
+    "duration_min": {"type": ["number", "null"]},
+    "cost": {"type": ["number", "null"]},
+    "tag": {"type": ["string", "null"]},
+    "remark": {"type": ["string", "null"]},
+    "refs": {"type": ["array", "null"], "items": {"type": "integer"}},
+}
+
+_SUGGESTION_PROPERTIES: dict = {
+    "poi_name": {"type": "string"},
+    "city": {"type": "string"},
+    "category": {"type": "string", "enum": ["attraction", "activity", "food", "hotel", "shopping"]},
+    "intro": {"type": ["string", "null"]},
+    "need_reservation": {"type": ["boolean", "null"]},
+    "estimated_cost": {"type": ["number", "null"]},
+}
+
+
+def _closed(properties: dict) -> dict:
+    return {"type": "object", "properties": properties, "required": sorted(properties), "additionalProperties": False}
+
+
+def _item_schema() -> dict:
+    return _closed(_ITEM_PROPERTIES)
+
+
+def _suggestion_schema() -> dict:
+    return _closed(_SUGGESTION_PROPERTIES)
+
+
+def _day_schema(*, with_trip_theme: bool, with_suggestions: bool) -> dict:
+    properties: dict = {
+        "theme": {"type": ["string", "null"]},
+        "note": {"type": ["string", "null"]},
+        "items": {"type": "array", "items": _item_schema()},
+        "practical_notes": {"type": "array", "items": {"type": "string"}},
+        "photo_spots": {
+            "type": ["array", "null"],
+            "items": _closed(
+                {
+                    "name": {"type": "string"},
+                    "tip": {"type": ["string", "null"]},
+                    "best_time": {"type": ["string", "null"]},
+                }
+            ),
+        },
+        "backup_plan": {
+            "type": ["array", "null"],
+            "items": _closed({"if": {"type": "string"}, "action": {"type": "string"}}),
+        },
+        "day_options": {
+            "type": ["array", "null"],
+            "items": _closed(
+                {"label": {"type": "string"}, "summary": {"type": "string"}, "tradeoff": {"type": ["string", "null"]}}
+            ),
+        },
+    }
+    if with_trip_theme:
+        properties["trip_theme"] = {"type": ["string", "null"]}
+    if with_suggestions:
+        properties["suggestions"] = {"type": ["array", "null"], "items": _suggestion_schema()}
+    return _closed(properties)
+
+
+def open_day_output_schema(day_no: int) -> dict:
+    """llm_open_day 的输出 schema（day_no 决定 trip_theme 是否放行，与 prompt 同步分支）。"""
+    return _day_schema(with_trip_theme=day_no <= 1, with_suggestions=True)
+
+
+def open_trip_output_schema() -> dict:
+    """llm_open_trip 的输出 schema：顶层 trip_theme 一次 + daily_plans + suggestions。"""
+    return _closed(
+        {
+            "trip_theme": {"type": ["string", "null"]},
+            "daily_plans": {
+                "type": "array",
+                "items": {
+                    **_day_schema(with_trip_theme=False, with_suggestions=False),
+                    "properties": {
+                        "day_no": {"type": "integer", "minimum": 1, "maximum": 7},
+                        **_day_schema(with_trip_theme=False, with_suggestions=False)["properties"],
+                    },
+                    "required": sorted(
+                        {"day_no", *_day_schema(with_trip_theme=False, with_suggestions=False)["properties"]}
+                    ),
+                },
+            },
+            "suggestions": {"type": "array", "items": _suggestion_schema()},
+        }
+    )
+
+
+def parse_llm_json_with_repair(
+    raw: object,
+    client,
+    *,
+    model: str | None = None,
+    repair_max_tokens: int = 4000,
+    response_format: dict | None = None,
+) -> dict:
+    """坏 JSON → 单次修复重试（decide.py:139-151 已验证模式的推广，PR-5）。
+
+    三层路径的中层：严格解析失败（截断/畸形）时把原文交给模型修复一次
+    （temperature=0、只求语法正确；可带与正调相同的 response_format 让修复产物
+    同样符合 schema），仍失败抛 LlmJsonError——由调用方走第三层兜底（open_plans
+    的缺口天逐日兜底 / 待研究草案）。修复调用走标准 llm_client 通道，成本随
+    usage 记账，PR-9 成本棘轮可见；修复发生处记 llm_json_repair 事件。
+    """
+    try:
+        return parse_llm_json(raw)
+    except LlmJsonError:
+        record_event("decision", "llm_json_repair", metadata={"raw_len": len(str(raw or ""))})
+    repaired = client.chat(
+        [
+            {"role": "system", "content": "修复下面的 JSON：保持原意，只输出一个语法正确的 JSON 对象，不要解释。"},
+            {"role": "user", "content": str(raw or "")[:12000]},
+        ],
+        temperature=0,
+        max_tokens=repair_max_tokens,
+        model=model or settings.llm_fast_model or None,
+        json_mode=response_format is None,
+        response_format=response_format,
+    )
+    return parse_llm_json(repaired)
+
+
 @traced("llm", "llm.open_trip")
 def llm_open_trip(req: GenerateDayRequest) -> tuple[list[dict], list[dict]]:
     """开放模式多日一次生成，避免未知目的地按天串行调用模型。
@@ -207,17 +348,33 @@ def llm_open_trip(req: GenerateDayRequest) -> tuple[list[dict], list[dict]]:
     client = get_llm_client()
     system, user = open_trip_prompt(req)
     days = req.days or 1
+    output_schema = open_trip_output_schema()
+    repair_tokens = max(2800, min(8000, days * 1150 + 1100))
     raw = client.complete(
         user,
         system_prompt=system,
         temperature=GENERATION_TEMPERATURE,
         # 多日 + 备选池体积大：给足预算，避免 JSON 截断（截断即整段开放研究失败）。
-        max_tokens=max(2800, min(8000, days * 1150 + 1100)),
+        max_tokens=repair_tokens,
         model=settings.llm_fast_model or None,
-        json_mode=True,
+        # PR-5 强约束档（spike 2026-09-24 实测：网关接受且执行 json_schema strict）：
+        # 网关保证输出符合契约 schema，栅栏/截取打捞退役；坏输出走修复重试 → 兜底。
+        response_format={
+            "type": "json_schema",
+            "json_schema": {"name": "trip_output", "strict": True, "schema": output_schema},
+        },
         enable_search=settings.llm_generation_web_search,
     )
-    data = parse_llm_json(raw)
+    data = parse_llm_json_with_repair(
+        raw,
+        client,
+        model=settings.llm_fast_model or None,
+        repair_max_tokens=repair_tokens,
+        response_format={
+            "type": "json_schema",
+            "json_schema": {"name": "trip_output", "strict": True, "schema": output_schema},
+        },
+    )
     plans = data.get("daily_plans") if isinstance(data, dict) else None
     if not isinstance(plans, list):
         raise ValueError("开放模式多日行程结构无效")
