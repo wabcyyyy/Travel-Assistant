@@ -101,7 +101,7 @@ def _clear_external_client_caches():
     打了桩却拿到缓存的 None，表现为"桩没生效"。这里在用例前后各清一次，
     让每个用例从干净缓存出发（正/负 TTL 的语义由 test_external_client 专门覆盖）。
     """
-    from app.agent.data import places, pricing, weather, web_search
+    from app.agent.data import flight_prices, hotel_prices, live_quotes, places, pricing, weather, web_search
     from app.agent.tools import impl as tools
 
     clients = (
@@ -114,11 +114,16 @@ def _clear_external_client_caches():
         pricing._price_client,
         web_search._search_client,
         weather._weather_client,
+        flight_prices._flight_client,
+        hotel_prices._hotel_client,
+        live_quotes._serpapi_client,
     )
+    live_quotes.reset_quota_for_tests()
     for client in clients:
         client.clear_cache()
         client.reset_runtime_state()
     yield
+    live_quotes.reset_quota_for_tests()
     for client in clients:
         client.clear_cache()
         client.reset_runtime_state()

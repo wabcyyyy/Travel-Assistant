@@ -239,6 +239,18 @@ class Settings(BaseSettings):
     # 关掉即整体停用（与 Nominatim 同类的免费数据源，走 env 开关不入 addon）。
     weather_enabled: bool = True
 
+    # ---- 真实报价数据面（L12：Travelpayouts 主源 + SerpApi 按需补充源） ----
+    # token 见 travelpayouts.com 后台；空 = 真价整层零外呼（维持 estimated 叙事）。
+    # Aviasales 走 X-Access-Token 头（token 不进 URL）；Hotellook cache.json 走
+    # query（官方口径，日志侧脱敏兜底）。
+    travelpayouts_token: str = ""
+    # affiliate 深链标识（可选）：空 = 报价深链裸链，不影响取价。
+    travelpayouts_marker: str = ""
+    # SerpApi（Google Flights 实时价，免费档 250 次/月）：空 = 零外呼；仅按需触发。
+    serpapi_key: str = ""
+    # 进程内月配额（单机诚实口径：重启清零）。
+    serpapi_monthly_quota: int = 250
+
     # ---- 存在性判定（PLAN-A1 G2；判"这个名字指的地点真的存在吗"） ----
     # 解析顺序（逗号分隔）：otm=OpenTripMap 池名匹配（只能正向证实）、
     # nominatim=点名地理编码、amap/google_places=收费源留白（无 key 不发请求）。
@@ -375,6 +387,7 @@ _NUMERIC_RULES: tuple[tuple[str, str, float, float], ...] = (
     ("suggestion_resolve_limit", "必须 >= 1", 0, float("inf")),
     ("share_rate_limit_per_minute", "必须 >= 1", 0, float("inf")),
     ("public_rate_limit_per_minute", "必须 >= 1", 0, float("inf")),
+    ("serpapi_monthly_quota", "必须 >= 1", 0, float("inf")),
 )
 _RANGES = {key: (low, high) for key, _req, low, high in _NUMERIC_RULES}
 

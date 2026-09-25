@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 import time
 from collections.abc import Callable
@@ -52,6 +53,18 @@ BACKGROUND = "background"
 
 #: 车道最小调用间隔（秒）：前台已可容忍短等待，后台补池应明显更克制。
 _LANE_MIN_INTERVAL: dict[str, float] = {INTERACTIVE: 0.2, BACKGROUND: 1.0}
+
+#: 异常消息脱敏（L12）：httpx 的异常文本内嵌完整请求 URL，而 Hotellook/SerpApi
+#: 的 token、OTM 的 apikey 都走 query 参数——一次 5xx 就能把密钥打进日志。
+#: 正则与 agent runtime trace 的 _SECRET_PATTERNS 同族；common 不能反向 import
+#: agent，两边各自覆盖自己负责的出口（trace 管轨迹持久化，本模块管日志出口）。
+_SECRET_QUERY_RE = re.compile(r"([?&](?:key|token|secret|api_key|apikey|access_key)=)[^&\s\"']+", re.IGNORECASE)
+_BEARER_RE = re.compile(r"(Bearer\s+)[A-Za-z0-9._\-]+", re.IGNORECASE)
+
+
+def _redact_secrets(exc: BaseException) -> str:
+    text = _SECRET_QUERY_RE.sub(r"\1<redacted>", str(exc))
+    return _BEARER_RE.sub(r"\1<redacted>", text)
 
 
 @dataclass
@@ -226,7 +239,13 @@ class ExternalClient(Generic[T]):
             try:
                 return loader(), False
             except Exception as exc:
-                logger.warning("external[%s] call failed (attempt %d/%d): %s", self.name, attempt + 1, attempts, exc)
+                logger.warning(
+                    "external[%s] call failed (attempt %d/%d): %s",
+                    self.name,
+                    attempt + 1,
+                    attempts,
+                    _redact_secrets(exc),
+                )
         return None, True
 
     def call(

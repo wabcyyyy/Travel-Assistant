@@ -17,6 +17,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import httpx
 import pytest
 from _fake_clock import assert_min_spacing
 
@@ -284,3 +285,21 @@ def test_concurrent_calls_are_spaced_by_interval():
         assert all(f.result(timeout=10) == "v" for f in futures)
     assert len(stamps) == 4
     assert_min_spacing(stamps, interval=0.15, tolerance=0.05)
+
+
+def test_exception_logs_redact_url_secrets(caplog):
+    """L12：token 走 URL query 的通道（Hotellook/SerpApi/OTM apikey 同理），
+    httpx 异常文本内嵌完整 URL——进日志前必须脱敏。"""
+    client = ExternalClient(name="t", max_wait_seconds=5.0)
+    request = httpx.Request("GET", "https://api.example.com/v1/cache.json?location=BCN&token=super-secret-token")
+
+    def boom():
+        response = httpx.Response(500, request=request)
+        raise httpx.HTTPStatusError(
+            f"Server error '500 Internal Server Error' for url '{request.url}'", request=request, response=response
+        )
+
+    with caplog.at_level("WARNING", logger="app.common.external_client"):
+        assert client.call("k", boom) is None
+    assert "super-secret-token" not in caplog.text, "密钥不得泄漏进日志"
+    assert "token=<redacted>" in caplog.text, "脱敏后保留参数名，便于排障"
