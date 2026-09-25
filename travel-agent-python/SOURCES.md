@@ -22,6 +22,7 @@ DNS 走 fake-IP 代理，须 DoH（`https://dns.google/resolve?name=<host>&type=
 | opentripmap | 景点坐标/分类/图片 | `https://api.opentripmap.com/0.1/en`（`/places/geoname`、`/places/radius`、`/places/xid/{id}`） | 免费 key；限速 <5 rps（我们 geo/radius 0.35s、detail 1.0s 间隔） | `auth-required`（401=活着，缺 apikey） | 2026-09-25 | 探针 |
 | travelpayouts | 机票缓存价（Aviasales v3） | `https://api.travelpayouts.com/aviasales/v3/prices_for_dates` | token 免费（affiliate 注册）；官方限速 600 req/min | `auth-required`（401=活着，缺 token） | 2026-09-25 | 探针 |
 | serpapi | 按需实时报价（`engine=google_flights` 航班 + `engine=google_hotels` 酒店，LA2 起两引擎共用同一 key 与月配额） | `https://serpapi.com/search.json` | 免费 250 次/月（硬顶，只够按需按钮，不进主链路） | `auth-required`（401=活着，缺 key） | 2026-09-25 | 探针 |
+| travelpayouts-data | IATA 映射存在性校验（**LA3 离线快照**：`scripts/iata_snapshot.py` 手工刷新，不进探针/门禁——静态数据集，非运行时通道） | `https://api.travelpayouts.com/data/airports.json`、`https://api.travelpayouts.com/data/cities.json`、`https://api.travelpayouts.com/data/routes.json` | 免 key（静态 JSON，与 token 通道无关） | `ok`（均 200） | 2026-09-26 | LA3 快照脚本直连 |
 
 ## 深链出口（浏览器侧可用性，非数据 API）
 
@@ -41,7 +42,6 @@ DNS 走 fake-IP 代理，须 DoH（`https://dns.google/resolve?name=<host>&type=
 
 | 源 | 用途 | 端点 | 免费额度 | 计划卡 |
 |---|---|---|---|---|
-| Travelpayouts 静态数据集 | IATA 映射存在性校验（免 token 静态 JSON） | `https://api.travelpayouts.com/data/airports.json`、`https://api.travelpayouts.com/data/routes.json` | 免 key | LA3 |
 | openrouteservice | 城内交通真路线 | `https://api.openrouteservice.org/v2/directions`（…`/{profile}`） | 免费 2,000 次/天、40/分钟；高校/非营利可申请提额 | LA5 |
 
 ## 已退役（勿再考虑）

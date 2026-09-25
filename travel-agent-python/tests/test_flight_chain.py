@@ -40,6 +40,7 @@ FIXTURE = json.loads(
 SERP_FIXTURE = json.loads(
     (Path(__file__).parent / "fixtures" / "serpapi_google_flights.json").read_text(encoding="utf-8")
 )
+IATA_SNAPSHOT = json.loads((Path(__file__).parent / "fixtures" / "city_iata_snapshot.json").read_text(encoding="utf-8"))
 JWT_MATERIAL = "example-only-hs256-test-signing-material"
 
 #: fixture 的往返行：MAD→BCN 出发 2026-11-07、返程 2026-11-14（含一行缺 price 的脏行）
@@ -106,6 +107,23 @@ def test_iata_codes_are_three_letter_and_unique_by_value():
     for city in city_iata.known_cities():
         code = city_iata.resolve_iata(city)
         assert code is not None and len(code) == 3 and code.isalpha() and code.isupper(), f"{city} → {code}"
+
+
+def test_iata_codes_exist_in_validated_snapshot():
+    """LA3 存在性校验：表里每个代码必须在离线校验快照中有据（形状校验之上的事实层）。
+
+    快照由 `uv run python scripts/iata_snapshot.py` 对 Travelpayouts 免费数据集
+    （airports/cities/routes）离线生成，只含被数据集背书的条目；表与快照双向
+    一致——改表必须重跑脚本刷新快照，否则红。校验不过的码不进快照，此时红 =
+    事实断言被数据集否决（"映射错机场是事实错误"的机检半边，另半边是人工责任）。
+    """
+    snapshot_codes = set(IATA_SNAPSHOT["entries"])
+    table_codes = {city_iata.resolve_iata(city) for city in city_iata.known_cities()}
+    assert None not in table_codes
+    assert table_codes == snapshot_codes, (
+        "city_iata 表与校验快照不一致：改了表就重跑 scripts/iata_snapshot.py 刷新快照；"
+        "重跑后仍缺 = 该代码过不了数据集校验，人工复核、勿强行入表"
+    )
 
 
 # ---- 三分支取数 ---------------------------------------------------------------
