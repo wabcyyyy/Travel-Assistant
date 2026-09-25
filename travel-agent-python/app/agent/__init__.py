@@ -12,6 +12,7 @@
 依赖：本包各子模块；本文件不得承载业务逻辑。
 """
 
+from app.agent.data.live_quotes import quota_exhausted as live_quote_quota_exhausted
 from app.agent.data.weather import get_weather_forecast
 from app.agent.editing.chat_draft import run_chat_turn
 from app.agent.editing.chat_draft.confirm_graph import ConfirmResume, confirm_thread, resume_confirmation
@@ -30,6 +31,7 @@ from app.agent.grounding.existence import resolve_poi
 from app.agent.grounding.suggestion_grounding import verify_suggestion_rows
 from app.agent.runtime.observability import metrics, observe_run, scene, use_scene
 from app.agent.runtime.usage_store import usage_store
+from app.agent.tools.flight_quotes import search_live_flight_quotes, shape_quote_for_wire
 from app.agent.tools.impl import find_nearby_pois, get_poi_detail, search_hotels, workbench_search
 from app.agent.tools.registry import ToolInvocationError, ToolSpec, registry
 
@@ -42,6 +44,7 @@ __all__ = [
     "find_nearby_pois",
     "get_poi_detail",
     "get_weather_forecast",
+    "live_quote_quota_exhausted",
     "metrics",
     "observe_run",
     "optimize_daily_plan",
@@ -63,6 +66,8 @@ __all__ = [
     "run_poi_intros",
     "scene",
     "search_hotels",
+    "search_live_flight_quotes",
+    "shape_quote_for_wire",
     "usage_store",
     "use_scene",
     "verify_suggestion_rows",

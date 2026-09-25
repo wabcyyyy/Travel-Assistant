@@ -75,8 +75,10 @@ def test_plan_context_success_publishes_start_and_done(events, monkeypatch):
     }
     assert not any(e[1] == "degraded" for e in events)
     # 返回契约：四键研究上下文 + C3.1 天气键（无日期入参时恒为 None）
-    assert set(result) == {"candidates", "foods", "hotels", "consumption", "weather"}
+    # + L14 航班报价键（无出发地时恒为空列表，缺席原因由工具层留痕）
+    assert set(result) == {"candidates", "foods", "hotels", "consumption", "weather", "flight_quotes"}
     assert result["weather"] is None
+    assert result["flight_quotes"] == []
 
 
 def test_plan_context_degraded_pack_publishes_degraded_event(events, monkeypatch):

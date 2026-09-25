@@ -208,6 +208,32 @@ def mark_generating(itinerary_id: int) -> None:
         )
 
 
+def save_flight_quotes(itinerary_id: int, quotes: list[dict[str, Any]] | None) -> None:
+    """往返报价落库（L14）：单列 UPDATE；`None`/空列表一律写 NULL。
+
+    为什么空就写 NULL 而不是保留旧值：报价是**观测事实**，这一轮没查到就是
+    这一轮没有（工具层已留下缺席原因）。留着上一轮的旧价，详情页会显示一份
+    本行程从未观测过的价格——那正是本计划要消灭的"冒充"。
+    """
+    payload = json.dumps(quotes, ensure_ascii=False) if quotes else None
+    with session_scope() as session:
+        session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(flight_quotes=payload))
+
+
+def save_origin_city(itinerary_id: int, origin_city: str | None) -> None:
+    """出发地单列写回（L14）：只在非空时写，绝不把已填的出发地清成 NULL。
+
+    用户建行程时填了出发地，之后的一次生成/续跑没带上它（例如前端旧版本、
+    或 chat 重排路径不传 origin），清空会让"查实时价"从可用变不可用——而
+    出发地是**用户输入的事实**，不该被一次生成流程抹掉。
+    """
+    text = str(origin_city or "").strip()
+    if not text:
+        return
+    with session_scope() as session:
+        session.execute(update(ItineraryMain).where(ItineraryMain.id == itinerary_id).values(origin_city=text[:64]))
+
+
 def all_days_succeeded(itinerary_id: int) -> bool:
     with session_scope() as session:
         statuses = (

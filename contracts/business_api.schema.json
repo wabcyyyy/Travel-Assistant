@@ -696,6 +696,55 @@
         "baseRevision"
       ]
     },
+    "LiveQuotesBody": {
+      "properties": {
+        "startDate": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Startdate"
+        },
+        "endDate": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Enddate"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Limit"
+        }
+      },
+      "title": "LiveQuotesBody",
+      "type": "object",
+      "required": [
+        "startDate",
+        "endDate",
+        "limit"
+      ]
+    },
     "PreferenceSignalsBody": {
       "properties": {
         "explicitPreferences": {

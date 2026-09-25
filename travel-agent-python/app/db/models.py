@@ -150,6 +150,10 @@ class ItineraryMain(Base, SoftDelete):
     # V7（template）：发布快照物化列；published_at NULL = 未发布
     template_published_at: Mapped[datetime | None] = mapped_column(DateTime)
     template_summary: Mapped[dict | None] = mapped_column(JSON, comment="脱敏投影快照（模板广场/fork 数据源）")
+    # V9（flight_quotes）：往返航班聚合报价（FlightQuote 数组）；NULL = 本轮未观测到
+    flight_quotes: Mapped[list | None] = mapped_column(JSON, comment="往返航班报价（L14，观测事实）")
+    # V9：出发地城市名（用户建行程时填）；查航班与实时价的唯一来源
+    origin_city: Mapped[str | None] = mapped_column(String(64), comment="出发地城市名（L14）")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()

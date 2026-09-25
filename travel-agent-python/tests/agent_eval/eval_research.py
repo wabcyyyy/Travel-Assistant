@@ -57,6 +57,9 @@ def _research_patch():
         patch.object(settings, "weather_enabled", False),
         # 函数内导入，必须 patch 源模块（factory 模块级没有该属性）
         patch("app.agent.data.web_search.search_places_via_web", _forbid_network_call),
+        # L14 航班报价两条外呼通道（聚合价/实时价）同为外网入口，一律钉死
+        patch("app.agent.data.flight_prices.fetch_price_dates", _forbid_network_call),
+        patch("app.agent.data.live_quotes.fetch_live_quotes", _forbid_network_call),
         patch.object(tools, "search_attractions", mock_llm.search_attractions),
         patch.object(tools, "search_foods", mock_llm.search_foods),
         patch.object(tools, "search_hotels", mock_llm.search_hotels),

@@ -60,47 +60,56 @@ def fetch_price_dates(
     *,
     currency: str = "cny",
     limit: int = 30,
+    return_at: str | None = None,
 ) -> list[dict[str, Any]] | None:
-    """出发/目的地 IATA + 出发月（YYYY-MM）→ 按价排序的聚合价行列表 | None。
+    """出发/目的地 IATA + 出发期（YYYY-MM 或 YYYY-MM-DD）→ 按价排序的聚合价行列表 | None。
 
     行 dict 透传上游全部字段（未知字段原样保留，不猜测不裁剪），仅补两列：
     `currency`（来自应答信封）与 `deep_link`（上游相对 link → 绝对地址）。
     缺 price/origin/destination/departure_at 任一项的行丢弃——单行残缺是上游
     脏数据，不值得让整次查询降 None。
+
+    `return_at` 给了就是**往返**查询（不带 `one_way`，官方默认往返），返回行的
+    `return_at` 是返程日期、`price` 是往返总价；不给则单程（L12 既有口径）。
     """
     token = str(settings.travelpayouts_token or "").strip()
     origin = str(origin_iata or "").strip().upper()
     dest = str(dest_iata or "").strip().upper()
     month = str(depart_month or "").strip()
+    back = str(return_at or "").strip()
     if not token or not origin or not dest or not month:
         return None
+    params: dict[str, Any] = {
+        "origin": origin,
+        "destination": dest,
+        "departure_at": month,
+        "currency": currency,
+        "sorting": "price",
+        "limit": int(limit),
+    }
+    if back:
+        params["return_at"] = back
+    else:
+        params["one_way"] = "true"
     # 密钥绝不进缓存键（places.py 同款纪律）：失败日志会原样打出键
-    cache_key = f"{origin}:{dest}:{month}:{currency}:{int(limit)}"
+    cache_key = f"{origin}:{dest}:{month}:{back}:{currency}:{int(limit)}"
     payload = _flight_client.call(
         cache_key,
         lambda: fetch_json(
             _flight_client,
             api_client(),
             _PRICES_FOR_DATES,
-            params={
-                "origin": origin,
-                "destination": dest,
-                "departure_at": month,
-                "currency": currency,
-                "sorting": "price",
-                "one_way": "true",
-                "limit": int(limit),
-            },
+            params=params,
             headers={"X-Access-Token": token, "User-Agent": _USER_AGENT},
         ),
         lane=BACKGROUND,
     )
     if not isinstance(payload, dict) or payload.get("success") is not True:
-        logger.warning("aviasales[%s>%s %s] envelope not success", origin, dest, month)
+        logger.warning("aviasales[%s>%s %s~%s] envelope not success", origin, dest, month, back or "-")
         return None
     rows_raw = payload.get("data")
     if not isinstance(rows_raw, list):
-        logger.warning("aviasales[%s>%s %s] envelope without data list", origin, dest, month)
+        logger.warning("aviasales[%s>%s %s~%s] envelope without data list", origin, dest, month, back or "-")
         return None
     currency_text = str(payload.get("currency") or currency)
     rows: list[dict[str, Any]] = []

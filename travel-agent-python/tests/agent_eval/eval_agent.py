@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
@@ -25,6 +26,7 @@ from app.agent.generation.output import prices as pricing
 from app.agent.grounding import facts as grounding
 from app.agent.research import reasoning
 from app.agent.runtime.trace import trace_run
+from app.agent.tools import flight_quotes
 from app.agent.tools import impl as tools
 from app.common.config import settings
 from app.prompts.open_generation import OPEN_DAY_PROMPT_VERSION, OPEN_TRIP_PROMPT_VERSION
@@ -75,39 +77,65 @@ def run_case(case: dict) -> dict:
     # 漂移、耗时不可控，CI 上更会因无外网而产出另一套数字。这里显式关闭，
     # 并把实时价入口换成"一旦调用即报错"的哨兵：离线不是靠约定，而是被证明。
     # Nominatim 同理（无坐标变体会按名解析真坐标），一律钉死关闭。
-    with (
-        patch.object(workflow.settings, "llm_api_key", "fixture"),
-        patch.object(settings, "live_price_search", False),
-        patch.object(settings, "live_food_price_search", False),
-        patch.object(settings, "web_search_enabled", False),
-        patch.object(settings, "llm_generation_web_search", False),
-        patch.object(settings, "nominatim_enabled", False),
+    #
+    # 用 ExitStack 而非 `with (a, b, ...)`：条目数已越过 CPython 的 20 层静态嵌套
+    # 上限（SyntaxError: too many statically nested blocks），拍平后继续加哨兵不会
+    # 再撞这个编译期硬墙。
+    with ExitStack() as stack:
+        enter = stack.enter_context
+        enter(patch.object(workflow.settings, "llm_api_key", "fixture"))
+        enter(patch.object(settings, "live_price_search", False))
+        enter(patch.object(settings, "live_food_price_search", False))
+        enter(patch.object(settings, "web_search_enabled", False))
+        enter(patch.object(settings, "llm_generation_web_search", False))
+        enter(patch.object(settings, "nominatim_enabled", False))
         # 天气（C3.1）同为外网入口：离线评测整体关闭（synthesize 短路，不打坐标/预报）
-        patch.object(workflow.settings, "weather_enabled", False),
-        patch.object(pricing, "query_live_price", _forbid_network_call),
-        patch.object(pricing, "query_live_food_price", _forbid_network_call),
-        patch.object(
-            tools,
-            "search_attractions",
-            lambda city, prefs, limit=30: mock_llm.search_attractions(city, prefs, limit, coords=coords),
-        ),
-        patch.object(tools, "search_foods", lambda city, limit=10: mock_llm.search_foods(city, limit, coords=coords)),
-        patch.object(tools, "get_consumption", mock_llm.get_consumption),
-        patch.object(tools, "search_hotels", lambda city, limit=6: mock_llm.search_hotels(city, limit, coords=coords)),
-        patch.object(reasoning, "plan_research", mock_llm.plan_research),
-        patch.object(reasoning, "evaluate_research", mock_llm.evaluate_research),
-        patch.object(tools, "attach_poi_images", mock_llm.attach_poi_images),
-        patch.object(
-            tools,
-            "search_local_poi",
-            lambda city, name, category=None: mock_llm.search_local_poi(city, name, category=category, coords=coords),
-        ),
+        enter(patch.object(workflow.settings, "weather_enabled", False))
+        enter(patch.object(pricing, "query_live_price", _forbid_network_call))
+        enter(patch.object(pricing, "query_live_food_price", _forbid_network_call))
+        # L14 航班报价两条外呼通道：聚合价（Aviasales）与实时价（SerpApi）同为
+        # 外网入口，一律钉死。评测题集当前不带 origin_city（不带就不查），这两条
+        # 哨兵在现有题集上是"装了没用上"；装它的意义是未来任何带出发地的题集都
+        # 不会偷偷打真网（离线纪律由哨兵证明，不靠约定）。
+        enter(patch.object(flight_quotes.flight_prices, "fetch_price_dates", _forbid_network_call))
+        enter(patch.object(flight_quotes.live_quotes, "fetch_live_quotes", _forbid_network_call))
+        enter(
+            patch.object(
+                tools,
+                "search_attractions",
+                lambda city, prefs, limit=30: mock_llm.search_attractions(city, prefs, limit, coords=coords),
+            )
+        )
+        enter(
+            patch.object(
+                tools, "search_foods", lambda city, limit=10: mock_llm.search_foods(city, limit, coords=coords)
+            )
+        )
+        enter(patch.object(tools, "get_consumption", mock_llm.get_consumption))
+        enter(
+            patch.object(
+                tools, "search_hotels", lambda city, limit=6: mock_llm.search_hotels(city, limit, coords=coords)
+            )
+        )
+        enter(patch.object(reasoning, "plan_research", mock_llm.plan_research))
+        enter(patch.object(reasoning, "evaluate_research", mock_llm.evaluate_research))
+        enter(patch.object(tools, "attach_poi_images", mock_llm.attach_poi_images))
+        enter(
+            patch.object(
+                tools,
+                "search_local_poi",
+                lambda city, name, category=None: mock_llm.search_local_poi(
+                    city, name, category=category, coords=coords
+                ),
+            )
+        )
         # 存在性判定替身（D11A）：接地走这里，不再隐式拿 fixture 目录自证
-        patch.object(grounding, "resolve_poi", lambda name, city: mock_llm.resolve_poi(name, city, coords=coords)),
-        patch.object(open_plans, "llm_open_day", mock_llm.fixture_open_day),
-        patch.object(open_plans, "llm_open_trip", mock_llm.fixture_open_trip),
-        trace_run(f"fixture-{case['city']}-{case['days']}") as recorder,
-    ):
+        enter(
+            patch.object(grounding, "resolve_poi", lambda name, city: mock_llm.resolve_poi(name, city, coords=coords))
+        )
+        enter(patch.object(open_plans, "llm_open_day", mock_llm.fixture_open_day))
+        enter(patch.object(open_plans, "llm_open_trip", mock_llm.fixture_open_trip))
+        recorder = enter(trace_run(f"fixture-{case['city']}-{case['days']}"))
         response = workflow.run_generate(build_generate_request(case))
     result = evaluate_response(response, case, fixture, recorder.to_dict())
     result.update(evaluate_depth(response, case))

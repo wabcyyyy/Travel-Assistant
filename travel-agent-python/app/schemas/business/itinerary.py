@@ -51,6 +51,19 @@ class GenerateTripRequest(WireModel):
     intent: str | None = None
 
 
+class LiveQuotesBody(WireModel):
+    """`POST /api/itinerary/{id}/quotes/live` 的请求体（L14 按需实时价）。
+
+    出发地/目的地不由前端指定：一律取行程自身的（origin_city + city），避免
+    "给别人的行程查我的出发地"。日期可覆盖——默认用行程的出发/返程日，用户
+    想比较别的时间窗时可以显式给。
+    """
+
+    startDate: date | None = None
+    endDate: date | None = None
+    limit: int | None = None
+
+
 class ItemUpsertRequest(BaseModel):
     """字段名与 Java `ItemUpsertRequest` 一致（camelCase，前端已在发这个形状）。"""
 

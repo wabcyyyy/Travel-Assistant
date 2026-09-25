@@ -106,6 +106,20 @@ def _get_consumption_handler(**params: Any) -> dict | None:
     return tools.get_consumption(params["city"])
 
 
+def _search_flight_quotes_handler(**params: Any) -> list[dict]:
+    # 航班报价自成模块（tools/flight_quotes.py，规模棘轮拆出）；晚绑定语义与
+    # `tools.xxx` 相同——调用期读模块属性，patch.object(flight_quotes, ...) 生效
+    from app.agent.tools import flight_quotes
+
+    return flight_quotes.search_flight_quotes(
+        params["origin_city"],
+        params["city"],
+        params.get("start_date"),
+        params.get("end_date"),
+        params.get("limit", 3),
+    )
+
+
 def _poi_image_handler(**params: Any) -> str | None:
     from app.agent.tools import impl as tools
 
@@ -429,5 +443,34 @@ registry.register(
         handler=_web_search_places_handler,
         # G-1.4 的 when 钩子在此接线：addon 关闭 → 不列入工具面、invoke 报未注册
         when=lambda _ctx: addons.is_enabled("web_search"),
+    )
+)
+registry.register(
+    ToolSpec(
+        name="search_flight_quotes",
+        version="1.0",
+        description="查询往返航班聚合报价（需出发地；未映射/无报价时如实返回空）",
+        parameters={
+            "type": "object",
+            "properties": {
+                "origin_city": {"type": "string"},
+                "city": {"type": "string"},
+                "start_date": {"type": "string"},
+                "end_date": {"type": "string"},
+                "limit": {"type": "integer"},
+            },
+            "required": ["origin_city", "city"],
+            "additionalProperties": False,
+        },
+        read_only=True,
+        risk_level="low",
+        timeout_seconds=12,
+        max_calls=2,
+        # 重试只上幂等 GET，且**不叠第二层**：data 层 flight_prices 客户端已按
+        # L1 纪律重试 1 次（重试放大外呼量），注册表层再加一层等于翻倍。
+        retry_policy={"max_retries": 0},
+        requires_confirmation=False,
+        idempotent=True,
+        handler=_search_flight_quotes_handler,
     )
 )

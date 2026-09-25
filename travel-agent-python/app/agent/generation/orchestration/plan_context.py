@@ -71,6 +71,7 @@ def run_plan_context(
     *,
     start_date: str | None = None,
     days: int = 1,
+    origin_city: str | None = None,
 ) -> dict:
     """构建单日生成上下文：Supervisor 并行派发三个研究 Agent 产出证据。
 
@@ -92,7 +93,15 @@ def run_plan_context(
     run_id = current_run_id()
     publish_research_start(itinerary_id, list(_RESEARCH_EVENT_DOMAINS), run_id=run_id)
     try:
-        req = GenerateRequest(city=city, days=max(days, 1), persons=1, preferences=preferences, start_date=start_date)
+        req = GenerateRequest(
+            city=city,
+            days=max(days, 1),
+            persons=1,
+            preferences=preferences,
+            start_date=start_date,
+            # L14：有出发地才查航班（研究阶段由 synthesize 直取报价）
+            origin_city=origin_city,
+        )
         context = run_research_context(req)
     except Exception as exc:
         # 兜底口径：研究失败时 HTTP 层会转错误信封，由编排器决定重试
@@ -112,6 +121,8 @@ def run_plan_context(
         "hotels": context["hotels"],
         "consumption": context["consumption"],
         "weather": context.get("weather"),
+        # L14：往返报价（无出发地/未映射/无报价时为空列表，缺席已由工具层留痕）
+        "flight_quotes": context.get("flight_quotes") or [],
     }
 
 

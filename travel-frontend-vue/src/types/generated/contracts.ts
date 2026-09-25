@@ -477,6 +477,12 @@ export interface HotelOptionRequest {
   baseRevision: string | null
 }
 
+export interface LiveQuotesBody {
+  startDate: string | null
+  endDate: string | null
+  limit: number | null
+}
+
 export interface PreferenceSignalsBody {
   explicitPreferences: string[] | null
   hardConstraints: string[] | null

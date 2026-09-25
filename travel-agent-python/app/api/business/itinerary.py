@@ -23,6 +23,7 @@ from app.schemas.business.itinerary import (
     GenerateTripRequest,
     HotelOptionRequest,
     ItemUpsertRequest,
+    LiveQuotesBody,
     NlEditBody,
     OptimizeDayBody,
     PreferenceSignalsBody,
@@ -223,6 +224,29 @@ def post_hotel_option(
     user: AuthUser | None = Depends(enforce_business_auth),
 ) -> dict:
     return ok(itinerary_plan_apply.apply_hotel_option(user.id, id, body))
+
+
+@router.post("/{id}/quotes/live")
+def post_live_quotes(
+    body: LiveQuotesBody | None = Body(default=None),
+    id: int = Path(..., ge=1),
+    user: AuthUser | None = Depends(enforce_business_auth),
+) -> dict:
+    """按需查航班实时价（L14，SerpApi）。
+
+    与生成链路解耦：**不落库**（见 `itinerary_query.live_flight_quotes` 的边界说明）。
+    失败语义：查不了 → 400；配额尽 → 429；问过但没有 → 200 + 空列表 + reason。
+    """
+    payload = body or LiveQuotesBody()
+    return ok(
+        itinerary_query.live_flight_quotes(
+            user.id,
+            id,
+            start_date=payload.startDate,
+            end_date=payload.endDate,
+            limit=payload.limit,
+        )
+    )
 
 
 @router.delete("/items/{itemId}")

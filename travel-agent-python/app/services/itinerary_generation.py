@@ -86,6 +86,8 @@ class GenerateCommand:
     region_hint: str | None = None
     requirements: str | None = None
     intent: str | None = None
+    # L14：可选出发地；有它才查航班（未映射 IATA 时航段如实缺席）
+    origin_city: str | None = None
 
     def resolved_intent(self) -> str:
         """意图兜底：未填 intent 时用 requirements（M1 契约，与 Java `resolveIntent` 一致）。"""
@@ -128,7 +130,11 @@ def plan_days(user_id: int, itinerary_id: int, command: GenerateCommand, context
                 itinerary_id=itinerary_id,
                 start_date=command.start_date.isoformat() if command.start_date else None,
                 days=command.days,
+                origin_city=command.origin_city,
             )
+        # L14：报价随研究上下文一次落库；空即写 NULL（续跑取回的 context 同样带它）
+        day_persistence.save_flight_quotes(itinerary_id, context.get("flight_quotes"))
+        day_persistence.save_origin_city(itinerary_id, command.origin_city)
 
         suggestions_persisted = False
         unfinished = day_persistence.unfinished_day_nos(itinerary_id)

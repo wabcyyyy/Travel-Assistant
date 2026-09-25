@@ -27,6 +27,7 @@ from app.agent.research.evidence import EvidencePack, ResearchDomain, ResearchTa
 from app.agent.research.factory import run_research
 from app.agent.runtime.observability import metrics
 from app.agent.runtime.trace import record_event
+from app.agent.tools import flight_quotes
 from app.agent.tools import impl as tools
 from app.common.config import settings
 from app.schemas.trip import GenerateRequest
@@ -105,6 +106,30 @@ def _trip_end_date(req: GenerateRequest) -> str | None:
     return (start + timedelta(days=max(req.days, 1) - 1)).isoformat()
 
 
+def _flight_quotes(req: GenerateRequest) -> list[dict]:
+    """往返航班报价（L14）：与 consumption/weather 同类的 **trip 级非点位证据**。
+
+    为什么不做成研究域：研究域那套机制是给"LLM 多轮检索点位池"用的（计划 →
+    检索 → LLM 评估充分性 → 补关键词重查），而航班报价是一次确定性 API 取数，
+    套进研究域等于为一次 HTTP 调用付 LLM 评估与重查的钱。consumption/weather
+    已经确立了同类证据"直取"的先例，本函数沿用。
+
+    只在有 origin_city 时外呼；缺席的每一种原因（无出发地/城市未映射/无 token/
+    上游无价）都由工具层的 `_quote_absence` 记日志与轨迹事件，这里不编造兜底。
+    """
+    if not str(req.origin_city or "").strip():
+        return []
+    return (
+        flight_quotes.search_flight_quotes(
+            str(req.origin_city),
+            req.city,
+            req.start_date,
+            _trip_end_date(req),
+        )
+        or []
+    )
+
+
 def synthesize(packs: dict[ResearchDomain, EvidencePack], req: GenerateRequest) -> dict:
     """证据整合：映射回旧上下文契约并产出 research_report。"""
     attraction = packs.get("attraction") or EvidencePack(domain="attraction")
@@ -133,6 +158,9 @@ def synthesize(packs: dict[ResearchDomain, EvidencePack], req: GenerateRequest) 
         "hotels": hotel.items,
         "consumption": consumption,
         "weather": weather,
+        # L14 往返报价：无出发地时为空列表（不进 research_report，与 weather
+        # 同口径——研究报告仍只描述三域点位证据，形状零漂移）
+        "flight_quotes": _flight_quotes(req),
         "research_report": research_report,
     }
 

@@ -2219,6 +2219,68 @@
         }
       }
     },
+    "/api/itinerary/{id}/quotes/live": {
+      "post": {
+        "tags": [
+          "itinerary"
+        ],
+        "summary": "Post Live Quotes",
+        "description": "按需查航班实时价（L14，SerpApi）。\n\n与生成链路解耦：**不落库**（见 `itinerary_query.live_flight_quotes` 的边界说明）。\n失败语义：查不了 → 400；配额尽 → 429；问过但没有 → 200 + 空列表 + reason。",
+        "operationId": "post_live_quotes_api_itinerary__id__quotes_live_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LiveQuotesBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Post Live Quotes Api Itinerary  Id  Quotes Live Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/itinerary/{id}/days/{dayId}/order": {
       "put": {
         "tags": [
@@ -8028,6 +8090,48 @@
         "type": "object",
         "title": "ItemUpsertRequest",
         "description": "字段名与 Java `ItemUpsertRequest` 一致（camelCase，前端已在发这个形状）。"
+      },
+      "LiveQuotesBody": {
+        "properties": {
+          "startDate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startdate"
+          },
+          "endDate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enddate"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit"
+          }
+        },
+        "type": "object",
+        "title": "LiveQuotesBody",
+        "description": "`POST /api/itinerary/{id}/quotes/live` 的请求体（L14 按需实时价）。\n\n出发地/目的地不由前端指定：一律取行程自身的（origin_city + city），避免\n\"给别人的行程查我的出发地\"。日期可覆盖——默认用行程的出发/返程日，用户\n想比较别的时间窗时可以显式给。"
       },
       "LocalReplanRequest": {
         "properties": {

@@ -95,15 +95,16 @@ def test_revision_refuses_to_rebuild_an_existing_schema(sqlite_db) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_head_is_0008_and_linear() -> None:
-    """反馈迁移接在模板迁移之后，历史链保持单一且完整。"""
+def test_head_is_0009_and_linear() -> None:
+    """报价迁移接在反馈迁移之后，历史链保持单一且完整。"""
     script = ScriptDirectory.from_config(db_migrate.alembic_config())
-    assert script.get_current_head() == "0008_item_feedback"
+    assert script.get_current_head() == "0009_flight_quotes"
     # 从 head 沿 down_revision 走回基线，链路上每个 revision 都必须真实存在
     chain: list[str] = []
     for revision in script.walk_revisions(base="base", head="heads"):
         chain.append(revision.revision)
     assert chain == [
+        "0009_flight_quotes",
         "0008_item_feedback",
         "0007_template",
         "0006_collaboration",

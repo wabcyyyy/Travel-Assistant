@@ -19,11 +19,13 @@ from __future__ import annotations
 import json
 import logging
 from collections import defaultdict
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import func, or_, select
 
+from app.agent import live_quote_quota_exhausted, search_live_flight_quotes, shape_quote_for_wire
 from app.common import cache_store
 from app.common.envelope import ApiError
 from app.common.vo_json import iso_date, iso_datetime, iso_time, number
@@ -333,6 +335,8 @@ def build_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
         "budget": _num(main.budget),
         "preferences": main.preferences,
         "hotelTier": main.hotel_tier,
+        # L14：出发地（用户建行程时填）——前端据此显示"从 X 出发"与"查实时价"入口
+        "originCity": main.origin_city,
         "status": main.status,
         "planNote": main.plan_note,
         "tripTheme": main.trip_theme,
@@ -356,9 +360,9 @@ def build_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
         "qualityReport": _quality_report(quality_status, issues, pending_facts),
         "sources": _source_records(items),
         "suggestions": _loads_suggestions(main.suggestions_json),
-        # 航班报价槽位（L13 契约先行；L14 组装填充）。常置空列表：无报价时前端
-        # QuoteStrip 整条不渲染，键缺席与空列表对消费方是两种契约，统一取后者。
-        "flightQuotes": [],
+        # 航班报价槽位（L13 契约先行，L14 填充）：无报价时为空列表，前端
+        # QuoteStrip 整条不渲染。键常在、值常为空，消费方只判长度。
+        "flightQuotes": _loads_flight_quotes(main.flight_quotes),
         "dayList": day_list,
         "budgetList": [{"category": b.category, "amount": _num(b.amount), "itemCount": b.item_count} for b in budgets],
         "totalAmount": float(total_amount),
@@ -472,3 +476,87 @@ def _loads_suggestions(raw: str | None) -> list[dict[str, Any]]:
         logger.warning("suggestions_json parse failed, returned [] instead")
         return []
     return value if isinstance(value, list) else []
+
+
+def _loads_flight_quotes(raw: object) -> list[dict[str, Any]]:
+    """往返报价列 → **线级形状**（camelCase）列表（L14）。
+
+    该列存的是工具层产出的内部形状（snake_case，与 FlightQuote 字段同名）；
+    详情 VO 是线级出口，必须过 FlightQuote 转成 camelCase 别名——否则前端按
+    生成类型取 `deepLink` 会拿到 undefined（静默字段丢失，本模块 docstring
+    开篇点名的老问题）。
+
+    MySQL JSON 驱动可能给回已解析的 list 或字符串（方言/存量行），两种都收；
+    形状不对的行整行丢弃——详情面宁可少一条报价，也不给前端一个会炸的类型。
+    """
+    if raw is None:
+        return []
+    value = raw
+    if isinstance(raw, (str, bytes)):
+        text = raw.decode("utf-8", "ignore") if isinstance(raw, bytes) else raw
+        if not text.strip():
+            return []
+        try:
+            value = json.loads(text)
+        except (ValueError, TypeError):
+            logger.warning("flight_quotes parse failed, returned [] instead")
+            return []
+    if not isinstance(value, list):
+        return []
+    quotes: list[dict[str, Any]] = []
+    for row in value:
+        if not isinstance(row, dict):
+            continue
+        shaped = shape_quote_for_wire(row)
+        if shaped is None:
+            logger.warning("flight_quotes row dropped: shape not matching FlightQuote")
+            continue
+        quotes.append(shaped)
+    return quotes
+
+
+def live_flight_quotes(
+    user_id: int,
+    itinerary_id: int,
+    *,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """按需实时价（SerpApi google_flights）：读行程的出发地/目的地/日期窗 → 查询。
+
+    **不落库**：这是"现在看一眼"，不是行程状态的变更——写进报价列会把生成时
+    观测到的聚合价冲掉（那一列记的是"生成那一刻看到了什么"）。前端按响应渲染
+    即可，刷新后回到行程自身的报价。
+
+    错误边界（业务轨，无替代产出 → 抛 ApiError）：
+    - 无出发地 / 出发地或目的地未映射 IATA → 400（这不是"查不到"，是查不了）；
+    - 日期窗不全 → 400；
+    - 配额尽 → 429（明确错误码，前端给"配额已用尽"文案）。
+    其余缺席（未配 key / 上游无价）→ 200 + 空列表 + reason：问过了但没有，
+    与"查不了"必须分开（同 places 的 None/[] 双语义）。
+    """
+    main = find_readable_main(user_id, itinerary_id)
+    origin_city = str(getattr(main, "origin_city", None) or "").strip()
+    if not origin_city:
+        raise ApiError(400, "本行程没有出发地，无法查询航班实时价")
+    window_start = start_date or main.start_date
+    window_end = end_date or main.end_date
+    if window_start is None or window_end is None:
+        raise ApiError(400, "本行程缺少出发/返程日期，无法查询航班实时价")
+    if live_quote_quota_exhausted():
+        raise ApiError(429, "航班实时价查询配额已用尽，请稍后再试")
+    quotes = search_live_flight_quotes(
+        origin_city,
+        str(main.city),
+        window_start.isoformat(),
+        window_end.isoformat(),
+        limit=limit or 3,
+    )
+    return {
+        "flightQuotes": quotes,
+        "originCity": origin_city,
+        "startDate": window_start.isoformat(),
+        "endDate": window_end.isoformat(),
+        "reason": None if quotes else "未查到该航线该日期的实时报价",
+    }
