@@ -40,7 +40,11 @@ _SECRET_PATTERNS = (
 )
 
 
-def _redact(text: str) -> str:
+def redact(text: str) -> str:
+    """脱敏（跨模块 API，D6/PR-8 复用）：错误文本/录制落盘前抹掉密钥类片段。
+
+    调用方：trace 事件落盘（error 摘要）与 cassette 录制（**录制即脱敏**）。
+    """
     for pattern in _SECRET_PATTERNS:
         text = pattern.sub(r"\1***", text)
     return text
@@ -50,7 +54,7 @@ def _summary(value: Any) -> Any:
     """生成小而安全的结构摘要，避免把 Prompt/计划全文写入轨迹。"""
     if value is None or isinstance(value, (str, int, float, bool)):
         if isinstance(value, str):
-            value = _redact(value)
+            value = redact(value)
             if len(value) > 80:
                 return value[:77] + "..."
         return value
@@ -106,7 +110,7 @@ class TraceRecorder:
         if metadata:
             event["metadata"] = {str(k): _summary(v) for k, v in metadata.items()}
         if error:
-            event["error"] = _redact(error)[:200]
+            event["error"] = redact(error)[:200]
         self.events.append(event)
 
     def to_dict(self) -> dict[str, Any]:

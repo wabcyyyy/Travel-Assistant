@@ -39,6 +39,7 @@ jobs:
           mkdir -p eval-artifacts
           uv run python tests/agent_eval/eval_agent.py | tee eval-artifacts/eval_agent.json
           uv run python tests/agent_eval/eval_research.py | tee eval-artifacts/eval_research.json
+          uv run python tests/agent_eval/eval_editing.py | tee eval-artifacts/eval_editing.json
       - uses: actions/upload-artifact@v4
         with:
           name: eval-artifacts

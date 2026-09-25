@@ -13,6 +13,7 @@ C3.2 坐标参数化：fixture 坐标按城市名生成——汉字城市落在�
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 
 from app.agent.grounding.existence import VERIFIED, ResolveResult
@@ -234,3 +235,23 @@ def fixture_open_trip(req) -> tuple[list[dict], list[dict]]:
         plan["day_no"] = day_no
         plans.append(plan)
     return plans, []
+
+
+# ---- editing 域替身（PR-8）：editing 流程的 LLM 出口替身（raw JSON，契约形状） ----
+
+
+def fixture_edit_reply(ops: list[dict]) -> str:
+    """nl_edit（run_edit_ops）出口替身：按给定操作表回 JSON。"""
+    return json.dumps({"ops": ops}, ensure_ascii=False)
+
+
+def fixture_clarify_reply(**fields) -> str:
+    """clarify（run_clarify）出口替身：按给定槽位回 JSON，缺省字段为 null（用户没提）。"""
+    keys = ("city", "start_date", "days", "stay_nights", "persons", "budget", "hotel_tier", "preferences")
+    return json.dumps({key: fields.get(key) for key in keys}, ensure_ascii=False)
+
+
+def fixture_city_guide_reply(kind: str, city, message: str, suggestions: list[dict]) -> str:
+    """city_guide（run_city_guide）出口替身：按给定判定回 JSON。"""
+    payload = {"kind": kind, "city": city, "message": message, "suggestions": suggestions}
+    return json.dumps(payload, ensure_ascii=False)

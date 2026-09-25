@@ -34,6 +34,7 @@ test:
 eval:
     cd {{py}}; uv run python tests/agent_eval/eval_agent.py
     cd {{py}}; uv run python tests/agent_eval/eval_research.py
+    cd {{py}}; uv run python tests/agent_eval/eval_editing.py
     cd {{py}}; uv run python scripts/eval_ratchet.py
 
 # 流式事件快照（P2 拆分/重构的判据）

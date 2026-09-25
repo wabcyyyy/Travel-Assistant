@@ -127,6 +127,7 @@ jobs:
         run: |
           uv run python tests/agent_eval/eval_agent.py
           uv run python tests/agent_eval/eval_research.py
+          uv run python tests/agent_eval/eval_editing.py
           uv run python scripts/eval_ratchet.py
 
   eval-determinism:
@@ -153,6 +154,7 @@ jobs:
           run_eval() {
             uv run python tests/agent_eval/eval_agent.py >/dev/null
             uv run python tests/agent_eval/eval_research.py >/dev/null
+            uv run python tests/agent_eval/eval_editing.py >/dev/null
             (cd tests/agent_eval/report/offline && sha256sum * | sort)
           }
           first=$(run_eval)
