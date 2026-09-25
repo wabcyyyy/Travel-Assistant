@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import urlencode
 
 from app.common.config import settings
 from app.common.external_client import BACKGROUND, ExternalClient, fetch_json
@@ -30,6 +31,11 @@ from app.common.http_client import api_client
 logger = logging.getLogger(__name__)
 
 _HOTELLOOK_CACHE = "https://engine.hotellook.com/api/v2/cache.json"
+#: 核实用搜索深链（不是报价链接）。Hotellook 响应没有官方 deep_link 字段，
+#: 而 affiliate 深链的规范参数集在 L12 核对时官方文档不可达、未经证实——所以
+#: 这里构造的是一条 **搜索** 链接（城市 + 日期 + hotelId 提示），与航班侧
+#: Google Flights 同一叙事：它是查询，不是一份报价。marker 未配置即裸链。
+_HOTELLOOK_SEARCH = "https://search.hotellook.com/hotels"
 _USER_AGENT = "TravelAssistantDemo/1.0 (student-project; contact=dev@localhost.invalid)"
 
 _hotel_client: ExternalClient = ExternalClient(
@@ -95,8 +101,26 @@ def fetch_hotel_prices(
     for raw in payload:
         if not isinstance(raw, dict) or _row_missing(raw):
             continue
-        rows.append(dict(raw))
+        row = dict(raw)
+        row["currency"] = currency
+        row["deep_link"] = _search_link(place, check_in, check_out, row.get("hotelId"))
+        rows.append(row)
     return rows
+
+
+def _search_link(location: str, check_in: str, check_out: str, hotel_id: object) -> str:
+    """核实用搜索链接（城市 + 日期 + hotelId 提示）；marker 未配置即裸链。"""
+    params = {
+        "location": location,
+        "checkIn": check_in,
+        "checkOut": check_out,
+        "hotelId": str(hotel_id or ""),
+    }
+    query = urlencode({k: v for k, v in params.items() if v})
+    marker = str(settings.travelpayouts_marker or "").strip()
+    if marker:
+        query += f"&marker={marker}"
+    return f"{_HOTELLOOK_SEARCH}?{query}"
 
 
 def _row_missing(raw: dict[str, Any]) -> bool:
