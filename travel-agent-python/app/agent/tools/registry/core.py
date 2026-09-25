@@ -15,8 +15,11 @@ handler 约定：经 `from app.agent.tools import impl as tools` 后**调用期*
 
 from __future__ import annotations
 
+import contextvars
 import uuid
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -24,6 +27,10 @@ from app.agent.runtime.run_limits import current_limits
 from app.agent.runtime.tool_budget import tool_budget_scope
 from app.agent.runtime.trace import record_event, registry_tool_call, trace_span
 from app.common.config import settings
+
+#: retry_policy 的安全顶（PR-11）：登记值超过它按它钳制。重试放大外呼量，
+#: 沙箱侧必须有一道不依赖登记自觉的上限。
+_MAX_HANDLER_RETRIES = 2
 
 
 class ToolInvocationError(ValueError):
@@ -80,6 +87,39 @@ def _type_matches(value: Any, expected: str) -> bool:
         "array": isinstance(value, list),
         "object": isinstance(value, dict),
     }.get(expected, True)
+
+
+def _effective_retries(spec: ToolSpec) -> int:
+    """retry_policy → 实际重试次数：只上**幂等**工具（重试只读 GET 的纪律），
+    并按沙箱安全顶钳制。"""
+    if not spec.idempotent:
+        return 0
+    declared = int(spec.retry_policy.get("max_retries") or 0)
+    return max(0, min(declared, _MAX_HANDLER_RETRIES))
+
+
+def _run_with_timeout(spec: ToolSpec, params: dict[str, Any], context: contextvars.Context) -> Any:
+    """在专用单线程池里执行 handler，把 spec.timeout_seconds 从纸面元数据变成
+    强制约束（PR-11：此前 registry 只读 max_calls）。
+
+    Python 线程无法强杀：超时后调用方立刻拿到 ToolInvocationError，池线程仍在
+    后台跑到自然结束（解释器退出前会被 join）——语义是"调用方不再等"，不是
+    "计算被终止"。contextvars 随 copy_context 带入 worker：trace recorder、
+    span 与预算上下文都随行，handler 内的 record_event 仍挂到当前 run。工具
+    调用低频（每次 run ≤ tool_max_calls），每次建池的开销可忽略，换来与被超时
+    handler 的完全隔离。
+    """
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"tool-{spec.name}")
+    try:
+        future = pool.submit(context.run, lambda: spec.handler(**params))
+        try:
+            return future.result(timeout=max(spec.timeout_seconds, 0.05))
+        except FuturesTimeoutError as exc:
+            # 放弃等待（不 shutdown(wait=True)——那会把超时重新变成阻塞）。
+            pool.shutdown(wait=False)
+            raise ToolInvocationError(f"工具 {spec.name} 超时（>{spec.timeout_seconds}s）") from exc
+    finally:
+        pool.shutdown(wait=False)
 
 
 def _validate_parameters(spec: ToolSpec, params: dict[str, Any]) -> None:
@@ -144,6 +184,9 @@ class ToolRegistry:
                 "retry_policy": spec.retry_policy,
                 "requires_confirmation": spec.requires_confirmation,
                 "idempotent": spec.idempotent,
+                # MCP tool annotations 语义对齐（PR-11）：给客户端/审计面的能力
+                # 提示，与 handler 强制执行的门禁相互独立。
+                "annotations": {"readOnlyHint": spec.read_only, "destructiveHint": not spec.read_only},
             }
             for spec in self.list_specs()
         ]
@@ -198,7 +241,35 @@ class ToolRegistry:
                 trace_span("tool", name, metadata=metadata, tool_call_id=tool_call_id, action_id=action_id),
                 registry_tool_call(tool_call_id),
             ):
-                return spec.handler(**params)
+                return self._dispatch(spec, params, tool_call_id, action_id)
+
+    def _dispatch(self, spec: ToolSpec, params: dict[str, Any], tool_call_id: str, action_id: str | None) -> Any:
+        """handler 执行面（PR-11 沙箱接线）：timeout_seconds 强制 + retry_policy 生效。
+
+        重试只给幂等工具（见 `_effective_retries`）；每次重试记审计事件，调用方
+        （LLM/图节点）看到的仍是最后一次的异常——重试是沙箱内部的韧性，不是
+        新的一次工具调用（不重复扣预算，受 `_MAX_HANDLER_RETRIES` 钳制）。
+        """
+        retries = _effective_retries(spec)
+        context = contextvars.copy_context()
+        for attempt in range(retries + 1):
+            try:
+                return _run_with_timeout(spec, params, context)
+            except ToolInvocationError:
+                raise
+            except Exception as exc:
+                if attempt >= retries:
+                    raise
+                record_event(
+                    "tool",
+                    spec.name,
+                    status="error",
+                    tool_call_id=tool_call_id,
+                    action_id=action_id,
+                    metadata={"retry_attempt": attempt + 1, "max_retries": retries},
+                    error=str(exc),
+                )
+        raise AssertionError("unreachable: retry loop must return or raise")
 
 
 #: 进程内唯一注册表（登记见 catalog.py；导入包即完成登记）

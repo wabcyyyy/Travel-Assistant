@@ -1,18 +1,28 @@
 """ExternalClient 基类测试（G-3.2）。
 
-覆盖卡要求的三条路径 + 另两项能力：
+覆盖卡要求的三条路径 + 另两项能力 + L1 可靠性三件套：
 - 缓存命中（含负结果短 TTL：正/负 TTL 不同，验证负结果更快过期）；
 - 超时（loader 抛异常 → 降级 None，不打断调用方）；
 - 响应超限（clamp_bytes 拒收，不做"截断后当成功"）；
 - 自节流（双车道：后台车道超 max_wait 放弃本次调用）；
-- key 解析链（env → 实例 → 调用方；全空返回 None，绝不借用他人 key）。
+- key 解析链（env → 实例 → 调用方；全空返回 None，绝不借用他人 key）；
+- 重试（只对显式开启的幂等通道；退避后重新预约车道槽）；
+- 熔断（连续失败开固定冷却窗，窗口内零外呼，过期放行探测，成功关闭）；
+- 预约槽节流（并发调用间隔严格错开——持锁 sleep 消除后的行为回归）。
 """
 
 from __future__ import annotations
 
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
+from _fake_clock import assert_min_spacing
 
 from app.common.external_client import BACKGROUND, INTERACTIVE, ExternalClient
+
+pytest_plugins = ["_fake_clock"]
 
 
 def test_cache_hit_avoids_second_call():
@@ -137,3 +147,140 @@ def test_lane_names_are_registered(lane):
     from app.common.external_client import _LANE_MIN_INTERVAL
 
     assert lane in _LANE_MIN_INTERVAL
+
+
+# ---- L1：重试 / 熔断 / 预约槽 -------------------------------------------------
+
+
+def test_retry_succeeds_on_second_attempt(fake_clock):
+    """瞬时失败重试 1 次后成功：loader 共执行 2 次，退避被假钟吸收。"""
+    client = ExternalClient(name="t", max_wait_seconds=5.0, retry_attempts=1, retry_backoff_seconds=0.3)
+    calls = []
+
+    def flaky():
+        calls.append(1)
+        if len(calls) == 1:
+            raise TimeoutError("transient")
+        return {"v": 1}
+
+    assert client.call("k", flaky) == {"v": 1}
+    assert len(calls) == 2, "重试通道必须真的再试一次"
+    assert fake_clock.sleeps, "重试前必须有退避睡眠（防止贴脸重打）"
+
+
+def test_retry_gives_up_after_attempts_and_trips_breaker(fake_clock):
+    """重试耗尽按 1 次失败计熔断计数；达到阈值后不再外呼。"""
+    client = ExternalClient(
+        name="t",
+        max_wait_seconds=5.0,
+        retry_attempts=1,
+        circuit_failure_threshold=1,
+        circuit_cooldown_seconds=30,
+    )
+    calls = []
+
+    def boom():
+        calls.append(1)
+        raise RuntimeError("down")
+
+    assert client.call("k", boom) is None
+    assert len(calls) == 2, "重试 1 次 = loader 共执行 2 次"
+    assert client.call("fresh", boom) is None
+    assert len(calls) == 2, "熔断开窗后零外呼（高基数键负缓存挡不住，必须靠熔断）"
+
+
+def test_breaker_opens_after_consecutive_failures_and_half_closes(fake_clock):
+    client = ExternalClient(name="t", max_wait_seconds=5.0, circuit_failure_threshold=3, circuit_cooldown_seconds=30)
+    calls = []
+
+    def boom():
+        calls.append("fail")
+        raise RuntimeError("upstream down")
+
+    for _ in range(3):
+        assert client.call(f"k{len(calls)}", boom) is None
+    assert len(calls) == 3
+    assert client.call("during-window", boom) is None
+    assert len(calls) == 3, "冷却窗内不得执行 loader"
+
+    fake_clock.advance(31)
+    calls.clear()
+
+    def ok():
+        calls.append("ok")
+        return {"v": 1}
+
+    assert client.call("after-window", ok) == {"v": 1}
+    assert client.call("after-recovery", ok) == {"v": 1}
+    assert calls == ["ok", "ok"], "窗口过期放行探测，探测成功即关闭"
+
+
+def test_valid_negative_results_do_not_trip_breaker(fake_clock):
+    """供应商答"没有"（合法空结果）不是故障——熔断只为异常/超时开窗。"""
+    client = ExternalClient(
+        name="t",
+        max_wait_seconds=5.0,
+        ttl_seconds=0,
+        negative_ttl_seconds=0,
+        circuit_failure_threshold=2,
+    )
+    calls = []
+
+    def empty():
+        calls.append(1)
+        return []
+
+    for i in range(5):
+        assert client.call(f"k{i}", empty) == []
+    assert len(calls) == 5, "合法空结果永不触发熔断"
+
+
+def test_retry_disabled_by_default_keeps_single_call():
+    """默认 retry_attempts=0 = 旧行为：异常一次即降级 None（存量通道零变化）。"""
+    client = ExternalClient(name="t", max_wait_seconds=5.0)
+    calls = []
+
+    def boom():
+        calls.append(1)
+        raise RuntimeError("down")
+
+    assert client.call("k", boom) is None
+    assert len(calls) == 1
+
+
+def test_reset_runtime_state_reopens_circuit_for_tests(fake_clock):
+    client = ExternalClient(name="t", max_wait_seconds=5.0, circuit_failure_threshold=1)
+    calls = []
+
+    def boom():
+        calls.append(1)
+        raise RuntimeError("down")
+
+    assert client.call("k", boom) is None
+    assert client.call("k2", boom) is None, "阈值 1：首次失败即开窗"
+    assert len(calls) == 1
+    client.reset_runtime_state()
+    assert client.call("k3", boom) is None
+    assert len(calls) == 2, "reset_runtime_state 后恢复外呼"
+
+
+def test_concurrent_calls_are_spaced_by_interval():
+    """预约槽回归（L1 补充 2）：并发同车道调用的真实外呼时刻必须错开 ≥ 间隔。
+
+    旧实现持锁 sleep：并发调用算出同一个 wait、同时醒来一齐打出去（间隔≈0）。
+    新实现锁内只预约时间槽，天然严格错峰。
+    """
+    client = ExternalClient(name="t", max_wait_seconds=5.0, min_interval_seconds=0.15)
+    stamps: list[float] = []
+    lock = threading.Lock()
+
+    def loader():
+        with lock:
+            stamps.append(time.monotonic())
+        return "v"
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = [pool.submit(client.call, f"k{i}", loader) for i in range(4)]
+        assert all(f.result(timeout=10) == "v" for f in futures)
+    assert len(stamps) == 4
+    assert_min_spacing(stamps, interval=0.15, tolerance=0.05)

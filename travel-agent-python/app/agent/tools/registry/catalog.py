@@ -26,7 +26,8 @@ def _search_pois(**params: Any) -> dict[str, Any]:
     city = params["city"]
     # 景点和餐饮检索彼此独立；并行执行可把高德/RAG 的等待从串行叠加
     # 降为单次最长等待。两者仍由同一个只读 Registry 工具统一审计。
-    with ThreadPoolExecutor(max_workers=3, thread_name_prefix="poi-search") as pool:
+    # worker 数调用期读 settings（PR-11 并发配置化，原硬编码 3）。
+    with ThreadPoolExecutor(max_workers=settings.poi_search_workers, thread_name_prefix="poi-search") as pool:
         attractions_future = pool.submit(
             tools.search_attractions, city, params.get("preferences", []), params.get("limit", 30)
         )

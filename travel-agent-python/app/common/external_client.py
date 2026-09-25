@@ -1,11 +1,11 @@
-"""外部调用基类（G-3.2）：超时 / 响应上限 / TTL 缓存 / 自节流 / key 解析链。
+"""外部调用基类（G-3.2）：超时 / 响应上限 / TTL 缓存 / 自节流 / 重试 / 熔断 / key 解析链。
 
 适用面：三处对外取数——图片查找（Unsplash / Wikipedia）、实时价格（酒店/餐饮
 的联网核价）、联网搜索补池。它们此前各写各的：有的裸 `httpx.get`（超时是有，
 但没有缓存、没有节流、没有响应字节上限），有的经 llm_client（有超时，同样
-无缓存无节流）。本基类把这五件事收成一处，调用方只提供"怎么取数"。
+无缓存无节流）。本基类把这些事收成一处，调用方只提供"怎么取数"。
 
-五项能力（INV-9 的落地形态）：
+能力清单（INV-9 的落地形态）：
 1. **超时**：每个调用都有明确上限（`timeout_seconds`），由 loader 使用；
 2. **响应字节上限**：`clamp_bytes` 用于 httpx 通道（超限即拒，不截断后当成功）；
    LLM 通道由 `max_tokens` 承担，调用方在 loader 里设；
@@ -14,10 +14,18 @@
 4. **自节流（双车道）**：interactive（用户在等，间隔短）与 background（后台补池，
    间隔长）；等待超过 `max_wait_seconds` 就**放弃本次调用**（返回 None），
    绝不把后台补池拖成前台阻塞；
-5. **key 解析链**：env → 实例配置 → 调用方自带，逐级回落；**绝不复用他人的 key**
+5. **重试（L1）**：loader 抛异常时按 `retry_attempts` 额外重试，重试前重新走车道
+   节流（退避与限速一体，不会绕过供应商限流）。**只对幂等 GET 开**——开重试的
+   通道必须只读（本基类的 loader 全部是取数 GET）；默认 0 = 不重试（旧行为）；
+6. **熔断（L1）**：连续失败达阈值即开冷却窗；窗口内直接返回 None **不外呼**
+   （高基数键场景负缓存挡不住：enrich 12 个不同 xid 就是 12 次真实请求，熔断在
+   第 5 次失败后切断其余）。窗口固定不续期（同 redis_client 口径），到期后下一
+   次调用自然放行探测；成功即清零计数。合法空结果（供应商答"没有"）不算失败；
+7. **key 解析链**：env → 实例配置 → 调用方自带，逐级回落；**绝不复用他人的 key**
    （`resolve_key` 只在自己这一串里选，不跨实例借用）。
 
-线程安全：缓存与车道时间戳都加锁（生成跑在 worker 线程，管理面在主线程）。
+线程安全：缓存、车道时间槽与熔断状态都加锁（生成跑在 worker 线程，管理面在
+主线程）；锁内只做计算与登记，**睡眠永远在锁外**（见 `_acquire_slot`）。
 
 依赖：标准库（threading/time/logging/json）+ httpx（只为 `fetch_bytes`/`fetch_json`
 两个外呼助手签名与超时服务）；具体的 loader 仍由调用方注入。
@@ -67,9 +75,20 @@ class ExternalClient(Generic[T]):
     #: 本实例的车道最小间隔覆盖（秒）：个别供应商有硬性限流（如 Nominatim 1 rps），
     #: 需要比车道默认值更保守的间隔；None = 沿用车道默认。
     min_interval_seconds: float | None = None
+    #: loader 抛异常后的额外重试次数（L1）。只对幂等只读通道开启；0 = 不重试。
+    #: 重试不放大限流风险：每次重试都重新预约车道时间槽。
+    retry_attempts: int = 0
+    #: 重试前的最小退避（秒）；实际间隔 = max(退避, 车道槽等待)。
+    retry_backoff_seconds: float = 0.3
+    #: 熔断（L1）：连续失败（异常，非合法空结果）达到阈值即开冷却窗。
+    circuit_failure_threshold: int = 5
+    #: 熔断冷却窗（秒）：固定窗口不续期，到期后下一次调用自然放行探测。
+    circuit_cooldown_seconds: float = 30.0
 
     _cache: dict[str, tuple[Any, float]] = field(default_factory=dict, init=False, repr=False)
     _lane_last: dict[str, float] = field(default_factory=dict, init=False, repr=False)
+    _consecutive_failures: int = field(default=0, init=False, repr=False)
+    _breaker_open_until: float = field(default=0.0, init=False, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
 
     # ---- key 解析链 -------------------------------------------------------
@@ -129,25 +148,86 @@ class ExternalClient(Generic[T]):
     # ---- 节流 -------------------------------------------------------------
 
     def _acquire_slot(self, lane: str) -> bool:
-        """按车道最小间隔等待；超过 max_wait_seconds 放弃（返回 False）。
+        """按车道最小间隔**预约**时间槽；等待在锁外进行，超过 max_wait 放弃。
 
-        选择"放弃"而不是"无限等待"：后台补池撞上节流时应当快速跳过，
-        否则一次生成会被外部依赖的节奏拖住。
+        旧实现持锁 sleep（L1 补充 2）：同一车道的并发调用（enrich 并行化后的
+        detail 请求）会在锁后串行排队，把"限速"放大成"排队阻塞"。现改为锁内
+        只做预约——每个调用领到 `max(now, 上次槽 + interval)` 的时间槽并立刻
+        让出锁，睡与发都在锁外；相邻两次真实外呼的间隔仍严格 ≥ interval，且
+        并发调用各自领到错开的槽，不会像旧实现那样同时醒来一齐打出去。
         """
         interval = self.min_interval_seconds or _LANE_MIN_INTERVAL.get(lane, _LANE_MIN_INTERVAL[BACKGROUND])
         with self._lock:
             now = time.monotonic()
-            last = self._lane_last.get(lane, 0.0)
-            wait = interval - (now - last)
+            scheduled = max(now, self._lane_last.get(lane, 0.0) + interval)
+            wait = scheduled - now
             if wait > self.max_wait_seconds:
                 logger.info("external[%s] throttled on %s lane (wait %.2fs)", self.name, lane, wait)
                 return False
-            if wait > 0:
-                time.sleep(wait)
-            self._lane_last[lane] = time.monotonic()
-            return True
+            self._lane_last[lane] = scheduled
+        if wait > 0:
+            time.sleep(wait)
+        return True
+
+    # ---- 熔断（L1） ---------------------------------------------------------
+
+    def _breaker_open(self) -> bool:
+        with self._lock:
+            return time.monotonic() < self._breaker_open_until
+
+    def _record_outcome(self, failed: bool) -> None:
+        """熔断计数：成功清零；连续失败达阈值开**固定**冷却窗（窗口内不续期，
+        否则持续流量下永远探不到恢复——同 redis_client 的口径）。"""
+        if not failed:
+            with self._lock:
+                self._consecutive_failures = 0
+            return
+        with self._lock:
+            self._consecutive_failures += 1
+            if self._consecutive_failures < self.circuit_failure_threshold:
+                return
+            now = time.monotonic()
+            if now < self._breaker_open_until:
+                return
+            self._breaker_open_until = now + self.circuit_cooldown_seconds
+            self._consecutive_failures = 0
+            logger.warning(
+                "external[%s] breaker OPEN for %.0fs after %d consecutive failures (degrading to fallback source)",
+                self.name,
+                self.circuit_cooldown_seconds,
+                self.circuit_failure_threshold,
+            )
+
+    def reset_runtime_state(self) -> None:
+        """测试/管理用：清空车道时间槽、熔断状态与连续失败计数（缓存不动）。
+
+        车道时间戳必须一起清：模块级客户端的 `_lane_last` 记的是真实时钟，
+        假钟用例（time.monotonic 被替换到很小的值）若读到它，会把每次调用都
+        判成"等待超窗"而放弃。
+        """
+        with self._lock:
+            self._lane_last.clear()
+            self._consecutive_failures = 0
+            self._breaker_open_until = 0.0
 
     # ---- 取数 -------------------------------------------------------------
+
+    def _call_with_retry(self, loader: Callable[[], T | None], lane: str) -> tuple[T | None, bool]:
+        """执行 loader，返回 (结果, 是否失败)。失败 = 全部尝试都抛异常（含重试
+        被车道放弃——重试同样要守供应商限流，守不住就不硬发）。"""
+        attempts = 1 + max(0, self.retry_attempts)
+        for attempt in range(attempts):
+            if attempt:
+                # 退避后再预约车道槽：实际间隔 = max(退避, 车道最小间隔)。
+                time.sleep(self.retry_backoff_seconds)
+                if not self._acquire_slot(lane):
+                    logger.info("external[%s] retry on %s lane throttled past max_wait, giving up", self.name, lane)
+                    return None, True
+            try:
+                return loader(), False
+            except Exception as exc:
+                logger.warning("external[%s] call failed (attempt %d/%d): %s", self.name, attempt + 1, attempts, exc)
+        return None, True
 
     def call(
         self,
@@ -156,17 +236,18 @@ class ExternalClient(Generic[T]):
         *,
         lane: str = INTERACTIVE,
     ) -> T | None:
-        """缓存 → 节流 → loader 的取数流程；任何异常都降级为 None（不打断生成）。"""
+        """缓存 → 熔断 → 节流 → 重试 loader 的取数流程；任何异常都降级为 None
+        （不打断生成），但降级不再静默：重试与熔断开窗都有 warning 日志（L1
+        降级链可见），上层（research 域）以 degraded 证据包如实接住。"""
         hit, value = self._cached(cache_key)
         if hit:
             return value
+        if self._breaker_open():
+            return None
         if not self._acquire_slot(lane):
             return None
-        try:
-            result = loader()
-        except Exception as exc:
-            logger.warning("external[%s] call failed (%s): %s", self.name, cache_key, exc)
-            result = None
+        result, failed = self._call_with_retry(loader, lane)
+        self._record_outcome(failed)
         self._store(cache_key, result)
         return result
 

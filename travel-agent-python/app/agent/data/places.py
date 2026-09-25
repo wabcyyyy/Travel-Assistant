@@ -19,6 +19,7 @@ POI 权威库退役后的坐标/分类/图片来源（TREK 式"不存语料，�
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from urllib.parse import quote
 
@@ -30,8 +31,14 @@ logger = logging.getLogger(__name__)
 
 _OTM_BASE = "https://api.opentripmap.com/0.1/en"
 _NOMINATIM_BASE = "https://nominatim.openstreetmap.org/search"
-# 与 wikipedia 图片通道一致的 UA 策略（Nominatim 政策要求可联系的标识）
+# 与 wikipedia 图片通道一致的 UA 策略（Nominatim 政策要求可联系的标识；OTM 同式
+# 标识，L1 补充 1：三客户端此前不带 UA，对免费源不留联系方式不礼貌）
+_OTM_UA = "TravelAssistantDemo/1.0 (student-project; contact=dev@localhost.invalid)"
 _NOMINATIM_UA = "TravelAssistantDemo/1.0 (student-project; contact=dev@localhost.invalid)"
+# enrich 详情并入的并行度（L1：串行 12 次 detail 在供应商变慢时最坏 12×超时 96s；
+# 并行后最坏 ≈ 间隔排队 11s + 一次超时）。真正的速率闸门是 OTM 车道节流，
+# 线程再多也只是排队，故小常量即可、不进 Settings（反冗余）。
+_ENRICH_WORKERS = 4
 
 
 def otm_enabled() -> bool:
@@ -40,31 +47,40 @@ def otm_enabled() -> bool:
 
 # ---- 缓存/节流通道（G-3.2） -------------------------------------------------
 # 城市坐标与地点详情基本不变：成功缓存 24h；半径检索 6h（新开景点能较快出现）。
+# 节流与重试纪律（L1）：OTM 免费档明确低于 5 rps——geo/radius 收紧到 0.35s
+#（≈2.9 rps）；detail 只走 background 车道，显式固化 1.0s 不再依赖车道默认。
+# detail 是 enrich 的高频道，开 1 次重试；geo/radius 一次生成各只查 1-2 次，不重试。
 _otm_geo_client: ExternalClient = ExternalClient(
     name="otm_geoname",
     ttl_seconds=24 * 3600,
     negative_ttl_seconds=300,
     timeout_seconds=settings.places_timeout_seconds,
+    min_interval_seconds=0.35,
 )
 _otm_radius_client: ExternalClient = ExternalClient(
     name="otm_radius",
     ttl_seconds=6 * 3600,
     negative_ttl_seconds=600,
     timeout_seconds=settings.places_timeout_seconds,
+    min_interval_seconds=0.35,
 )
 _otm_detail_client: ExternalClient = ExternalClient(
     name="otm_detail",
     ttl_seconds=24 * 3600,
     negative_ttl_seconds=1800,
     timeout_seconds=settings.places_timeout_seconds,
+    min_interval_seconds=1.0,
+    retry_attempts=1,
 )
-# Nominatim 政策：公共实例 1 rps —— 显式放宽车道间隔到 1.1s。
+# Nominatim 政策：公共实例 1 rps —— 显式放宽车道间隔到 1.1s；瞬时失败重试 1 次
+#（重试同样过 1.1s 槽，不会跌破政策速率）。
 _nominatim_client: ExternalClient = ExternalClient(
     name="nominatim",
     ttl_seconds=24 * 3600,
     negative_ttl_seconds=600,
     timeout_seconds=settings.places_timeout_seconds,
     min_interval_seconds=1.1,
+    retry_attempts=1,
 )
 
 
@@ -77,7 +93,13 @@ def _otm_get(path: str, params: dict[str, Any], client: ExternalClient) -> Any:
     cache_key = f"{path}:{sorted(params.items(), key=lambda kv: kv[0])}"
     payload = client.call(
         cache_key,
-        lambda: fetch_json(client, api_client(), f"{_OTM_BASE}/{path}", params={**params, "apikey": key}),
+        lambda: fetch_json(
+            client,
+            api_client(),
+            f"{_OTM_BASE}/{path}",
+            params={**params, "apikey": key},
+            headers={"User-Agent": _OTM_UA},
+        ),
     )
     if isinstance(payload, dict) and payload.get("error"):
         logger.warning("otm[%s] error: %s", path, str(payload["error"])[:120])
@@ -200,9 +222,21 @@ def place_detail(xid: str) -> dict[str, Any] | None:
 
 
 def enrich_with_details(places: list[dict[str, Any]], *, top: int = 12) -> list[dict[str, Any]]:
-    """给热度最高的前 top 个景点并入详情字段（官网/图片/简介）；后台车道、失败原地保留。"""
-    for place in places[:top]:
-        detail = place_detail(str(place.get("xid") or ""))
+    """给热度最高的前 top 个景点并入详情字段（官网/图片/简介）；后台车道、失败原地保留。
+
+    L1 并行化：详情请求是互不依赖的只读 GET，4 路 fan-out 让「供应商变慢/挂」
+    的最坏等待从 串行 12×超时 降到 排队间隔 + 单次超时；真实速率仍由 detail
+    车道节流钳制（多开线程只是排队）。线程池是内联 fan-out（同 supervisor 与
+    _search_pois 先例），不是 INV-8 语境里脱离请求生命周期的后台任务。
+    `pool.map` 保序合并：输出顺序与串行版逐字节一致（eval/快照零 diff 的前提）。
+    """
+    targets = places[:top]
+    # 无 key 时 place_detail 恒为 None：直接跳过（离线/eval 路径零线程池开销）。
+    if not targets or not otm_enabled():
+        return places
+    with ThreadPoolExecutor(max_workers=min(_ENRICH_WORKERS, len(targets)), thread_name_prefix="poi-enrich") as pool:
+        details = list(pool.map(lambda place: place_detail(str(place.get("xid") or "")), targets))
+    for place, detail in zip(targets, details):
         if not detail:
             continue
         for key in ("address", "url", "image", "intro", "wikipedia", "wikidata"):

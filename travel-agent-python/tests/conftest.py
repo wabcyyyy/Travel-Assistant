@@ -117,9 +117,11 @@ def _clear_external_client_caches():
     )
     for client in clients:
         client.clear_cache()
+        client.reset_runtime_state()
     yield
     for client in clients:
         client.clear_cache()
+        client.reset_runtime_state()
 
 
 @pytest.fixture(autouse=True)

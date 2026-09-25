@@ -28,13 +28,10 @@ from app.agent.research.factory import run_research
 from app.agent.runtime.observability import metrics
 from app.agent.runtime.trace import record_event
 from app.agent.tools import impl as tools
+from app.common.config import settings
 from app.schemas.trip import GenerateRequest
 
 logger = logging.getLogger(__name__)
-
-# 研究阶段并行度 = 三个领域 Agent；与 _search_pois 的 3-worker 口径一致，
-# 避免并行检索把高德/RAG 的等待从串行叠加放大。
-_RESEARCH_WORKERS = 3
 
 
 def decompose(req: GenerateRequest) -> list[ResearchTask]:
@@ -78,7 +75,10 @@ def run_research_parallel(tasks: list[ResearchTask]) -> dict[ResearchDomain, Evi
     若在 worker 内才 copy，trace/预算上下文已经丢失，研究轨迹挂不到本次运行。
     """
     packs: dict[ResearchDomain, EvidencePack] = {}
-    with ThreadPoolExecutor(max_workers=_RESEARCH_WORKERS, thread_name_prefix="research-agent") as pool:
+    # 研究阶段并行度 = 三个领域 Agent；与 _search_pois 的并行度口径一致，
+    # 避免并行检索把高德/RAG 的等待从串行叠加放大。调用期读 settings
+    # （PR-11 并发配置化，原硬编码 3），monkeypatch 单点可注入。
+    with ThreadPoolExecutor(max_workers=settings.research_workers, thread_name_prefix="research-agent") as pool:
         futures: dict[ResearchDomain, object] = {}
         for task in tasks:
             context = contextvars.copy_context()

@@ -12,7 +12,7 @@
 - **INV-6** 新增 env 键必须同步 `.env.example` 与 `tests/test_env_example_alignment.py`。
 - **INV-7** 环境变量只准在 `app/common/config.py` 读取，业务代码禁裸读 `os.environ`。
 - **INV-8** 后台任务禁裸 `asyncio.create_task`/`threading.Thread`，必须走 `app/common/task_pool.py`。
-- **INV-9** 工具默认只读、无副作用；任何外部网络调用必须带超时与响应上限（G-3.2：走 `ExternalClient` 缓存+节流通道）。
+- **INV-9** 工具默认只读、无副作用；任何外部网络调用必须带超时与响应上限（G-3.2：走 `ExternalClient` 缓存+节流+重试+熔断通道；重试只上幂等 GET，新外部源直接生在这套纪律里）。
 - **INV-10** 新增依赖必须在 commit message 中给出理由。
 
 ## 参考实现（新代码先抄谁）

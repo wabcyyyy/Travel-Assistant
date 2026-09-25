@@ -18,6 +18,7 @@
 
 import contextlib
 import json
+import random
 import threading
 import time
 from collections.abc import Iterator
@@ -119,9 +120,19 @@ def _is_retryable(exc: Exception) -> bool:
     return False
 
 
+def _backoff_delay(attempt: int) -> float:
+    """指数退避基数 min(2^attempt * 0.3, 2.0) 乘 ±20% 抖动。
+
+    抖动是注释里的既有意图（L1 补充 3 落地）：同步网关的瞬时过载会被"整点
+    整齐的重试波"放大，随机分量把重试时刻摊开。抽成纯函数便于单测断言区间。
+    """
+    base = min(2.0**attempt * 0.3, 2.0)
+    return base * random.uniform(0.8, 1.2)
+
+
 def _retry_sleep(attempt: int) -> None:
     # 指数退避 + 少量抖动，避免同步 LLM 网关的瞬时过载被放大。
-    time.sleep(min(2.0**attempt * 0.3, 2.0))
+    time.sleep(_backoff_delay(attempt))
 
 
 class LLMClient:

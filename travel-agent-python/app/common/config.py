@@ -165,6 +165,11 @@ class Settings(BaseSettings):
     research_call_limit: int = 12
     max_replans: int = 3
     no_progress_limit: int = 2
+    # 并行 worker 数（PR-11 并发配置化：原 supervisor/_search_pois 硬编码 3）。
+    # 两者口径同源——研究三域线程池与 POI 三路检索（景点/餐饮/消费）各自的上限；
+    # 调大不会更快：外呼节奏由 ExternalClient 车道节流钳制，线程只是排队位。
+    research_workers: int = 3
+    poi_search_workers: int = 3
 
     # ---- 轨迹与用量 ----
     trace_storage_enabled: bool = True
@@ -356,6 +361,8 @@ _NUMERIC_RULES: tuple[tuple[str, str, float, float], ...] = (
     ("user_daily_llm_runs", "必须 >= 1", 0, float("inf")),
     ("max_retrievals", "必须 >= 1", 0, float("inf")),
     ("research_call_limit", "必须 >= 0", -1, float("inf")),
+    ("research_workers", "必须 >= 1", 0, float("inf")),
+    ("poi_search_workers", "必须 >= 1", 0, float("inf")),
     ("max_replans", "必须 >= 0", -1, float("inf")),
     ("jwt_expire_hours", "必须 >= 1", 0, float("inf")),
     ("cover_upload_max_bytes", "必须 > 0", 0, float("inf")),
