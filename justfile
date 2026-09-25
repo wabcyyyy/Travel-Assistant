@@ -45,6 +45,12 @@ snapshot:
 contracts:
     cd {{py}}; uv run python scripts/export_contracts.py
 
+# 外源健康探针（LA1）：对已接外源发最小真实请求，产出死活表；**不进 just check**
+# （CI 无外网是既有假设）。手工/夜间跑，跑完把结论与当日日期抄进 SOURCES.md。
+# 判定口径见 scripts/probe_sources.py：401=活着缺 key，404=死了，连不上须 DoH 复核。
+probe *args='':
+    uv run --project {{py}} python {{py}}/scripts/probe_sources.py {{args}}; exit $LASTEXITCODE
+
 # ---- 前端 ----
 
 # 前端外观与依赖门禁 + 构建
