@@ -51,7 +51,7 @@ def test_every_data_endpoint_is_documented():
 def test_extractor_not_silent():
     # 提取器自检：正则一旦空转，上面的机检就形同虚设。模块常量与 f-string 内联深链两类都要能提。
     prefixes = _code_endpoint_prefixes()
-    assert "https://engine.hotellook.com/api/v2/cache.json" in prefixes
+    assert "https://serpapi.com/search.json" in prefixes
     assert "https://uri.amap.com/marker" in prefixes
     assert "https://www.google.com/maps/search/" in prefixes
 

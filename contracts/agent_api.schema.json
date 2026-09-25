@@ -2233,6 +2233,18 @@
             }
           ],
           "default": null
+        },
+        "searchLink": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Searchlink"
         }
       },
       "required": [
@@ -2258,7 +2270,8 @@
         "requestedDayNos",
         "availableDayNos",
         "roomTypes",
-        "priceFact"
+        "priceFact",
+        "searchLink"
       ],
       "title": "HotelOption",
       "type": "object"

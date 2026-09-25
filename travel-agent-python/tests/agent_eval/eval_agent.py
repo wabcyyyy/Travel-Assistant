@@ -99,8 +99,8 @@ def run_case(case: dict) -> dict:
         # 不会偷偷打真网（离线纪律由哨兵证明，不靠约定）。
         enter(patch.object(flight_quotes.flight_prices, "fetch_price_dates", _forbid_network_call))
         enter(patch.object(flight_quotes.live_quotes, "fetch_live_quotes", _forbid_network_call))
-        # L15 酒店观测价（Hotellook）同为外网入口，一律钉死
-        enter(patch("app.agent.data.hotel_prices.fetch_hotel_prices", _forbid_network_call))
+        # LA2 酒店实时价（google_hotels）同为外网入口，一律钉死
+        enter(patch("app.agent.data.live_quotes.fetch_hotel_live_quotes", _forbid_network_call))
         enter(
             patch.object(
                 tools,

@@ -10,20 +10,19 @@
 - 酒店是高风险操作，必须走独立确认流程（hotel_proposal），绝不直接进 plan_document；
 - 意图识别与档次解析已抽到 hotel_intent（本模块导入其原语）。
 
-依赖：document（行程投影）、hotel_intent（意图原语）、tools、schemas.trip。
+依赖：document（行程投影）、hotel_intent（意图原语）、data.map_link、schemas.trip。
 """
 
 import logging
-from datetime import date, timedelta
+from datetime import timedelta
 from difflib import SequenceMatcher
 from math import ceil
 
-from app.agent.tools import hotel_quotes
+from app.agent.data import map_link
 from app.common.season import season_factor, season_label
 from app.schemas.trip import (
     ChatTurnRequest,
     ChatTurnResponse,
-    FactEvidence,
     HotelOption,
     HotelRoomOption,
 )
@@ -48,62 +47,21 @@ logger = logging.getLogger(__name__)
 
 
 def _hotel_base_price(hotel: dict) -> float | None:
-    """酒店基准价：ticket_price 优先，回落 avg_cost（联网补池行的 LLM 估价）。"""
+    """酒店基准价：ticket_price 优先，回落 avg_cost（联网补池行的 LLM 估价）。
+
+    LA2 后这是**唯一**价格口径：Hotellook 观测价机器已随死端点摘除（LA1 探针
+    `dead`），酒店价如实估价 + 候选卡挂核实深链；观测价只在「查实时价」按需
+    通道（`tools.hotel_quotes.search_live_hotel_quotes`）出现，不进本函数。
+    """
     price = hotel.get("ticket_price")
     if price is None:
         price = hotel.get("avg_cost")
     return price
 
 
-def _effective_base_price(hotel: dict, observed: dict | None) -> float | None:
-    """这次报价用哪个基准价：**有观测价就用观测价**，否则回到估价链路（L15）。
-
-    单一判据入口：调用方只认本函数，不直接读行上的 `observed_*` 字段——窗口
-    校验在 `hotel_quotes.observed_price` 里，绕过它就会把别的时间窗的价格
-    当成这次的价格。
-    """
-    if observed:
-        return observed["nightly_price"]
-    return _hotel_base_price(hotel)
-
-
-def _observed_window(start_date: date | None, priced_day_nos: list[int], nights: int) -> tuple[str | None, str | None]:
-    """本次住宿的 (checkIn, checkOut)；缺日期/无停靠日/无晚数返回 (None, None)。
-
-    窗口 = 停靠首日 ~ 停靠首日 + 晚数（酒店按"住几晚"计价，checkOut 是退房日）。
-    拿不到窗口就不查观测价——估价链路照旧，绝不用一个猜的窗口去取真价。
-    """
-    if start_date is None or not priced_day_nos or nights <= 0:
-        return None, None
-    check_in = start_date + timedelta(days=min(priced_day_nos) - 1)
-    return check_in.isoformat(), (check_in + timedelta(days=nights)).isoformat()
-
-
-def _price_reason(hotel: dict, observed: dict | None) -> str:
-    """候选卡的价格口径说明：观测价写明来源/窗口/观测时点，估价沿用描述。"""
-    if not observed:
-        return hotel.get("description") or "来自城市酒店知识库"
-    stamp = f"，观测于 {observed['retrieved_at']}" if observed.get("retrieved_at") else ""
-    return (
-        f"Hotellook 观测价 {observed['nightly_price']:.0f} {str(observed['currency']).upper()}/晚"
-        f"（{observed['check_in']} ~ {observed['check_out']}{stamp}）；出发前请核实"
-    )
-
-
-def _price_fact(observed: dict | None) -> FactEvidence | None:
-    """观测价 → 证据票（复用 FactEvidence 单一真源，不发明第二套字段）。"""
-    if not observed:
-        return None
-    return FactEvidence(
-        provider=observed["provider"],
-        source_url=observed.get("deep_link"),
-        retrieved_at=observed.get("retrieved_at"),
-        expires_at=observed.get("expires_at"),
-        verification_status="verified",
-        value_kind="observed",
-        freshness_status="fresh",
-        review_requirement="before_departure",
-    )
+def _price_reason(hotel: dict) -> str:
+    """候选卡的价格口径说明：估价行沿用其描述，不冒充观测价。"""
+    return hotel.get("description") or "来自城市酒店知识库"
 
 
 def _hotel_options(req: ChatTurnRequest, hotels: list[dict], intent: HotelIntent) -> list[HotelOption]:
@@ -156,23 +114,13 @@ def _hotel_options(req: ChatTurnRequest, hotels: list[dict], intent: HotelIntent
     # 房型表已随 POI 库退役：一律走"基础房型"合成
     rooms_by_hotel: dict[int, list[dict]] = {}
     priced_day_nos = list(intent.requested_day_nos) or available_day_nos[: intent.requested_nights]
-    # L15 观测价：窗口由**本次请求的住宿窗口**算出（停靠首日 + 请求晚数）——只有
-    # 这里知道窗口，`search_hotels` 的签名里没有日期。Hotellook 的 priceAvg 是按
-    # (checkIn, checkOut) 的均价，挪到别的窗口就是"价格对不上日期"的事实错误，
-    # 所以取价与消费都以这一对窗口为准（`observed_price` 会再校验一次）。
-    observed_check_in, observed_check_out = _observed_window(start_date, priced_day_nos, intent.requested_nights)
-    hotels = hotel_quotes.merge_observed_prices(
-        hotels, req.city, check_in=observed_check_in, check_out=observed_check_out
-    )
-    priced_hotels: list[tuple[dict, dict | None]] = [
-        (hotel, hotel_quotes.observed_price(hotel, check_in=observed_check_in, check_out=observed_check_out))
-        for hotel in hotels
-    ]
+    # LA2：Hotellook 观测价已随死端点摘除——基准价一律估价链路（_hotel_base_price），
+    # 核实出口是每张候选卡上的地图搜索深链（search_link，map_link 统一口径）。
     # 泛化“换个酒店”优先保持当前档次；若该档次没有除当前酒店外的可报价候选，
     # 自动退到最近档次，避免只返回一段没有卡片的空话。
     non_current_tiers = set()
-    for hotel, observed in priced_hotels:
-        base = _effective_base_price(hotel, observed)
+    for hotel in hotels:
+        base = _hotel_base_price(hotel)
         has_price = base is not None and float(base) > 0
         if (
             has_price
@@ -187,8 +135,8 @@ def _hotel_options(req: ChatTurnRequest, hotels: list[dict], intent: HotelIntent
         if nearest:
             allowed_tiers.add(nearest[0])
     candidates = []
-    for hotel, observed in priced_hotels:
-        base = _effective_base_price(hotel, observed)
+    for hotel in hotels:
+        base = _hotel_base_price(hotel)
         if base is None:
             continue
         try:
@@ -224,8 +172,7 @@ def _hotel_options(req: ChatTurnRequest, hotels: list[dict], intent: HotelIntent
             nightly_breakdown = []
             for day_no in priced_day_nos:
                 stay_date = start_date + timedelta(days=day_no - 1) if start_date else None
-                # 观测价已含实际日期：再乘季节系数就是重复加成，故逐日系数取 1.0
-                day_factor = 1.0 if observed else season_factor(stay_date)
+                day_factor = season_factor(stay_date)
                 nightly_breakdown.append(
                     {
                         "day_no": day_no,
@@ -275,7 +222,7 @@ def _hotel_options(req: ChatTurnRequest, hotels: list[dict], intent: HotelIntent
                     "address": hotel.get("address"),
                     "rating": hotel.get("rating"),
                     "base_price": selected_room.base_price,
-                    "season_factor": 1.0 if observed else factor,
+                    "season_factor": factor,
                     "season_label": label,
                     "nightly_price": selected_room.nightly_price,
                     "nights": intent.requested_nights,
@@ -286,8 +233,13 @@ def _hotel_options(req: ChatTurnRequest, hotels: list[dict], intent: HotelIntent
                     "budget_capacity": round(budget_capacity, 2) if budget_capacity is not None else None,
                     "budget_overage": selected_room.budget_overage,
                     "is_current": False,
-                    "reason": _price_reason(hotel, observed),
-                    "price_fact": _price_fact(observed),
+                    "reason": _price_reason(hotel),
+                    "search_link": map_link.map_search_url(
+                        str(hotel.get("name") or ""),
+                        req.city,
+                        latitude=hotel.get("latitude"),
+                        longitude=hotel.get("longitude"),
+                    ),
                     "requested_nights": intent.requested_nights,
                     "requested_day_nos": list(intent.requested_day_nos),
                     "available_day_nos": available_day_nos,

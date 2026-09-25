@@ -2281,6 +2281,68 @@
         }
       }
     },
+    "/api/itinerary/{id}/hotel-quotes/live": {
+      "post": {
+        "tags": [
+          "itinerary"
+        ],
+        "summary": "Post Live Hotel Quotes",
+        "description": "按需查酒店实时价（LA2，SerpApi google_hotels）。\n\n与航班侧同构：**不落库**；失败语义：查不了 → 400；配额尽 → 429（与\ngoogle_flights 共用同一只月配额计数器）；问过但没有 → 200 + 空列表 + reason。",
+        "operationId": "post_live_hotel_quotes_api_itinerary__id__hotel_quotes_live_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LiveQuotesBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Post Live Hotel Quotes Api Itinerary  Id  Hotel Quotes Live Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/itinerary/{id}/days/{dayId}/order": {
       "put": {
         "tags": [
@@ -7578,6 +7640,17 @@
                 "type": "null"
               }
             ]
+          },
+          "searchLink": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Searchlink"
           }
         },
         "type": "object",

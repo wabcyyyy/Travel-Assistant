@@ -85,18 +85,9 @@ PROBES: list[Probe] = [
         {"origin": "MOW", "destination": "LED", "currency": "rub", "one_way": "true", "limit": "1"},
     ),
     Probe("serpapi", "https://serpapi.com/search.json", "401（活着，缺 key）", {"engine": "google_flights"}),
-    Probe(
-        "hotellook-cache",
-        "https://engine.hotellook.com/api/v2/cache.json",
-        "2026-09-25 实测 404：服务已下线（LA2 改源的依据）",
-    ),
     # ---- 深链出口（浏览器侧可用性，非数据 API）----
-    Probe(
-        "hotellook-search 深链",
-        "https://search.hotellook.com/hotels",
-        "落地页仍可用（302 跳转记入备注）",
-        {"city": "Moscow", "checkIn": "2026-10-10", "checkOut": "2026-10-12"},
-    ),
+    # LA2 摘除说明：hotellook cache（404）与 search 深链（302→aviasales 后 403）
+    # 已随酒店源改判下架，不再列入探针；历史结论见 SOURCES.md 已退役表。
     Probe("aviasales 深链", "https://www.aviasales.com/", "200"),
     Probe(
         "amap-marker 深链",

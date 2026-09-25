@@ -249,6 +249,29 @@ def post_live_quotes(
     )
 
 
+@router.post("/{id}/hotel-quotes/live")
+def post_live_hotel_quotes(
+    body: LiveQuotesBody | None = Body(default=None),
+    id: int = Path(..., ge=1),
+    user: AuthUser | None = Depends(enforce_business_auth),
+) -> dict:
+    """按需查酒店实时价（LA2，SerpApi google_hotels）。
+
+    与航班侧同构：**不落库**；失败语义：查不了 → 400；配额尽 → 429（与
+    google_flights 共用同一只月配额计数器）；问过但没有 → 200 + 空列表 + reason。
+    """
+    payload = body or LiveQuotesBody()
+    return ok(
+        itinerary_query.live_hotel_quotes(
+            user.id,
+            id,
+            start_date=payload.startDate,
+            end_date=payload.endDate,
+            limit=payload.limit,
+        )
+    )
+
+
 @router.delete("/items/{itemId}")
 def delete_item(itemId: int = Path(..., ge=1), user: AuthUser | None = Depends(enforce_business_auth)) -> dict:
     return ok(itinerary_command.delete_item(user.id, itemId))

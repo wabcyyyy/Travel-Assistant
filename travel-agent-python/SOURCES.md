@@ -21,17 +21,15 @@ DNS 走 fake-IP 代理，须 DoH（`https://dns.google/resolve?name=<host>&type=
 | nominatim | 点名→坐标兜底（地理编码） | `https://nominatim.openstreetmap.org/search` | 无 key；政策 1 rps + 可联系 UA | `ok`（200） | 2026-09-25 | 探针报 unreachable（代理 SSL 断连）→ DoH 直连复核 200，不判死 |
 | opentripmap | 景点坐标/分类/图片 | `https://api.opentripmap.com/0.1/en`（`/places/geoname`、`/places/radius`、`/places/xid/{id}`） | 免费 key；限速 <5 rps（我们 geo/radius 0.35s、detail 1.0s 间隔） | `auth-required`（401=活着，缺 apikey） | 2026-09-25 | 探针 |
 | travelpayouts | 机票缓存价（Aviasales v3） | `https://api.travelpayouts.com/aviasales/v3/prices_for_dates` | token 免费（affiliate 注册）；官方限速 600 req/min | `auth-required`（401=活着，缺 token） | 2026-09-25 | 探针 |
-| serpapi | 按需实时报价（`engine=google_flights`） | `https://serpapi.com/search.json` | 免费 250 次/月（硬顶，只够按需按钮，不进主链路） | `auth-required`（401=活着，缺 key） | 2026-09-25 | 探针 |
-| hotellook 酒店缓存价 | ~~酒店聚合缓存价~~（L15 遗留端点，**待 LA2 改源**） | `https://engine.hotellook.com/api/v2/cache.json` | 曾随 Travelpayouts token 免费 | **`dead`**（404，含根路径；DoH 真实 IP 直连仍 404，排除代理假象） | 2026-09-25 | 探针 + DoH 直连复核 |
+| serpapi | 按需实时报价（`engine=google_flights` 航班 + `engine=google_hotels` 酒店，LA2 起两引擎共用同一 key 与月配额） | `https://serpapi.com/search.json` | 免费 250 次/月（硬顶，只够按需按钮，不进主链路） | `auth-required`（401=活着，缺 key） | 2026-09-25 | 探针 |
 
 ## 深链出口（浏览器侧可用性，非数据 API）
 
 | 源 | 用途 | 端点 | 免费额度 | 结论 | 最后验证 | 验证方式 |
 |---|---|---|---|---|---|---|
-| hotellook 搜索深链 | 酒店核实跳转（`_HOTELLOOK_SEARCH`） | `https://search.hotellook.com/hotels` | — | **改嫁**：302 → `hotels-api.aviasales.ru/v1/tp/redirect` → 403（匿名直连拒；浏览器是否仍可打开由 LA2 实测拍板） | 2026-09-25 | 探针（重定向链入备注） |
 | aviasales 深链 | 机票核实跳转（`deep_link` 基座） | `https://www.aviasales.com` | — | `ok`（200） | 2026-09-25 | 探针 |
-| 高德 URI 深链 | 国内单点/搜索/路线核实 | `https://uri.amap.com/marker`、`https://uri.amap.com/search`、`https://uri.amap.com/navigation` | 免 key | `ok`（均 200；`uri.amap.com` → `ditu.amap.com` 落地正常） | 2026-09-25 | 探针 |
-| Google Maps 深链 | 海外单点/路线核实 | `https://www.google.com/maps/search/`、`https://www.google.com/maps/dir/` | 免 key | `ok`（均 200；经本机出口，海外直连环境另议） | 2026-09-25 | 探针 |
+| 高德 URI 深链 | 国内单点/搜索/路线核实（**LA2 起兼作酒店候选卡核实出口**） | `https://uri.amap.com/marker`、`https://uri.amap.com/search`、`https://uri.amap.com/navigation` | 免 key | `ok`（均 200；`uri.amap.com` → `ditu.amap.com` 落地正常） | 2026-09-25 | 探针 |
+| Google Maps 深链 | 海外单点/路线核实（**LA2 起兼作酒店候选卡核实出口**） | `https://www.google.com/maps/search/`、`https://www.google.com/maps/dir/` | 免 key | `ok`（均 200；经本机出口，海外直连环境另议） | 2026-09-25 | 探针 |
 
 ## 不做自动探针的通道
 
@@ -43,7 +41,6 @@ DNS 走 fake-IP 代理，须 DoH（`https://dns.google/resolve?name=<host>&type=
 
 | 源 | 用途 | 端点 | 免费额度 | 计划卡 |
 |---|---|---|---|---|
-| SerpApi google_hotels | 酒店按需实时价（路线 A 的「查实时价」通道） | `https://serpapi.com/search.json`（`engine=google_hotels`） | 与 google_flights 同 key 共享 250 次/月 | LA2 |
 | Travelpayouts 静态数据集 | IATA 映射存在性校验（免 token 静态 JSON） | `https://api.travelpayouts.com/data/airports.json`、`https://api.travelpayouts.com/data/routes.json` | 免 key | LA3 |
 | openrouteservice | 城内交通真路线 | `https://api.openrouteservice.org/v2/directions`（…`/{profile}`） | 免费 2,000 次/天、40/分钟；高校/非营利可申请提额 | LA5 |
 
@@ -51,5 +48,7 @@ DNS 走 fake-IP 代理，须 DoH（`https://dns.google/resolve?name=<host>&type=
 
 | 源 | 结论 | 核实日期 |
 |---|---|---|
+| Hotellook 酒店缓存价（`engine.hotellook.com/api/v2/cache.json`） | `dead`：404 含根路径，DoH 真实 IP 直连复核仍 404；**LA2 已从代码摘除**（主链路回退 estimated + 地图核实深链，「查实时价」改走 serpapi google_hotels） | 2026-09-25 |
+| Hotellook 搜索深链（`search.hotellook.com/hotels`） | 改嫁：302 → `hotels-api.aviasales.ru/v1/tp/redirect` → 403（带/不带 marker 同）；`www.aviasales.com/hotels/<city>` 亦 404——Aviasales 系酒店深链整体不可用，LA2 改挂地图核实深链 | 2026-09-25 |
 | Amadeus Self-Service | 2026-07-17 整体退役 | 2026-09-25（官方公告） |
 | Kiwi.com Tequila | 2024-05-30 起仅认证 B2B，普通 key 亦 403 | 2026-09-25（官方文档） |

@@ -32,6 +32,7 @@ from app.agent.grounding.suggestion_grounding import verify_suggestion_rows
 from app.agent.runtime.observability import metrics, observe_run, scene, use_scene
 from app.agent.runtime.usage_store import usage_store
 from app.agent.tools.flight_quotes import search_live_flight_quotes, shape_quote_for_wire
+from app.agent.tools.hotel_quotes import search_live_hotel_quotes
 from app.agent.tools.impl import find_nearby_pois, get_poi_detail, search_hotels, workbench_search
 from app.agent.tools.registry import ToolInvocationError, ToolSpec, registry
 
@@ -67,6 +68,7 @@ __all__ = [
     "scene",
     "search_hotels",
     "search_live_flight_quotes",
+    "search_live_hotel_quotes",
     "shape_quote_for_wire",
     "usage_store",
     "use_scene",

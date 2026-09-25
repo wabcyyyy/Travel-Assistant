@@ -107,8 +107,8 @@ def _offline_guard(stack: ExitStack) -> None:
     stack.enter_context(patch.object(settings, "nominatim_enabled", False))
     stack.enter_context(patch("app.agent.generation.output.prices.query_live_price", _forbid_network_call))
     stack.enter_context(patch("app.agent.generation.output.prices.query_live_food_price", _forbid_network_call))
-    # L15 酒店观测价（Hotellook）同为外网入口，一律钉死
-    stack.enter_context(patch("app.agent.data.hotel_prices.fetch_hotel_prices", _forbid_network_call))
+    # LA2 酒店实时价（google_hotels）同为外网入口，一律钉死
+    stack.enter_context(patch("app.agent.data.live_quotes.fetch_hotel_live_quotes", _forbid_network_call))
 
 
 def _case_clarify(reply: str, message: str, slots: dict, expected_filled: list[str], expect_question: bool) -> dict:

@@ -94,7 +94,6 @@ def _disable_live_geocoding(monkeypatch):
     # 里填过 token 的开发机上，任何走到取价的用例都会真打公网——离线纪律不能
     # 依赖"开发机恰好没配"。这里与上面几个收费源 key 同待遇钉死。
     monkeypatch.setattr(settings, "travelpayouts_token", "")
-    monkeypatch.setattr(settings, "travelpayouts_marker", "")
     monkeypatch.setattr(settings, "serpapi_key", "")
     yield
 
@@ -107,7 +106,7 @@ def _clear_external_client_caches():
     打了桩却拿到缓存的 None，表现为"桩没生效"。这里在用例前后各清一次，
     让每个用例从干净缓存出发（正/负 TTL 的语义由 test_external_client 专门覆盖）。
     """
-    from app.agent.data import flight_prices, hotel_prices, live_quotes, places, pricing, weather, web_search
+    from app.agent.data import flight_prices, live_quotes, places, pricing, weather, web_search
     from app.agent.tools import impl as tools
 
     clients = (
@@ -121,7 +120,6 @@ def _clear_external_client_caches():
         web_search._search_client,
         weather._weather_client,
         flight_prices._flight_client,
-        hotel_prices._hotel_client,
         live_quotes._serpapi_client,
     )
     live_quotes.reset_quota_for_tests()

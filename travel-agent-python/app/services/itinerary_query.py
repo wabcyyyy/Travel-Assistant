@@ -25,7 +25,12 @@ from typing import Any
 
 from sqlalchemy import func, or_, select
 
-from app.agent import live_quote_quota_exhausted, search_live_flight_quotes, shape_quote_for_wire
+from app.agent import (
+    live_quote_quota_exhausted,
+    search_live_flight_quotes,
+    search_live_hotel_quotes,
+    shape_quote_for_wire,
+)
 from app.common import cache_store
 from app.common.envelope import ApiError
 from app.common.vo_json import iso_date, iso_datetime, iso_time, number
@@ -559,4 +564,45 @@ def live_flight_quotes(
         "startDate": window_start.isoformat(),
         "endDate": window_end.isoformat(),
         "reason": None if quotes else "未查到该航线该日期的实时报价",
+    }
+
+
+def live_hotel_quotes(
+    user_id: int,
+    itinerary_id: int,
+    *,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """按需查酒店实时价（LA2，SerpApi google_hotels）：读行程的城市/日期窗 → 查询。
+
+    与航班侧 `live_flight_quotes` 同构：**不落库**（"现在看一眼"不是行程状态）；
+    错误边界一致——城市/日期缺失 400（查不了），配额尽 429，问过但没有
+    200 + 空列表 + reason。google_hotels 与 google_flights 共用同一只 SerpApi
+    月配额计数器（250 次/月按 key 计），这里不做二次限额。
+    """
+    main = find_readable_main(user_id, itinerary_id)
+    city = str(getattr(main, "city", None) or "").strip()
+    if not city:
+        raise ApiError(400, "本行程没有目的地城市，无法查询酒店实时价")
+    window_start = start_date or main.start_date
+    window_end = end_date or main.end_date
+    if window_start is None or window_end is None:
+        raise ApiError(400, "本行程缺少入住/离店日期，无法查询酒店实时价")
+    if live_quote_quota_exhausted():
+        raise ApiError(429, "实时价查询配额已用尽，请稍后再试")
+    quotes = search_live_hotel_quotes(
+        city,
+        window_start.isoformat(),
+        window_end.isoformat(),
+        adults=int(getattr(main, "persons", 0) or 2),
+        limit=limit or 5,
+    )
+    return {
+        "hotelQuotes": quotes,
+        "city": city,
+        "checkIn": window_start.isoformat(),
+        "checkOut": window_end.isoformat(),
+        "reason": None if quotes else "未查到该城市该日期的实时酒店报价",
     }

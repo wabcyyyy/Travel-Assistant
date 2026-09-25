@@ -1,4 +1,4 @@
-"""按需实时报价：SerpApi `engine=google_flights`（interactive 车道 + 月配额）。
+"""按需实时报价：SerpApi `google_flights` + `google_hotels`（interactive 车道 + 月配额）。
 
 L12 地基卡：只取数、不下结论、不进生成主链路（「查实时价」端点在 L14 接线）。
 SerpApi 免费档 250 次/月、付费 $25/千次——**按需补充源**，价格金贵：
@@ -7,7 +7,8 @@ SerpApi 免费档 250 次/月、付费 $25/千次——**按需补充源**，价
 - interactive 车道（用户在等）+ 进程内短 TTL 缓存（15min，重复点击不再烧配额）；
 - 月配额计数器是**进程内**的：重启清零。这是单机诚实口径——跨进程持久化反而
   会在多 worker 下高估消耗；真实上限以 SerpApi 后台为准，本计数器防的是"脚本
-  一夜烧穿免费档"。
+  一夜烧穿免费档"。**配额按 key 计，两个引擎共用同一只计数器**（LA2：酒店
+  通道 google_hotels 加入后不另设机制）。
 
 文档核对结论（2026-09-25，serpapi.com/google-flights-api，入 commit message）：
 - `GET https://serpapi.com/search.json`，参数 engine=google_flights、api_key、
@@ -189,3 +190,106 @@ def _fetch_with_quota(
         },
         headers={"User-Agent": _USER_AGENT},
     )
+
+
+def fetch_hotel_live_quotes(
+    location: str,
+    check_in: str,
+    check_out: str,
+    *,
+    adults: int = 2,
+    currency: str = "cny",
+) -> list[dict[str, Any]] | None:
+    """按城市 + 入/离窗口查酒店实时价（SerpApi `google_hotels`）→ property 行列表 | None。
+
+    与 google_flights 共用 key、月配额计数器与 interactive 车道（LA2：按需通道，
+    250 次/月是硬顶，绝不进主链路）。语义同 `fetch_live_quotes`：
+
+    - `None`：未配 key / 配额尽 / 请求失败 / 429 / 应答形状不对——"没问到"；
+    - 配额在真实外呼前一刻扣减，缓存命中不花配额；已扣不退（真实消耗记账从实）；
+    - 行 dict：name / nightly_price / total_price / currency / source / rating；
+      缺名或缺每晚价的行丢弃（没有名字无法核对，没有每晚价没有价格事实）。
+    """
+    api_key = str(settings.serpapi_key or "").strip()
+    place = str(location or "").strip()
+    check_in = str(check_in or "").strip()
+    check_out = str(check_out or "").strip()
+    if not api_key or not place or not check_in or not check_out:
+        return None
+    # 密钥绝不进缓存键；api_key 在 query 里，异常脱敏由 external_client 统一兜
+    cache_key = f"hotel:{place}:{check_in}:{check_out}:{currency}:{int(adults)}"
+    payload = _serpapi_client.call(
+        cache_key,
+        lambda: _fetch_hotels_with_quota(api_key, place, check_in, check_out, adults, currency),
+        lane=INTERACTIVE,
+    )
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("error"):
+        logger.warning("serpapi google_hotels[%s] error: %s", place, str(payload["error"])[:120])
+        return None
+    properties = payload.get("properties")
+    if not isinstance(properties, list):
+        logger.warning("serpapi google_hotels[%s] envelope without properties", place)
+        return None
+    rows: list[dict[str, Any]] = []
+    for raw in properties:
+        if not isinstance(raw, dict):
+            continue
+        name = str(raw.get("name") or "").strip()
+        nightly = _extracted_price((raw.get("rate_per_night") or {}).get("extracted_lowest"))
+        if not name or nightly is None:
+            continue
+        rows.append(
+            {
+                "name": name,
+                "nightly_price": nightly,
+                "total_price": _extracted_price((raw.get("total_rate") or {}).get("extracted_lowest")),
+                "currency": currency,
+                "source": str(raw.get("source") or "").strip() or None,
+                "rating": _as_positive_float(raw.get("overall_rating")),
+            }
+        )
+    return rows
+
+
+def _fetch_hotels_with_quota(
+    api_key: str,
+    place: str,
+    check_in: str,
+    check_out: str,
+    adults: int,
+    currency: str,
+) -> Any:
+    """loader：缓存未命中且拿到车道槽后才执行——配额在此刻扣减。"""
+    if not _spend_one():
+        logger.info("serpapi quota exhausted at fetch time (%d/%d)", quota_used(), settings.serpapi_monthly_quota)
+        return None
+    return fetch_json(
+        _serpapi_client,
+        api_client(),
+        _SEARCH_URL,
+        params={
+            "engine": "google_hotels",
+            "q": place,
+            "check_in_date": check_in,
+            "check_out_date": check_out,
+            "adults": int(adults),
+            "currency": currency,
+            "api_key": api_key,
+        },
+        headers={"User-Agent": _USER_AGENT},
+    )
+
+
+def _extracted_price(value: object) -> float | None:
+    """SerpApi `extracted_lowest/higher` → 正数价；缺失/非数值/非正一律 None。"""
+    return _as_positive_float(value)
+
+
+def _as_positive_float(value: object) -> float | None:
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None

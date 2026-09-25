@@ -283,6 +283,7 @@ export interface HotelOption {
   availableDayNos: number[]
   roomTypes: HotelRoomOption[]
   priceFact: FactEvidence | null
+  searchLink: string | null
 }
 
 export interface HotelRoomOption {

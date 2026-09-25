@@ -448,7 +448,12 @@ class HotelOption(WireModel):
     room_types: list[HotelRoomOption] = Field(default_factory=list)
     # 观测价证据（L13 契约先行；L15 组装）：Hotellook 观测价命中时填 observed 票，
     # 估价链路保持 None。完全复用 FactEvidence 单一真源，不发明平铺第二套。
+    # LA2 后数据层不再产出 observed 票（端点已死），字段保留给「查实时价」按需
+    # 通道（google_hotels）经 L16 接线后复用，契约形状不变。
     price_fact: FactEvidence | None = None
+    # 核实深链（LA2）：Hotellook 深链已死，改挂地图搜索出口（国内高德/海外谷歌，
+    # map_link 统一口径）——"估价 + 出发前核实"叙事的出口，L16 接前端呈现。
+    search_link: str | None = None
 
 
 class FlightQuote(WireModel):

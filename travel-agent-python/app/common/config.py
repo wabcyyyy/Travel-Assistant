@@ -241,11 +241,9 @@ class Settings(BaseSettings):
 
     # ---- 真实报价数据面（L12：Travelpayouts 主源 + SerpApi 按需补充源） ----
     # token 见 travelpayouts.com 后台；空 = 真价整层零外呼（维持 estimated 叙事）。
-    # Aviasales 走 X-Access-Token 头（token 不进 URL）；Hotellook cache.json 走
-    # query（官方口径，日志侧脱敏兜底）。
+    # Aviasales 走 X-Access-Token 头（token 不进 URL）。LA2：Hotellook 酒店缓存价
+    # 端点已死并摘除，token 只剩机票聚合价一个消费方。
     travelpayouts_token: str = ""
-    # affiliate 深链标识（可选）：空 = 报价深链裸链，不影响取价。
-    travelpayouts_marker: str = ""
     # SerpApi（Google Flights 实时价，免费档 250 次/月）：空 = 零外呼；仅按需触发。
     serpapi_key: str = ""
     # 进程内月配额（单机诚实口径：重启清零）。
