@@ -1,4 +1,7 @@
-data/
+# 仓库根的运行时数据目录。必须锚定：裸 data/ 会连 travel-agent-python/app/agent/data/
+# 域包一起忽略——city_center.py 与 __init__.py 曾被静默吞掉，导致已提交代码 import
+# 不存在的模块（新鲜 clone 即坏）。运行时数据口径见下方 travel-agent-python/data/。
+/data/
 .idea/
 .vscode/
 .env

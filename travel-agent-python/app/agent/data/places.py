@@ -48,7 +48,7 @@ def otm_enabled() -> bool:
 # ---- 缓存/节流通道（G-3.2） -------------------------------------------------
 # 城市坐标与地点详情基本不变：成功缓存 24h；半径检索 6h（新开景点能较快出现）。
 # 节流与重试纪律（L1）：OTM 免费档明确低于 5 rps——geo/radius 收紧到 0.35s
-#（≈2.9 rps）；detail 只走 background 车道，显式固化 1.0s 不再依赖车道默认。
+# （≈2.9 rps）；detail 只走 background 车道，显式固化 1.0s 不再依赖车道默认。
 # detail 是 enrich 的高频道，开 1 次重试；geo/radius 一次生成各只查 1-2 次，不重试。
 _otm_geo_client: ExternalClient = ExternalClient(
     name="otm_geoname",
@@ -73,7 +73,7 @@ _otm_detail_client: ExternalClient = ExternalClient(
     retry_attempts=1,
 )
 # Nominatim 政策：公共实例 1 rps —— 显式放宽车道间隔到 1.1s；瞬时失败重试 1 次
-#（重试同样过 1.1s 槽，不会跌破政策速率）。
+# （重试同样过 1.1s 槽，不会跌破政策速率）。
 _nominatim_client: ExternalClient = ExternalClient(
     name="nominatim",
     ttl_seconds=24 * 3600,
@@ -236,7 +236,7 @@ def enrich_with_details(places: list[dict[str, Any]], *, top: int = 12) -> list[
         return places
     with ThreadPoolExecutor(max_workers=min(_ENRICH_WORKERS, len(targets)), thread_name_prefix="poi-enrich") as pool:
         details = list(pool.map(lambda place: place_detail(str(place.get("xid") or "")), targets))
-    for place, detail in zip(targets, details):
+    for place, detail in zip(targets, details, strict=True):
         if not detail:
             continue
         for key in ("address", "url", "image", "intro", "wikipedia", "wikidata"):
