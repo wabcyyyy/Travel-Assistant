@@ -43,6 +43,10 @@ class GenerateTripRequest(WireModel):
     preferences: list[str] | None = None
     hotelTier: str | None = None
     regionHint: str | None = None
+    # 可选出发地（L13 契约先行；L16 表单透传、L14 接线进 agent 请求）。有 origin
+    # 才查航班。约束同本模型其余可选字段不上 pydantic（_validate 的 Java 文案口径，
+    # 可选字段无校验规则）。
+    originCity: str | None = None
     requirements: str | None = None
     intent: str | None = None
 

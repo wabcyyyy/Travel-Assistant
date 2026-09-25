@@ -104,6 +104,19 @@
           ],
           "default": null,
           "title": "Regionhint"
+        },
+        "originCity": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Origincity"
         }
       },
       "required": [
@@ -116,7 +129,8 @@
         "hotelTier",
         "requirements",
         "intent",
-        "regionHint"
+        "regionHint",
+        "originCity"
       ],
       "title": "GenerateRequest",
       "type": "object"
@@ -2208,6 +2222,17 @@
           },
           "title": "Roomtypes",
           "type": "array"
+        },
+        "priceFact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FactEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -2232,7 +2257,8 @@
         "requestedNights",
         "requestedDayNos",
         "availableDayNos",
-        "roomTypes"
+        "roomTypes",
+        "priceFact"
       ],
       "title": "HotelOption",
       "type": "object"
@@ -2450,6 +2476,222 @@
       ],
       "title": "ChatTurnResponse",
       "type": "object"
+    },
+    "FlightQuote": {
+      "properties": {
+        "originIata": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Originiata"
+        },
+        "destinationIata": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Destinationiata"
+        },
+        "originCity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Origincity"
+        },
+        "destinationCity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Destinationcity"
+        },
+        "departDate": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Departdate"
+        },
+        "returnDate": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Returndate"
+        },
+        "airline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Airline"
+        },
+        "flightNumber": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Flightnumber"
+        },
+        "transfers": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transfers"
+        },
+        "price": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider"
+        },
+        "sourceUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sourceurl"
+        },
+        "retrievedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retrievedat"
+        },
+        "expiresAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expiresat"
+        },
+        "deepLink": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deeplink"
+        }
+      },
+      "title": "FlightQuote",
+      "type": "object",
+      "required": [
+        "originIata",
+        "destinationIata",
+        "originCity",
+        "destinationCity",
+        "departDate",
+        "returnDate",
+        "airline",
+        "flightNumber",
+        "transfers",
+        "price",
+        "currency",
+        "provider",
+        "sourceUrl",
+        "retrievedAt",
+        "expiresAt",
+        "deepLink"
+      ]
     },
     "ButlerNoteRequest": {
       "properties": {

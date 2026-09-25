@@ -246,6 +246,18 @@
           "default": null,
           "title": "Regionhint"
         },
+        "originCity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Origincity"
+        },
         "requirements": {
           "anyOf": [
             {
@@ -284,6 +296,7 @@
         "preferences",
         "hotelTier",
         "regionHint",
+        "originCity",
         "requirements",
         "intent"
       ]

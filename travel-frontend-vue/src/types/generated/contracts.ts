@@ -15,6 +15,7 @@ export interface GenerateRequest {
   requirements: string | null
   intent: string | null
   regionHint: string | null
+  originCity: string | null
 }
 
 export interface BackupRule {
@@ -281,6 +282,7 @@ export interface HotelOption {
   requestedDayNos: number[]
   availableDayNos: number[]
   roomTypes: HotelRoomOption[]
+  priceFact: FactEvidence | null
 }
 
 export interface HotelRoomOption {
@@ -312,6 +314,25 @@ export interface ChatTurnResponse {
   planDocument: Record<string, unknown> | null
   operations: (Record<string, unknown>)[]
   pendingAction: Record<string, unknown> | null
+}
+
+export interface FlightQuote {
+  originIata: string | null
+  destinationIata: string | null
+  originCity: string | null
+  destinationCity: string | null
+  departDate: string | null
+  returnDate: string | null
+  airline: string | null
+  flightNumber: string | null
+  transfers: number | null
+  price: number | null
+  currency: string | null
+  provider: string | null
+  sourceUrl: string | null
+  retrievedAt: string | null
+  expiresAt: string | null
+  deepLink: string | null
 }
 
 export interface ButlerNoteRequest {
@@ -417,6 +438,7 @@ export interface GenerateTripRequest {
   preferences: string[] | null
   hotelTier: string | null
   regionHint: string | null
+  originCity: string | null
   requirements: string | null
   intent: string | null
 }

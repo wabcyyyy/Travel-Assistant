@@ -117,6 +117,9 @@ class GenerateRequest(WireModel):
     # 会发送但 pydantic 默认 ignore extra 直接丢弃；保留以便开放模式提示模型
     # 目的地所属区域，并为管家讲解提供上下文。
     region_hint: str | None = Field(default=None, max_length=64)
+    # 可选出发地（城市名，L13 契约先行；L14 接线进 agent state）。**有 origin
+    # 才查航班**——未填/未映射 IATA 时航段整段如实缺席，不冒充。
+    origin_city: str | None = Field(default=None, max_length=64)
 
 
 class TripItem(WireModel):
@@ -443,6 +446,37 @@ class HotelOption(WireModel):
     requested_day_nos: list[int] = Field(default_factory=list)
     available_day_nos: list[int] = Field(default_factory=list)
     room_types: list[HotelRoomOption] = Field(default_factory=list)
+    # 观测价证据（L13 契约先行；L15 组装）：Hotellook 观测价命中时填 observed 票，
+    # 估价链路保持 None。完全复用 FactEvidence 单一真源，不发明平铺第二套。
+    price_fact: FactEvidence | None = None
+
+
+class FlightQuote(WireModel):
+    """一条航班报价（observed 事实票；L13 契约先行，L14 组装消费）。
+
+    全字段 optional/带默认——旧客户端零破坏，组装方按可得性如实填。
+    时效字段（retrieved_at/expires_at）对齐 FactEvidence 口径：聚合缓存价不是
+    实时价，**消费方必须把 expires 收紧到 ≤24h** 并呈现观测时点（叙事是
+    「出发前核实」而非「实时」）。往返 = 去程/返程两条本模型，不另造往返容器。
+    """
+
+    origin_iata: str | None = None
+    destination_iata: str | None = None
+    origin_city: str | None = None
+    destination_city: str | None = None
+    depart_date: str | None = None
+    return_date: str | None = None
+    airline: str | None = None
+    flight_number: str | None = None
+    transfers: int | None = None
+    price: float | None = None
+    currency: str | None = None
+    #: 数据提供方（如 aviasales / google_flights）；深链与 provider 对应
+    provider: str | None = None
+    source_url: str | None = None
+    retrieved_at: str | None = None
+    expires_at: str | None = None
+    deep_link: str | None = None
 
 
 class ChatTurnResponse(WireModel):

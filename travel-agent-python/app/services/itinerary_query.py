@@ -356,6 +356,9 @@ def build_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
         "qualityReport": _quality_report(quality_status, issues, pending_facts),
         "sources": _source_records(items),
         "suggestions": _loads_suggestions(main.suggestions_json),
+        # 航班报价槽位（L13 契约先行；L14 组装填充）。常置空列表：无报价时前端
+        # QuoteStrip 整条不渲染，键缺席与空列表对消费方是两种契约，统一取后者。
+        "flightQuotes": [],
         "dayList": day_list,
         "budgetList": [{"category": b.category, "amount": _num(b.amount), "itemCount": b.item_count} for b in budgets],
         "totalAmount": float(total_amount),

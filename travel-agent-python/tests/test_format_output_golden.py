@@ -204,13 +204,12 @@ def _state(req, *, plans, live_price=False, live_food=False, **overrides) -> tup
 
 # ---------------------------------------------------------------- 场景定义
 
-REQ_1P = dict(city="杭州", days=1, persons=2, budget=3000)
-
 
 def all_scenarios():
     """返回 [(名字, state, live_price, live_food)]。"""
-    req_aut = GenerateRequest(**REQ_1P, start_date="2026-10-01")
-    req_win = GenerateRequest(**REQ_1P, start_date="2026-12-20")
+    # 1 人杭州基础场景；start_date 是场景变量，显式展开构造（dict 双展开会丢字段级类型）
+    req_aut = GenerateRequest(city="杭州", days=1, persons=2, budget=3000, start_date="2026-10-01")
+    req_win = GenerateRequest(city="杭州", days=1, persons=2, budget=3000, start_date="2026-12-20")
     req_multi = GenerateRequest(city="杭州", days=3, persons=3, budget=5000, start_date="2026-10-01")
     req_lj = GenerateRequest(city="丽江", days=1, persons=2, budget=3000)
 

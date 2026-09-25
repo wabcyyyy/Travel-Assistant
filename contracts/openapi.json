@@ -7056,6 +7056,18 @@
               }
             ],
             "title": "Regionhint"
+          },
+          "originCity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origincity"
           }
         },
         "type": "object",
@@ -7314,6 +7326,17 @@
             ],
             "title": "Regionhint"
           },
+          "originCity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origincity"
+          },
           "requirements": {
             "anyOf": [
               {
@@ -7483,6 +7506,16 @@
             },
             "type": "array",
             "title": "Roomtypes"
+          },
+          "priceFact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FactEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
