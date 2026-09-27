@@ -154,3 +154,22 @@
   .chat-panel { position: static; max-height: none; order: 2; }
   .chat-log { max-height: 320px; }
 }
+/* —— 行程地图卡（React 详情页）：pin 按天着色，estimated 带虚线徽章 —— */
+.trip-map-wrap { display: grid; gap: 7px; margin-bottom: 22px; }
+.trip-map { position: relative; height: 300px; border: 1px solid var(--sinan-line); border-radius: var(--sinan-radius-sm); }
+.trip-map.is-empty { display: grid; place-items: center; gap: 8px; color: var(--sinan-faint); font-size: 13px; text-align: center; }
+.trip-map.is-empty p { margin: 0; }
+.trip-map-note { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; color: var(--sinan-muted); font-size: 11px; line-height: 1.7; }
+.trip-map-estimated { color: var(--sinan-accent-dark); }
+.map-pin-wrap { position: relative; }
+.map-pin { position: relative; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 2px solid var(--sinan-on-image); border-radius: 50% 50% 50% 2px; transform: rotate(-45deg); color: var(--sinan-on-image); font-size: 11px; font-weight: 700; line-height: 1; cursor: pointer; box-shadow: var(--sinan-shadow-soft); }
+.map-pin > span { transform: rotate(45deg); }
+.map-pin.is-estimated { border-style: dashed; }
+.map-pin.is-estimated::before { content: '?'; position: absolute; top: -10px; right: -8px; display: grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; background: var(--sinan-surface); color: var(--sinan-ink-soft); font-size: 9px; font-weight: 700; border: 1px solid var(--sinan-line); transform: rotate(45deg); }
+.map-pin.is-active { outline: 3px solid var(--sinan-accent-wash); outline-offset: 1px; }
+.map-pop { display: grid; gap: 4px; font-size: 12px; line-height: 1.7; }
+.map-pop strong { font-size: 13px; }
+.map-pop small { color: var(--sinan-muted); }
+.map-pop-links { display: flex; gap: 10px; margin-top: 3px; }
+.map-pop-links a { color: var(--sinan-accent); font-weight: 600; text-decoration: none; }
+.map-pop-links a:hover { text-decoration: underline; text-underline-offset: 4px; }

@@ -12,6 +12,7 @@
     "ep:lint": "node scripts/ep-allowlist.mjs"
   },
   "dependencies": {
+    "maplibre-gl": "^6.11.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
