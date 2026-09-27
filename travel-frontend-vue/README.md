@@ -1,6 +1,6 @@
 # travel-frontend-vue
 
-React 18 + Vite + TypeScript 壳（`src/react-app/`）：一句话对话创建（澄清卡 + 槽位确认条）、生成期实时预览、行程列表、详情页对话编排 + 单日工作台。`src/` 下 Vue3 组件树为已退役遗留（表单簇已删，整树待清）。
+React 18 + Vite + TypeScript 壳（`src/react-app/`）：一句话对话创建（澄清卡 + 槽位确认条）、生成期实时预览、行程列表、详情页对话编排 + 单日工作台。`src/` 下 Vue3 组件树为已退役遗留（Vue 组件树已整体删除）。
 
 ## 技术栈
 

@@ -35,7 +35,7 @@ const SRC = join(ROOT, 'src')
 const ALLOWLIST_PATH = join(ROOT, 'scripts', 'theme-lint.allowlist.json')
 
 // R5-4：产出视觉的 .ts（canvas 绘图/地图 paint/取色工具），纳入「仅色值」扫描。
-const TS_VISUAL_FILES = ['src/utils/exportImage.ts', 'src/utils/mapBasemap.ts', 'src/utils/cssVar.ts']
+const TS_VISUAL_FILES = [] // React 壳暂无「产出视觉的 .ts」；地图/取色工具入壳时在此登记（须可 0 裸 hex）
 
 const TOKEN_BLOCK = /(:root\b|\[data-scheme|\.dark\b|prefers-color-scheme:\s*dark)/
 const MOTION_BLOCK = /(prefers-reduced-motion|data-reduce-motion)/
