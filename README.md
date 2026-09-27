@@ -43,6 +43,8 @@
 
 **分层**：前端只做展示与交互；FastAPI 服务同时承担两件事——**业务面**（认证、行程状态机、缓存、异步 PDF 导出、SSE 事件流）与 **Agent 面**（LLM 编排、多 Agent 研究、事实落地与质量校验），两者同进程直调，省掉跨语言序列化与一条 SSE 转发桥。外部数据永远只作证据：候选以编号参考资料注入 Prompt 引导模型选点，OTM/Nominatim 命中项落地真实坐标与来源（`observed`）；票价/营业时间无结构化来源，由 LLM 估价（`estimated`）；系统不存在「用候选直接拼装行程」的路径，LLM 失败时如实返回待研究草案。
 
+**资源口径（L5a，2026-09-27 实测）**：「一次 N 天生成花多少调用/token/秒」按 run_id 聚合可答（`travel-agent-python/scripts/usage_report.py`）。本机实测：2 天行程主生成 = 8 次 LLM 调用 / 18,223 token / 274 秒；对话式创建的每轮澄清 ≈ 2,700 token / 3-8 秒。离线评测为 mock 口径、结构性无 LLM 成本（探针实证 calls=0），故成本棘轮挂在 nightly 真实评测之后（`usage_report.py --check`，LLM 方差超限按基线认账）；线上时点数据经 `/api/agent/v1/usage` 查询。
+
 **后端演进（Java 版已删除）**：这个项目最初是「Vue + Spring Boot + Python Agent」三端结构，Spring 侧承载认证 / 行程状态机 / 缓存 / PDF / SSE 网关。为了把 agent 能力与持久化放进同一进程，后端已按绞杀者路线整体迁到 FastAPI：当前端点口径以**可对账数字**为准——**业务面+agent 面合计 93 paths / 107 ops，由 `contracts/openapi.json` 入仓并受契约漂移门禁保护；前端调用点 100% 路由覆盖有机检**（`tests/test_cutover_contract.py`）。Java 时期「50 个端点落地 49」的说法只有历史出处（ARCHIVED.md），口径已随 Java 删除不可现场对账，不再作为等价性主张；恢复步骤与「原先谁负责什么」的对照表见 `ARCHIVED.md`。
 
 ## 快速开始
