@@ -65,6 +65,7 @@ cp travel-agent-python/.env.example travel-agent-python/.env   # 应用面：LLM
 | `LLM_API_KEY`（及 `LLM_BASE_URL`/`LLM_MODEL`） | 生成链路的真实成本来源 |
 | `AGENT_DEADLINE_SECONDS=300` | 默认 90s 在供应商慢时整趟生成跑不完（本机实测 274s），生产同建议 300 |
 | 可选 key | `OTM_API_KEY` / `UNSPLASH_ACCESS_KEY` / `PEXELS_ACCESS_KEY` / `TRAVELPAYOUTS_TOKEN` / `SERPAPI_KEY`——留空只降级对应能力，不影响启动 |
+| `ITEM_FEEDBACK_ENABLED=true` | 推荐开启：条目对/错反馈（C3.5）的能力开关，关闭时详情页自动隐藏反馈控件（探针 404） |
 
 不需要动 `TRUSTED_PROXIES`：compose 默认值已含 `172.16.0.0/12`，覆盖 Caddy 所在的
 compose 网络；XFF 由 Caddy **替换**后传入（`deploy/Caddyfile`），归因取到的就是真实客户端 IP，

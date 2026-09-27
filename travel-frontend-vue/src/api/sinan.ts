@@ -79,14 +79,6 @@ export function getSupportedCities() {
   return apiRequest<string[]>('/itinerary/supported-cities')
 }
 
-export function listTemplates() {
-  return apiRequest<Contracts.TemplateCardVO[]>('/templates')
-}
-
-export function getTemplate(templateId: number) {
-  return apiRequest<Contracts.TemplateDetailVO>(`/templates/${templateId}`)
-}
-
 export function login(data: Contracts.LoginBody) {
   return apiRequest<Contracts.LoginData>('/auth/login', { method: 'POST', body: JSON.stringify(data) })
 }
