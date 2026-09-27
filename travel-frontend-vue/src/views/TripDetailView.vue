@@ -5,7 +5,7 @@
       <el-empty :image-size="120" :description="loadErrorDescription">
         <div class="load-error-actions">
           <el-button type="primary" @click="$router.push('/trips')">返回我的行程</el-button>
-          <el-button @click="ui.openCreateTrip()">新建行程</el-button>
+          <el-button @click="$router.push('/')">新建行程</el-button>
           <el-button text @click="loadDetail">重新加载</el-button>
         </div>
       </el-empty>
@@ -309,9 +309,7 @@ import { getItineraryDetail } from '../api/itinerary'
 import { deleteSnapshot, loadSnapshot, saveDetailSnapshot, snapshotKeyForDetail } from '../utils/offlineSnapshots'
 import { useUserStore } from '../store/user'
 import { useItineraryStore } from '../store/itinerary'
-import { useUiStore } from '../store/ui'
 
-const ui = useUiStore()
 import { useItineraryActions } from '../composables/useItineraryActions'
 import { useItineraryStream, type ItineraryStreamEvent } from '../composables/useItineraryStream'
 import type { DayPlan, ItineraryDetail, TripItem } from '../types/itinerary'
@@ -403,7 +401,7 @@ function onHeadMenu(key: string): void {
   else if (key === 'template') templateVisible.value = true
   else if (key === 'pdf') onExportPdf()
   else if (key === 'image') onExportImage()
-  else if (key === 'similar') ui.openCreateTrip(detail.value?.city || '')
+  else if (key === 'similar') router.push(detail.value?.city ? `/?city=${encodeURIComponent(detail.value.city)}` : '/')
 }
 
 async function loadDetail() {

@@ -1,6 +1,6 @@
 # travel-frontend-vue
 
-Vue 3 + Vite 5 + TypeScript 前端：登录、行程生成、行程列表、**三栏行程工作台**（左行程 / 中地图 / 右发现 + 贴底详情卡）。
+React 18 + Vite + TypeScript 壳（`src/react-app/`）：一句话对话创建（澄清卡 + 槽位确认条）、生成期实时预览、行程列表、详情页对话编排 + 单日工作台。`src/` 下 Vue3 组件树为已退役遗留（表单簇已删，整树待清）。
 
 ## 技术栈
 

@@ -1,6 +1,6 @@
 # AGENTS.md — travel-frontend-vue
 
-Vue3 + Vite + TS，MapLibre + OpenFreeMap 免 key 底图。先读根 `../AGENTS.md`。
+入口是 React 18 壳（`src/react-app/`）：首页 ChatIntake 对话式收集槽位并实时预览、详情页 ChatPanel 对话编排（确认卡长在对话流内）；`src/` 下 Vue3 组件树已退役不被加载（表单簇已删，整树待清）。MapLibre + OpenFreeMap 免 key 底图。先读根 `../AGENTS.md`。
 
 ## 外观门禁（只减不增，CI 已接）
 

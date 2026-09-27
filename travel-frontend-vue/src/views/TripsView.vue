@@ -2,7 +2,7 @@
   <div class="trips">
     <SectionHead title="我的行程" :sub="bandSub">
       <template #actions>
-        <el-button type="primary" @click="ui.openCreateTrip()">新建行程</el-button>
+        <el-button type="primary" @click="$router.push('/')">新建行程</el-button>
       </template>
     </SectionHead>
 
@@ -97,7 +97,7 @@
       </article>
 
       <!-- 虚线「新建行程」卡（TREK 借鉴）：空位即入口 -->
-      <button type="button" class="new-trip-card" @click="ui.openCreateTrip()">
+      <button type="button" class="new-trip-card" @click="$router.push('/')">
         <el-icon class="new-plus"><Plus /></el-icon>
         <span class="new-label">新建行程</span>
         <span class="new-sub">选目的地与偏好，Agent 整段生成</span>
@@ -107,7 +107,7 @@
     <AppPanel v-else>
       <EmptyState :description="emptyDescription">
         <el-button v-if="loadError" @click="load">重新加载</el-button>
-        <el-button v-else type="primary" @click="ui.openCreateTrip()">新建行程</el-button>
+        <el-button v-else type="primary" @click="$router.push('/')">新建行程</el-button>
       </EmptyState>
     </AppPanel>
 
@@ -140,9 +140,7 @@ import EmptyState from '../components/ui/EmptyState.vue'
 import SectionHead from '../components/ui/SectionHead.vue'
 import SkeletonCard from '../components/ui/SkeletonCard.vue'
 import Toolbar from '../components/ui/Toolbar.vue'
-import { useUiStore } from '../store/ui'
 
-const ui = useUiStore()
 import { useTripRowActions } from '../composables/useTripRowActions'
 import { useAtlasStore } from '../store/atlas'
 import type { ItinerarySummary } from '../types/itinerary'

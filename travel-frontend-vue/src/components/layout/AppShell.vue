@@ -53,7 +53,6 @@
         <div class="content-inner" :class="{ 'is-wide': route.meta.wide === true }"><slot /></div>
       </main>
 
-      <CreateTripDialog />
 
       <!-- immersive 路由（详情工作台，v2.7 §20 R1）：整页不滚，页脚让位给视口固定布局 -->
       <footer v-if="route.meta.immersive !== true" class="footer">
@@ -74,14 +73,11 @@ import { logoutApi } from '../../api'
 import { getTemplateCapability } from '../../api/templates'
 import { DATA_PROVENANCE, DATA_PROVENANCE_DISCLAIMER } from '../../constants/data-provenance'
 import { useUserStore } from '../../store/user'
-import { useUiStore } from '../../store/ui'
 import AppearancePopover from './AppearancePopover.vue'
-import CreateTripDialog from '../trip/CreateTripDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
-const ui = useUiStore()
 
 const keyword = ref('')
 // 模板广场可见性：登录后探测一次（探测端点恒 200，addon 关时 enabled=false）
@@ -92,11 +88,6 @@ const scrolled = ref(false)
 let scrollObserver: IntersectionObserver | null = null
 
 onMounted(async () => {
-  // /generate 深链重定向后带 city：落到首页并唤起新建弹窗
-  const cityFromQuery = typeof route.query.city === 'string' ? route.query.city.trim() : ''
-  if (cityFromQuery) {
-    ui.openCreateTrip(cityFromQuery)
-  }
   if (scrollSentinel.value) {
     scrollObserver = new IntersectionObserver(
       ([entry]) => {

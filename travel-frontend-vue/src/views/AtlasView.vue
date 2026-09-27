@@ -40,7 +40,7 @@
     <AppPanel v-else-if="atlas && !atlas.stats.tripCount">
       <EmptyState :description="emptyDescription">
         <el-button v-if="scope !== 'all'" @click="setScope('all')">看全部</el-button>
-        <el-button v-else type="primary" @click="ui.openCreateTrip()">新建行程</el-button>
+        <el-button v-else type="primary" @click="$router.push('/')">新建行程</el-button>
       </EmptyState>
     </AppPanel>
 
@@ -99,7 +99,6 @@ import {
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 import { getAtlas } from '../api/atlas'
-import { useUiStore } from '../store/ui'
 import AtlasSidebar from '../components/atlas/AtlasSidebar.vue'
 import AppPanel from '../components/ui/AppPanel.vue'
 import EmptyState from '../components/ui/EmptyState.vue'
@@ -130,7 +129,6 @@ const SCOPES = [
 type ScopeValue = (typeof SCOPES)[number]['value']
 
 const router = useRouter()
-const ui = useUiStore()
 const scope = ref<ScopeValue>('all')
 const loading = ref(true)
 const loadError = ref(false)

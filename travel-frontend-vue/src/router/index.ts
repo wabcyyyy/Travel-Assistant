@@ -14,18 +14,6 @@ const router = createRouter({
       component: () => import('../views/HomeView.vue'),
     },
     {
-      path: '/generate',
-      name: 'generate',
-      // 新建行程改为当前页弹窗：深链落到首页并由 AppShell 唤起 CreateTripDialog
-      redirect: (to) => ({
-        name: 'home',
-        query: {
-        ...(typeof to.query.city === 'string' ? { city: to.query.city } : {}),
-        ...(to.query.new === '1' ? { new: '1' } : {}),
-      },
-      }),
-    },
-    {
       path: '/trips',
       name: 'trips',
       component: () => import('../views/TripsView.vue'),

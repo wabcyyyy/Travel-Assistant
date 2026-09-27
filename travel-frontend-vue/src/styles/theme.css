@@ -1124,11 +1124,7 @@ button:not(:disabled):not([data-no-press]):active,
 
 /* ============================================================
    公共层：双视图重复样式上提（M4-②a F6，重构方案 §5.5 令牌复用）
-   - .chat-line 家族：TripDetailView（ChatEditPanel）消费；
-     GenerateView 同名类保留 scoped 变体（padding/max-width 与此不同，scoped 优先级更高不受影响），
-     其收敛在本层统一，待列表页/生成页工序处理
-   - .pref-tag 家族：GenerateView 偏好标签的公共基线，逐值复制自其 scoped 定义
-     （值完全一致，scoped 仍生效，渲染零变化），供后续收敛去重
+   - .chat-line 家族：TripDetailView（ChatEditPanel）消费
    ============================================================ */
 
 /* ---------- chat 消息行 ---------- */
@@ -1150,49 +1146,6 @@ button:not(:disabled):not([data-no-press]):active,
   background: var(--lp-surface-2);
   border: 1px solid var(--lp-edge-1);
   width: fit-content;
-}
-
-/* ---------- 偏好标签（GenerateView 变体的公共基线） ---------- */
-.pref-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 40px;
-  padding: 8px 16px;
-  border: 1px solid var(--lp-border);
-  border-radius: 999px;
-  background: var(--lp-surface);
-  color: var(--lp-ink-soft);
-  font-size: 14px;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease,
-    border-color 0.15s ease,
-    transform 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.pref-tag:hover {
-  border-color: var(--lp-accent);
-  color: var(--lp-accent-hover);
-  transform: translateY(-1px);
-}
-
-.pref-tag:focus-visible {
-  outline: 2px solid var(--lp-accent);
-  outline-offset: 2px;
-}
-
-.pref-tag.active {
-  background: var(--lp-accent);
-  border-color: var(--lp-accent);
-  color: var(--lp-accent-on-fill);
-  box-shadow: var(--lp-shadow-accent);
-}
-
-.pref-tag .el-icon {
-  font-size: 15px;
 }
 
 /* ---------- 流式骨架屏公共件（M4-②b §5.3.5）：HeadStatusPanel / DayListCard 复用 ---------- */

@@ -144,12 +144,12 @@
 
     <AppPanel v-else>
       <EmptyState description="还没有行程，从一个目的地开始">
-        <el-button type="primary" @click="ui.openCreateTrip()">新建行程</el-button>
+        <el-button type="primary" @click="$router.push('/')">新建行程</el-button>
       </EmptyState>
     </AppPanel>
 
     <!-- 浮动新建（≥768px；窄屏由底部导航的「生成」承担） -->
-    <button type="button" class="fab-new" @click="ui.openCreateTrip()">
+    <button type="button" class="fab-new" @click="$router.push('/')">
       <el-icon><Plus /></el-icon>
       <span>新建行程</span>
     </button>
@@ -173,9 +173,7 @@ import { Box, Picture, Plus, Share } from '@element-plus/icons-vue'
 
 import { getItineraryDetail, listItineraries } from '../api'
 import { useAtlasStore } from '../store/atlas'
-import { useUiStore } from '../store/ui'
 
-const ui = useUiStore()
 import { useTripRowActions } from '../composables/useTripRowActions'
 import CoverDialog from '../components/trip/CoverDialog.vue'
 import ShareDialog from '../components/trip/ShareDialog.vue'
