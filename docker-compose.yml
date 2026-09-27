@@ -2,6 +2,9 @@
 # 用法：
 #   docker compose up -d mysql redis
 #   docker compose --profile apps up -d   # 可选：容器化后端(FastAPI) + 前端（需先构建镜像）
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --profile prod up -d
+#                                         # 生产：MySQL + Redis + agent + Caddy 边缘（自动 TLS），
+#                                         # 叠加层负责生产专属覆盖（Secure Cookie 等），见 deploy/README.md
 #
 # 默认仅起 MySQL + Redis，避免与宿主机已占用端口冲突时难排查。
 # 后端已统一到 FastAPI（travel-agent-python 的 agent-python 服务，:8000 承载 /api 与 /api/agent）。
@@ -55,7 +58,10 @@ services:
     volumes:
       - ta-redis-data:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
+      # $$ 让 $REDIS_PASSWORD 留给容器内 shell 运行期展开（与 command 的 --requirepass
+      # 同源 environment）。裸 $ 会被 compose 在解析期按宿主机 .env 插值——宿主机未设
+      # 该键时变成 -a ""，与默认口令错位，容器永远 unhealthy（预演实证）。
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
       timeout: 3s
       retries: 10
@@ -65,7 +71,8 @@ services:
   # 镜像需自行 build；模型/密钥通过 .env 注入。未开启 apps profile 时不会启动。
 
   agent-python:
-    profiles: ["apps"]
+    # apps = 本地容器化演示；prod = 生产（deploy/docker-compose.prod.yml 叠加层配套）
+    profiles: ["apps", "prod"]
     build:
       context: ./travel-agent-python
       dockerfile: Dockerfile
@@ -130,6 +137,38 @@ services:
       - agent-python
     restart: unless-stopped
 
+  # 生产边缘（仅 prod profile）：单一入口，自动 HTTPS（Let's Encrypt），
+  # 静态托管 + /api 反代二合一；镜像用前端 Dockerfile 的 caddy target（同一构建产物）。
+  # 路由语义与 nginx.conf 对齐：agent 直调面与 /mcp 绝不经边缘可达（R1-8）。
+  caddy:
+    profiles: ["prod"]
+    build:
+      context: ./travel-frontend-vue
+      dockerfile: Dockerfile
+      # 复用 build 阶段产物，不重复 npm 构建（构建真相单一源见该 Dockerfile 头注）
+      target: caddy
+    container_name: ta-caddy
+    environment:
+      # 站点域名单一来源：根 .env 的 DOMAIN（Caddy 据此自动签发/续期证书）。
+      # 软默认 localhost（本机预演/漏配时不炸常用命令）；真域名缺失由 deploy/deploy.sh 拦截
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      # HTTP/3（QUIC）走 UDP 443；VPS 防火墙需放行
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # 证书与 ACME 账户状态：不挂卷则每次重建都重签（触发 Let's Encrypt 限速）
+      - ta-caddy-data:/data
+      - ta-caddy-config:/config
+    depends_on:
+      agent-python:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   ta-mysql-data:
   ta-redis-data:
+  ta-caddy-data:
+  ta-caddy-config:

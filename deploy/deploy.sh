@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Sinan 单 VPS 部署/升级脚本（幂等）：拉码 → 构建 → 滚动拉起 → 冒烟门。
+# 首次部署的前置步骤（装 Docker、写 .env、配 DNS）见 deploy/README.md。
+# 用法：bash deploy/deploy.sh          # 常规部署/升级
+#       SKIP_PULL=1 bash deploy/deploy.sh   # 本地改动直接部署（跳过 git pull）
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+COMPOSE="docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml --profile prod"
+
+if [ ! -f .env ]; then
+  echo "✗ 缺少根 .env（生产密钥清单见 deploy/README.md §环境变量）" >&2
+  exit 1
+fi
+# DOMAIN 防呆：compose 侧对缺失取软默认 localhost（不炸常用命令），真部署在这里拦
+DOMAIN="$(grep -E '^DOMAIN=' .env | head -1 | cut -d= -f2- | tr -d '\"'"'"' \r')"
+if [ -z "$DOMAIN" ] || [ "$DOMAIN" = "localhost" ]; then
+  echo "✗ .env 里没有 DOMAIN=你的域名（本机预演才用 localhost），Caddy 无法签发正式证书" >&2
+  exit 1
+fi
+echo "▸ 目标站点：https://$DOMAIN"
+
+if [ "${SKIP_PULL:-0}" != "1" ]; then
+  echo "▸ 拉取最新代码"
+  git pull --ff-only
+fi
+
+echo "▸ 构建并拉起（mysql redis agent-python caddy）"
+$COMPOSE up -d --build
+
+echo "▸ 等待后端健康（首启含建表迁移与 MySQL 初始化，最长 180s）"
+deadline=$((SECONDS + 180))
+until curl -fsS "http://127.0.0.1:8000/api/agent/health" >/dev/null 2>&1; do
+  if [ $SECONDS -gt $deadline ]; then
+    echo "✗ 后端 180s 未健康，看日志：docker logs ta-agent" >&2
+    exit 1
+  fi
+  sleep 5
+done
+echo "  ✓ 后端健康"
+
+echo "▸ 冒烟门（全部通过才算部署成功）"
+# 1. 边缘静态：HTTPS 首页 200（顺带验证证书真的可被公开验证，失败会在这里暴露）
+code="$(curl -s -o /dev/null -w '%{http_code}' "https://$DOMAIN/")"
+[ "$code" = "200" ] || { echo "✗ https://$DOMAIN/ 返回 $code（证书/DNS/防火墙 80·443 任一未通都会这样）" >&2; exit 1; }
+echo "  ✓ 边缘静态 200"
+# 2. 业务面经边缘可达
+curl -fsS "https://$DOMAIN/api/test/hello" >/dev/null || { echo "✗ /api 反代不通" >&2; exit 1; }
+echo "  ✓ /api 反代可达"
+# 3. R1-8：agent 直调面绝不经边缘可达
+code="$(curl -s -o /dev/null -w '%{http_code}' "https://$DOMAIN/api/agent/health")"
+[ "$code" = "403" ] || { echo "✗ /api/agent 经边缘返回 $code（应为 403，R1-8 被破坏）" >&2; exit 1; }
+echo "  ✓ agent 面 403（R1-8 保持）"
+# 4. Secure Cookie 防呆：叠加层漏加载时后端启动日志有明文 Cookie 告警
+if docker logs ta-agent 2>&1 | grep -q "AUTH_COOKIE_SECURE=false"; then
+  echo "✗ 检测到明文 Cookie 告警：deploy/docker-compose.prod.yml 叠加层没生效（命令少了 -f deploy/docker-compose.prod.yml？）" >&2
+  exit 1
+fi
+echo "  ✓ 无明文 Cookie 告警"
+
+echo "✓ 部署完成：https://$DOMAIN"
+echo "  跟踪日志：docker compose -f docker-compose.yml logs -f agent-python"

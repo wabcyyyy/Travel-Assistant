@@ -102,6 +102,9 @@ docker compose --profile apps up -d --build    # mysql+redis+agent-python+fronte
 
 打开 http://localhost:5173 即可注册使用（后端 :8000 承载 /api）。升级 = `git pull` 后重跑上面最后一条命令（镜像重建 + 启动即迁移，见「运维」）。
 
+> 对外部署（单 VPS + 域名 + 自动 HTTPS）走 prod profile + Caddy 边缘，链路不同：
+> 见 [`deploy/README.md`](deploy/README.md)，一条 `bash deploy/deploy.sh` 完成构建、拉起与冒烟门。
+
 ### 干净机器 5 分钟验证单（勾选式）
 
 - [ ] ① `docker compose up -d mysql redis`（或直接走第 4 步整栈）
@@ -141,6 +144,7 @@ just restore '--from "D:/backups/travel-20260917" --yes'
 ```bash
 git pull
 docker compose --profile apps up -d --build   # 镜像重建；容器启动即按版本序执行迁移（Alembic）
+bash deploy/deploy.sh                          # 生产（prod profile + Caddy）：拉码→重建→冒烟门
 ```
 
 - 迁移 append-only：旧库（含已退役的 `poi_knowledge`）启动时只打点/增量执行，绝不重跑历史 DDL；演练已验证 V3 旧库 → V4 平滑升级，数据与写入不受影响
