@@ -13,6 +13,7 @@ from collections import deque
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from threading import Lock
+from typing import Any
 
 from app.agent.runtime.run_limits import begin_limits, current_limits, end_limits
 from app.agent.runtime.tool_budget import begin_tool_budget, end_tool_budget
@@ -86,6 +87,10 @@ class MetricsRegistry:
         self._latency_ms = 0.0
         self._last_failures: list[dict] = []
         self._traces: dict[str, dict] = {}
+        # 按 name 计数的 decision 事件（如 llm_json_repair）——修复率此前只进
+        # trace 无归集出口，"过去一个月修复率"无人能答（P1-6）。进程内聚合，
+        # 重启丢失可接受。
+        self._decision_counts: dict[str, int] = {}
         # 按业务场景拆分的 token 用量：scene -> {llm_calls, prompt_tokens, completion_tokens}
         self._scene_counts: dict[str, dict[str, int]] = {}
         # 最近 60 分钟逐分钟 token 消耗（内存环形桶，Agent 重启清零）
@@ -176,6 +181,12 @@ class MetricsRegistry:
         with self._lock:
             for key, value in delta.items():
                 self._counts[key] += value
+            # decision 事件按 name 归集（llm_json_repair_total 等，见 snapshot）
+            for event in events:
+                if event.get("kind") == "decision":
+                    name = str(event.get("name") or "")
+                    if name:
+                        self._decision_counts[name] = self._decision_counts.get(name, 0) + 1
             self._latency_ms += sum(durations)
             run_id = trace.get("run_id")
             if run_id:
@@ -204,13 +215,17 @@ class MetricsRegistry:
 
     def snapshot(self) -> dict:
         with self._lock:
-            data = dict(self._counts)
+            # 值域是混合的（计数、比率、列表、嵌套 dict），显式标注以免类型推断
+            # 收窄成 dict[str, int] 后在附加 decisions_by_name 时报错。
+            data: dict[str, Any] = dict(self._counts)
             data["success_rate"] = round(data["successes"] / data["runs"], 4) if data["runs"] else 0.0
             data["degraded_rate"] = round(data["degraded_runs"] / data["runs"], 4) if data["runs"] else 0.0
             data["failure_rate"] = round(data["failures"] / data["runs"], 4) if data["runs"] else 0.0
             data["mcp_failure_rate"] = round(data["mcp_failures"] / data["mcp_calls"], 4) if data["mcp_calls"] else 0.0
             data["avg_event_latency_ms"] = round(self._latency_ms / data["runs"], 2) if data["runs"] else 0.0
             data["recent_failures"] = list(self._last_failures)
+            data["llm_json_repair_total"] = self._decision_counts.get("llm_json_repair", 0)
+            data["decisions_by_name"] = dict(self._decision_counts)
             data["tokens_by_scene"] = {k: dict(v) for k, v in self._scene_counts.items()}
             data["tokens_timeline"] = [dict(slot) for slot in self._timeline]
             try:
@@ -236,6 +251,7 @@ class MetricsRegistry:
             self._latency_ms = 0.0
             self._last_failures.clear()
             self._traces.clear()
+            self._decision_counts.clear()
             self._scene_counts.clear()
             self._timeline.clear()
 

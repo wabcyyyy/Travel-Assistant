@@ -7,7 +7,7 @@
       <header class="topbar lp-header" :class="{ 'is-scrolled': scrolled }">
         <div class="topbar-left">
           <div class="crumbs" aria-label="面包屑">
-            <span class="crumb-brand">旅行助手</span>
+            <span class="crumb-brand">司南 Sinan</span>
             <template v-if="currentTitle">
               <span class="crumb-sep" aria-hidden="true">/</span>
               <span class="crumb-current">{{ currentTitle }}</span>

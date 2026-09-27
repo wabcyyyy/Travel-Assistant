@@ -17,14 +17,16 @@
 
 import asyncio
 import functools
+import hashlib
 import hmac
 import json
 import logging
 import queue
 import threading
+import time
 from collections.abc import AsyncIterator, Callable, Iterator
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import ValidationError
 
@@ -79,6 +81,10 @@ from app.schemas.trip import (
     PlanContextRequest,
 )
 
+# 全 router 前置依赖：无——`/hello` 与 `/health` 必须匿名可达（Dockerfile
+# HEALTHCHECK 在拿到令牌前就探活），所以闸门只能挂在**需要令牌的那些端点**上，
+# 不能挂到 router 级。落地方式：把速率桶并进 `require_internal_token` 本身
+# （见下方说明），这样所有 /api/agent/v1/** 端点既认人也限速，探活端点两不受。
 router = APIRouter()
 
 logger = logging.getLogger(__name__)
@@ -161,20 +167,74 @@ def _fail_payload(exc: Exception, endpoint: str) -> ApiResponse[None]:
     return ApiResponse.fail("服务暂时不可用，请稍后重试", code=500)
 
 
-def require_internal_token(x_agent_token: str | None = Header(default=None)) -> None:
-    """内部令牌校验：配了就必须对，比较走常数时间（R1-8）。
+def require_internal_token(request: Request, x_agent_token: str | None = Header(default=None)) -> None:
+    """内部令牌校验：配了就必须对，比较走常数时间（R1-8）。外加一层进程内速率桶。
 
     没配令牌时是否放行由**部署形态**决定，不在这里判：`Settings.validate_boot` 已经
     拒绝"绑定非回环地址但不设令牌"（那等于匿名烧钱接口），所以"空令牌"只可能出现在
     回环直调的本地/测试拓扑。真正把它带到公网的是边缘——nginx 必须以 `deny all`
     丢掉 `/api/agent/`，见 `travel-frontend-vue/nginx.conf`。
+
+    速率桶（审查 P1-8）：token 一旦泄露，调用方可以无限打（单请求有 RunLimits 封顶，
+    但"打多少次"没有任何闸）。这里按 token 记一个**进程内**分钟窗——从轻，因为这是
+    内网信任面：不走 Redis；键用 token 的 sha256 前 16 位，不把凭据原文留在计数表里；
+    未配 token 的本地拓扑按调用方 IP 归桶。多实例部署时各自计数（与幂等、event_hub
+    的单进程前提一致）。`/hello`、`/health` 不带本依赖，探活不受影响。
     """
     expected = settings.agent_internal_token
-    if not expected:
-        return
-    provided = (x_agent_token or "").encode("utf-8")
-    if not hmac.compare_digest(provided, expected.encode("utf-8")):
+    provided_text = (x_agent_token or "").strip()
+    if expected and not hmac.compare_digest(provided_text.encode("utf-8"), expected.encode("utf-8")):
         raise HTTPException(status_code=401, detail="invalid agent token")
+    client_ip = request.client.host if request.client is not None else None
+    _agent_rate_guard(provided_text, client_ip)
+
+
+# ---------- agent 面速率桶（审查 P1-8） ----------
+#
+# X-Agent-Token 只做身份校验：token 一旦泄露，调用方可以无限打（单请求有
+# RunLimits 封顶，但"打多少次"没有任何闸，墙钟与成本都无上界）。这里按 token
+# 加一个**进程内**分钟窗——方案从轻，因为这是内网信任面：
+#   - 不走 Redis（agent 面本来就是内网直调，一个进程内的列表足够拦脚本式滥用）；
+#   - 键用 token 的 sha256 前 16 位，不把凭据原文留在计数表里；
+#   - 未配 token 的本地/回环拓扑按调用方 IP 归桶（validate_boot 已保证"非回环 +
+#     无 token"启动即拒，所以这条只覆盖本地/测试形态）。
+# 多实例部署时各自计数（与幂等、event_hub 的单进程前提一致）。
+_AGENT_WINDOW_SECONDS = 60
+_AGENT_RATE_LOCK = threading.Lock()
+_AGENT_RATE_BUCKETS: dict[str, list[float]] = {}
+
+
+def _agent_bucket_key(x_agent_token: str | None, client_ip: str | None) -> str:
+    material = (x_agent_token or "").strip()
+    if material:
+        return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+    return f"ip:{client_ip or 'unknown'}"
+
+
+def _agent_rate_guard(x_agent_token: str | None, client_ip: str | None) -> None:
+    """记一次并判窗；超限 429（退避节奏由调用方自定）。"""
+    limit = settings.agent_rate_limit_per_minute
+    if limit <= 0:
+        return
+    now = time.monotonic()
+    key = _agent_bucket_key(x_agent_token, client_ip)
+    with _AGENT_RATE_LOCK:
+        hits = [stamp for stamp in _AGENT_RATE_BUCKETS.get(key, []) if now - stamp < _AGENT_WINDOW_SECONDS]
+        hits.append(now)
+        _AGENT_RATE_BUCKETS[key] = hits
+        # 防表增长：桶数超阈值时顺手丢掉已过期的桶
+        if len(_AGENT_RATE_BUCKETS) > 512:
+            expired = [k for k, v in _AGENT_RATE_BUCKETS.items() if not v or now - v[-1] > _AGENT_WINDOW_SECONDS]
+            for stale_key in expired:
+                _AGENT_RATE_BUCKETS.pop(stale_key, None)
+    if len(hits) > limit:
+        raise HTTPException(status_code=429, detail="too many agent requests")
+
+
+def reset_agent_rate_for_tests() -> None:
+    """测试夹具用：清空进程内桶（跨用例不串味）。"""
+    with _AGENT_RATE_LOCK:
+        _AGENT_RATE_BUCKETS.clear()
 
 
 @router.get("/hello")

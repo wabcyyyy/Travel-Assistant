@@ -9,7 +9,8 @@
 - LLMClient.chat 支持 system/user 消息、temperature、max_tokens、
   enable_search（百炼联网搜索）与 json_mode（response_format=json_object）；
 - complete 是单轮 user 提示的便捷封装；get_llm_client 提供进程内单例；
-- 结构化意图/草稿编辑优先使用低延迟模型 llm_fast_model（见 config）；
+- 结构化意图/草稿编辑走可配置 fast 通道 llm_fast_model（见 config；默认与
+  主模型同款，切档才省钱）；
 - stream_chat 支持流式输出，适用于多日整段生成场景。
 
 依赖：
@@ -27,7 +28,7 @@ import httpx
 
 from app.agent.runtime.observability import current_scene, metrics
 from app.agent.runtime.run_limits import RunLimitExceeded, current_limits
-from app.agent.runtime.trace import record_event
+from app.agent.runtime.trace import current_run_id, record_event
 from app.agent.runtime.usage_store import usage_store
 from app.common.config import settings
 
@@ -80,7 +81,12 @@ def _record_usage(
     success: bool,
     error: str | None = None,
 ) -> None:
-    """把一次调用明细写入用量库（场景由 contextvar 推断）。"""
+    """把一次调用明细写入用量库（场景由 contextvar 推断）。
+
+    run_id 直取 trace 上下文（P1-7）：llm_calls 由此获得 run 级归因键，
+    "一次 7 天生成花多少 token/钱"按 `WHERE run_id = ?` 聚合即可答；
+    无 trace 上下文（如 /v1/plan-context 直调）时如实为 NULL。
+    """
     # 用量记录失败不影响主流程
     with contextlib.suppress(Exception):
         usage_store.record(
@@ -91,6 +97,7 @@ def _record_usage(
             duration_ms=int((time.monotonic() - started) * 1000),
             success=success,
             error=error,
+            run_id=current_run_id(),
         )
 
 

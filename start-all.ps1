@@ -1,4 +1,4 @@
-# Travel Assistant one-click launcher
+# Sinan one-click launcher
 # Starts redis(6380), backend-python(8000, serves /api + /api/agent), frontend-vue(5173).
 # The Spring module (travel-backend-java/) was deleted after the migration; see ARCHIVED.md to recover it from git history.
 # Services already running are skipped. Background services run without extra console windows.
@@ -43,7 +43,7 @@ function Start-ServiceWindow([string]$title, [string]$workdir, [string]$cmdline)
     Start-Process -FilePath "cmd.exe" -ArgumentList $args_ -WindowStyle Hidden
 }
 
-Write-Host "=== Travel Assistant launcher ==="
+Write-Host "=== Sinan launcher ==="
 
 # --- redis (cache, optional but recommended) ---
 if (-not (Test-Port 6380)) {

@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     completion_tokens INTEGER NOT NULL DEFAULT 0,
     duration_ms INTEGER NOT NULL DEFAULT 0,
     success INTEGER NOT NULL DEFAULT 1,
-    error TEXT
+    error TEXT,
+    run_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_llm_calls_ts ON llm_calls (ts);
 CREATE INDEX IF NOT EXISTS idx_llm_calls_scene ON llm_calls (scene);
@@ -53,6 +54,11 @@ class UsageStore:
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(str(self._path), check_same_thread=False)
         self._conn.executescript(_SCHEMA)
+        # 存量库升级（SQLite 内部库，不走 MySQL 迁移链）：探列缺 run_id 就补——
+        # 该列是"一次生成花多少 token/钱"的 run 级归因键（P1-7）
+        columns = {row[1] for row in self._conn.execute("PRAGMA table_info(llm_calls)").fetchall()}
+        if "run_id" not in columns:
+            self._conn.execute("ALTER TABLE llm_calls ADD COLUMN run_id TEXT")
         self._conn.commit()
 
     @contextmanager
@@ -77,12 +83,13 @@ class UsageStore:
         duration_ms: int,
         success: bool,
         error: str | None = None,
+        run_id: str | None = None,
     ) -> None:
         """登记一次 LLM 调用明细（失败调用 token 记 0，用于错误率统计）。"""
         with self._cursor() as cur:
             cur.execute(
                 "INSERT INTO llm_calls (ts, scene, model, prompt_tokens, completion_tokens,"
-                " duration_ms, success, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                " duration_ms, success, error, run_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     int(time.time()),
                     scene or "other",
@@ -92,6 +99,7 @@ class UsageStore:
                     max(int(duration_ms or 0), 0),
                     1 if success else 0,
                     (error or None) if success else (error or "unknown"),
+                    run_id or None,
                 ),
             )
 
@@ -177,7 +185,7 @@ class UsageStore:
             ).fetchone()[0]
             rows = cur.execute(
                 "SELECT ts, scene, model, prompt_tokens, completion_tokens, duration_ms,"
-                " success, error FROM llm_calls WHERE ts >= ? AND ts < ?"
+                " success, error, run_id FROM llm_calls WHERE ts >= ? AND ts < ?"
                 " ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?",
                 (start_ts, end_ts, limit, offset),
             ).fetchall()
@@ -193,6 +201,7 @@ class UsageStore:
                     "duration_ms": int(row[5] or 0),
                     "success": bool(row[6]),
                     "error": row[7],
+                    "run_id": row[8],
                 }
                 for row in rows
             ],

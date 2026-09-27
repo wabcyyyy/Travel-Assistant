@@ -44,6 +44,11 @@ def _neutralize_ip_and_user_limits(monkeypatch):
     monkeypatch.setattr(settings, "user_daily_llm_runs", 100_000)
     monkeypatch.setattr(settings, "public_rate_limit_per_minute", 100_000)
     monkeypatch.setattr(settings, "share_rate_limit_per_minute", 100_000)
+    # 按需实时价窗口（审查 P1-8 新增）与 agent 面速率桶（同批）：都落在
+    # `state_and_sessions` 的进程内兜底表里，整个 pytest 会话共用——不放开
+    # 会在无关用例之间累积命中 429。专项用例自行 monkeypatch 回小值。
+    monkeypatch.setattr(settings, "user_live_quotes_per_minute", 100_000)
+    monkeypatch.setattr(settings, "agent_rate_limit_per_minute", 100_000)
     yield
 
 

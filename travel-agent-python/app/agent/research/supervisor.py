@@ -116,8 +116,12 @@ def _flight_quotes(req: GenerateRequest) -> list[dict]:
 
     只在有 origin_city 时外呼；缺席的每一种原因（无出发地/城市未映射/无 token/
     上游无价）都由工具层的 `_quote_absence` 记日志与轨迹事件，这里不编造兜底。
+    无出发地的短路同样留痕（恢复保真 P0-3）：恢复重建的命令此前丢过 origin_city，
+    若这条分支静默 return []，"缺席都留痕"就在自己身上失效。
     """
     if not str(req.origin_city or "").strip():
+        logger.warning("flight quotes absent: no_origin (city=%s)", req.city)
+        record_event("tool", "flight.search_quotes", status="degraded", error="no_origin", metadata={"city": req.city})
         return []
     return (
         flight_quotes.search_flight_quotes(

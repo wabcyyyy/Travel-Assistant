@@ -104,7 +104,7 @@ def _seed() -> None:
                     end_time=time(11, 0),
                     duration_min=120,
                     cost=Decimal("0.00"),
-                    source="mysql.poi_knowledge",
+                    source="opentripmap:poi:185763",
                     source_updated_at=datetime(2026, 3, 1, 8, 0),
                     verification_status="verified",
                     value_kind="observed",
@@ -240,8 +240,10 @@ def test_quality_status_and_pending_facts(client: TestClient) -> None:
     report = data["qualityReport"]
     assert report["blockingIssues"] == [] and len(report["warnings"]) == 1
     assert report["metrics"] == {"pendingFactCount": 1}
-    assert data["destinationStatus"] == "researched"  # 有 open_day 项但同时存在权威来源
-    assert [s["provider"] for s in data["sources"]] == ["mysql.poi_knowledge", "llm.open_day"]
+    # destinationStatus 口径（P1-2 修正后）：存在 opentripmap/nominatim/web.search
+    # 权威来源行 → researched；llm.open_day 是生成期标记不算权威
+    assert data["destinationStatus"] == "researched"
+    assert [s["provider"] for s in data["sources"]] == ["opentripmap:poi:185763", "llm.open_day"]
 
 
 def test_incomplete_day_takes_precedence_over_stale(client: TestClient) -> None:

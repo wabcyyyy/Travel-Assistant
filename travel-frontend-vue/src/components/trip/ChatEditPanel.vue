@@ -32,6 +32,12 @@
               <b>第{{ d.day_no }}天</b>：
               {{ (d.items || []).map((it) => it.poi_name).join(' → ') }}
             </div>
+            <!-- 编辑链新增项直接落库、不过接地链（审查 P2-1）：没有坐标与证据标签，
+                 也不该冒充"已核实"。草稿卡里就把边界说清楚，别等用户点完才发现
+                 地图上没有点。 -->
+            <p v-if="hasUnverifiedDraftItems(m)" class="draft-unverified-note">
+              新增点位尚未核实：可能没有坐标（地图不画点），票价与营业时间为估算——应用后请用地图深链确认。
+            </p>
           </div>
           <div v-if="m.hotelOptions && m.hotelOptions.length" class="hotel-options-cta">
             <div class="hotel-options-cta-title">
@@ -375,6 +381,23 @@ function onHotelApplied(nextDetail: ItineraryDetail) {
   if (target) target.hotelOptions = []
 }
 
+/** 草稿相对当前行程的新增项里，有没有"无坐标"的（= 编辑链未过接地链，见 P2-1）。
+ *  只提示新增项：既有项的坐标与标签来自生成链，与本次编辑无关。 */
+function hasUnverifiedDraftItems(message: ItineraryChatMessage): boolean {
+  if (!detail.value) return false
+  for (const plan of message.plans || []) {
+    const currentNames = new Set((detail.value.dayList.find((day) => day.dayNo === plan.day_no)?.items || []).map((item) => item.poiName))
+    for (const item of plan.items || []) {
+      const name = item.poi_name ?? ''
+      if (!name || currentNames.has(name)) continue
+      const lat = Number(item.latitude)
+      const lng = Number(item.longitude)
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return true
+    }
+  }
+  return false
+}
+
 function draftChanges(message: ItineraryChatMessage) {
   if (!detail.value) return []
   const changes: string[] = []
@@ -548,6 +571,15 @@ async function onApply() {
 .draft-change {
   margin-bottom: 3px;
   color: var(--lp-accent-hover);
+}
+
+.draft-unverified-note {
+  margin: 6px 0 0;
+  padding-top: 6px;
+  border-top: 1px dashed var(--lp-border);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--lp-text-muted);
 }
 
 /* 聊天内住宿备选：摘要卡片，详情走 Dialog */

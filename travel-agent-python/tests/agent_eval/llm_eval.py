@@ -40,6 +40,7 @@ from app.prompts.open_generation import OPEN_DAY_PROMPT_VERSION, OPEN_TRIP_PROMP
 from app.schemas.trip import DailyPlan, GenerateDayRequest, GenerateRequest, GenerateResponse, Suggestion
 from tests.agent_eval.dataset_schema import load_dataset
 from tests.agent_eval.metrics import evaluate_depth, evaluate_narrative, evaluate_response
+from tests.agent_eval.prompt_digest import prompt_text_sha256
 
 CASES_PATH = Path(__file__).with_name("cases.json")
 THEMED_CASES_PATH = Path(__file__).with_name("themed_cases.json")
@@ -361,6 +362,11 @@ def main() -> int:
     parser.add_argument(
         "--cases", default=str(CASES_PATH), help="用例文件：默认 cases.json；主题化同题评测传 themed_cases.json"
     )
+    parser.add_argument(
+        "--out-stem",
+        default="",
+        help="报告文件名主干（默认按 path/主题化推导）：按路径分落盘时用，避免 stream 与 graph 互相覆盖",
+    )
     args = parser.parse_args()
     cases_path = Path(args.cases)
     # 文件名以 themed 开头即走主题化报告输出（themed_report.json + .md）
@@ -421,6 +427,9 @@ def main() -> int:
         # M5：报告头部固定两套开放生成 Prompt 的契约版本
         "open_day_prompt_version": OPEN_DAY_PROMPT_VERSION,
         "open_trip_prompt_version": OPEN_TRIP_PROMPT_VERSION,
+        # Prompt **正文**指纹（P2-6）：版本号是手抄常量、改串不 bump 时无人发现；
+        # 指纹由源码现值算出，eval_gate 侧用同一函数重算比对。
+        "prompt_sha256": prompt_text_sha256(),
         "case_count": len(details),
         "run_count": len(details) * 2,
         "consistency_rate": round(same_count / max(len(details), 1), 4),
@@ -448,9 +457,18 @@ def main() -> int:
         "details": details,
     }
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    # 主题化同题评测（--cases themed_cases.json）输出 themed_report.json+md，
-    # 不覆盖既有 llm_report.json
-    report_stem = "themed_report" if themed else "llm_report"
+    # 报告文件名：主题化同题评测（--cases themed_cases.json）输出 themed_report.json+md，
+    # 不覆盖既有 llm_report.json；`--out-stem` 供按**路径**分别落盘——nightly 现在同时
+    # 跑 stream（产品路径）与 graph（trip 图路径，唯一带终检的链），两份报告的深度口径
+    # 不可混用，必须各存各的（审查 P2-6）。
+    if args.out_stem:
+        report_stem = args.out_stem
+    elif themed:
+        report_stem = "themed_report"
+    elif args.path == "graph":
+        report_stem = "llm_report_graph"
+    else:
+        report_stem = "llm_report"
     report_path = REPORT_DIR / f"{report_stem}.json"
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     (REPORT_DIR / f"{report_stem}.md").write_text(_report_markdown(report), encoding="utf-8")

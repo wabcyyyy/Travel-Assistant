@@ -2,7 +2,7 @@
   <div class="share-page">
     <!-- 内联轻顶栏：公开页不渲染 AppShell（SPEC §1.3） -->
     <header class="share-top">
-      <router-link class="brand" to="/">旅行助手</router-link>
+      <router-link class="brand" to="/">司南 Sinan</router-link>
       <router-link class="cta" to="/generate?new=1">我也来做一份</router-link>
     </header>
 
@@ -128,7 +128,7 @@ async function load(): Promise<void> {
   try {
     const res = await getSharedItinerary(token)
     data.value = res.data
-    document.title = `${res.data.title} · 旅行助手`
+    document.title = `${res.data.title} · 司南 Sinan`
   } catch {
     error.value = true
   } finally {

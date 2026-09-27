@@ -8,7 +8,8 @@
    - agent 以业务原因拒绝（今天是 `ApiResponse.fail` → Java 见 `code!=200`）→ `502 请求失败：<原因>`；
    - agent 内部崩溃 → 同第一条。
    换进程不换文案，前端 toast 与既有 e2e 断言都不会漂移。
-2. **出参形状与缺省值**：`{kind,city,message,suggestions}` / `{items:[…]}` / `{slots,missing,question,ready}`。
+2. **出参形状与缺省值**：`{kind,city,message,suggestions}` / `{items:[…]}` /
+   `{slots,missing,question,ready,options,blocked}`。
 
 另有一处**不能"顺手修好"**的地方：附近推荐在 agent 层任何异常时返回空列表而不是报错
 （`app/api/agent.py` 的 `except Exception: ApiResponse.ok(PoiNearbyResponse())`）。附近推荐是
@@ -74,6 +75,8 @@ def clarify(message: str, slots: dict[str, Any]) -> dict[str, Any]:
         "missing": response.missing,
         "question": response.question,
         "ready": bool(response.ready),
+        "options": list(response.options or []),
+        "blocked": bool(response.blocked),
     }
 
 

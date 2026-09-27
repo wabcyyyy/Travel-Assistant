@@ -35,6 +35,7 @@ from app.agent.generation.rules.generation_core import (
     spread_hotels,
     stay_nights,
 )
+from app.agent.grounding.grounding_labels import apply_label, label_for_landed_item
 from app.agent.runtime.trace import record_event
 from app.common.llm_client import StreamCancelled
 from app.schemas.trip import GenerateDayRequest, GenerateRequest
@@ -175,6 +176,13 @@ def _generate_drafts(
         # 与本次行程矛盾的点位（解析到别处 / 权威源否证）在这里出局，剩下
         # 的"未判定"项保留——09-19 复评：免费源的"查不到"不足以删用户的点。
         plan["items"] = drop_refuted_items(kept_items, city=req.city, report=schedule_report)
+        # 标签统一（P1-3）：ref 池命中行在 ground 时已写入权威标签，其余项按
+        # day 链同口径补 label_for_landed_item——存在性行（服务端 source+票+坐标）
+        # 拿 partially_verified/observed，未命中任何证据的拿生成/估算标签。
+        # 此前 stream 链未命中 ref 池的项直落 schema 默认值，同项不同徽章。
+        for item in plan["items"]:
+            if not str(item.get("verification_status") or "").strip():
+                apply_label(item, label_for_landed_item(item, req.city))
         for item in plan["items"]:
             if item.get("poi_name"):
                 used.add(str(item["poi_name"]))

@@ -204,6 +204,8 @@ export interface ClarifyResponse {
   missing: string[]
   question: string | null
   ready: boolean
+  options: string[]
+  blocked: boolean
 }
 
 export interface EditOpRequest {

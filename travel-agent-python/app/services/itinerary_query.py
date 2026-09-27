@@ -26,6 +26,7 @@ from typing import Any
 from sqlalchemy import func, or_, select
 
 from app.agent import (
+    is_authoritative_source,
     live_quote_quota_exhausted,
     search_live_flight_quotes,
     search_live_hotel_quotes,
@@ -297,6 +298,9 @@ def build_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
         payload = {
             "dayId": day.id,
             "dayNo": day.day_no,
+            # 天级生成态（PENDING/RUNNING/SUCCEEDED/FAILED）：刷新/断线轮询时
+            # 前端据此按天显示「安排中」，不必依赖 SSE 事件流的连续性
+            "generationStatus": day.generation_status,
             "travelDate": _iso_date(day.travel_date),
             "note": day.note,
             "theme": None,
@@ -451,13 +455,18 @@ def _quality_report(quality_status: str, issues: list[dict[str, str]], pending_f
 
 
 def _destination_status(items: list[ItineraryItem]) -> str:
+    """口径对齐 grounding_labels.is_authoritative_source（opentripmap/nominatim/web.search 前缀）：
+    存在权威来源行 → researched；否则 draft_only。
+
+    旧口径的失真（审查 P1-2）：流式链不写 llm.open_day，纯 LLM 草案会落进
+    knowledge_backed——暗示已退役的 POI 库在背书，反向虚标。knowledge_backed
+    值保留在契约枚举里不删（避免枚举变更），但本推导不再产出它。
+    """
     if not items:
         return "draft_only"
-    has_open_research = any(item.source == "llm.open_day" for item in items)
-    if has_open_research:
-        has_authoritative = any(item.source and item.source != "llm.open_day" for item in items)
-        return "researched" if has_authoritative else "draft_only"
-    return "knowledge_backed"
+    if any(is_authoritative_source(item.source) for item in items):
+        return "researched"
+    return "draft_only"
 
 
 def _source_records(items: list[ItineraryItem]) -> list[dict[str, Any]]:

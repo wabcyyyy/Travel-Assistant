@@ -25,11 +25,12 @@ def test_otm_clients_declare_rate_limits_and_retry_policy():
     assert places._otm_radius_client.min_interval_seconds == pytest.approx(0.35)
     assert places._otm_detail_client.min_interval_seconds == pytest.approx(1.0)
     assert places._nominatim_client.min_interval_seconds == pytest.approx(1.1), "Nominatim 公共实例 1 rps 政策"
-    # 重试只上幂等 GET：detail（enrich 高频）与 Nominatim 各 1 次，geo/radius 不重试
+    # 重试只上幂等 GET：detail（enrich 高频）、Nominatim（公共实例抖动）与 radius
+    # （P2-8 评估后从 0 抬到 1：免费源、池空会直接表现为 draft_only）各 1 次；geo 不重试
     assert places._otm_detail_client.retry_attempts == 1
     assert places._nominatim_client.retry_attempts == 1
     assert places._otm_geo_client.retry_attempts == 0
-    assert places._otm_radius_client.retry_attempts == 0
+    assert places._otm_radius_client.retry_attempts == 1
 
 
 def test_otm_requests_carry_contact_user_agent(monkeypatch):
@@ -79,6 +80,12 @@ def test_provider_outage_trips_breaker_and_degrades_pool_visibly(fake_clock, mon
     对应 PR-11 验收「供应商连挂 → 降级链（OTM→联网→LLM 世界知识）事件可见」
     的第一环：OTM 池降级为空后，联网补池与 LLM 世界知识照既有 research 链路
     接手（EvidencePack.gaps 如实记录），本测钉住的是"OTM 这一环的缺席可见"。
+
+    重试与熔断的交互（P2-8 改 radius 为 1 次重试后显式钉住）：
+    - 熔断按**逻辑调用**记失败，不按重试次数（`call()` 里 `_record_outcome` 只调一次），
+      所以阈值仍是"5 次连挂"，不会被重试提前触发；
+    - 每次逻辑调用真的外呼 `1 + retry_attempts` 次（免费源、重试重新预约车道槽），
+      所以真实请求数 = 5 × (1 + retry)。
     """
     places._otm_radius_client.reset_runtime_state()  # 清掉此前用例留下的真实时钟车道戳
     monkeypatch.setattr(settings, "otm_api_key", "test-key")
@@ -89,16 +96,17 @@ def test_provider_outage_trips_breaker_and_degrades_pool_visibly(fake_clock, mon
         raise httpx.ConnectError("provider down")
 
     configure_clients(api=httpx.Client(transport=httpx.MockTransport(handler)))
+    per_call_attempts = 1 + places._otm_radius_client.retry_attempts
     try:
         with caplog.at_level("WARNING", logger="app.common.external_client"):
             # radius 客户端熔断阈值 5：连挂 5 次后开窗
             for i in range(5):
                 assert places.search_places_near(48.85 + i, 2.35, city="Paris") == []
             assert "breaker OPEN" in caplog.text, "熔断开窗必须留 warning 日志"
-            assert len(requests) == 5, "5 次真实失败后熔断开窗"
+            assert len(requests) == 5 * per_call_attempts, "5 次逻辑调用（各含重试）后熔断开窗"
             # 窗口内：零外呼、快速降级为空池
             assert places.search_places_near(99.0, 99.0, city="Nowhere") == []
-            assert len(requests) == 5, "熔断窗口内不得再打外部"
+            assert len(requests) == 5 * per_call_attempts, "熔断窗口内不得再打外部"
     finally:
         configure_clients(api=None)
 

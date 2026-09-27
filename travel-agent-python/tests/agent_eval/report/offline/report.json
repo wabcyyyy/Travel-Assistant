@@ -51,7 +51,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 10,
-        "tool_count": 4,
+        "tool_count": 5,
         "nodes": [
           "parse",
           "parse",
@@ -68,7 +68,8 @@
           "search_hotels",
           "search_attractions",
           "search_foods",
-          "fixture.get_consumption"
+          "fixture.get_consumption",
+          "flight.search_quotes"
         ],
         "routes": [
           "pass"
@@ -105,7 +106,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 10,
-        "tool_count": 6,
+        "tool_count": 7,
         "nodes": [
           "parse",
           "parse",
@@ -123,6 +124,7 @@
           "search_attractions",
           "search_foods",
           "fixture.get_consumption",
+          "flight.search_quotes",
           "fixture.resolve_poi",
           "fixture.resolve_poi"
         ],
@@ -161,7 +163,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 10,
-        "tool_count": 7,
+        "tool_count": 8,
         "nodes": [
           "parse",
           "parse",
@@ -179,6 +181,7 @@
           "search_attractions",
           "search_foods",
           "fixture.get_consumption",
+          "flight.search_quotes",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
           "fixture.resolve_poi"
@@ -218,7 +221,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 10,
-        "tool_count": 8,
+        "tool_count": 9,
         "nodes": [
           "parse",
           "parse",
@@ -236,6 +239,7 @@
           "search_attractions",
           "search_foods",
           "fixture.get_consumption",
+          "flight.search_quotes",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
@@ -276,7 +280,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 10,
-        "tool_count": 6,
+        "tool_count": 7,
         "nodes": [
           "parse",
           "parse",
@@ -294,6 +298,7 @@
           "search_attractions",
           "search_foods",
           "fixture.get_consumption",
+          "flight.search_quotes",
           "fixture.resolve_poi",
           "fixture.resolve_poi"
         ],
@@ -332,7 +337,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 14,
-        "tool_count": 14,
+        "tool_count": 15,
         "nodes": [
           "parse",
           "parse",
@@ -354,6 +359,7 @@
           "search_attractions",
           "search_foods",
           "fixture.get_consumption",
+          "flight.search_quotes",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
@@ -402,7 +408,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 10,
-        "tool_count": 6,
+        "tool_count": 7,
         "nodes": [
           "parse",
           "parse",
@@ -420,6 +426,7 @@
           "search_attractions",
           "search_foods",
           "fixture.get_consumption",
+          "flight.search_quotes",
           "fixture.resolve_poi",
           "fixture.resolve_poi"
         ],
@@ -458,7 +465,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 10,
-        "tool_count": 7,
+        "tool_count": 8,
         "nodes": [
           "parse",
           "parse",
@@ -476,6 +483,7 @@
           "search_attractions",
           "search_foods",
           "fixture.get_consumption",
+          "flight.search_quotes",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
           "fixture.resolve_poi"
@@ -515,7 +523,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 10,
-        "tool_count": 7,
+        "tool_count": 8,
         "nodes": [
           "parse",
           "parse",
@@ -533,6 +541,7 @@
           "search_attractions",
           "search_foods",
           "fixture.get_consumption",
+          "flight.search_quotes",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
           "fixture.resolve_poi"
@@ -572,7 +581,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 10,
-        "tool_count": 6,
+        "tool_count": 7,
         "nodes": [
           "parse",
           "parse",
@@ -590,6 +599,7 @@
           "search_attractions",
           "search_foods",
           "fixture.get_consumption",
+          "flight.search_quotes",
           "fixture.resolve_poi",
           "fixture.resolve_poi"
         ],
@@ -628,7 +638,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 10,
-        "tool_count": 8,
+        "tool_count": 9,
         "nodes": [
           "parse",
           "parse",
@@ -646,6 +656,7 @@
           "search_attractions",
           "search_foods",
           "fixture.get_consumption",
+          "flight.search_quotes",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
@@ -687,7 +698,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 10,
-        "tool_count": 12,
+        "tool_count": 13,
         "nodes": [
           "parse",
           "parse",
@@ -705,6 +716,7 @@
           "search_attractions",
           "search_foods",
           "fixture.get_consumption",
+          "flight.search_quotes",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
@@ -750,7 +762,7 @@
       "fallback_success": true,
       "trace": {
         "node_count": 10,
-        "tool_count": 12,
+        "tool_count": 13,
         "nodes": [
           "parse",
           "parse",
@@ -768,6 +780,7 @@
           "search_attractions",
           "search_foods",
           "fixture.get_consumption",
+          "flight.search_quotes",
           "fixture.resolve_poi",
           "fixture.resolve_poi",
           "fixture.resolve_poi",

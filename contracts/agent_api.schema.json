@@ -1638,6 +1638,18 @@
           "default": false,
           "title": "Ready",
           "type": "boolean"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Options",
+          "type": "array"
+        },
+        "blocked": {
+          "default": false,
+          "title": "Blocked",
+          "type": "boolean"
         }
       },
       "title": "ClarifyResponse",
@@ -1646,7 +1658,9 @@
         "slots",
         "missing",
         "question",
-        "ready"
+        "ready",
+        "options",
+        "blocked"
       ]
     },
     "EditOpRequest": {

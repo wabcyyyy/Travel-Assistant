@@ -1,11 +1,11 @@
 {
-  "name": "travel-frontend-vue",
+  "name": "travel-frontend-react",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "test:unit": "vitest run",
     "theme:lint": "node scripts/theme-lint.mjs",
@@ -19,6 +19,8 @@
     "lucide-vue-next": "^1.0.0",
     "maplibre-gl": "^6.9.1",
     "pinia": "^2.1.7",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "vue": "^3.4.27",
     "vue-router": "^4.3.2",
     "vuedraggable": "^4.1.0"

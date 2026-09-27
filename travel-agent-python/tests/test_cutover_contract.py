@@ -31,6 +31,11 @@ _CALL_RES = (
     ("GET", re.compile(r"\bEventSource\s*\(\s*")),
 )
 
+# React 壳的 fetch 封装（sinan.ts apiRequest）：首参是路径字面量，动词在选项对象里，
+# 与裸 fetch 同一套窗口探测。React 重写后其调用点曾整层绕过本契约（fetch 透传被
+# 折叠成 /api{}），这里把它纳回扫描——门禁只升不降。
+_APIREQUEST_RE = re.compile(r"\bapiRequest\s*(?:<[^>]*>)?\(\s*")
+
 _FETCH_RE = re.compile(r"\bfetch\s*\(\s*")
 _FETCH_METHOD_RE = re.compile(r"method\s*:\s*['\"](\w+)['\"]")
 # fetch 的第二个实参（选项对象）里可能覆盖动词，窗口取调用后的若干字符即可覆盖本仓写法
@@ -43,6 +48,8 @@ _BRACE_GROUP_RE = re.compile(r"\{[^{}]*\}", re.S)
 def _normalize(path: str) -> str:
     """`{id}` / `{itin_id}` / `${id}` 一律折叠成 `{}`：参数名叫什么不重要，形状才重要。"""
     trimmed = "/" + path.strip().lstrip("/")
+    # 查询串不参与路由形状：/itinerary?view=… 就是 /itinerary
+    trimmed = trimmed.split("?", 1)[0]
     if len(trimmed) > 1:
         trimmed = trimmed.rstrip("/")
     return _NORMALIZE_RE.sub("{}", trimmed)
@@ -94,6 +101,33 @@ def _first_argument(text: str, start: int) -> str:
     return "".join(out).strip()
 
 
+def _call_span(text: str, start: int) -> str:
+    """取整个调用表达式的原文（到与之配对的收括号为止）：跨行选项对象全覆盖，
+    且不会把下一个调用的 `method:` 吸进本调用的探测窗口。"""
+    depth = 0
+    quote: str | None = None
+    out: list[str] = []
+    index = start
+    while index < len(text):
+        char = text[index]
+        out.append(char)
+        if quote:
+            if char == quote and text[index - 1] != "\\":
+                quote = None
+        elif char in "\"'`":
+            quote = char
+        elif char in "([{":
+            depth += 1
+        elif char == ")":
+            if depth == 0:
+                break
+            depth -= 1
+        elif char in "]}":
+            depth -= 1
+        index += 1
+    return "".join(out)
+
+
 def _literal_path(expression: str) -> str | None:
     """把「模板串 / 字符串拼接」还原成路径：`${id}`、`+ id +` 都折叠成 `{}`。"""
     expr = re.sub(r"\$\{[^}]*\}", "{}", expression)
@@ -120,6 +154,15 @@ def _frontend_call_sites() -> list[tuple[str, str, str]]:
                     continue
                 path = literal if literal.startswith("/api") else "/api" + literal
                 sites.append((file.name, method, _normalize(path)))
+        for match in _APIREQUEST_RE.finditer(text):
+            literal = _literal_path(_first_argument(text, match.end()))
+            if literal is None:
+                continue
+            window = _call_span(text, match.end())
+            declared = _FETCH_METHOD_RE.search(window)
+            method = declared.group(1).upper() if declared else "GET"
+            path = literal if literal.startswith("/api") else "/api" + literal
+            sites.append((file.name, method, _normalize(path)))
         for match in _FETCH_RE.finditer(text):
             literal = _literal_path(_first_argument(text, match.end()))
             if literal is None or not literal.startswith("/api"):

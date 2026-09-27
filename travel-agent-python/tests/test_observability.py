@@ -132,3 +132,20 @@ def test_token_timeline_buckets():
     assert timeline[0]["calls"] == 2
     assert timeline[0]["prompt_tokens"] == 70
     assert timeline[0]["completion_tokens"] == 7
+
+
+def test_llm_json_repair_total_visible_in_snapshot_and_prometheus():
+    """P1-6：repair 率此前只进 trace 无归集出口，现在决策事件按 name 聚合。"""
+    metrics.reset()
+    with observe_run("repair-run"):
+        record_event("decision", "llm_json_repair", metadata={"raw_len": 900})
+        record_event("decision", "llm_json_repair", metadata={"raw_len": 1200})
+        record_event("decision", "critic_result", metadata={"score": 0.5})
+    snapshot = metrics.snapshot()
+    assert snapshot["llm_json_repair_total"] == 2
+    assert snapshot["decisions_by_name"]["llm_json_repair"] == 2
+    assert snapshot["decisions_by_name"]["critic_result"] == 1
+    text = metrics.prometheus_text()
+    assert "travel_agent_llm_json_repair_total 2" in text
+    metrics.reset()
+    assert metrics.snapshot()["llm_json_repair_total"] == 0, "reset 清空决策计数"

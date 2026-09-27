@@ -105,15 +105,21 @@ jobs:
         run: |
           uv run python tests/agent_eval/llm_eval.py --path stream --limit 3 | tee llm_eval_small.json
           # 防倒退门禁（SPEC v2.3 §8 A2）：failed run / Prompt 或生成路径漂移 / 一致率低于基线 → 红；
-          # degraded 如实呈现，不判失败。--path stream 是刻意的：量产品实际走的逐日流式，
-          # 同步 /v1/generate 那条共用预算的遗留面用 `--path graph` 单独测。
+          # degraded 如实呈现，不判失败。--path stream 是刻意的：产品实际走的逐日流式。
           uv run python tests/agent_eval/eval_gate.py
+          # trip 图路径（同步 /v1/generate）独立小样本（审查 P2-6）：它是**唯一带
+          # validate_plans 终检**的链，此前零真实 LLM 覆盖（"最强的链没被真实评测，
+          # 被评测的链没有终检"）。2 例、报告落 llm_report_graph.json，与 stream 的
+          # 深度基线互不套用；首跑后作者按实测把 eval_gate 的 graph 深度下限认账抬升。
+          uv run python tests/agent_eval/llm_eval.py --path graph --limit 2 --out-stem llm_report_graph | tee llm_eval_graph_small.json
+          uv run python tests/agent_eval/eval_gate.py --path graph
       - uses: actions/upload-artifact@v4
         if: steps.guard.outputs.skip != 'true'
         with:
           name: nightly-eval
           path: |
             travel-agent-python/llm_eval_small.json
+            travel-agent-python/llm_eval_graph_small.json
             travel-agent-python/tests/agent_eval/report
 
   llm-judge:

@@ -35,3 +35,18 @@ def enforce_llm_budget(user_id: int) -> None:
     per_day = state_and_sessions.sliding_hit(day_key, _DAY_WINDOW_SECONDS)
     if per_day > settings.user_daily_llm_runs:
         raise ApiError(429, "今日 AI 生成次数已用完，请明天再试")
+
+
+def enforce_live_quote_budget(user_id: int) -> None:
+    """按需实时价（quotes/live、hotel-quotes/live）的按用户分钟窗。
+
+    这两个端点不走 LLM，但每点一次就烧一次 SerpApi 的**共享月池**
+    （航班+酒店同池 250 次/月，见 data/live_quotes.py 的配额口径）。生成侧的
+    `enforce_llm_budget` 盖不到它们——没有这道闸，一个登录用户循环点就能把整月
+    额度打光，其他用户当天全部查不到价（审查 P1-8）。
+    只判分钟窗不判日窗：与 LLM 生成不同，这里没有"今日已用完"的产品语义，
+    真实用户也就偶尔查一次；分钟窗足够拦住脚本式连点。
+    """
+    key = f"quota:live-quotes:min:{user_id}"
+    if state_and_sessions.sliding_hit(key, _MINUTE_WINDOW_SECONDS) > settings.user_live_quotes_per_minute:
+        raise ApiError(429, "查询过于频繁，请稍后再试")

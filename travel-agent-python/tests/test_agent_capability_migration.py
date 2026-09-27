@@ -337,7 +337,14 @@ def test_clarify_shape_and_empty_message_rejection(client: TestClient, monkeypat
         lambda req: ClarifyResponse(slots={"city": "杭州"}, missing=["days"], question="去玩几天？", ready=True),
     )
     data = client.post("/api/itinerary/clarify", json={"message": "想去杭州", "slots": {}}).json()["data"]
-    assert data == {"slots": {"city": "杭州"}, "missing": ["days"], "question": "去玩几天？", "ready": True}
+    assert data == {
+        "slots": {"city": "杭州"},
+        "missing": ["days"],
+        "question": "去玩几天？",
+        "ready": True,
+        "options": [],
+        "blocked": False,
+    }
 
     unavailable = client.post("/api/itinerary/clarify", json={"message": ""}).json()
     assert unavailable["code"] == 502 and unavailable["message"] == "意图解析服务暂不可用"

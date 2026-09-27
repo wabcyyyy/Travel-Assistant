@@ -315,6 +315,10 @@ class ClarifyResponse(WireModel):
     missing: list[str] = Field(default_factory=list)
     question: str | None = None
     ready: bool = False
+    # 快捷回复选项：点选即以该文本继续对话（对话内嵌澄清卡），旧客户端可忽略
+    options: list[str] = Field(default_factory=list)
+    # 天数超上限等不可就绪的协商态：恒为 ready=False，前端不得据此触发生成
+    blocked: bool = False
 
 
 class EditOpRequest(WireModel):

@@ -154,6 +154,9 @@ class ItineraryMain(Base, SoftDelete):
     flight_quotes: Mapped[list | None] = mapped_column(JSON, comment="往返航班报价（L14，观测事实）")
     # V9：出发地城市名（用户建行程时填）；查航班与实时价的唯一来源
     origin_city: Mapped[str | None] = mapped_column(String(64), comment="出发地城市名（L14）")
+    # V10（gen_params）：用户原话参数——建壳写入、僵尸续跑重建命令时读回（恢复保真 P0-3）
+    intent: Mapped[str | None] = mapped_column(String(800), comment="旅行意图(M1,最长800字)")
+    requirements: Mapped[str | None] = mapped_column(Text, comment="补充要求(自由文本)")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()

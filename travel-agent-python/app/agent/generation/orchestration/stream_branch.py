@@ -11,8 +11,9 @@ dispatch ──mode=stream──► stream_generate（生成 → 落地 → 摊�
 - LLM 形态 = 整段一次调用（llm_open_trip，模型看得见全盘）+ 截断逐日兜底
   （缺口天 llm_open_day，suggestions 随天收集——截断不可能丢建议池）；
 - 生成/落地/去重实现全在 `open_plans`（on_day/on_patch 挂点），本模块只做
-  「事件化 + 产品语义」：研究在外层（上下文随请求带入）、校验修复交给业务侧
-  逐日循环；空草案天不算产出、摊铺补丁只补已发的天。
+  「事件化 + 产品语义」：研究在外层（上下文随请求带入）、整段天已补终检
+  （业务侧 plan_days 落库后跑 validate_plans，违规天重置交逐日循环）、
+  缺口天走逐日循环；空草案天不算产出、摊铺补丁只补已发的天。
 
 **可 mock 契约**：测试经本模块属性注入 `fill_suggestion_gaps` / `record_event`，
 经 `open_plans.llm_open_trip` / `open_plans.llm_open_day` / `open_plans.generate_open_plans`

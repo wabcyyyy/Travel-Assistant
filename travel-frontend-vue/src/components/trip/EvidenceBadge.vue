@@ -5,7 +5,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { TripItem } from '../../types/itinerary'
-import { evidenceLabel } from '../../utils/evidence'
+import { evidenceLabel } from '../../shared/evidence'
 const props = defineProps<{ item: TripItem }>()
 const label = computed(() => evidenceLabel(props.item))
 const sourced = computed(() => ['地点有来源', '部分信息有据'].includes(label.value))

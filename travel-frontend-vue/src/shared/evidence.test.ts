@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TripItem } from '../types/itinerary'
-import { evidenceLabel } from './evidence'
+import { evidenceLabel, evidenceTone } from './evidence'
 
 const item = (fields: Partial<TripItem> = {}): TripItem => ({ itemType: 'attraction', poiName: '寺院', ...fields })
 describe('证据徽标', () => {
@@ -17,5 +17,14 @@ describe('证据徽标', () => {
     expect(evidenceLabel(item({ verificationStatus: 'partially_verified' }))).toBe('部分信息有据')
     expect(evidenceLabel(item({ valueKind: 'estimated' }))).toBe('估算信息')
     expect(evidenceLabel(item({ valueKind: 'generated' }))).toBe('生成信息')
+  })
+  it('语气分类供两套前端共用配色口径', () => {
+    expect(evidenceTone(item({ valueKind: 'estimated' }))).toBe('warning')
+    expect(evidenceTone(item({ verificationStatus: 'unverified' }))).toBe('warning')
+    expect(evidenceTone(item({ freshnessStatus: 'stale' }))).toBe('warning')
+    expect(evidenceTone(item({ valueKind: 'generated' }))).toBe('warning')
+    expect(evidenceTone(item({ verificationStatus: 'partially_verified' }))).toBe('info')
+    expect(evidenceTone(item({ valueKind: 'observed' }))).toBe('info')
+    expect(evidenceTone(item())).toBe('')
   })
 })

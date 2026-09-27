@@ -8,7 +8,8 @@
 - LLM-only 口径不破：规划/评估只决定"查什么、够不够"，绝不生成行程内容；
 - 任何异常（未配置 LLM / 网络 / 解析失败）都回退到确定性默认值，绝不阻塞研究；
 - 证据为空时确定性判定"不足"并给默认补充词，省一次模型调用；
-- 统一走 llm_fast_model 控制成本，模块级函数可被单测 patch 注入 fixture。
+- 统一走可配置 fast 通道（llm_fast_model）；默认与主模型同款（config.py），
+  切档才省钱——模块级函数可被单测 patch 注入 fixture。
 """
 
 from __future__ import annotations

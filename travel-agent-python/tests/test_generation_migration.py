@@ -61,6 +61,7 @@ def env(monkeypatch, tmp_path):
     with db_session.session_scope() as session:
         session.add(SysUser(username="alice", password=user_service.hash_password(PASSWORD), status=1, role="user"))
     # 事件与幂等锁都走进程内兜底：Redis 指向不可达端口
+    itinerary_generation.reset_active_planning_for_tests()
     yield
     db_session.init_engine(None, None)
     cache_store.reset_for_tests()
@@ -106,13 +107,29 @@ def _plan(
 
 
 def _wire_plan(day_no: int, names: list[str]) -> dict:
-    """整段流式事件里的 plan 是 camel 化 wire dict，测试必须喂真形状。"""
+    """整段流式事件里的 plan 是 camel 化 wire dict，测试必须喂真形状。
+
+    默认形状必须过整段终检（≥1 景点 + 餐饮、有效活动 ≥240 分钟、无时间重叠），
+    否则违规天会被重置进逐日循环——需要违规天时在用例里自构。
+    """
     return {
         "dayNo": day_no,
         "note": f"第 {day_no} 天",
         "theme": "湖山线",
         "tripTheme": None,
-        "items": [{"itemType": "attraction", "poiName": name, "cost": 45, "startTime": "09:30"} for name in names],
+        "items": [
+            {"itemType": "attraction", "poiName": name, "cost": 45, "startTime": "09:00", "endTime": "11:30"}
+            for name in names
+        ]
+        + [
+            {
+                "itemType": "food",
+                "poiName": f"知味观{day_no}",
+                "cost": 40,
+                "startTime": "11:30",
+                "endTime": "13:00",
+            }
+        ],
     }
 
 
@@ -326,8 +343,8 @@ def test_stream_path_persists_days_and_suggestion_pool(client: TestClient, monke
     _run_inline(monkeypatch)
     detail = _trip(client, {"city": CITY, "days": 2, "stayNights": 1})
     _main, days = _rows(detail["id"])
-    assert [item.poi_name for item in _items(days[0].id)] == ["西湖"]
-    assert [item.poi_name for item in _items(days[1].id)] == ["灵隐寺"]
+    assert [item.poi_name for item in _items(days[0].id)] == ["西湖", "知味观1"]
+    assert [item.poi_name for item in _items(days[1].id)] == ["灵隐寺", "知味观2"]
     assert calls["day"] == [], "整段流式已覆盖全部天 → 逐日循环只做幂等登记"
     with db_session.session_scope() as session:
         main = session.get(ItineraryMain, detail["id"])
@@ -355,6 +372,31 @@ def test_unknown_stream_event_type_is_ignored_without_counting(client: TestClien
     _run_inline(monkeypatch)
     _trip(client, {"city": CITY, "days": 1})
     assert calls["day"] == [], "未知类型是前向兼容事件，不该被当成协议破坏"
+
+
+def test_stream_violating_day_resets_to_pending_and_regenerates(client: TestClient, monkeypatch) -> None:
+    """整段流式后置终检：违规天重置 PENDING 交既有逐日循环重生成，其余天不动。"""
+    # 第 1 天塞 7 个景点 > 上限 6，还伴随时间重叠/行程过满 → validate_plans 必违规
+    events = [
+        {"type": "day", "plan": _wire_plan(1, [f"超量点{i}" for i in range(7)])},
+        {"type": "day", "plan": _wire_plan(2, ["灵隐寺"])},
+        {
+            "type": "done",
+            "daysExpected": 2,
+            "daysEmitted": [1, 2],
+            "tripTheme": None,
+            "complete": True,
+            "message": None,
+        },
+    ]
+    calls = _fake_agents(monkeypatch, [_plan(1, ["西湖"]), _plan(2, ["不该被用到"])], stream_events=events)
+    _run_inline(monkeypatch)
+    detail = _trip(client, {"city": CITY, "days": 2, "stayNights": 2})
+    _main, days = _rows(detail["id"])
+    assert [req.day_no for req in calls["day"]] == [1], "只有终检违规的第 1 天进逐日循环重生成"
+    assert [day.generation_status for day in days] == ["SUCCEEDED", "SUCCEEDED"]
+    assert [item.poi_name for item in _items(days[0].id)] == ["西湖"], "违规天被逐日循环的产出覆盖"
+    assert [item.poi_name for item in _items(days[1].id)] == ["灵隐寺", "知味观2"], "合规天不被重写"
 
 
 def test_day_failure_marks_day_and_trip_failed(client: TestClient, monkeypatch) -> None:
@@ -426,10 +468,15 @@ def _versions(trip_id: int) -> list[str]:
 
 @pytest.fixture
 def broken_trip(client: TestClient, monkeypatch) -> int:
-    """造一条"壳在、天没生成完、状态还挂着 GENERATING"的行程（不触发编排）。"""
+    """造一条"壳在、天没生成完、状态还挂着 GENERATING"的行程（不触发编排）。
+
+    造完后清活跃注册表：broken_trip 语义是"当年提交它的进程已经死了"——
+    注册表是进程内状态，死进程的注册表就是空的（P1-1 存活探测的前件）。
+    """
     monkeypatch.setattr(itinerary_generation.generation_pool, "submit", lambda task, *args: None)
     _fake_agents(monkeypatch, [_plan(1, ["西湖"])])
     detail = _trip(client, {"city": CITY, "days": 2})
+    itinerary_generation.reset_active_planning_for_tests()
     with db_session.session_scope() as session:
         for day in session.execute(select(ItineraryDay)).scalars().all():
             day.generation_status = "PENDING"
@@ -496,6 +543,20 @@ def test_recovery_skips_trip_with_active_day(broken_trip: int, monkeypatch) -> N
     monkeypatch.setattr(itinerary_generation.generation_pool, "submit", lambda task, *args: submitted.append(args[1]))
     generation_recovery.recover()
     assert submitted == [], "有天正在生成（5 分钟内心跳未过期）就不该抢跑"
+
+
+def test_recovery_skips_trip_registered_active_in_process(broken_trip: int, monkeypatch) -> None:
+    """P1-1 存活探测：注册表里的行程即使 updated_at 超时也不许二次放行。"""
+    submitted: list[int] = []
+    monkeypatch.setattr(itinerary_generation.generation_pool, "submit", lambda task, *args: submitted.append(args[1]))
+    itinerary_generation._register_planning(broken_trip)
+    try:
+        assert generation_recovery.recover() == 0
+        assert submitted == [], "研究段静默 19 分钟 ≫ 5 分钟阈值：活着 ≠ 僵尸，recovery 不许双跑"
+    finally:
+        itinerary_generation._unregister_planning(broken_trip)
+    assert generation_recovery.recover() == 0, "注销后僵尸分支照常接手（Java 口径返回 0）"
+    assert submitted == [broken_trip]
 
 
 def test_recovery_is_deduplicated_by_resume_lock(broken_trip: int, monkeypatch) -> None:
@@ -587,4 +648,4 @@ def test_recovery_six_day_stream_break_resumes_without_whole_rerun(client: TestC
     assert counted["context"] == 1, "不整段研究重跑：上下文从第 4 天的检查点找回，run_plan_context 不再跑"
     assert counted["days"] == [4, 5, 6], "第 4 天从检查点续完（生成节点不重跑），5-6 天逐日补齐"
     assert [item.poi_name for item in _items(days[3].id)] == ["点4"], "第 4 天续出来的正是死前那份产出"
-    assert [item.poi_name for item in _items(days[0].id)] == ["流点1"], "已产出天不重写"
+    assert [item.poi_name for item in _items(days[0].id)] == ["流点1", "知味观1"], "已产出天不重写"

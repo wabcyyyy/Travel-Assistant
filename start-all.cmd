@@ -9,7 +9,7 @@ if not exist "%~dp0start-all.ps1" (
   exit /b 1
 )
 
-echo Starting Travel Assistant (redis :6380 / api :8000 / vue :5173)...
+echo Starting Sinan (redis :6380 / api :8000 / frontend :5173)...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0start-all.ps1"
 set ERR=%ERRORLEVEL%
 echo.

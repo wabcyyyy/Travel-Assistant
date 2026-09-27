@@ -49,7 +49,12 @@ def otm_enabled() -> bool:
 # 城市坐标与地点详情基本不变：成功缓存 24h；半径检索 6h（新开景点能较快出现）。
 # 节流与重试纪律（L1）：OTM 免费档明确低于 5 rps——geo/radius 收紧到 0.35s
 # （≈2.9 rps）；detail 只走 background 车道，显式固化 1.0s 不再依赖车道默认。
-# detail 是 enrich 的高频道，开 1 次重试；geo/radius 一次生成各只查 1-2 次，不重试。
+# detail 是 enrich 的高频道，开 1 次重试。
+# radius 也开 1 次重试（审查 P2-8 评估结论，原为 0）：免费源、无月配额计数器，
+# 且重试会重新预约车道槽（不跌破 2.9 rps 的自我约束）；代价是失败时每次生成多
+# ≤2 次免费调用，换来"一次瞬时 429/5xx 不再让整个域的证据池归零"——池空直接
+# 表现为 draft_only，是用户可见的最强降级。geo 保持 0：每趟只查 1 次、成功缓存
+# 24h，重试窗口内第二次调用与第一次几乎同因失败，收益不抵调用。
 _otm_geo_client: ExternalClient = ExternalClient(
     name="otm_geoname",
     ttl_seconds=24 * 3600,
@@ -63,6 +68,7 @@ _otm_radius_client: ExternalClient = ExternalClient(
     negative_ttl_seconds=600,
     timeout_seconds=settings.places_timeout_seconds,
     min_interval_seconds=0.35,
+    retry_attempts=1,
 )
 _otm_detail_client: ExternalClient = ExternalClient(
     name="otm_detail",

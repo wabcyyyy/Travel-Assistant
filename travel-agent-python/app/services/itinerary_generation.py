@@ -20,19 +20,28 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
-from sqlalchemy import update
+from sqlalchemy import select, update
 
-from app.agent import observe_run, run_generate_day, run_generate_trip_stream, run_plan_context, use_scene
+from app.agent import (
+    observe_run,
+    run_generate_day,
+    run_generate_trip_stream,
+    run_plan_context,
+    use_scene,
+    validate_plans,
+)
 from app.common import cache_store
+from app.common.config import settings
 from app.common.envelope import ApiError
 from app.common.task_pool import SlotExecutor, TaskRejected
-from app.db.models import ItineraryDay, ItineraryMain
+from app.db.models import ItineraryDay, ItineraryItem, ItineraryMain
 from app.db.session import session_scope
 from app.schemas.business.itinerary import GenerateTripRequest
 from app.schemas.stream_events import StreamEvent
@@ -64,6 +73,37 @@ _SlotExecutor = SlotExecutor
 
 generation_pool = _SlotExecutor("travel-generation", 4, _GENERATION_SLOTS)
 enricher_pool = _SlotExecutor("travel-enricher", 2, _ENRICHER_SLOTS)
+
+# ---------- 活跃生成注册表（P1-1 僵尸双跑窗口） ----------
+
+# 研究段最坏静默 ≈19 分钟 ≫ recovery 的 5 分钟阈值：只看 updated_at 会把"活着的
+# 慢生成"误判成僵尸，对同一次生成二次放行（双份真金 + day_patch 互相覆盖）。
+# submit_planning 登记、plan_days finally 注销；recover_one 开头查到即不碰。
+# 前提与 event_hub/幂等一致：**单进程**。多实例部署需升级为 DB 租约（带 TTL 的
+# 行级心跳），不能只靠本表。
+_ACTIVE_PLANNING: set[int] = set()
+_ACTIVE_PLANNING_LOCK = threading.Lock()
+
+
+def is_planning_active(itinerary_id: int) -> bool:
+    with _ACTIVE_PLANNING_LOCK:
+        return int(itinerary_id) in _ACTIVE_PLANNING
+
+
+def _register_planning(itinerary_id: int) -> None:
+    with _ACTIVE_PLANNING_LOCK:
+        _ACTIVE_PLANNING.add(int(itinerary_id))
+
+
+def _unregister_planning(itinerary_id: int) -> None:
+    with _ACTIVE_PLANNING_LOCK:
+        _ACTIVE_PLANNING.discard(int(itinerary_id))
+
+
+def reset_active_planning_for_tests() -> None:
+    """测试夹具用：把"提交了但池被 patch 成不执行"的登记清掉，防跨用例污染。"""
+    with _ACTIVE_PLANNING_LOCK:
+        _ACTIVE_PLANNING.clear()
 
 
 @dataclass
@@ -103,8 +143,16 @@ def submit_planning(
 
     `context` = 已产出的研究上下文（PR-3 起恢复侧从检查点找回再喂进来，免"僵尸续跑
     = 整段研究重跑"）；None 由 plan_days 自己跑 `run_plan_context`。
+
+    登记活跃表（P1-1）：从提交这一刻起（含排队期）该 itinerary 就算"活着"，
+    recovery 的存活探测据此跳过，最坏静默 19 分钟的研究段不再被误判成僵尸双跑。
     """
-    generation_pool.submit(plan_days, user_id, itinerary_id, command, context)
+    _register_planning(itinerary_id)
+    try:
+        generation_pool.submit(plan_days, user_id, itinerary_id, command, context)
+    except BaseException:
+        _unregister_planning(itinerary_id)
+        raise
 
 
 # ---------- 编排主体（工作线程内） ----------
@@ -123,15 +171,18 @@ def plan_days(user_id: int, itinerary_id: int, command: GenerateCommand, context
         fingerprint = generation_gate.request_fingerprint(command)
         if context is None:
             # 不包 observe_run：与迁移前的 /v1/plan-context 口径一致（研究事件不带 runId）。
+            # 但 scene 必须归位（P1-7）：研究段的 LLM 调用此前落 scene="other"，
+            # 用量报表把"生成的研究成本"记到匿名桶里。
             # start_date+days 供城市级天气一次取整趟预报窗（C3.1）；无日期自然为 None。
-            context = run_plan_context(
-                command.city,
-                command.preferences,
-                itinerary_id=itinerary_id,
-                start_date=command.start_date.isoformat() if command.start_date else None,
-                days=command.days,
-                origin_city=command.origin_city,
-            )
+            with use_scene("research"):
+                context = run_plan_context(
+                    command.city,
+                    command.preferences,
+                    itinerary_id=itinerary_id,
+                    start_date=command.start_date.isoformat() if command.start_date else None,
+                    days=command.days,
+                    origin_city=command.origin_city,
+                )
         # L14：报价随研究上下文一次落库；空即写 NULL（续跑取回的 context 同样带它）
         day_persistence.save_flight_quotes(itinerary_id, context.get("flight_quotes"))
         day_persistence.save_origin_city(itinerary_id, command.origin_city)
@@ -144,6 +195,9 @@ def plan_days(user_id: int, itinerary_id: int, command: GenerateCommand, context
                 suggestions_persisted = _plan_whole_trip(user_id, itinerary_id, command, context, fingerprint)
             except Exception as stream_exc:
                 logger.warning("whole-trip stream failed for itinerary %s: %s", itinerary_id, stream_exc)
+            # 整段流式的后置终检（stream 产出的天不再零校验直落库）：对已落库天跑
+            # validate_plans，违规天重置 PENDING，交下方既有逐日兜底循环重生成。
+            _revalidate_stream_days(itinerary_id, command, fingerprint)
 
         for day_no in range(1, command.days + 1):
             action_id = f"day-{itinerary_id}-{day_no}"
@@ -192,6 +246,8 @@ def plan_days(user_id: int, itinerary_id: int, command: GenerateCommand, context
         generation_events.error(itinerary_id, "AGENT_ERROR", str(exc), True)
         day_persistence.fail_trip(itinerary_id, str(exc) or None)
         itinerary_query.evict_detail(user_id, itinerary_id)
+    finally:
+        _unregister_planning(itinerary_id)
 
 
 def _generate_day_with_trace(
@@ -371,6 +427,87 @@ def _persist_stream_day(
         generation_gate.release_day_lock(itinerary_id, day_no)
 
 
+def _revalidate_stream_days(itinerary_id: int, command: GenerateCommand, fingerprint: str) -> None:
+    """整段流式落库天的后置终检（validate_plans 的生产主路径调用点）。
+
+    逐日兜底链在 reflect 里对单天跑同一套规则（单天列表 + 整趟预算），这里对
+    stream 已落库的天按**同一口径**复检——输入是落库后的行而非流式 wire dict，
+    校验的就是用户实际会拿到的数据。违规天重置 PENDING，由 plan_days 的既有
+    逐日循环重生成（带 used_names 与 reflect 修复链），不新造机制。
+    只在 fresh_trip（开跑前全天未完成）后调用，此刻的 SUCCEEDED 天必然出自
+    本次流式；终检自身失败不推翻已交付的结果，放弃本轮复检只留警告。
+    """
+    try:
+        with session_scope() as session:
+            days = (
+                session.execute(
+                    select(ItineraryDay).where(
+                        ItineraryDay.itinerary_id == itinerary_id, ItineraryDay.generation_status == "SUCCEEDED"
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if not days:
+                return
+            rows = (
+                session.execute(
+                    select(ItineraryItem)
+                    .where(ItineraryItem.itinerary_id == itinerary_id, ItineraryItem.deleted == 0)
+                    .order_by(ItineraryItem.day_id, ItineraryItem.sort_no)
+                )
+                .scalars()
+                .all()
+            )
+            items_by_day: dict[int, list[dict[str, Any]]] = {}
+            for row in rows:
+                items_by_day.setdefault(row.day_id, []).append(_item_rule_dict(row))
+            checks = [(day, {"day_no": day.day_no, "items": items_by_day.get(day.id, [])}) for day in days]
+        budget = float(command.budget) if settings.budget_hard_constraint and command.budget else None
+        for day, raw in checks:
+            issues, _log = validate_plans(
+                [raw],
+                budget=budget,
+                persons=command.persons,
+                budget_overage_ratio=settings.budget_overage_ratio,
+            )
+            if not issues:
+                continue
+            action_id = f"day-{itinerary_id}-{day.day_no}"
+            reason = "; ".join(issues[:2])
+            logger.warning(
+                "stream day %s of %s failed final validation, reset for per-day regeneration: %s",
+                day.day_no,
+                itinerary_id,
+                reason,
+            )
+            day_persistence.reset_day_pending(day.id, action_id, fingerprint, reason)
+    except Exception as validate_exc:
+        logger.warning("stream final validation skipped for itinerary %s: %s", itinerary_id, validate_exc)
+
+
+def _item_rule_dict(row: ItineraryItem) -> dict[str, Any]:
+    """落库行 → validate_plans 规则键（snake_case）；时间/duration 与 wire 口径一致。"""
+
+    def _money(value: Any) -> float | None:
+        return float(value) if value is not None else None
+
+    def _clock(value: Any) -> str | None:
+        return value.strftime("%H:%M") if value is not None else None
+
+    return {
+        "item_type": row.item_type,
+        "poi_name": row.poi_name,
+        "start_time": _clock(row.start_time),
+        "end_time": _clock(row.end_time),
+        "duration_min": row.duration_min,
+        "open_time": row.open_time,
+        "cost": _money(row.cost),
+        "latitude": _money(row.latitude),
+        "longitude": _money(row.longitude),
+    }
+
+
 # ---------- 终态 ----------
 
 
@@ -487,6 +624,11 @@ def generate(user_id: int, body: GenerateTripRequest, idempotency_key: str | Non
             preferences=",".join(command.preferences) if command.preferences else None,
             hotel_tier=command.hotel_tier,
             stay_nights=command.stay_nights,
+            # V10：用户原话参数随壳落库——僵尸续跑 rebuild_request 读回（恢复保真 P0-3）
+            intent=command.intent,
+            requirements=command.requirements,
+            # 出发地建壳即写：submit 与 plan 开跑之间崩掉也留得住用户输入的事实
+            origin_city=command.origin_city,
             status=1,
             # 显式状态机：建壳即入 GENERATING 并记开始时间，恢复任务据此识别生成中/僵尸
             gen_state="GENERATING",
@@ -586,4 +728,7 @@ def _validate(body: GenerateTripRequest) -> GenerateCommand:
         region_hint=body.regionHint,
         requirements=body.requirements,
         intent=body.intent,
+        # L14 契约字段（originCity）此前在这里被丢弃：主路径永远查不到报价，
+        # save_origin_city 也永远写不进主表，rebuild 更无从读回（恢复保真 P0-3）。
+        origin_city=(body.originCity or "").strip() or None,
     )

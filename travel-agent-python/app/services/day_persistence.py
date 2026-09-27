@@ -133,6 +133,21 @@ def mark_failed(day_id: int, action_id: str, fingerprint: str, error: str | None
         day.generation_error = (error or FALLBACK_DAY_ERROR)[:MAX_ERROR_LENGTH]
 
 
+def reset_day_pending(day_id: int, action_id: str, fingerprint: str, reason: str | None = None) -> None:
+    """终检不过的天退回 PENDING（整段流式主路径的后置终检用）。
+
+    只动状态列，不删 items：落库的违规行程仍是当前最新事实，逐日兜底循环
+    重生成时由 `persist` 的清旧写新覆盖；若重生成再失败，用户至少还能看到
+    这一版（与 day_patch 覆盖路径的中间态口径一致）。同一动作指纹内重置，
+    过幂等门。
+    """
+    with session_scope() as session:
+        day = _require_day_by_id(session, day_id)
+        generation_gate.verify_action(day, action_id, fingerprint)
+        day.generation_status = "PENDING"
+        day.generation_error = (reason or "").strip()[:MAX_ERROR_LENGTH] or None
+
+
 def append_existing_items(day_id: int, used_names: list[str]) -> None:
     """把某天已有的点名字就地登记进跨天去重表（按 sort_no 升序）。"""
     with session_scope() as session:

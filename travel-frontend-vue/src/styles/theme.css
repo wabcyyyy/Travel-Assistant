@@ -1,3 +1,48 @@
+/* Sinan: forest green, soft paper and natural destination photography. */
+:root {
+  --sinan-ink: #203c33;
+  --sinan-ink-soft: #46594f;
+  --sinan-muted: #657168;
+  --sinan-faint: #727970;
+  --sinan-accent: #2e5945;
+  --sinan-accent-dark: #1e4131;
+  --sinan-accent-soft: #e0e8d9;
+  --sinan-accent-wash: #eef2e9;
+  --sinan-paper: #fafbf7;
+  --sinan-surface: #ffffff;
+  --sinan-line: #d5ddcf;
+  --sinan-line-soft: #e6eade;
+  --sinan-warm: #f3f0e6;
+  --sinan-on-image: #ffffff;
+  --sinan-photo-shade: #142d24;
+  --sinan-danger: #a53d32;
+  --sinan-shadow: 0 20px 48px -24px rgba(33, 62, 45, .2);
+  --sinan-shadow-soft: 0 8px 24px -18px rgba(33, 62, 45, .15);
+  --sinan-composer-shadow: 0 24px 60px -30px rgba(33, 62, 45, .25);
+  --sinan-radius: 20px;
+  --sinan-radius-sm: 12px;
+  --sinan-ease: cubic-bezier(.23, 1, .32, 1);
+  --sinan-z-nav: var(--lp-z-bar);
+  --sinan-z-modal: var(--lp-z-modal);
+}
+
+.dark {
+  --sinan-ink: #e4ecdf;
+  --sinan-ink-soft: #c0cbbb;
+  --sinan-muted: #a4b19d;
+  --sinan-faint: #9ca995;
+  --sinan-accent: #42694e;
+  --sinan-accent-dark: #527d5e;
+  --sinan-accent-soft: #344a38;
+  --sinan-accent-wash: #233429;
+  --sinan-paper: #17221b;
+  --sinan-surface: #1d2b22;
+  --sinan-line: #40533e;
+  --sinan-line-soft: #2b3e2c;
+  --sinan-warm: #2f3327;
+  --sinan-danger: #edaca0;
+}
+
 /* ============================================================
    外观契约（SPEC v2.3 §7.1）：令牌驱动 + scheme / 暗色 / 密度 / 减弱动效
    - 唯一运行时写入口是 src/styles/appearance.ts（切 .dark 与 data-* 属性）；

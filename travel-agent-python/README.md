@@ -144,11 +144,15 @@ uv run pytest tests/test_cutover_contract.py -q
 # 必须配置真实 LLM_API_KEY；脚本会固定当前模型、temperature（day_prompts.GENERATION_TEMPERATURE）、
 # Prompt 版本，逐遍记录 run_id、脱敏 Trace、token、调用/重试/fallback 和失败原因
 uv run python tests/agent_eval/llm_eval.py --path stream --limit 6
-# 报告：tests/agent_eval/report/nightly/llm_report.json（真实 LLM 产物落 nightly/ 面）
+uv run python tests/agent_eval/llm_eval.py --path graph --limit 2 --out-stem llm_report_graph
+# 报告：tests/agent_eval/report/nightly/llm_report.json（stream）与 llm_report_graph.json（graph）
 # --path stream（默认）量的是产品路径：先 run_plan_context 做研究（与生成各算一个 run、
 # 各一份预算，所以报告里 research_* 为 0），再逐日消费 run_generate_trip_stream 的事件；
-# --path graph 量同步 /v1/generate 那张共用预算的遗留图。数值不可跨路径比较，
-# eval_gate.py 用 EXPECTED_GENERATION_PATH 认这条口径。
+# --path graph 量同步 /v1/generate 那张共用预算、**唯一带 validate_plans 终检**的图。
+# 两条路径数值不可跨路径比较：eval_gate.py 按 PATH_EXPECTATIONS 分列期望（深度下限各算
+# 各的），nightly 两条都跑，graph 报告用 `eval_gate.py --path graph` 查。
+# 报告另带 prompt_sha256（两套开放生成 Prompt 正文指纹）：改串不 bump 版本号时，门禁用
+# 同一函数重算源码现值比对即红——Prompt 版本治理不再只靠荣誉制。
 # 当前真实 LLM 口径见 report/nightly/themed_report.md（同题双跑）；2026-08-29 的
 # 非主题化旧 run 已标 report_status=stale-superseded 退役（git 历史可查），不要引用旧 run
 # 的 consistency_rate 与 fallback 描述。

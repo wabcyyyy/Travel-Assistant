@@ -7,12 +7,15 @@
 `generation_fingerprint` 不同就会 409「同一日期生成参数已发生变化」，用户看到的是
 "点个刷新就生成不了"。因此 `String.valueOf(...)` 的取值形状（null → "null"、
 BigDecimal → 带标度的 "2000.00"、LocalDate → ISO）都在 `_java_string` 里显式复刻。
+（Java 退役后跨实现的逐字节一致不再是约束；budget 的标度归一是唯一的形状变更，
+见 `request_fingerprint`——它修复的是"首次生成 vs 恢复重建"两侧的内部一致。）
 """
 
 from __future__ import annotations
 
 import hashlib
 import logging
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from app.common.envelope import ApiError
@@ -59,6 +62,11 @@ def request_fingerprint(request: Any) -> str:
     """生成参数指纹：同参数重试/续跑指纹一致可幂等续写，参数变了则拒绝覆写旧天。
 
     `request` 可以是 `GenerateRequest` 模型或等值 dict（恢复任务从库里重建时也是这个形状）。
+
+    budget 标度归一（恢复保真）：首次生成侧是请求 JSON 反序列化的 Decimal
+    （"2000"），恢复重建侧是 DECIMAL(12,2) 列回读的 Decimal（"2000.00"）——
+    不归一的话带预算的行程一进恢复就被幂等门 409 拒掉。按列标度 quantize
+    （ROUND_HALF_UP 对齐 MySQL 的入列舍入），两侧同过此函数，形状必然一致。
     """
 
     def field(*names: str) -> Any:
@@ -68,13 +76,16 @@ def request_fingerprint(request: Any) -> str:
                 return value
         return None
 
+    budget = field("budget")
+    if isinstance(budget, Decimal):
+        budget = budget.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     preferences = field("preferences") or []
     parts = (
         _java_string(field("city"), empty_is_null=True),
         _java_string(field("days")),
         _java_string(field("persons")),
         _java_string(field("stay_nights", "stayNights")),
-        _java_string(field("budget")),
+        _java_string(budget),
         _java_string(field("start_date", "startDate")),
         _java_string(field("end_date", "endDate")),
         _java_string(field("hotel_tier", "hotelTier"), empty_is_null=True),

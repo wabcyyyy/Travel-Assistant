@@ -63,6 +63,8 @@ export interface BackupPlanEntry {
 export interface DayPlan {
   dayId: number
   dayNo: number
+  /** 天级生成态（PENDING/RUNNING/SUCCEEDED/FAILED）：刷新/断线后按天显示「安排中」 */
+  generationStatus?: string | null
   travelDate?: string | null
   note?: string | null
   items: TripItem[]

@@ -208,6 +208,58 @@ class TestRunGenerateTripStream:
         # refs 是模型内部引用编号，不应对外透传
         assert "refs" not in item
 
+    def test_unpooled_items_get_landed_labels(self, stream_env, monkeypatch):
+        """P1-3 标签统一：未命中 ref 池的落地项也按 day 链同口径拿标签。
+
+        存在性行（服务端解析 source+票+坐标）→ partially_verified/observed；
+        完全无证据的模型自选点 → llm.open_day 的生成/估算标签——不再裸落
+        schema 默认值，业务主路径（业务 /generate 的整段流式）徽章可达。
+        """
+
+        def _ground(item, city):
+            # 只接地"有证据的名字"；其余项走"查无证据"路径（无 source 无坐标）
+            if "古埃尔公园" in str(item.get("poi_name") or ""):
+                item["latitude"], item["longitude"] = 41.41449, 2.15269
+                item["source"] = "nominatim"
+                issue_evidence({**item, "name": item["poi_name"], "city": city})
+
+        monkeypatch.setattr(landing, "local_ground", _ground)
+        plans = [
+            {
+                "day_no": 1,
+                "theme": "t",
+                "items": [
+                    {"item_type": "attraction", "poi_name": "古埃尔公园", "start_time": "09:00", "end_time": "11:00"},
+                ],
+            },
+            {
+                "day_no": 2,
+                "theme": "t2",
+                "items": [
+                    {
+                        "item_type": "attraction",
+                        "poi_name": "查无此点咖啡馆",
+                        "start_time": "11:00",
+                        "end_time": "12:00",
+                    },
+                ],
+            },
+        ]
+        stream_env(plans)
+        events = list(run_generate_trip_stream(_req(2)))
+        items = {}
+        for ev in events:
+            if ev["type"] == "day":
+                items.update({it["poiName"]: it for it in ev["plan"]["items"]})
+        grounded = items["古埃尔公园"]
+        assert grounded["source"] == "nominatim"
+        assert grounded["verificationStatus"] == "partially_verified"
+        assert grounded["valueKind"] == "observed"
+        unlabeled = items["查无此点咖啡馆"]
+        assert unlabeled["source"] == "llm.open_day"
+        assert unlabeled["verificationStatus"] == "unverified"
+        assert unlabeled["valueKind"] == "estimated"
+
     def test_one_shot_failure_falls_back_to_per_day_without_losing_suggestions(self, stream_env, monkeypatch):
         """截断兜底（PR-4 定案）：整段失败 → 缺口天逐日兜底，天齐、建议不丢。"""
         stream_env(None)

@@ -84,6 +84,14 @@
           </span>
         </div>
         <div class="option-note">房价为所选入住日期的估算参考，实际以酒店实时库存和价格方案为准。</div>
+        <!-- 核实出口（审查 P1-5）：searchLink 此前全前端零消费，"估价 + 出发前核实"
+             叙事在 UI 上不存在。深链过共享白名单（与后端 map_link 同源域名），
+             非白名单一律不渲染。 -->
+        <div v-if="optionLink(option)" class="option-verify">
+          <a :href="optionLink(option)" target="_blank" rel="noopener noreferrer">
+            在地图核实这家酒店<ExternalLinkIcon :size="13" />
+          </a>
+        </div>
 
         <footer class="option-actions">
           <el-button
@@ -103,9 +111,11 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { ExternalLink as ExternalLinkIcon } from 'lucide-vue-next'
 
 import type { HotelOption } from '../api'
 import { useItineraryActions } from '../composables/useItineraryActions'
+import { safeMapLink } from '../shared/map-link'
 import type { ItineraryDetail } from '../types/itinerary'
 
 type Selection = { roomTypeId: string; dayNos: number[] }
@@ -128,6 +138,11 @@ const emit = defineEmits<{
 const actions = useItineraryActions()
 
 const applying = ref(false)
+
+/** 候选卡核实深链：过共享白名单（非白名单/空一律不渲染，见 shared/map-link.ts）。 */
+function optionLink(option: HotelOption): string {
+  return safeMapLink(option.searchLink)
+}
 
 function selectedRoom(option: HotelOption) {
   const selection = props.selections[option.id]
@@ -278,6 +293,23 @@ async function onChoose(option: HotelOption) {
   margin-top: 6px;
   color: var(--el-color-warning-dark-2);
   font-size: 12px;
+}
+
+.option-verify {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.option-verify a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--lp-accent);
+  text-decoration: none;
+}
+
+.option-verify a:hover {
+  text-decoration: underline;
 }
 
 .option-actions {

@@ -319,7 +319,8 @@ def parse_llm_json_with_repair(
     （temperature=0、只求语法正确；可带与正调相同的 response_format 让修复产物
     同样符合 schema），仍失败抛 LlmJsonError——由调用方走第三层兜底（open_plans
     的缺口天逐日兜底 / 待研究草案）。修复调用走标准 llm_client 通道，成本随
-    usage 记账，PR-9 成本棘轮可见；修复发生处记 llm_json_repair 事件。
+    usage 记账（llm_calls 可查）；修复率指标见 llm_json_repair_total（批次 2.4
+    落地后）。修复发生处记 llm_json_repair 事件。
     """
     try:
         return parse_llm_json(raw)

@@ -80,3 +80,35 @@ def test_cleanup(tmp_path):
         store._conn.commit()
     assert store.cleanup(90 * 86400) == 1
     assert store.summary(0, int(time.time()) + 60)["calls"] == 0
+
+
+def test_run_id_recorded_and_legacy_column_added(tmp_path):
+    """P1-7：run_id 随明细落库；存量库（无 run_id 列）init 时自动补列。"""
+    import sqlite3
+
+    store = _store(tmp_path)
+    store.record("generate", "qwen-plus", 100, 20, 500, True, run_id="run-abc")
+    store.record("research", "qwen-plus", 10, 2, 100, True)
+    report = store.calls(0, int(time.time()) + 60)
+    by_run = {r["run_id"] for r in report["records"]}
+    assert by_run == {"run-abc", None}, "run_id 如实落库；无 trace 上下文为 NULL"
+    store.close()
+
+    # 模拟存量库：手工建一个没有 run_id 列的 llm_calls
+    legacy = tmp_path / "legacy.db"
+    conn = sqlite3.connect(str(legacy))
+    conn.execute(
+        "CREATE TABLE llm_calls (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL,"
+        " scene TEXT NOT NULL DEFAULT 'other', model TEXT NOT NULL DEFAULT '',"
+        " prompt_tokens INTEGER NOT NULL DEFAULT 0, completion_tokens INTEGER NOT NULL DEFAULT 0,"
+        " duration_ms INTEGER NOT NULL DEFAULT 0, success INTEGER NOT NULL DEFAULT 1, error TEXT)"
+    )
+    conn.commit()
+    conn.close()
+
+    reopened = UsageStore(legacy)
+    reopened.record("generate", "qwen-plus", 1, 1, 10, True, run_id="run-legacy")
+    assert reopened.calls(0, int(time.time()) + 60)["records"][0]["run_id"] == "run-legacy", (
+        "PRAGMA 探列缺 run_id → ALTER TABLE 补列，旧库升级不丢写"
+    )
+    reopened.close()

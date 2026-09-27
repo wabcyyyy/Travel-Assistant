@@ -76,6 +76,7 @@
               <span v-if="isUnverifiedSuggestion(entry)" class="poi-unverified">{{ SUGGESTION_UNVERIFIED_LABEL }}</span>
             </p>
             <p v-if="entry.note" class="poi-note" :title="entry.note">{{ entry.note }}</p>
+            <p v-if="entry.costNote" class="poi-cost">{{ entry.costNote }}</p>
           </div>
           <button
             v-if="entry.kind === 'planned'"
@@ -167,10 +168,19 @@ interface PanelEntry {
   name: string
   note: string
   category: Category
+  /** 估价行（审查 P1-4：备选池 estimatedCost 契约字段此前双端零消费）。
+   *  带估算字样——备选池的价格是 LLM 估价而非观测价，不能写成确定价格。 */
+  costNote?: string
   dayNo?: number
   item?: TripItem
   suggestion?: Suggestion
   poi?: LocalPoi
+}
+
+/** 备选池估价行：仅有值且为正时渲染；标签统一写"估算"。 */
+function estimatedCostNote(cost: number | null | undefined): string | undefined {
+  if (cost == null || !Number.isFinite(cost) || cost <= 0) return undefined
+  return `参考 ￥${Math.round(cost)} · 估算`
 }
 
 const CATEGORY_CHIPS: { value: Category | 'all'; label: string }[] = [
@@ -232,6 +242,7 @@ const unplannedEntries = computed<PanelEntry[]>(() =>
       name: s.name,
       note: s.intro || s.address || '',
       category: normalizeCategory(s.category),
+      costNote: estimatedCostNote(s.estimatedCost),
       suggestion: s,
     })),
 )
@@ -592,6 +603,13 @@ async function confirmAdd(dayId: number): Promise<void> {
   font-size: 12px;
   line-height: 1.35;
   color: var(--lp-text-muted);
+}
+
+.poi-cost {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--lp-text-faint);
 }
 
 .poi-day {

@@ -28,7 +28,8 @@ def upgrade() -> None:
         if filename != applied_file:
             print(f"[alembic] applying {filename}")
             applied_file = filename
-        op.execute(statement)
+        # exec_driver_sql：V9 列注释含半角冒号（「L14:观测事实」），text() 会当绑定参数
+        op.get_bind().exec_driver_sql(statement)
 
 
 def downgrade() -> None:

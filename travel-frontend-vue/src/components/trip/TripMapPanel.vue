@@ -36,6 +36,9 @@
           · {{ missing.length }} 项无坐标未上图<template v-if="missingNames">（{{ missingNames }}）</template>
         </span>
         <span v-else-if="!visibleItems.length" class="map-note-warn">· 暂无带坐标的点位</span>
+        <span v-if="pendingEvidence.length" class="map-note-warn" :title="pendingEvidenceTitle">
+          · {{ pendingEvidence.length }} 项为估算/待核实
+        </span>
       </p>
     </div>
   </div>
@@ -48,6 +51,7 @@ import { LngLatBounds, Map as MapLibreMap, Marker, type GeoJSONSource } from 'ma
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 import { basemapUrlForScheme } from '../../constants/map'
+import { evidenceLabel, evidenceTone } from '../../shared/evidence'
 import { addAttribution, addScaleBar, watchBasemapScheme } from '../../utils/mapBasemap'
 import { oklchToHex } from '../../utils/oklch'
 import type { DayPlan, TripItem } from '../../types/itinerary'
@@ -135,6 +139,21 @@ const pinMeta = computed(() => {
 
 const visibleItems = computed(() =>
   allItems.value.filter((item) => hasCoord(item) && dayVisible(sourceDayNo(item))),
+)
+
+/** 估算/待核实项（审查 P1-4：地图面板此前零标注——看地图的人以为每个点都已核实）。
+ *  判定复用共享 evidenceLabel（与日卡徽章同一映射），不另立一套口径。 */
+const pendingEvidence = computed(() =>
+  allItems.value.filter((item) => {
+    const tone = evidenceTone(item)
+    return tone === 'warning'
+  }),
+)
+const pendingEvidenceTitle = computed(() =>
+  pendingEvidence.value
+    .slice(0, 3)
+    .map((item) => `${item.poiName}：${evidenceLabel(item)}`)
+    .join('；') + (pendingEvidence.value.length > 3 ? '…' : ''),
 )
 
 function sourceDayNo(item: TripItem): number {

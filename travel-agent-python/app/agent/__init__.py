@@ -21,6 +21,7 @@ from app.agent.editing.clarify import run_clarify
 from app.agent.editing.local_replan import run_local_replan
 from app.agent.editing.nl_edit import run_edit_ops
 from app.agent.generation.content.butler import run_butler_note, run_poi_intros
+from app.agent.generation.content.reflect import validate_plans
 from app.agent.generation.orchestration.day_stream import run_generate_day
 from app.agent.generation.orchestration.plan_context import run_plan_context
 from app.agent.generation.orchestration.stream_branch import run_generate_trip_stream
@@ -28,6 +29,7 @@ from app.agent.generation.orchestration.trip_graph import DayResume, resume_day
 from app.agent.generation.orchestration.workflow import run_adjust, run_generate
 from app.agent.generation.output.schedule_optimizer import optimize_daily_plan
 from app.agent.grounding.existence import resolve_poi
+from app.agent.grounding.grounding_labels import is_authoritative_source
 from app.agent.grounding.suggestion_grounding import verify_suggestion_rows
 from app.agent.runtime.observability import metrics, observe_run, scene, use_scene
 from app.agent.runtime.usage_store import usage_store
@@ -45,6 +47,7 @@ __all__ = [
     "find_nearby_pois",
     "get_poi_detail",
     "get_weather_forecast",
+    "is_authoritative_source",
     "live_quote_quota_exhausted",
     "metrics",
     "observe_run",
@@ -72,6 +75,7 @@ __all__ = [
     "shape_quote_for_wire",
     "usage_store",
     "use_scene",
+    "validate_plans",
     "verify_suggestion_rows",
     "workbench_search",
 ]

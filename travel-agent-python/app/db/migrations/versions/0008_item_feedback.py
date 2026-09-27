@@ -28,7 +28,10 @@ def upgrade() -> None:
         if filename != applied_file:
             print(f"[alembic] applying {filename}")
             applied_file = filename
-        op.execute(statement)
+        # exec_driver_sql 而非 op.execute：后者走 text()，会把 SQL 注释里的半角冒号
+        # （V8 表注释「(C3.5):一人一条可改」）当绑定参数，启动即炸。驱动层逐字执行
+        # 才是对「不复制、不改写 SQL」的忠实落地。
+        op.get_bind().exec_driver_sql(statement)
 
 
 def downgrade() -> None:

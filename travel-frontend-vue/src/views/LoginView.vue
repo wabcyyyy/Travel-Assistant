@@ -4,7 +4,7 @@
       <div class="brand-panel">
         <div class="brand">
           <span class="mark" aria-hidden="true"></span>
-          <span class="brand-name">旅行助手</span>
+          <span class="brand-name">司南 Sinan</span>
         </div>
         <p class="brand-lede">把下一次旅行，<br />交给一次生成。</p>
         <p class="brand-foot">AI 规划每日行程 · 预算 · 地图路线</p>

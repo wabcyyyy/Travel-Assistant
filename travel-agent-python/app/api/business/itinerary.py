@@ -236,8 +236,10 @@ def post_live_quotes(
 
     与生成链路解耦：**不落库**（见 `itinerary_query.live_flight_quotes` 的边界说明）。
     失败语义：查不了 → 400；配额尽 → 429；问过但没有 → 200 + 空列表 + reason。
+    按用户分钟窗（审查 P1-8）：本端点直接消耗 SerpApi 的共享月池，先过闸再动手。
     """
     payload = body or LiveQuotesBody()
+    quota_service.enforce_live_quote_budget(user.id)
     return ok(
         itinerary_query.live_flight_quotes(
             user.id,
@@ -259,8 +261,10 @@ def post_live_hotel_quotes(
 
     与航班侧同构：**不落库**；失败语义：查不了 → 400；配额尽 → 429（与
     google_flights 共用同一只月配额计数器）；问过但没有 → 200 + 空列表 + reason。
+    按用户分钟窗（审查 P1-8）：与航班侧同一只共享月池，同一道闸。
     """
     payload = body or LiveQuotesBody()
+    quota_service.enforce_live_quote_budget(user.id)
     return ok(
         itinerary_query.live_hotel_quotes(
             user.id,

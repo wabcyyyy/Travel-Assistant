@@ -1,4 +1,4 @@
-# Travel Assistant agent start/restart script
+# Sinan agent start/restart script
 # Usage:
 #   .\start-agent.ps1          # stop if running, then start
 #   .\start-agent.ps1 -Keep    # skip if already running

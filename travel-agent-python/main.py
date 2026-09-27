@@ -29,7 +29,7 @@ from app.agent.runtime.usage_store import usage_store
 from app.api import agent, mcp
 from app.api.business import business_routers
 from app.api.security_headers import SecurityHeadersMiddleware
-from app.common import cron
+from app.common import cron, retention, timezone_check
 from app.common.config import settings
 from app.common.envelope import install_exception_handlers
 from app.db import migrate as db_migrate
@@ -54,6 +54,20 @@ def _cleanup_checkpoints() -> None:
         logger.info("[checkpoint] cleaned %d threads older than 7d", removed)
 
 
+def _cleanup_traces() -> None:
+    """轨迹文件按日归档 + 删过期归档（审查 P2-2：此前纯追加无上限）。"""
+    removed = retention.rotate_trace_store(settings.trace_storage_path)
+    if removed:
+        logger.info("[trace] removed %d archives older than %dd", removed, retention.TRACE_ARCHIVE_KEEP_DAYS)
+
+
+def _cleanup_exports() -> None:
+    """导出文件保留 30 天（审查 P2-2：应用侧此前永不删除，还被 backup 连带放大）。"""
+    removed = retention.cleanup_exports(settings.export_dir)
+    if removed:
+        logger.info("[export] removed %d files older than %dd", removed, retention.EXPORT_KEEP_DAYS)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动期配置校验（G-1.5）：安全 fail-fast（非回环绑定必须配内部令牌、
@@ -64,6 +78,14 @@ async def lifespan(app: FastAPI):
     # 两个任务都经 app.common.cron——pytest 环境自动 no-op，不再各写各的线程。
     cron.register("usage-cleanup", 86400, _cleanup_usage)
     cron.register("checkpoint-cleanup", 86400, _cleanup_checkpoints)
+    # 增长面保留策略（审查 P2-2）：轨迹文件归档、导出文件 30 天
+    cron.register("trace-cleanup", 86400, _cleanup_traces, startup_delay_seconds=8)
+    cron.register("export-cleanup", 86400, _cleanup_exports, startup_delay_seconds=8)
+    # 时区对照（审查 P1-9）：僵尸恢复的 5 分钟窗口要求应用与 MySQL 同时区，
+    # 此前只有注释没有防线。这里登记成启动后几秒跑一次的对照检查——走 cron
+    # 而不是直接阻塞 lifespan，是不让"启动应用"依赖数据库可用（同上文 STARTUP
+    # DELAY 的既有取舍），且 pytest 里自动 no-op 不影响离线套件。
+    cron.register("timezone-check", 86400, timezone_check.verify, startup_delay_seconds=6)
     generation_recovery.register_loop()
     cron.start_all()
     try:

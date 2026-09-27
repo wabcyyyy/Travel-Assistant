@@ -149,19 +149,20 @@ class Settings(BaseSettings):
     # 旧默认 8 次会在研究阶段就耗尽，导致「开放研究重试耗尽」草案。
     max_llm_calls: int = 32
     max_token_budget: int = 80000
-    # 按用户的 LLM 花费闸门（R1-9）：上面两份预算是"按次"的，单用户循环调用
-    # 拿到的就是 N 份按次预算 → 无上限。这两项才是按 principal 的顶。
+    # 按用户的闸门（R1-9）：上面两份预算是"按次"的，单用户循环调用拿到的就是
+    # N 份按次额度 → 无上限；这两项才是按 principal 的顶。
     user_llm_runs_per_minute: int = 6
     user_daily_llm_runs: int = 100
+    # P1-8 同族两项：实时价两端点直烧 SerpApi 共享月池（按人闸门）；agent 直调面
+    # 按 token 的进程内分钟窗（token 泄露止损，内网信任面 + 单进程前提）
+    user_live_quotes_per_minute: int = 6
+    agent_rate_limit_per_minute: int = 30
     # 单次 run 内检索/证据类调用上限（研究补查、联网搜索、外部点位 API）
     max_retrievals: int = 48
-    # 研究阶段自己的额度（PLAN-A1 后续）：`max_retrievals` 是全 run 共用的，
-    # 三域研究的补池循环在它面前没有"给生成留一口"的概念——实测 1 天北京
-    # case 在研究阶段就烧满 max_llm_calls（32/32）与检索道（65/64），生成
-    # 一次 LLM 都没轮到，产出 0 项草案。抬总额是条回头路：8→32 已经走过一次（见上面
-    # max_llm_calls 的注释），而且再抬也会先撞 agent_deadline_seconds=120 的实测墙
-    # （这次 32 次调用用了 67s）。所以给研究划一道子预算：用完就带着已有证据如实
-    # 降级，不继续挤占生成与落地。0 = 不限（退化成只有全局限额）。
+    # 研究阶段自己的额度（PLAN-A1 后续）：`max_retrievals` 是全 run 共用的，三域研究
+    # 的补池循环没有"给生成留一口"的概念——实测 1 天 case 研究就烧满 max_llm_calls 与
+    # 检索道，生成一次 LLM 都没轮到（产出 0 项草案）。再抬总额会先撞 deadline 实测墙，
+    # 所以给研究划子预算：用完带着已有证据如实降级。0 = 不限（退化成只有全局限额）。
     research_call_limit: int = 12
     max_replans: int = 3
     no_progress_limit: int = 2
@@ -201,9 +202,8 @@ class Settings(BaseSettings):
     # ---- 分享与调度 ----
     # 分享匿名访问限流（SPEC v2.3 §6.6 / E14）：按 IP 滑动窗口，每分钟上限
     share_rate_limit_per_minute: int = 60
-    # 匿名图片端点（/api/image-proxy、/api/poi-photo）按 IP 每分钟上限（R1-4）：
-    # 这两个端点在 PUBLIC_PATHS 里，未命中时各自要打 1~6 次外网，没有闸门就是
-    # 一个脚本能耗尽出网配额与 worker。归因地址口径见 app/common/client_ip.py。
+    # 匿名图片端点（/api/image-proxy、/api/poi-photo）按 IP 每分钟上限（R1-4）：落在
+    # PUBLIC_PATHS 里且未命中时各要打 1~6 次外网，无闸即能耗尽出网配额。归因见 client_ip.py。
     public_rate_limit_per_minute: int = 60
     schedule_optimizer_enabled: bool = True
     # MCP 出口（G-3.6）：默认关闭，管理员在后台开启后 /mcp 才可用
@@ -369,6 +369,8 @@ _NUMERIC_RULES: tuple[tuple[str, str, float, float], ...] = (
     ("max_llm_calls", "必须 >= 1", 0, float("inf")),
     ("user_llm_runs_per_minute", "必须 >= 1", 0, float("inf")),
     ("user_daily_llm_runs", "必须 >= 1", 0, float("inf")),
+    ("user_live_quotes_per_minute", "必须 >= 1", 0, float("inf")),
+    ("agent_rate_limit_per_minute", "必须 >= 1", 0, float("inf")),
     ("max_retrievals", "必须 >= 1", 0, float("inf")),
     ("research_call_limit", "必须 >= 0", -1, float("inf")),
     ("research_workers", "必须 >= 1", 0, float("inf")),

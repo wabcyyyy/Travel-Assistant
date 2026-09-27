@@ -20,6 +20,13 @@ logger = logging.getLogger(__name__)
 
 # 联网搜索的补池通道（G-3.2）：成功缓存 30min（同一 query 短期会反复出现），
 # 负结果 2min（搜不到要能较快重试）。
+#
+# retry_attempts 保持 0（审查 P2-8 评估结论：**不改**）：本车道底层是
+# `llm_client.complete(enable_search=True)`，而 LLM 通道自身已对 408/409/425/
+# 429/5xx 重试一次（llm_client._LLM_MAX_ATTEMPTS=2）。在这之上再开一层重试 =
+# 单次逻辑检索最多 4 次**付费**（token + 联网搜索插件）调用；web 补池是证据增强
+# 通道（池满与否只影响候选丰富度，不决定用户可见的 draft_only），用 2× 成本换
+# 边际证据不值。失败已有痕迹：负缓存 120s 后可自然重探，且预算耗尽与失败都记事件。
 _search_client: ExternalClient = ExternalClient(
     name="web_search",
     ttl_seconds=1800,

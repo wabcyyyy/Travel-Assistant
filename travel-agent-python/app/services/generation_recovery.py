@@ -34,7 +34,12 @@ STARTUP_DELAY_SECONDS = 5
 
 
 def rebuild_request(main: ItineraryMain) -> itinerary_generation.GenerateCommand:
-    """从行程主表反推生成参数（与 Java `rebuildRequest` 同口径）。"""
+    """从行程主表反推生成参数（与 Java `rebuildRequest` 同口径）。
+
+    恢复保真（P0-3）：origin_city / intent / requirements 一并读回——前两者
+    直接重建命令，续跑的逐日生成与首次跑同一质量；缺了它们，续跑天会静默
+    丢出发地（不查航班）与一句话意图（意图关键词研究全空）。
+    """
     preferences = (
         []
         if not main.preferences or not main.preferences.strip()
@@ -50,6 +55,10 @@ def rebuild_request(main: ItineraryMain) -> itinerary_generation.GenerateCommand
         budget=main.budget,
         preferences=preferences,
         hotel_tier=main.hotel_tier,
+        region_hint=None,
+        requirements=main.requirements,
+        intent=main.intent,
+        origin_city=main.origin_city,
     )
 
 
@@ -91,6 +100,11 @@ def recover() -> int:
 
 def recover_one(itinerary_id: int, failed_resume: bool, active_after: datetime | None = None) -> bool:
     """返回是否真的动了状态。"""
+    # 存活探测（P1-1）：本进程里这次生成还在跑/排队（研究段最坏静默 ≈19 分钟 ≫
+    # 5 分钟阈值）时，updated_at 老 ≠ 僵尸——直接不碰，消灭"对活着的生成二次放行"
+    # 的双跑窗口。单进程前提同 event_hub/幂等；多实例需升级 DB 租约。
+    if itinerary_generation.is_planning_active(itinerary_id):
+        return False
     cutoff = active_after or (datetime.now() - timedelta(seconds=IDLE_SECONDS))
     with session_scope() as session:
         main = session.get(ItineraryMain, itinerary_id)
