@@ -61,17 +61,26 @@ export function useHomePlanning() {
       if (event.type === 'day_done') setMessage(`第 ${String(data.dayNo || '')} 天已安排好`)
       if (event.type === 'butler_note') { setProgress(3); setMessage('正在补充出行提醒') }
     }
+    // SSE 与轮询并行：SSE 管进度文案，轮询 2s 对账管预览数据——串行的话，
+    // 流没关之前 day_done 已落库但 setDraft 不更新，预览天卡会一直停在「安排中」。
+    // 轮询超时须覆盖整个生成时长（默认 120s 是串行时代的余量），超限转 pending 兜底。
+    const sse = streamItineraryEvents(created.id, controller.signal, { onEvent, onError: () => {} }).catch(() => {})
     try {
-      await streamItineraryEvents(created.id, controller.signal, { onEvent, onError: () => {} })
-    } catch { /* Recover using the persisted itinerary below. */ }
-    if (controller.signal.aborted) return
-    const result = await waitForItinerary(created.id, {
-      signal: controller.signal,
-      onUpdate: (detail) => { if (!controller.signal.aborted) setDraft(detail) },
-    })
-    if (controller.signal.aborted) return
-    clearGenerationId()
-    setDraft(result); setProgress(4); setStatus('ready'); setMessage('你的行程已准备好')
+      const result = await waitForItinerary(created.id, {
+        signal: controller.signal,
+        timeoutMs: 30 * 60 * 1000,
+        onUpdate: (detail) => { if (!controller.signal.aborted) setDraft(detail) },
+      })
+      if (controller.signal.aborted) return
+      clearGenerationId()
+      setDraft(result); setProgress(4); setStatus('ready'); setMessage('你的行程已准备好')
+    } catch (error) {
+      if (controller.signal.aborted) return
+      clearGenerationId()
+      setStatus('pending')
+      setMessage(error instanceof Error ? error.message : '进度暂时不可用，已保留当前行程。')
+    }
+    await sse
   }, [])
 
   async function submit(input: GenerateInput) {

@@ -19,6 +19,7 @@ import { loginRedirect, navigate, routeId } from '../router'
 import { Icon } from '../shared/Icon'
 import { EmptyBlock, ErrorBlock, LoadingBlock, QualityNotice } from '../shared/States'
 import { DraftOnlyBanner, ItemEvidence, TripMetrics } from './TripBadges'
+import { ChatPanel } from './ChatPanel'
 
 function displayDate(value: string | null | undefined) {
   if (!value) return ''
@@ -71,6 +72,12 @@ export function TripDetailPage({ path }: { path: string }) {
   }
 
   useEffect(() => { load() }, [id])
+
+  /** 对话应用/冲突后的静默对账：不闪 loading，直接换上服务端最新详情。 */
+  const refreshDetail = () => {
+    if (offline || id === '0' || !localStorage.getItem('sinan-username')) return
+    getItineraryDetail(id).then(setTrip).catch(() => {})
+  }
 
   useEffect(() => {
     if (!trip || offline || id === '0' || !localStorage.getItem('sinan-username')) return
@@ -183,7 +190,8 @@ export function TripDetailPage({ path }: { path: string }) {
       </div>
       <figure className="detail-cover"><img src={destinations.find((item) => item.city === trip.city)?.image || destinations[0].image} alt="旅行目的地参考封面" width="720" height="480" /><figcaption><Icon name="pin" size={14} />{trip.city} · 城市印象</figcaption></figure>
     </section>
-    <div className="detail-workspace">
+    <div className={offline ? 'detail-workspace' : 'detail-workspace has-chat'}>
+      {!offline && <ChatPanel itineraryId={trip.id} dayList={trip.dayList} onApplied={setTrip} onReconcile={refreshDetail} />}
       <aside className="day-sidebar"><div className="sidebar-head"><span className="section-eyebrow">Daily plan</span><strong>{trip.days} 天行程</strong></div>{trip.dayList.map((item) => <button key={item.dayNo} className={item.dayNo === dayNo ? 'day-tab active' : 'day-tab'} type="button" onClick={() => setDayNo(item.dayNo)}><span>DAY {String(item.dayNo).padStart(2, '0')}</span><strong>{item.theme || `第 ${item.dayNo} 天`}</strong><small>{item.items.length} 个安排</small></button>)}</aside>
       <section className="day-content">{day ? <>
         <div className="day-content-head"><div><span className="section-eyebrow">DAY {String(day.dayNo).padStart(2, '0')}</span>{editingTheme ? <div className="day-theme-editor"><input value={themeDraft} maxLength={80} onChange={(event) => setThemeDraft(event.target.value)} aria-label="当天标题" /><div><button className="button button-primary" type="button" disabled={working} onClick={saveTheme}>保存</button><button className="button button-secondary" type="button" disabled={working} onClick={() => { setThemeDraft(day.theme || ''); setEditingTheme(false) }}>取消</button></div></div> : <><h2>{day.theme || `第 ${day.dayNo} 天`}</h2><p>{day.note}</p></>}</div><div className="day-head-actions">{!editingTheme && <button className="button button-secondary" type="button" onClick={() => offline ? setNotice('示例行程不会写入账号') : setEditingTheme(true)}><Icon name="edit" size={16} />编辑标题</button>}<button className="button button-secondary" type="button" disabled={working || editingTheme} onClick={regenerateDay}><Icon name="refresh" size={16} />{working ? '正在整理…' : '重新生成这一天'}</button></div></div>

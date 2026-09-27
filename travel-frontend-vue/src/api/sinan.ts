@@ -1,5 +1,6 @@
 import type * as Contracts from '../types/generated/contracts'
-import type { ItineraryDetail, ItinerarySummary, TripItem } from '../types/itinerary'
+import type { ChatDraftPayload, ItineraryChatMessage } from '../types/chat'
+import type { HotelOption, ItineraryDetail, ItinerarySummary, TripItem } from '../types/itinerary'
 
 export class ReactApiError extends Error {
   status?: number
@@ -329,4 +330,122 @@ export async function streamItineraryEvents(id: number | string, signal: AbortSi
 
 export function toItemLabel(item: Pick<TripItem, 'poiName' | 'itemType'>) {
   return item.poiName || item.itemType || '未命名地点'
+}
+
+// ===== 行程对话（chat-edit，CH3/L2）=====
+
+export type ChatHistory = Array<{ role: 'user' | 'ai'; content: string }>
+
+export interface ChatReply extends ChatDraftPayload {
+  reply?: string
+}
+
+export function getItineraryChatHistory(id: number | string) {
+  return apiRequest<ItineraryChatMessage[]>(`/itinerary/${id}/chat-history`)
+}
+
+export function clearItineraryChatHistory(id: number | string) {
+  return apiRequest<void>(`/itinerary/${id}/chat-history`, { method: 'DELETE' })
+}
+
+/** 阻塞版对话回合：流式失败时的回退通道。 */
+export function chatEditItinerary(id: number | string, message: string, history: ChatHistory, signal?: AbortSignal) {
+  return apiRequest<ChatReply>(`/itinerary/${id}/chat-edit`, {
+    method: 'POST',
+    signal,
+    body: JSON.stringify({ message, history }),
+  })
+}
+
+/**
+ * 流式对话回合：POST SSE，帧形 {type, itineraryId, seq, ts, data}。
+ * chat_token → onToken(delta)；chat_draft → onDraft(草稿九键，plans 为 snake_case)；
+ * error 帧 → throw Error(message)；chat_done 忽略。
+ */
+export async function chatEditStream(
+  id: number | string,
+  message: string,
+  history: ChatHistory,
+  handlers: { onToken: (delta: string) => void; onDraft: (payload: ChatDraftPayload) => void },
+  signal?: AbortSignal,
+) {
+  const response = await fetch(`/api/itinerary/${id}/chat-edit/stream`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { Accept: 'text/event-stream', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, history }),
+    signal,
+  })
+  if (!response.ok || !response.body) {
+    throw new ReactApiError(`流式连接不可用（${response.status}）`, response.status)
+  }
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let boundary = buffer.indexOf('\n\n')
+      while (boundary >= 0) {
+        const frame = buffer.slice(0, boundary)
+        buffer = buffer.slice(boundary + 2)
+        const data = frame
+          .split('\n')
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trim())
+          .join('\n')
+        if (data) {
+          let parsed: { type?: string; data?: Record<string, unknown>; message?: string } | null = null
+          try {
+            parsed = JSON.parse(data)
+          } catch {
+            // 脏帧不抛：一帧坏不该断掉整条流
+          }
+          if (!parsed) continue
+          if (parsed.type === 'chat_token') handlers.onToken(String(parsed.data?.delta ?? ''))
+          else if (parsed.type === 'chat_draft') handlers.onDraft((parsed.data ?? {}) as ChatDraftPayload)
+          else if (parsed.type === 'error') {
+            throw new Error(String(parsed.message || parsed.data?.message || '行程助手暂时不可用'))
+          }
+          // chat_done / heartbeat：无需处理
+        }
+        boundary = buffer.indexOf('\n\n')
+      }
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return
+    throw error instanceof Error ? error : new Error('实时连接中断')
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+/** 应用对话草稿：服务端有意忽略 plans，只认 actionMessageId 对应的持久化草稿。 */
+export function applyPlans(id: number | string, actionMessageId: number | null, baseRevision: string | null) {
+  return apiRequest<ItineraryDetail>(`/itinerary/${id}/apply-plans`, {
+    method: 'POST',
+    body: JSON.stringify({ plans: [], actionMessageId, baseRevision }),
+  })
+}
+
+export interface HotelApplyInput {
+  hotelName: string
+  tier: string
+  roomType: string
+  dayNos: number[]
+}
+
+/** 应用酒店候选：HITL 确认（replace_hotel）经此端点 resume。 */
+export function applyHotelOption(
+  id: number | string,
+  input: HotelApplyInput,
+  actionMessageId: number | null,
+  baseRevision: string | null,
+) {
+  return apiRequest<ItineraryDetail>(`/itinerary/${id}/hotel-option`, {
+    method: 'POST',
+    body: JSON.stringify({ ...input, actionMessageId, baseRevision }),
+  })
 }
