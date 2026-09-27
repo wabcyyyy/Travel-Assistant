@@ -213,6 +213,22 @@ export function setFavorite(id: number, favorite: boolean) {
   })
 }
 
+// 条目对/错反馈（C3.5）：flag 关闭时三端点 404（隐藏能力），GET 兼作前端能力探针
+export function listMyItemFeedback(id: number | string) {
+  return apiRequest<Contracts.FeedbackListVO>(`/itinerary/${id}/feedback`)
+}
+
+export function submitItemFeedback(id: number | string, body: Contracts.FeedbackCreate) {
+  return apiRequest<Contracts.FeedbackVO>(`/itinerary/${id}/feedback`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export function revokeItemFeedback(id: number | string, itemId: number) {
+  return apiRequest<null>(`/itinerary/${id}/feedback/${itemId}`, { method: 'DELETE' })
+}
+
 export function createShare(id: number, expireDays: 7 | 30 | null = 7) {
   return apiRequest<{ shareToken: string; shareUrl: string; shareExpiresAt: string | null }>(`/itinerary/${id}/share`, {
     method: 'POST',

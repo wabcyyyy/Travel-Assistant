@@ -7,11 +7,15 @@ import {
   getItineraryWeather,
   isOfflineError,
   isUnauthorized,
+  listMyItemFeedback,
   optimizeDay,
+  revokeItemFeedback,
   setFavorite,
+  submitItemFeedback,
   updateDay,
   waitForExport,
 } from '../../api/sinan'
+import { ReactApiError } from '../../api/sinan'
 import type * as Contracts from '../../types/generated/contracts'
 import type { ItineraryDetail } from '../../types/itinerary'
 import { destinations, sampleItinerary } from '../data'
@@ -20,6 +24,8 @@ import { Icon } from '../shared/Icon'
 import { EmptyBlock, ErrorBlock, LoadingBlock, QualityNotice } from '../shared/States'
 import { DraftOnlyBanner, ItemEvidence, TripMetrics } from './TripBadges'
 import { ChatPanel } from './ChatPanel'
+import { feedbackIndex } from './itemFeedback'
+import { ItemFeedbackControl } from './ItemFeedbackControl'
 import { TripMapPanel } from './TripMapPanel'
 import type { MapPin } from './mapPins'
 
@@ -45,6 +51,9 @@ export function TripDetailPage({ path }: { path: string }) {
   const [editingTheme, setEditingTheme] = useState(false)
   const [themeDraft, setThemeDraft] = useState('')
   const [activePin, setActivePin] = useState<string | null>(null)
+  // 条目对/错反馈（C3.5）：本人反馈索引 + 能力开关（GET 404 = addon 关，隐藏控件）
+  const [feedbacks, setFeedbacks] = useState<Map<number, Contracts.FeedbackVO>>(new Map())
+  const [feedbackOn, setFeedbackOn] = useState(false)
 
   const selectPin = (pin: MapPin) => {
     setDayNo(pin.dayNo)
@@ -57,6 +66,8 @@ export function TripDetailPage({ path }: { path: string }) {
     setAuthExpired(false)
     setOffline(false)
     setWeather(null)
+    setFeedbacks(new Map())
+    setFeedbackOn(false)
     if (id === '0' || !localStorage.getItem('sinan-username')) {
       setTrip({ ...sampleItinerary, id: Number(id) || 0 })
       setOffline(true)
@@ -91,8 +102,12 @@ export function TripDetailPage({ path }: { path: string }) {
     if (!trip || offline || id === '0' || !localStorage.getItem('sinan-username')) return
     let alive = true
     getItineraryWeather(id).then((value) => { if (alive && value.daily?.length) setWeather(value) }).catch(() => {})
+    // 能力探针兼回显：200=开（拿到本人反馈），404=flag 关或非成员（隐藏，不暴露能力存在性）
+    listMyItemFeedback(id)
+      .then((list) => { if (alive) { setFeedbacks(feedbackIndex(list.feedbacks)); setFeedbackOn(true) } })
+      .catch((err: unknown) => { if (alive && err instanceof ReactApiError && err.status === 404) setFeedbackOn(false) })
     return () => { alive = false }
-  }, [id, offline])
+  }, [id, offline, trip?.id])
 
   useEffect(() => {
     if (trip) document.title = `${trip.city} · 司南 Sinan`
@@ -151,6 +166,32 @@ export function TripDetailPage({ path }: { path: string }) {
     } catch (err) { handleWriteError(err, '收藏失败') }
   }
 
+  /** 反馈提交/撤销：父层 toast 后向控制组件 rethrow——选择器据失败保持打开供重试 */
+  const applyFeedback = async (payload: Contracts.FeedbackCreate) => {
+    if (offline || !trip) { setNotice('示例行程不会写入账号'); throw new Error('offline') }
+    try {
+      const vo = await submitItemFeedback(trip.id, payload)
+      setFeedbacks((prev) => new Map(prev).set(vo.itemId, vo))
+    } catch (err) {
+      handleWriteError(err, '反馈提交失败')
+      throw err
+    }
+  }
+
+  const removeFeedback = async (itemId: number) => {
+    if (offline || !trip) { setNotice('示例行程不会写入账号'); throw new Error('offline') }
+    const drop = () => setFeedbacks((prev) => { const next = new Map(prev); next.delete(itemId); return next })
+    try {
+      await revokeItemFeedback(trip.id, itemId)
+      drop()
+    } catch (err) {
+      // 已不存在（重复撤销）按成功收敛；其余交给统一错误提示
+      if (err instanceof ReactApiError && err.status === 404) { drop(); return }
+      handleWriteError(err, '反馈撤销失败')
+      throw err
+    }
+  }
+
   const share = async () => {
     if (offline) { setNotice('登录并连接服务后才能创建分享链接'); return }
     try {
@@ -204,7 +245,7 @@ export function TripDetailPage({ path }: { path: string }) {
       <section className="day-content">{day ? <>
         <TripMapPanel days={trip.dayList} activeKey={activePin} onSelect={selectPin} />
         <div className="day-content-head"><div><span className="section-eyebrow">DAY {String(day.dayNo).padStart(2, '0')}</span>{editingTheme ? <div className="day-theme-editor"><input value={themeDraft} maxLength={80} onChange={(event) => setThemeDraft(event.target.value)} aria-label="当天标题" /><div><button className="button button-primary" type="button" disabled={working} onClick={saveTheme}>保存</button><button className="button button-secondary" type="button" disabled={working} onClick={() => { setThemeDraft(day.theme || ''); setEditingTheme(false) }}>取消</button></div></div> : <><h2>{day.theme || `第 ${day.dayNo} 天`}</h2><p>{day.note}</p></>}</div><div className="day-head-actions">{!editingTheme && <button className="button button-secondary" type="button" onClick={() => offline ? setNotice('示例行程不会写入账号') : setEditingTheme(true)}><Icon name="edit" size={16} />编辑标题</button>}<button className="button button-secondary" type="button" disabled={working || editingTheme} onClick={regenerateDay}><Icon name="refresh" size={16} />{working ? '正在整理…' : '重新生成这一天'}</button></div></div>
-        <div className="day-items">{day.items.map((item, index) => <article className="day-item" key={`${item.poiName}-${index}`}><div className="day-item-time">{item.startTime || '--:--'}<span>{item.endTime || ''}</span></div><div className="day-item-line"><i /><span /></div><div className="day-item-copy"><div className="item-heading"><span className="item-type">{{ attraction: '游览', food: '用餐', hotel: '住宿', transport: '交通', activity: '活动' }[item.itemType] || '安排'}</span><h3>{item.poiName}</h3></div><p>{item.remark || item.whyThis || '为这一段旅程保留一点自由。'}</p><div className="item-meta"><span><Icon name="clock" size={14} />{item.durationMin ? `${item.durationMin} 分钟` : '时间可调整'}</span><ItemEvidence item={item} /></div></div></article>)}</div>
+        <div className="day-items">{day.items.map((item, index) => <article className="day-item" key={`${item.poiName}-${index}`}><div className="day-item-time">{item.startTime || '--:--'}<span>{item.endTime || ''}</span></div><div className="day-item-line"><i /><span /></div><div className="day-item-copy"><div className="item-heading"><span className="item-type">{{ attraction: '游览', food: '用餐', hotel: '住宿', transport: '交通', activity: '活动' }[item.itemType] || '安排'}</span><h3>{item.poiName}</h3></div><p>{item.remark || item.whyThis || '为这一段旅程保留一点自由。'}</p><div className="item-meta"><span><Icon name="clock" size={14} />{item.durationMin ? `${item.durationMin} 分钟` : '时间可调整'}</span><ItemEvidence item={item} /></div>{feedbackOn && item.id ? <ItemFeedbackControl itemId={item.id} feedback={feedbacks.get(item.id)} onSet={applyFeedback} onRevoke={() => removeFeedback(item.id!)} /> : null}</div></article>)}</div>
         {day.practicalNotes?.length ? <div className="day-note"><Icon name="alert" size={17} /><div><strong>出发前看一眼</strong>{day.practicalNotes.map((note) => <p key={note}>{note}</p>)}</div></div> : null}
       </> : <EmptyBlock title="这一天还没有安排" description="可以先切换到其他天，或重新生成当天内容。" />}</section>
     </div>
