@@ -303,3 +303,20 @@ def test_exception_logs_redact_url_secrets(caplog):
         assert client.call("k", boom) is None
     assert "super-secret-token" not in caplog.text, "密钥不得泄漏进日志"
     assert "token=<redacted>" in caplog.text, "脱敏后保留参数名，便于排障"
+
+
+def test_exception_logs_redact_client_id(caplog):
+    """P1-5：Unsplash 的 key 走 client_id 查询参数，异常文本同样内嵌它。"""
+    client = ExternalClient(name="t", max_wait_seconds=5.0)
+    request = httpx.Request("GET", "https://api.unsplash.com/search/photos?query=lake&client_id=unsplash-secret")
+
+    def boom():
+        response = httpx.Response(403, request=request)
+        raise httpx.HTTPStatusError(
+            f"Client error '403 Forbidden' for url '{request.url}'", request=request, response=response
+        )
+
+    with caplog.at_level("WARNING", logger="app.common.external_client"):
+        assert client.call("k", boom) is None
+    assert "unsplash-secret" not in caplog.text, "client_id 密钥不得泄漏进日志"
+    assert "client_id=<redacted>" in caplog.text, "脱敏后保留参数名，便于排障"

@@ -18,6 +18,17 @@ if [ -z "$DOMAIN" ] || [ "$DOMAIN" = "localhost" ]; then
   echo "✗ .env 里没有 DOMAIN=你的域名（本机预演才用 localhost），Caddy 无法签发正式证书" >&2
   exit 1
 fi
+# 口令防呆：compose 兜底默认值（travel_dev_only / ta_dev_redis_only）随公开仓库知名，
+# 漏配 .env 时生产会以公开口令静默起服——与 DOMAIN 一样在这里拦成显式失败。
+for pair in "MYSQL_ROOT_PASSWORD:travel_dev_only" "REDIS_PASSWORD:ta_dev_redis_only"; do
+  key="${pair%%:*}"
+  fallback="${pair#*:}"
+  val="$(grep -E "^$key=" .env | head -1 | cut -d= -f2- | tr -d '\"'"'"' \r')"
+  if [ -z "$val" ] || [ "$val" = "$fallback" ]; then
+    echo "✗ .env 缺 $key 或仍等于 compose 兜底默认值 $fallback（公开口令不能上生产，生成方式见 deploy/README.md §环境变量）" >&2
+    exit 1
+  fi
+done
 echo "▸ 目标站点：https://$DOMAIN"
 
 if [ "${SKIP_PULL:-0}" != "1" ]; then
@@ -57,6 +68,14 @@ if docker logs ta-agent 2>&1 | grep -q "AUTH_COOKIE_SECURE=false"; then
   exit 1
 fi
 echo "  ✓ 无明文 Cookie 告警"
+# 5. Redis 活性：REDIS_URL 显式错值（如 example 曾显式设的 localhost:6380，compose 不覆盖
+#    它）会让容器内 Redis 静默降级——吊销黑名单/登录锁退化为进程内兜底，站点照常起。
+#    这里用真连接（ping）把它变成门禁可见，而不是等重启后吊销"复活"才暴露。
+if ! $COMPOSE exec -T agent-python python -c "from app.common.redis_client import client; c = client(); assert c is not None and c.ping()"; then
+  echo "✗ 后端连不上 Redis：查应用面 .env 的 REDIS_URL 是否显式设值（应删除该行走派生）或 ta-redis 是否健康" >&2
+  exit 1
+fi
+echo "  ✓ Redis 连通"
 
 echo "✓ 部署完成：https://$DOMAIN"
 echo "  跟踪日志：docker compose -f docker-compose.yml logs -f agent-python"

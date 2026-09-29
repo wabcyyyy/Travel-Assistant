@@ -61,10 +61,13 @@ def test_daily_window_blocks_the_extra_run(monkeypatch) -> None:
 def test_every_llm_handler_calls_the_gate() -> None:
     """co_names 证明"处理器里真的调了这个方法"，而不是注释里提了一句。"""
     from app.api.business import itinerary as itinerary_api
+    from app.api.business import pois as pois_api
 
     for name in _LLM_HANDLERS:
         handler = getattr(itinerary_api, name)
         assert "enforce_llm_budget" in handler.__code__.co_names, name
+    # /api/pois 的补池同样烧联网搜索 LLM（审查 P1-2），同口径钉住
+    assert "enforce_llm_budget" in pois_api.list_pois.__code__.co_names
 
 
 def test_gate_fires_before_any_generation_work(monkeypatch) -> None:
@@ -84,6 +87,24 @@ def test_gate_fires_before_any_generation_work(monkeypatch) -> None:
     finally:
         entry.app.dependency_overrides.clear()
     assert called == ["clarify"]
+
+
+def test_poi_search_gate_fires_before_any_work(monkeypatch) -> None:
+    """/api/pois 的镜像（P1-2）：补池烧联网搜索 LLM，超限必须 429 且不打到检索上。"""
+    from app.services import poi_search
+
+    called: list[str] = []
+    monkeypatch.setattr(poi_search, "search_local", lambda *_a, **_k: called.append("search_local"))
+    monkeypatch.setattr(settings, "user_llm_runs_per_minute", 1)
+    uid = _unique_uid()
+    entry.app.dependency_overrides[enforce_business_auth] = lambda: AuthUser(id=uid, username="q", role="user")
+    client = TestClient(entry.app)
+    try:
+        assert client.get("/api/pois", params={"city": "北京"}).status_code == 200
+        assert client.get("/api/pois", params={"city": "北京"}).status_code == 429
+    finally:
+        entry.app.dependency_overrides.clear()
+    assert called == ["search_local"]
 
 
 def test_security_headers_are_on_every_response() -> None:

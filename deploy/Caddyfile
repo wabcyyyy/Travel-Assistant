@@ -10,6 +10,17 @@
 	encode zstd gzip
 	root * /srv
 
+	# 安全响应头（P2）：站点级对静态资源与反代 /api 响应（含下方 route 内的 403）都
+	# 生效；与 travel-frontend-vue/nginx.conf 的 add_header 互为镜像，改动必须同步。
+	# 未加 CSP：前端 index.html 有内联首帧引导脚本，且地图瓦片/字形源清单由
+	# OpenFreeMap 的远端 style 文件控制，无法在仓内固定完整 connect-src，宁缺毋错。
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
 	# route 块 = 显式保序（Caddy 规范序里 try_files 先于 respond/reverse_proxy，会把
 	# /api/** 先改写成 /index.html——预演实证；等价于 nginx 的 location 优先级语义）。
 	# 顺序即语义：先 deny（R1-8），再业务反代，最后 SPA fallback。

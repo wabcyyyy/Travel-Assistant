@@ -34,3 +34,32 @@ export function safeMapLink(url: string | null | undefined): string {
   if (host.endsWith('google.com') && !parsed.pathname.startsWith(GOOGLE_PATH_PREFIX)) return ''
   return parsed.toString()
 }
+
+/**
+ * 站内链接的安全出口（分享 `shareUrl=/s/{token}`、导出 `downloadUrl=/api/export/download/{id}`）。
+ *
+ * 后端 share_service / export_service 实际只下发**单斜杠站内相对路径**，但契约字段会
+ * 原样进 `href`：一旦被改写成 `javascript:`、`//evil` 或异源绝对 URL，就是任意跳转。
+ * 与 safeMapLink 同一条纪律——渲染前过校验，不过（null）就退化为纯文本而非可点链接。
+ *
+ * 放行口径（其余一律 null）：
+ * ① 以单个 `/` 开头的站内相对路径（`//` 开头是协议相对 URL，会跳到任意源，拒）；
+ * ② 绝对 URL 中 origin 与当前源一致者（`origin` 参数供纯 Node 单测注入，
+ *    免依赖 window.location）。
+ */
+export function safeAppLink(raw: string | null | undefined, origin?: string): string | null {
+  const text = (raw || '').trim()
+  if (!text) return null
+  if (text.startsWith('/')) {
+    return text.startsWith('//') ? null : text
+  }
+  let parsed: URL
+  try {
+    parsed = new URL(text)
+  } catch {
+    return null
+  }
+  const base = origin ?? (typeof window === 'undefined' ? '' : window.location.origin)
+  if (!base || parsed.origin !== base) return null
+  return parsed.toString()
+}

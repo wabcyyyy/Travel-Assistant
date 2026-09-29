@@ -20,6 +20,7 @@ import type * as Contracts from '../../types/generated/contracts'
 import type { ItineraryDetail } from '../../types/itinerary'
 import { destinations, sampleItinerary } from '../data'
 import { loginRedirect, navigate, routeId } from '../router'
+import { safeAppLink } from '../../shared/map-link'
 import { Icon } from '../shared/Icon'
 import { EmptyBlock, ErrorBlock, LoadingBlock, QualityNotice } from '../shared/States'
 import { DraftOnlyBanner, ItemEvidence, TripMetrics } from './TripBadges'
@@ -107,7 +108,26 @@ export function TripDetailPage({ path }: { path: string }) {
       .then((list) => { if (alive) { setFeedbacks(feedbackIndex(list.feedbacks)); setFeedbackOn(true) } })
       .catch((err: unknown) => { if (alive && err instanceof ReactApiError && err.status === 404) setFeedbackOn(false) })
     return () => { alive = false }
-  }, [id, offline, trip?.id])
+    // status 进 deps：生成完成（1→2）后条目 ID 已全部换新，天气/回显要对着新详情重取
+  }, [id, offline, trip?.id, trip?.status])
+
+  // 生成中对账轮询（status=1）：后台逐日落库会软删旧条目再插新 ID，页面不刷新的话
+  // 反馈等按条目 ID 的写操作必然 400；每 3s 静默拉详情，完成即停。
+  useEffect(() => {
+    if (!trip || offline || trip.status !== 1) return
+    let alive = true
+    const timer = setInterval(() => {
+      getItineraryDetail(id).then((next) => { if (alive) setTrip(next) }).catch(() => {})
+    }, 3000)
+    return () => { alive = false; clearInterval(timer) }
+  }, [id, offline, trip?.status])
+
+  // toast 自动收敛：错误条曾挂 3 分钟+没人清；4s 到点自灭，手动关闭钮保留
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(''), 4000)
+    return () => clearTimeout(timer)
+  }, [notice])
 
   useEffect(() => {
     if (trip) document.title = `${trip.city} · 司南 Sinan`
@@ -130,7 +150,8 @@ export function TripDetailPage({ path }: { path: string }) {
       navigate(loginRedirect())
       return
     }
-    setNotice(err instanceof Error ? err.message : fallback)
+    // DOMException 等异常 message 常为空串——空文案会让 toast 无声消失，统一落 fallback
+    setNotice(err instanceof Error && err.message ? err.message : fallback)
   }
 
   const regenerateDay = async () => {
@@ -173,7 +194,14 @@ export function TripDetailPage({ path }: { path: string }) {
       const vo = await submitItemFeedback(trip.id, payload)
       setFeedbacks((prev) => new Map(prev).set(vo.itemId, vo))
     } catch (err) {
-      handleWriteError(err, '反馈提交失败')
+      // 条目被重新生成后旧 ID 即失效（后端软删换新 ID）：提示后同步最新详情，
+      // 选择器保持打开，用户对着新条目重选即可
+      if (err instanceof ReactApiError && err.status === 400) {
+        setNotice('这条安排刚被重新生成，已同步最新行程，请再选一次')
+        refreshDetail()
+      } else {
+        handleWriteError(err, '反馈提交失败')
+      }
       throw err
     }
   }
@@ -197,8 +225,14 @@ export function TripDetailPage({ path }: { path: string }) {
     try {
       const result = await createShare(trip.id)
       setShareUrl(result.shareUrl)
-      await navigator.clipboard?.writeText(result.shareUrl)
-      setNotice('分享链接已复制')
+      // 剪贴板在自动化/非聚焦下可能拒绝且 message 为空串——单独兜住：链接已创建
+      // 是事实，不能被剪贴板失败吞成「点分享无任何反馈」
+      try {
+        await navigator.clipboard?.writeText(result.shareUrl)
+        setNotice('分享链接已复制')
+      } catch {
+        setNotice('分享链接已创建，见下方链接')
+      }
     } catch (err) { handleWriteError(err, '分享失败') }
   }
 
@@ -212,6 +246,10 @@ export function TripDetailPage({ path }: { path: string }) {
     } catch (err) { handleWriteError(err, '导出失败') }
   }
 
+  // 契约字段不直接进 href（P1-6）：过不了同源校验就退化为纯文本，不给用户一个任意跳转的链接
+  const safeShareUrl = safeAppLink(shareUrl)
+  const safeDownloadUrl = safeAppLink(downloadUrl)
+
   return <div className="detail-page">
     <div className="detail-topbar">
       <button className="back-link" type="button" onClick={() => navigate('/trips')}><Icon name="arrow" size={16} />我的行程</button>
@@ -223,6 +261,7 @@ export function TripDetailPage({ path }: { path: string }) {
     </div>
     {offline && <div className="detail-offline"><span>示例状态</span> 这是本地预览，服务恢复后可打开真实行程。</div>}
     <DraftOnlyBanner status={trip.destinationStatus} />
+    {trip.status === 1 && <div className="detail-generating" role="status"><span className="detail-generating-dot" aria-hidden="true" />司南正在逐日编排这趟旅程，完成后自动更新，无需刷新页面。</div>}
     <section className="detail-hero">
       <div>
         <span className="section-eyebrow">{trip.city} · {trip.days} 天 · {trip.persons} 人</span>
@@ -235,22 +274,23 @@ export function TripDetailPage({ path }: { path: string }) {
           weatherDays={weather?.daily?.length || trip.days}
           hasWeather={Boolean(weather?.daily?.length)}
         />
-        {weather?.daily?.length ? <div className="detail-weather" aria-label="天气参考"><span className="weather-label"><Icon name="sun" size={16} />天气参考</span>{weather.daily.slice(0, 3).map((item) => <span className="weather-day" key={item.date}><strong>{displayDate(item.date)}</strong><small>{item.text} · {item.tMin ?? '--'}–{item.tMax ?? '--'}℃</small></span>)}</div> : null}
+        {weather?.daily?.length ? <div className="detail-weather" aria-label="天气参考"><span className="weather-label"><Icon name="sun" size={16} />天气参考</span>{weather.daily.slice(0, trip.days).map((item) => <span className="weather-day" key={item.date}><strong>{displayDate(item.date)}</strong><small>{item.text} · {item.tMin ?? '--'}–{item.tMax ?? '--'}℃</small></span>)}</div> : null}
       </div>
       <figure className="detail-cover"><img src={destinations.find((item) => item.city === trip.city)?.image || destinations[0].image} alt="旅行目的地参考封面" width="720" height="480" /><figcaption><Icon name="pin" size={14} />{trip.city} · 城市印象</figcaption></figure>
     </section>
     <div className={offline ? 'detail-workspace' : 'detail-workspace has-chat'}>
       {!offline && <ChatPanel itineraryId={trip.id} dayList={trip.dayList} onApplied={setTrip} onReconcile={refreshDetail} />}
-      <aside className="day-sidebar"><div className="sidebar-head"><span className="section-eyebrow">Daily plan</span><strong>{trip.days} 天行程</strong></div>{trip.dayList.map((item) => <button key={item.dayNo} className={item.dayNo === dayNo ? 'day-tab active' : 'day-tab'} type="button" onClick={() => setDayNo(item.dayNo)}><span>DAY {String(item.dayNo).padStart(2, '0')}</span><strong>{item.theme || `第 ${item.dayNo} 天`}</strong><small>{item.items.length} 个安排</small></button>)}</aside>
+      <aside className="day-sidebar"><div className="sidebar-head"><span className="section-eyebrow">Daily plan</span><strong>{trip.days} 天行程</strong></div>{trip.dayList.map((item) => <button key={item.dayNo} className={item.dayNo === dayNo ? 'day-tab active' : 'day-tab'} type="button" onClick={() => setDayNo(item.dayNo)}><span>DAY {String(item.dayNo).padStart(2, '0')}</span><strong>{item.theme || `第 ${item.dayNo} 天`}</strong><small>{trip.status === 1 && !item.items.length ? '生成中…' : `${item.items.length} 个安排`}</small></button>)}</aside>
       <section className="day-content">{day ? <>
         <TripMapPanel days={trip.dayList} activeKey={activePin} onSelect={selectPin} />
         <div className="day-content-head"><div><span className="section-eyebrow">DAY {String(day.dayNo).padStart(2, '0')}</span>{editingTheme ? <div className="day-theme-editor"><input value={themeDraft} maxLength={80} onChange={(event) => setThemeDraft(event.target.value)} aria-label="当天标题" /><div><button className="button button-primary" type="button" disabled={working} onClick={saveTheme}>保存</button><button className="button button-secondary" type="button" disabled={working} onClick={() => { setThemeDraft(day.theme || ''); setEditingTheme(false) }}>取消</button></div></div> : <><h2>{day.theme || `第 ${day.dayNo} 天`}</h2><p>{day.note}</p></>}</div><div className="day-head-actions">{!editingTheme && <button className="button button-secondary" type="button" onClick={() => offline ? setNotice('示例行程不会写入账号') : setEditingTheme(true)}><Icon name="edit" size={16} />编辑标题</button>}<button className="button button-secondary" type="button" disabled={working || editingTheme} onClick={regenerateDay}><Icon name="refresh" size={16} />{working ? '正在整理…' : '重新生成这一天'}</button></div></div>
         <div className="day-items">{day.items.map((item, index) => <article className="day-item" key={`${item.poiName}-${index}`}><div className="day-item-time">{item.startTime || '--:--'}<span>{item.endTime || ''}</span></div><div className="day-item-line"><i /><span /></div><div className="day-item-copy"><div className="item-heading"><span className="item-type">{{ attraction: '游览', food: '用餐', hotel: '住宿', transport: '交通', activity: '活动' }[item.itemType] || '安排'}</span><h3>{item.poiName}</h3></div><p>{item.remark || item.whyThis || '为这一段旅程保留一点自由。'}</p><div className="item-meta"><span><Icon name="clock" size={14} />{item.durationMin ? `${item.durationMin} 分钟` : '时间可调整'}</span><ItemEvidence item={item} /></div>{feedbackOn && item.id ? <ItemFeedbackControl itemId={item.id} feedback={feedbacks.get(item.id)} onSet={applyFeedback} onRevoke={() => removeFeedback(item.id!)} /> : null}</div></article>)}</div>
+        {trip.status === 1 && !day.items.length && <div className="day-generating"><Icon name="compass" size={16} />这一天的安排正在生成，完成后自动出现。</div>}
         {day.practicalNotes?.length ? <div className="day-note"><Icon name="alert" size={17} /><div><strong>出发前看一眼</strong>{day.practicalNotes.map((note) => <p key={note}>{note}</p>)}</div></div> : null}
       </> : <EmptyBlock title="这一天还没有安排" description="可以先切换到其他天，或重新生成当天内容。" />}</section>
     </div>
-    {shareUrl && <div className="share-result"><span>分享链接</span><a href={shareUrl} target="_blank" rel="noreferrer">{shareUrl}</a><button type="button" onClick={() => setShareUrl('')} aria-label="关闭分享链接"><Icon name="close" size={15} /></button></div>}
-    {downloadUrl && <div className="download-result"><span>PDF 已就绪</span><a className="button button-primary" href={downloadUrl} download>下载 PDF<Icon name="download" size={15} /></a><button type="button" onClick={() => setDownloadUrl('')} aria-label="关闭下载提示"><Icon name="close" size={15} /></button></div>}
+    {shareUrl && <div className="share-result"><span>分享链接</span>{safeShareUrl ? <a href={safeShareUrl} target="_blank" rel="noreferrer">{safeShareUrl}</a> : <span>{shareUrl}</span>}<button type="button" onClick={() => setShareUrl('')} aria-label="关闭分享链接"><Icon name="close" size={15} /></button></div>}
+    {downloadUrl && <div className="download-result"><span>PDF 已就绪</span>{safeDownloadUrl ? <a className="button button-primary" href={safeDownloadUrl} download>下载 PDF<Icon name="download" size={15} /></a> : <span>下载 PDF</span>}<button type="button" onClick={() => setDownloadUrl('')} aria-label="关闭下载提示"><Icon name="close" size={15} /></button></div>}
     {notice && <div className="toast-note" role="status">{notice}<button type="button" onClick={() => setNotice('')} aria-label="关闭提示"><Icon name="close" size={14} /></button></div>}
   </div>
 }

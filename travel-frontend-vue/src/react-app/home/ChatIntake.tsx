@@ -111,7 +111,7 @@ function IntakeConfirm({
       <label>天数（≤7）<input type="number" min={1} max={7} value={slots.days ?? ''} onChange={number('days')} /></label>
       <label>人数<input type="number" min={1} max={20} value={slots.persons ?? ''} onChange={number('persons')} /></label>
       <label>出发日期（可选）<input type="date" value={slots.start_date || ''} onChange={(event) => onSlots({ start_date: event.target.value || undefined })} /></label>
-      <label>出发城市（可选）<input value={slots.origin_city || ''} maxLength={80} placeholder="用于查航班" onChange={(event) => onSlots({ origin_city: event.target.value || undefined })} /></label>
+      <label>出发城市（可选）<input value={slots.origin_city || ''} maxLength={80} placeholder="查航班用" onChange={(event) => onSlots({ origin_city: event.target.value || undefined })} /></label>
       <label>全程预算（可选）<input type="number" min={1} placeholder="例如 3000" value={slots.budget ?? ''} onChange={number('budget')} /></label>
     </div>
     <datalist id="intake-cities">{fallbackCities.map((city) => <option key={city} value={city} />)}</datalist>

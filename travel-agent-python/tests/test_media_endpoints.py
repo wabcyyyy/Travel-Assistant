@@ -231,6 +231,18 @@ def test_poi_photo_never_calls_amap(as_client):
     assert not [c for c in recorder.calls if "amap.com" in (c.url.host or "")]
 
 
+def test_poi_photo_unsplash_failure_redacts_client_id(as_client, caplog):
+    """P1-5：图库源失败走 _safe 的 DEBUG 日志，client_id 同样不得裸进日志。"""
+    client, recorder = as_client
+
+    recorder.handler = lambda _request: httpx.Response(500)
+    with caplog.at_level("DEBUG", logger="app.services.poi_photo"):
+        response = client.get("/api/poi-photo", params={"name": "西湖", "city": "杭州"})
+    assert response.status_code == 404
+    assert UNSPLASH_KEY not in caplog.text, "client_id 密钥不得泄漏进日志"
+    assert "client_id=<redacted>" in caplog.text, "脱敏后保留参数名，便于排障"
+
+
 def test_poi_photo_404_when_no_source_and_negative_result_is_cached(as_client):
     client, recorder = as_client
     response = client.get("/api/poi-photo", params={"name": "不存在的地方", "city": "杭州"})

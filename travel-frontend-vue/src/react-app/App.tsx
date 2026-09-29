@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import { logout } from '../api/sinan'
 import { AppShell } from './layout/AppShell'
 import { DestinationsPage } from './destination/DestinationsPage'
 import { GuideDetailPage, GuidesPage } from './guides/GuidesPages'
@@ -26,6 +27,13 @@ export default function App() {
   const [username, setUsername] = useState(() => localStorage.getItem('sinan-username') || '')
   useEffect(() => { document.title = pageTitle(location.path) }, [location.path])
   const authenticated = (value: string) => { setUsername(value); localStorage.setItem('sinan-username', value) }
+  /** 登出（P1-7）：先清本地身份并回首页；POST /auth/logout 清 HttpOnly Cookie 是 best-effort，失败不阻塞。 */
+  const handleLogout = () => {
+    setUsername('')
+    localStorage.removeItem('sinan-username')
+    logout().catch(() => {})
+    navigate('/')
+  }
   if (location.path === '/login') return <LoginPage onAuthenticated={authenticated} />
   if (location.path.startsWith('/s/')) return <SharePage path={location.path} />
   let page: ReactNode
@@ -37,5 +45,5 @@ export default function App() {
   else if (location.path === '/trips') page = <TripsPage />
   else if (location.path.startsWith('/trips/')) page = <TripDetailPage path={location.path} />
   else page = <HomePage />
-  return <AppShell onLogin={() => navigate('/login')}>{page}{username && <span className="sr-only">已登录：{username}</span>}</AppShell>
+  return <AppShell onLogin={() => navigate('/login')} username={username} onLogout={handleLogout}>{page}{username && <span className="sr-only">已登录：{username}</span>}</AppShell>
 }

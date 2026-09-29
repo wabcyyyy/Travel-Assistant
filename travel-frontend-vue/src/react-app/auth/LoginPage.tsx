@@ -24,7 +24,8 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: (username: str
       const result = await login({ username: username.trim(), password })
       onAuthenticated(result.user.username)
       const redirect = location.query.get('redirect')
-      navigate(redirect && redirect.startsWith('/') ? redirect : '/trips')
+      // // 开头会被浏览器当协议相对 URL 解析成异源地址，history.pushState 直接抛 SecurityError
+      navigate(redirect && redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/trips')
     } catch (err) {
       setError(err instanceof ReactApiError ? err.message : '网络暂时不可用，请稍后再试')
     } finally { setBusy(false) }

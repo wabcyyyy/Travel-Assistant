@@ -3,6 +3,7 @@ import type { ChangeEvent } from 'react'
 import type { ItineraryChatMessage } from '../../types/chat'
 import type { DayPlan, HotelOption, ItineraryDetail } from '../../types/itinerary'
 import { Icon } from '../shared/Icon'
+import { renderChatMarkdown } from './chatMarkdown'
 import { activeActionIndex, draftChanges, hotelDefaultSelection, pendingActionSummary, unverifiedNames } from './chatDraft'
 import { useTripChat } from './useTripChat'
 
@@ -49,7 +50,10 @@ export function ChatPanel({
         const isDraft = index === activeIdx
         return (
           <div key={msg.id ?? `idx-${index}`} className={isUser ? 'chat-msg is-user' : 'chat-msg is-ai'}>
-            <div className="chat-bubble">{msg.content || (chat.sending ? '司南正在想…' : '')}</div>
+            <div className="chat-bubble">{isUser
+              ? (msg.content || (chat.sending ? '司南正在想…' : ''))
+              // AI 文案带 ###/** 标记，走最小 MD 渲染；用户输入一律原文
+              : renderChatMarkdown(msg.content || (chat.sending ? '司南正在想…' : ''))}</div>
             {isDraft && (
               <DraftCard
                 msg={msg}

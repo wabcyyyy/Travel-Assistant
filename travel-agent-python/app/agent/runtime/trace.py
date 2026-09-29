@@ -31,11 +31,11 @@ def _safe_id(value: str | None, *, fallback: str | None = None) -> str:
 
 
 # 第三方 HTTP 异常原文常含完整请求 URL（高德 Web API 的 key 查询参数、
-# MCP endpoint 的 ?key=、Authorization 头）；这些文本会经 error=str(exc)
-# 落入持久化 trace 文件。集中脱敏覆盖所有上报路径，而不是指望每个调用方
-# 自己处理（docstring 承诺"不保存密钥"此前在错误路径上并不成立）。
+# MCP endpoint 的 ?key=、Unsplash 的 client_id、Authorization 头）；这些文本会经
+# error=str(exc) 落入持久化 trace 文件。集中脱敏覆盖所有上报路径，而不是指望
+# 每个调用方自己处理（docstring 承诺"不保存密钥"此前在错误路径上并不成立）。
 _SECRET_PATTERNS = (
-    re.compile(r"([?&](?:key|token|secret|api_key|apikey|access_key)=)[^&\s\"']+", re.IGNORECASE),
+    re.compile(r"([?&](?:key|token|secret|api_key|apikey|access_key|client_id)=)[^&\s\"']+", re.IGNORECASE),
     re.compile(r"(Bearer\s+)[A-Za-z0-9._\-]+", re.IGNORECASE),
 )
 

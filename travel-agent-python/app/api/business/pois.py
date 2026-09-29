@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Query
 from app.api.deps import AuthUser
 from app.api.security import enforce_business_auth
 from app.common.envelope import ApiError, ok
-from app.services import poi_search
+from app.services import poi_search, quota_service
 from app.services.poi_search import CATEGORY_LABELS
 
 router = APIRouter(
@@ -26,8 +26,10 @@ def list_pois(
     city: str = Query(..., min_length=1, description="目的地城市（城市字典覆盖的城市名）"),
     keywords: str | None = Query(None, description="名称关键词；留空则取该城前 30"),
     category: str | None = Query(None, description="attraction|food|hotel"),
-    user: AuthUser | None = Depends(enforce_business_auth),
+    user: AuthUser = Depends(enforce_business_auth),
 ) -> dict:
+    # 补池走付费联网搜索 LLM：与 itinerary 各 LLM 入口同口径，先过闸再检索（审查 P1-2）
+    quota_service.enforce_llm_budget(user.id)
     if category and category not in CATEGORY_LABELS:
         raise ApiError(400, "未知的点位类别")
     return ok(poi_search.search_local(city, keywords=keywords or "", category=category))

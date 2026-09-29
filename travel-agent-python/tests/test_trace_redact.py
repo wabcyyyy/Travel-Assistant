@@ -34,6 +34,21 @@ def test_error_field_redacts_bearer_token():
     assert "Bearer ***" in event["error"]
 
 
+def test_error_field_redacts_client_id():
+    """P1-5：Unsplash 的 key 走 client_id 查询参数，trace 落盘同样要抹掉。"""
+    with trace_run("run", "req") as trace:
+        record_event(
+            "tool",
+            "unsplash.search",
+            status="error",
+            error="403 for url 'https://api.unsplash.com/search/photos?query=x&client_id=UNSPLASHKEY123'",
+        )
+    event = trace.to_dict()["events"][0]
+    assert "UNSPLASHKEY123" not in event["error"]
+    assert "client_id=***" in event["error"]
+    assert "query=x" in event["error"]  # 非密钥参数保留
+
+
 def test_metadata_string_values_are_redacted():
     with trace_run("run", "req") as trace:
         record_event(

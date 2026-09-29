@@ -129,6 +129,9 @@ services:
     build:
       context: ./travel-frontend-vue
       dockerfile: Dockerfile
+      # 必须显式指 target：Dockerfile 末段是 caddy（生产边缘），漏写会默认
+      # build 到 caddy——5173 吐 Caddy 默认页且 /api 反代消失（重建实测）
+      target: web
     container_name: ta-frontend
     ports:
       - "5173:80"

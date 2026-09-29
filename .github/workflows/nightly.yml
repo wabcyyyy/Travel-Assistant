@@ -114,6 +114,8 @@ jobs:
           uv run python tests/agent_eval/llm_eval.py --path graph --limit 2 --out-stem llm_report_graph | tee llm_eval_graph_small.json
           uv run python tests/agent_eval/eval_gate.py --path graph
       - name: Usage 软棘轮（L5a：真实评测的调用/token 上限，首跑后按实测校准数字）
+        if: steps.guard.outputs.skip != 'true'
+        working-directory: travel-agent-python
         run: >
           uv run python scripts/usage_report.py --check
           --latest 5 --max-calls 120 --max-total-tokens 260000

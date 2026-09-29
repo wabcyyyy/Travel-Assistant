@@ -29,6 +29,7 @@ from sqlalchemy import update
 
 from app.common.config import settings
 from app.common.envelope import ApiError
+from app.common.external_client import redact_secrets
 from app.common.http_client import IMAGE_USER_AGENT, image_client
 from app.db.models import ItineraryMain
 from app.db.session import session_scope
@@ -89,7 +90,8 @@ def search_covers(query: str, page: int, per_page: int, provider: str) -> dict[s
         response.raise_for_status()
         body = response.json()
     except Exception as exc:
-        logger.warning("unsplash search failed: %s", exc)
+        # 异常文本内嵌含 client_id 的完整 URL，进日志前必须脱敏（P1-5）
+        logger.warning("unsplash search failed: %s", redact_secrets(exc))
         raise ApiError(502, "图库检索失败，请稍后再试") from exc
 
     items = [_map_search_item(row) for row in (body.get("results") or [])]
@@ -180,7 +182,7 @@ def resolve_unsplash_photo(ref: str) -> dict[str, Any]:
         response.raise_for_status()
         body = response.json()
     except Exception as exc:
-        logger.warning("unsplash photo resolve failed: %s", exc)
+        logger.warning("unsplash photo resolve failed: %s", redact_secrets(exc))
         raise ApiError(502, "封面下载失败，请重试或改上传") from exc
 
     urls = body.get("urls") or {}
@@ -203,7 +205,7 @@ def _trigger_download(url: str | None) -> None:
     try:
         image_client().get(str(url), params={"client_id": settings.unsplash_access_key})
     except Exception as exc:
-        logger.info("unsplash download trigger failed (ignored): %s", exc)
+        logger.info("unsplash download trigger failed (ignored): %s", redact_secrets(exc))
 
 
 def _download_cover(url: str) -> bytes:

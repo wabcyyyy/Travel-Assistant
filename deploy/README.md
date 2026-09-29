@@ -66,6 +66,7 @@ cp travel-agent-python/.env.example travel-agent-python/.env   # 应用面：LLM
 | `AGENT_DEADLINE_SECONDS=300` | 默认 90s 在供应商慢时整趟生成跑不完（本机实测 274s），生产同建议 300 |
 | 可选 key | `OTM_API_KEY` / `UNSPLASH_ACCESS_KEY` / `PEXELS_ACCESS_KEY` / `TRAVELPAYOUTS_TOKEN` / `SERPAPI_KEY`——留空只降级对应能力，不影响启动 |
 | `ITEM_FEEDBACK_ENABLED=true` | 推荐开启：条目对/错反馈（C3.5）的能力开关，关闭时详情页自动隐藏反馈控件（探针 404） |
+| `REDIS_URL` 保持注释 | **不要显式设值**：compose 只注入 `REDIS_HOST/PORT/PASSWORD`、不覆盖 URL，显式设 `localhost:6380` 会让容器内 Redis 静默降级（冒烟第 5 项会拦）；保持注释走派生即可 |
 
 不需要动 `TRUSTED_PROXIES`：compose 默认值已含 `172.16.0.0/12`，覆盖 Caddy 所在的
 compose 网络；XFF 由 Caddy **替换**后传入（`deploy/Caddyfile`），归因取到的就是真实客户端 IP，
@@ -76,8 +77,11 @@ compose 网络；XFF 由 Caddy **替换**后传入（`deploy/Caddyfile`），归
 bash deploy/deploy.sh
 ```
 
-冒烟门四项全过才算成功：边缘静态 200、`/api` 反代可达、`/api/agent` 403（R1-8）、
-无明文 Cookie 告警（叠加层漏加载的防呆）。首启含建表迁移与 MySQL 初始化，最长等 180s。
+冒烟门五项全过才算成功：边缘静态 200、`/api` 反代可达、`/api/agent` 403（R1-8）、
+无明文 Cookie 告警（叠加层漏加载的防呆）、Redis 连通（真 ping——REDIS_URL 显式错值会让
+吊销黑名单/登录锁静默降级为进程内，站点照常起，只有这里能拦住）。首启含建表迁移与 MySQL 初始化，最长等 180s。
+部署前预检同拦公开口令：`MYSQL_ROOT_PASSWORD` / `REDIS_PASSWORD` 缺失或仍等于 compose
+兜底默认值（`travel_dev_only` / `ta_dev_redis_only`）时，`deploy.sh` 直接拒绝部署。
 
 上线后打开 `https://<DOMAIN>` 注册账号即可（dev 库的测试账号不会带到生产）。
 
@@ -90,12 +94,17 @@ bash deploy/deploy.sh
 # 回滚代码（数据库迁移是 append-only，不自动回退；代码回滚按前向兼容设计）
 git checkout <上一个可用 tag 或 sha>
 SKIP_PULL=1 bash deploy/deploy.sh
+# ↑ checkout 后是 detached HEAD：下次升级前先 git checkout master && git reset --hard origin/master
 
 # 看状态 / 日志
 docker compose -f docker-compose.yml --profile prod ps
 docker compose -f docker-compose.yml logs -f agent-python
 docker stats
 ```
+
+升级也可以全自动：`.github/workflows/deploy.yml` 在 push 到 master 时经 SSH 上 VPS 跑同一条
+`deploy.sh`（需配 Secrets `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY` 与 Variables `VPS_DEPLOY_ENABLED=1`；
+启用步骤见 `docs/上线教学-2026-09-27.md` §8）。首次部署仍是手动的，自动化只接管日常升级。
 
 ### 备份
 

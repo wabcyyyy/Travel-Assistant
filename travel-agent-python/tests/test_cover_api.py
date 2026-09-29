@@ -156,14 +156,19 @@ def test_search_maps_items_and_caches(client: TestClient, monkeypatch) -> None:
     assert first["total"] == 7
 
 
-def test_search_upstream_failure_is_502(client: TestClient, monkeypatch) -> None:
+def test_search_upstream_failure_is_502(client: TestClient, monkeypatch, caplog) -> None:
     class _Boom:
         def get(self, url, **kwargs):
-            raise RuntimeError("upstream down")
+            raise RuntimeError(
+                "500 for url 'https://api.unsplash.com/search/photos?query=x&client_id=example-unsplash-key'"
+            )
 
     monkeypatch.setattr(cover_service, "image_client", lambda: _Boom())
-    response = client.get("/api/covers/search?q=西湖", headers=_headers())
+    with caplog.at_level("WARNING", logger="app.services.cover_service"):
+        response = client.get("/api/covers/search?q=西湖", headers=_headers())
     assert response.status_code == 502
+    assert "example-unsplash-key" not in caplog.text, "client_id 密钥不得泄漏进日志（P1-5）"
+    assert "client_id=<redacted>" in caplog.text, "脱敏后保留参数名，便于排障"
 
 
 # ---------- 设定封面（unsplash snapshot） ----------
@@ -212,6 +217,34 @@ def test_compress_cover_resizes_long_edge() -> None:
     with Image.open(io.BytesIO(compressed)) as image:
         assert max(image.size) <= cover_service.COVER_MAX_DIM
         assert image.format == "JPEG"
+
+
+def test_resolve_unsplash_failure_is_502_and_redacts_key(client: TestClient, monkeypatch, caplog) -> None:
+    class _Boom:
+        def get(self, url, **kwargs):
+            raise RuntimeError("500 for url 'https://api.unsplash.com/photos/abc?client_id=example-unsplash-key'")
+
+    monkeypatch.setattr(cover_service, "image_client", lambda: _Boom())
+    with caplog.at_level("WARNING", logger="app.services.cover_service"):
+        with pytest.raises(ApiError) as exc:
+            cover_service.resolve_unsplash_photo("abc")
+    assert exc.value.status == 502
+    assert "example-unsplash-key" not in caplog.text, "client_id 密钥不得泄漏进日志（P1-5）"
+    assert "client_id=<redacted>" in caplog.text
+
+
+def test_download_trigger_failure_ignored_and_redacts_key(client: TestClient, monkeypatch, caplog) -> None:
+    class _Boom:
+        def get(self, url, **kwargs):
+            raise RuntimeError(
+                "500 for url 'https://api.unsplash.com/photos/abc/download?client_id=example-unsplash-key'"
+            )
+
+    monkeypatch.setattr(cover_service, "image_client", lambda: _Boom())
+    with caplog.at_level("INFO", logger="app.services.cover_service"):
+        cover_service._trigger_download("https://api.unsplash.com/photos/abc/download")
+    assert "example-unsplash-key" not in caplog.text, "client_id 密钥不得泄漏进日志（P1-5）"
+    assert "client_id=<redacted>" in caplog.text
 
 
 def test_download_cover_rejects_non_unsplash_host() -> None:

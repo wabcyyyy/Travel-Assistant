@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { LngLatBounds, Map, Marker, Popup } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { DayPlan } from '../../types/itinerary'
@@ -35,6 +35,8 @@ export function TripMapPanel({
   pinsRef.current = pins
   const popupRef = useRef<Popup | null>(null)
   const markersRef = useRef<Marker[]>([])
+  // 底图拉取失败（403/断网）时地图是整片留白——DOM pin 仍在，给出可见解释而不是无声米色
+  const [tilesFailed, setTilesFailed] = useState(false)
   // onSelect 由父组件内联传入（每次渲染都是新引用），经 ref 消费避免 pin 反复重建
   const selectRef = useRef(onSelect)
   selectRef.current = onSelect
@@ -50,6 +52,10 @@ export function TripMapPanel({
       attributionControl: { compact: true },
     })
     mapRef.current = map
+    map.on('error', (event) => {
+      const status = (event.error as { status?: number } | undefined)?.status
+      if (status === undefined || status >= 400) setTilesFailed(true)
+    })
     map.on('load', () => {
       loadedRef.current = true
       syncRoutes(map, pinsRef.current)
@@ -142,6 +148,11 @@ export function TripMapPanel({
   }
   return <div className="trip-map-wrap">
     <div className="trip-map" ref={containerRef} aria-label="行程地图" />
+    {tilesFailed && (
+      <div className="map-tiles-fallback" role="status">
+        底图暂时加载不出来（可能是网络受限），各天点位仍标在图上，点 pin 可查核实深链。
+      </div>
+    )}
     <p className="trip-map-note">
       {estimated > 0 && <span className="trip-map-estimated">估算点位 {estimated} 个（图上虚线角标）</span>}
       {hidden > 0 && <span>无坐标隐藏 {hidden} 个</span>}

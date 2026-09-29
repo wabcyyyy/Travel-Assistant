@@ -29,6 +29,7 @@ from collections import OrderedDict
 import httpx
 
 from app.common.config import settings
+from app.common.external_client import redact_secrets
 from app.common.http_client import WIKI_USER_AGENT, image_client
 
 logger = logging.getLogger(__name__)
@@ -105,8 +106,8 @@ def _do_resolve(name: str) -> str | None:
 def _safe(fn, *args) -> str | None:
     try:
         return fn(*args)
-    except Exception as exc:  # 单源失败不影响下一源
-        logger.debug("photo source %s failed: %s", getattr(fn, "__name__", fn), exc)
+    except Exception as exc:  # 单源失败不影响下一源；unsplash 的异常文本含 client_id（P1-5）
+        logger.debug("photo source %s failed: %s", getattr(fn, "__name__", fn), redact_secrets(exc))
         return None
 
 

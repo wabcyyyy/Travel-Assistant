@@ -8,7 +8,9 @@ RUN npm ci || npm install
 COPY . .
 RUN npm run build
 
-FROM nginx:1.27-alpine
+# web = 本地/演示前端服务（compose frontend-vue 显式 target；无 target 时会
+# 错build到末尾的 caddy 段，5173 变 Caddy 默认页且 /api 反代消失）
+FROM nginx:1.27-alpine AS web
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80

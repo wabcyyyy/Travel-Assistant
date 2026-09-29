@@ -5,6 +5,10 @@ on:
     branches: [master, main]
   pull_request:
 
+# 最小 token 权限（与 nightly.yml / release.yml 同款）：本 workflow 只读检出代码
+permissions:
+  contents: read
+
 # 同分支新 push 自动取消旧 run（G-0.4）：省 CI 分钟数，也避免旧结论覆盖新推送
 concurrency:
   group: ci-${{ github.ref }}
