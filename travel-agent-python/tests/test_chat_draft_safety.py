@@ -1,3 +1,4 @@
+from app.agent.editing.chat_draft import decide
 from app.agent.editing.chat_draft.hotel_intent import (
     HotelIntent,
     _fallback_hotel_intent,
@@ -6,6 +7,7 @@ from app.agent.editing.chat_draft.hotel_intent import (
 )
 from app.agent.editing.chat_draft.intent import (
     _increase_target_days,
+    _is_time_adjustment_request,
     _is_vague_poi_browse_request,
     _reduce_target_days,
     _requested_day_count,
@@ -332,3 +334,76 @@ def test_plan_update_still_routes_patches():
     assert plans is not None
     item = next(it for p in plans for it in p["items"] if it.get("id") == 1)
     assert item["start_time"] == "15:00"
+
+
+def test_time_adjustment_request_detected():
+    """2026-09-30 评审误路由项的守卫原语：挪动时段 ≠ 换住宿。"""
+    assert _is_time_adjustment_request("把酒店挪到晚上，博物馆放上午")
+    assert _is_time_adjustment_request("把入住改到下午")
+    assert _is_time_adjustment_request("景点移到早上")
+    assert not _is_time_adjustment_request("帮我换一个酒店")
+    assert not _is_time_adjustment_request("酒店要好一点的")
+    assert not _is_time_adjustment_request("把博物馆挪到西湖边上"), "有挪动但无时段词，不算时间调整"
+
+
+def test_hotel_time_update_patch_is_applied():
+    """酒店条目允许纯时间 update（身份字段不在 allowed_update_fields，改不了住宿本身）。"""
+    request = _request("把酒店挪到晚上")
+    plans = _apply_decision_patches(
+        {"target_days": None, "patches": [{"op": "update", "item_id": 2, "fields": {"start_time": "21:00"}}]},
+        request,
+    )
+    hotel = next(item for item in plans[0]["items"] if item["id"] == 2)
+    assert hotel["start_time"] == "21:00"
+
+
+def test_hotel_delete_and_move_patches_still_ignored():
+    request = _request("把酒店删掉，别的重新安排")
+    plans = _apply_decision_patches(
+        {
+            "target_days": None,
+            "patches": [
+                {"op": "delete", "item_id": 2},
+                {"op": "move", "item_id": 2, "day_no": 2},
+            ],
+        },
+        request,
+    )
+    assert any(item["id"] == 2 for item in plans[0]["items"]), "酒店 delete 仍被拒绝"
+    assert not any(item["id"] == 2 for item in plans[1]["items"]), "酒店 move 仍被拒绝"
+
+
+def _stub_decision(monkeypatch, decision: dict) -> None:
+    monkeypatch.setattr(decide, "_decide_plan_change", lambda req, hotels, feedback=None: decision)
+    monkeypatch.setattr(decide.tools, "search_hotels", lambda *args, **kwargs: [])
+
+
+def test_time_adjustment_is_not_hijacked_into_hotel_flow(monkeypatch):
+    """评审实录回归：提到“酒店”的时间调整走行程编辑，不被关键词劫持进候选流。"""
+    request = _request("把酒店挪到晚上，博物馆放上午")
+    _stub_decision(
+        monkeypatch,
+        {
+            "mode": "plan_update",
+            "reply": "已把入住调到晚上、上午留给景点",
+            "patches": [
+                {"op": "update", "item_id": 2, "fields": {"start_time": "21:00"}},
+                {"op": "update", "item_id": 1, "fields": {"start_time": "09:00"}},
+            ],
+            "operations": [],
+        },
+    )
+    response = decide._chat_turn_response(request)
+    assert response.changed and response.plans, "时间调整必须产出可应用草稿"
+    hotel = next(item for item in response.plans[0]["items"] if item["id"] == 2)
+    assert hotel["start_time"] == "21:00"
+    assert not response.hotel_options and response.pending_action is None
+
+
+def test_explicit_hotel_change_still_routed_to_candidates(monkeypatch):
+    """守卫不得误伤真换酒店：模型误判成 plan_update 时仍进候选流程。"""
+    request = _request("帮我换一个酒店")
+    _stub_decision(monkeypatch, {"mode": "plan_update", "reply": "", "patches": [], "operations": []})
+    response = decide._chat_turn_response(request)
+    assert response.pending_action is not None
+    assert response.pending_action.get("type") == "replace_hotel"

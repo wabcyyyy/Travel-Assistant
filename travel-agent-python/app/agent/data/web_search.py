@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from app.agent.runtime.run_limits import current_limits
 from app.agent.runtime.trace import record_event
 from app.common.addons import addons
 from app.common.config import settings
-from app.common.external_client import BACKGROUND, ExternalClient
+from app.common.external_client import BACKGROUND, ExternalClient, redact_secrets
 from app.common.llm_client import get_llm_client
 
 logger = logging.getLogger(__name__)
@@ -101,17 +102,56 @@ def web_search_json(question: str, *, schema_hint: str, max_tokens: int = 800) -
             model=settings.llm_fast_model or None,
             json_mode=True,
         ).strip()
-        if raw.startswith("```"):
-            raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0]
-        start, end = raw.find("{"), raw.rfind("}")
-        start_arr, end_arr = raw.find("["), raw.rfind("]")
-        if start != -1 and end != -1 and (start_arr == -1 or start < start_arr):
-            return json.loads(raw[start : end + 1])
-        if start_arr != -1 and end_arr != -1:
-            return json.loads(raw[start_arr : end_arr + 1])
-        return None
+        try:
+            return _parse_llm_json(raw)
+        except ValueError as exc:
+            # 可观测（2026-09-30 UI 评审遗留）：此前解析失败只留 external_client 一行
+            # `Expecting value`，原始响应（HTML 错误页/截断/夹 prose）完全不可见。
+            # 头尾截取足矣定位病因；脱敏走 redact_secrets（响应体可能回显请求 URL）。
+            logger.warning(
+                "web_search: unparseable answer (%s); head=%r tail=%r",
+                exc,
+                redact_secrets(raw[:200]),
+                redact_secrets(raw[-80:]),
+            )
+            raise
 
     return _search_client.call(f"json:{prompt}", _load, lane=BACKGROUND)
+
+
+#: 尾逗号是 LLM 产 JSON 最常见的轻微畸变（json_mode 也挡不住模型在截断处补逗号）
+_TRAILING_COMMA_RE = re.compile(r",\s*([}\]])")
+
+
+def _parse_llm_json(raw: str) -> dict | list | None:
+    """LLM 联网回答 → JSON：围栏剥离 + 括号截取（既有语义不变）+ 尾逗号修复。
+
+    - 找不到任何 JSON 结构：warning 留痕后返回 None（负结果语义，负缓存 120s）；
+    - 有结构但解析不动：抛 ValueError（失败语义，计入 external_client 熔断计数）——
+      谁调用谁留痕，`_load` 负责补原始响应头尾日志。
+    """
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+    start, end = text.find("{"), text.rfind("}")
+    start_arr, end_arr = text.find("["), text.rfind("]")
+    candidates: list[str] = []
+    if start != -1 and end != -1 and (start_arr == -1 or start < start_arr):
+        candidates.append(text[start : end + 1])
+    if start_arr != -1 and end_arr != -1:
+        candidates.append(text[start_arr : end_arr + 1])
+    if not candidates:
+        logger.warning("web_search: answer has no JSON structure, head=%r", redact_secrets(text[:160]))
+        return None
+    last: Exception | None = None
+    for candidate in candidates:
+        # dict.fromkeys 去重：候选无尾逗号时避免同一串解析两遍
+        for attempt in dict.fromkeys((candidate, _TRAILING_COMMA_RE.sub(r"\1", candidate))):
+            try:
+                return json.loads(attempt)
+            except json.JSONDecodeError as exc:
+                last = exc
+    raise ValueError(f"unparseable JSON payload: {last}") from last
 
 
 _CATEGORY_PROMPTS = {

@@ -52,6 +52,9 @@ export function TripDetailPage({ path }: { path: string }) {
   const [editingTheme, setEditingTheme] = useState(false)
   const [themeDraft, setThemeDraft] = useState('')
   const [activePin, setActivePin] = useState<string | null>(null)
+  // 对话栏折叠（2026-09-30 评审拍板）：默认展开；收起后内容列占满剩余宽度。
+  // 会话级状态不持久化——默认展开是产品主面。
+  const [chatCollapsed, setChatCollapsed] = useState(false)
   // 条目对/错反馈（C3.5）：本人反馈索引 + 能力开关（GET 404 = addon 关，隐藏控件）
   const [feedbacks, setFeedbacks] = useState<Map<number, Contracts.FeedbackVO>>(new Map())
   const [feedbackOn, setFeedbackOn] = useState(false)
@@ -278,8 +281,8 @@ export function TripDetailPage({ path }: { path: string }) {
       </div>
       <figure className="detail-cover"><img src={destinations.find((item) => item.city === trip.city)?.image || destinations[0].image} alt="旅行目的地参考封面" width="720" height="480" /><figcaption><Icon name="pin" size={14} />{trip.city} · 城市印象</figcaption></figure>
     </section>
-    <div className={offline ? 'detail-workspace' : 'detail-workspace has-chat'}>
-      {!offline && <ChatPanel itineraryId={trip.id} dayList={trip.dayList} onApplied={setTrip} onReconcile={refreshDetail} />}
+    <div className={offline ? 'detail-workspace' : `detail-workspace has-chat${chatCollapsed ? ' is-chat-collapsed' : ''}`}>
+      {!offline && <ChatPanel itineraryId={trip.id} dayList={trip.dayList} onApplied={setTrip} onReconcile={refreshDetail} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((value) => !value)} />}
       <aside className="day-sidebar"><div className="sidebar-head"><span className="section-eyebrow">Daily plan</span><strong>{trip.days} 天行程</strong></div>{trip.dayList.map((item) => <button key={item.dayNo} className={item.dayNo === dayNo ? 'day-tab active' : 'day-tab'} type="button" onClick={() => setDayNo(item.dayNo)}><span>DAY {String(item.dayNo).padStart(2, '0')}</span><strong>{item.theme || `第 ${item.dayNo} 天`}</strong><small>{trip.status === 1 && !item.items.length ? '生成中…' : `${item.items.length} 个安排`}</small></button>)}</aside>
       <section className="day-content">{day ? <>
         <TripMapPanel days={trip.dayList} activeKey={activePin} onSelect={selectPin} />

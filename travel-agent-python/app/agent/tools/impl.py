@@ -35,11 +35,16 @@ from app.common.http_client import image_client
 
 logger = logging.getLogger(__name__)
 
-# OTM kinds → 我们品类概念（半径检索按此收窄；OTM 本质只有"旅游向"数据）
+# OTM kinds → 我们品类概念（半径检索按此收窄；OTM 本质只有"旅游向"数据）。
+# 取值全部对真实 API 实测过（2026-09-30，成都 30.66,104.06 → 200）：注意住宿类
+# 上游拼的是 **accomodations**（一个 m，OTM 自己的拼写错误）；按"正确英语"拼
+# accommodations 会 400 Unknown category name——整个酒店域 OTM 池归零（2026-09-18
+# 量测文档与旧 mock 注释都把这个 400 误记成"免费 key 不支持"，实为拼写）。合法
+# 集合由 tests/test_tools_kinds.py 锁死，改动须先对真实 API 复测并同步该测试。
 _OTM_KINDS_BY_CATEGORY: dict[str, tuple[str, ...]] = {
     "attraction": ("interesting_places",),
     "food": ("foods",),
-    "hotel": ("accommodations",),
+    "hotel": ("accomodations",),
     "activity": ("theatres_and_entertainments", "amusements", "cultural"),
 }
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import type { GenerateInput } from '../../api/sinan'
 import { fallbackCities } from '../data'
+import { loginRedirect, navigate } from '../router'
 import { Icon } from '../shared/Icon'
 import { INTAKE_PREFERENCES, seedFromQuery, slotsReady, toGenerateInput } from './intakeSlots'
 import type { IntakeSlots } from './intakeSlots'
@@ -51,6 +52,11 @@ export function ChatIntake({
       </div>}
     </div>
     {chat.error && <p className="planning-retry-hint" role="alert">{chat.error}</p>}
+    {chat.needsLogin && (
+      <button className="button button-primary" type="button" onClick={() => navigate(loginRedirect())}>
+        登录并继续<Icon name="arrow" size={16} />
+      </button>
+    )}
     {chat.ready && !disabled
       ? <IntakeConfirm
           slots={chat.slots}
@@ -108,7 +114,7 @@ function IntakeConfirm({
     </div>
     <div className="intake-grid">
       <label>目的地<input value={slots.city || ''} maxLength={80} list="intake-cities" onChange={(event) => onSlots({ city: event.target.value })} /></label>
-      <label>天数（≤7）<input type="number" min={1} max={7} value={slots.days ?? ''} onChange={number('days')} /></label>
+      <label>天数<input type="number" min={1} max={7} value={slots.days ?? ''} onChange={number('days')} /></label>
       <label>人数<input type="number" min={1} max={20} value={slots.persons ?? ''} onChange={number('persons')} /></label>
       <label>出发日期（可选）<input type="date" value={slots.start_date || ''} onChange={(event) => onSlots({ start_date: event.target.value || undefined })} /></label>
       <label>出发城市（可选）<input value={slots.origin_city || ''} maxLength={80} placeholder="查航班用" onChange={(event) => onSlots({ origin_city: event.target.value || undefined })} /></label>

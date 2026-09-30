@@ -44,6 +44,13 @@ _last_seq_lock = threading.Lock()
 #: 长跑进程的护栏：超量直接清空（丢的是地板值，不是数据；重连后仍会各自增长）
 _LAST_SEQ_MAX = 4096
 
+# 熔断窗口内被跳过的 Redis 发布条数（2026-09-30 评审遗留项的降级口径）。
+# gen:events:{id} 自 Java 网关退役后仓内已无订阅方（对外唯一通道是进程内
+# event_hub，且 broadcast 先于 Redis 发布执行），窗口内跳过不损失任何可见事件；
+# 不做"恢复后补发"——没有消费者可补，暂存死信是零价值复杂度。计数只回答
+# "熔断期有多少帧没出进程"，恢复后自然继续发布。
+_redis_skip_publish_count = 0
+
 
 def _advance_seq(itinerary_id: int, candidate: int) -> int:
     """同一行程内 seq 只增不减：Redis 与降级路径切换都不能让它倒退。"""
@@ -71,10 +78,12 @@ def _get_client() -> redis.Redis:
 
 def reset_event_publisher() -> None:
     """测试钩子：丢弃共享客户端、熔断状态与进程内订阅表，保证用例之间互不串状态。"""
+    global _redis_skip_publish_count
     redis_client.reset_for_tests()
     event_hub.reset_for_tests()
     with _last_seq_lock:
         _last_seq.clear()
+    _redis_skip_publish_count = 0
 
 
 def _next_seq(itinerary_id: int) -> int:
@@ -82,8 +91,11 @@ def _next_seq(itinerary_id: int) -> int:
 
     Redis 不可用时退进程内自增（同 Java 的 `fallbackSeq`）：M7 之后订阅方与发布方同进程，
     没有 Redis 不等于没有事件流。广播副本因此也带兜底 seq——Redis 都不通时本来就没人收。
+    熔断窗口内直接短路（与异常兜底同语义，省掉每条事件一次 raise/catch）。
     """
     key = f"gen:seq:{int(itinerary_id)}"
+    if redis_client.is_down():
+        return _advance_seq(int(itinerary_id), 1)
     try:
         client = _get_client()
         seq = client.incr(key)
@@ -170,13 +182,7 @@ def publish_event(itinerary_id: int | None, event_type: str, data: dict, run_id:
     # seq 由 _next_seq 负责（Redis 共用计数器 + 进程内兜底，同 Java 的 fallbackSeq）。
     envelope = build_envelope(itinerary_id, event_type, data, run_id=run_id)
     event_hub.broadcast(int(itinerary_id), envelope)
-    try:
-        _get_client().publish(f"gen:events:{int(itinerary_id)}", envelope)
-    except Exception as exc:
-        # 这里也要喂熔断：本模块曾是唯一不报故障的 Redis 使用方，Redis 宕时每发一条事件
-        # 都要重付一次连接超时；逐日编排下成本是 `天数 × 3 × 0.5s`。
-        redis_client.note_failure(exc)
-        logger.warning("publish %s event for itinerary %s failed: %s", event_type, itinerary_id, exc)
+    _publish_to_redis(int(itinerary_id), event_type, envelope)
     if run_id:
         # trace 落账与 Redis 发布成败解耦：即使发布失败，轨迹里也留痕。
         # 同样遵守尽力而为契约：落账自身失败只记日志，绝不向上抛。
@@ -184,6 +190,33 @@ def publish_event(itinerary_id: int | None, event_type: str, data: dict, run_id:
             _record_stream_trace(event_type, itinerary_id, run_id)
         except Exception as exc:
             logger.debug("record %s stream event to trace failed: %s", event_type, exc)
+
+
+def _publish_to_redis(itinerary_id: int, event_type: str, envelope: str) -> None:
+    """把信封尽力广播到 Redis 通道 ``gen:events:{id}``。
+
+    熔断窗口内（`redis_client.is_down()`）直接跳过：只递增计数并留 debug 日志，
+    不再逐帧付出 note_failure + warning 的噪音（Redis 宕时每条事件都要重付一次
+    连接超时的旧账，见 2026-09-30 评审遗留项）。窗口外失败仍喂熔断并 warning——
+    那是 Redis 恢复探测的第一手信号，不能静音。
+    """
+    global _redis_skip_publish_count
+    if redis_client.is_down():
+        _redis_skip_publish_count += 1
+        logger.debug(
+            "redis breaker open, skip %s publish for itinerary %s (skipped total %d)",
+            event_type,
+            itinerary_id,
+            _redis_skip_publish_count,
+        )
+        return
+    try:
+        _get_client().publish(f"gen:events:{int(itinerary_id)}", envelope)
+    except Exception as exc:
+        # 这里也要喂熔断：本模块曾是唯一不报故障的 Redis 使用方，Redis 宕时每发一条事件
+        # 都要重付一次连接超时；逐日编排下成本是 `天数 × 3 × 0.5s`。
+        redis_client.note_failure(exc)
+        logger.warning("publish %s event for itinerary %s failed: %s", event_type, itinerary_id, exc)
 
 
 def _record_stream_trace(event_type: str, itinerary_id: int, run_id: str) -> None:

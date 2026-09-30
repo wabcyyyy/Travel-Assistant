@@ -9,6 +9,7 @@ export type IconName =
   | 'clock'
   | 'leaf'
   | 'sun'
+  | 'moon'
   | 'chevron'
   | 'menu'
   | 'close'
@@ -43,6 +44,7 @@ export function Icon({ name, size = 20, strokeWidth = 1.8 }: IconProps) {
     case 'clock': return <svg {...common}><circle cx="12" cy="12" r="8.7" /><path d="M12 7v5l3 2" /></svg>
     case 'leaf': return <svg {...common}><path d="M20 4.5C12 4.2 6 7.3 6 13.2c0 3.8 2.8 6.3 6.2 6.3C18 19.5 20.2 12 20 4.5Z" /><path d="M4 20c3.5-4.5 7.5-6.4 12.5-8.3" /></svg>
     case 'sun': return <svg {...common}><circle cx="12" cy="12" r="3.2" /><path d="M12 2.7v2M12 19.3v2M4.1 4.1l1.4 1.4M18.5 18.5l1.4 1.4M2.7 12h2M19.3 12h2M4.1 19.9l1.4-1.4M18.5 5.5l1.4-1.4" /></svg>
+    case 'moon': return <svg {...common}><path d="M20.6 13.2A8.4 8.4 0 0 1 10.8 3.4a8.4 8.4 0 1 0 9.8 9.8Z" /></svg>
     case 'chevron': return <svg {...common}><path d="m8 10 4 4 4-4" /></svg>
     case 'menu': return <svg {...common}><path d="M4 7h16M4 12h16M4 17h16" /></svg>
     case 'close': return <svg {...common}><path d="m6 6 12 12M18 6 6 18" /></svg>

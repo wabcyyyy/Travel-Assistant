@@ -8,17 +8,23 @@ import { activeActionIndex, draftChanges, hotelDefaultSelection, pendingActionSu
 import { useTripChat } from './useTripChat'
 
 /** 对话编排主面（CH3）：对话在左、行程保持可见；草稿卡/确认卡长在对话流内。
- * 选择型 UI（酒店候选）保留结构化点选，不做全屏对话。 */
+ * 选择型 UI（酒店候选）保留结构化点选，不做全屏对话。
+ * 折叠入口（2026-09-30 评审拍板）：默认展开；收起成窄条，由调用方持有状态并
+ * 同步改 grid 列宽（收起时内容列占满剩余宽度）。不传 onToggleCollapse 则无入口。 */
 export function ChatPanel({
   itineraryId,
   dayList,
   onApplied,
   onReconcile,
+  collapsed = false,
+  onToggleCollapse,
 }: {
   itineraryId: number
   dayList: DayPlan[]
   onApplied: (detail: ItineraryDetail) => void
   onReconcile: () => void
+  collapsed?: boolean
+  onToggleCollapse?: () => void
 }) {
   const chat = useTripChat(itineraryId, onApplied, onReconcile)
   const [draft, setDraft] = useState('')
@@ -35,11 +41,17 @@ export function ChatPanel({
   }
   const activeIdx = activeActionIndex(chat.msgs)
 
-  return <section className="chat-panel" aria-label="行程对话编排">
+  return <section className={collapsed ? 'chat-panel is-collapsed' : 'chat-panel'} aria-label="行程对话编排">
     <div className="chat-panel-head">
       <span className="chat-symbol"><Icon name="compass" size={20} /></span>
-      <div><h2>对话编排</h2><p>想改什么直接说，确认后才会落图。</p></div>
+      {!collapsed && <div><h2>对话编排</h2><p>想改什么直接说，确认后才会落图。</p></div>}
+      {onToggleCollapse && (
+        <button className="chat-collapse" type="button" aria-label={collapsed ? '展开对话' : '收起对话'} aria-expanded={!collapsed} onClick={onToggleCollapse}>
+          <Icon name={collapsed ? 'chevron' : 'close'} size={16} />
+        </button>
+      )}
     </div>
+    {!collapsed && <>
     <div className="chat-log" role="log" aria-live="polite" ref={logRef}>
       {!chat.loaded && <div className="chat-empty">正在载入对话…</div>}
       {chat.loaded && !chat.msgs.length && (
@@ -86,6 +98,7 @@ export function ChatPanel({
         发送<Icon name="arrow" size={15} />
       </button>
     </form>
+    </>}
   </section>
 }
 

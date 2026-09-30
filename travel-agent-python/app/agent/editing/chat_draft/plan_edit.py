@@ -85,8 +85,10 @@ def _apply_decision_patches(data: dict, req: ChatTurnRequest) -> list[dict] | No
             if not isinstance(item_id, int) or item_id not in item_locations:
                 continue
             old_day_no, item = item_locations[item_id]
-            # 酒店必须继续走房型候选卡片，普通行程编辑不得删除、移动或改写住宿。
-            if item.get("item_type") == "hotel":
+            # 酒店身份必须走候选卡片确认：delete/move 一律拒绝；update 只会改
+            # allowed_update_fields 里的时间/备注展示字段（不含名称/价格/身份），
+            # 是「把入住挪到晚上」这类时间调整的唯一合法通道（2026-09-30 评审）。
+            if item.get("item_type") == "hotel" and operation != "update":
                 continue
             if operation == "delete":
                 if not deletion_requested:

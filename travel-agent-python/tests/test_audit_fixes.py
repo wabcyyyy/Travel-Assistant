@@ -77,7 +77,8 @@ def test_multi_day_budget_counts_stay_nights_not_days(monkeypatch):
 
     monkeypatch.setattr(open_plans, "llm_open_trip", trip_with_hotel_every_day)
     # persons=1 → rooms=1；3 天行程即便每天排酒店，也只计 2 晚 = 800。
-    response = workflow.run_generate(GenerateRequest(city="杭州", days=3, persons=1))
+    # start_date 钉平季：不带日期时季节系数按当天算（国庆 1.8），预算断言会漂。
+    response = workflow.run_generate(GenerateRequest(city="杭州", days=3, persons=1, start_date="2026-04-15"))
     assert response.budget_estimate["酒店"] == 800.0
 
 

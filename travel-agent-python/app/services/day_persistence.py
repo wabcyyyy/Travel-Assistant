@@ -27,6 +27,7 @@ from app.db.models import ItineraryDay, ItineraryItem, ItineraryMain
 from app.db.session import session_scope
 from app.schemas.trip import DailyPlan, FactEvidence
 from app.services import generation_gate
+from app.services.day_delivery_gate import hard_delivery_blockers
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +81,16 @@ def persist(
             session.add(_build_item(itinerary_id, day.id, item, sort_no))
             sort_no += 1
 
-        day.generation_status = "SUCCEEDED"
-        day.generation_error = None
+        blockers = hard_delivery_blockers(day_no, plan)
+        if blockers:
+            logger.warning(
+                "day %s of %s delivered with hard blockers, kept PENDING: %s", day_no, itinerary_id, blockers
+            )
+            day.generation_status = "PENDING"
+            day.generation_error = "；".join(blockers)[:MAX_ERROR_LENGTH] or None
+        else:
+            day.generation_status = "SUCCEEDED"
+            day.generation_error = None
 
 
 def _build_item(itinerary_id: int, day_id: int, item: Any, sort_no: int) -> ItineraryItem:

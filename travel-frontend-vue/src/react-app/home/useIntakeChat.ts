@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { clarifyItinerary, isOfflineError } from '../../api/sinan'
+import { clarifyItinerary, isOfflineError, isUnauthorized } from '../../api/sinan'
 import {
   assistantReply,
   clearIntake,
@@ -27,6 +27,11 @@ export function useIntakeChat() {
   const [ready, setReady] = useState(() => slotsReady(restored?.slots ?? {}))
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
+  // 未登录撞上 clarify 的 401：生成跳有「登录后即可开始规划」的引导，clarify 这
+  // 一跳此前只会弹「请求失败（401）」——未登录用户收集到一半就卡死（2026-09-30
+  // 漏斗实测）。needsLogin 让确认区就地给出登录入口；会话已落 localStorage，
+  // 登录回来恢复后接着聊。
+  const [needsLogin, setNeedsLogin] = useState(false)
   const controller = useRef<AbortController | null>(null)
 
   useEffect(() => () => controller.current?.abort(), [])
@@ -42,6 +47,7 @@ export function useIntakeChat() {
       const trimmed = text.trim()
       if (!trimmed || sending) return
       setError('')
+      setNeedsLogin(false)
       setSending(true)
       const ask = (controller.current = new AbortController())
       setMessages((list) => [...list, { id: nextMessageId(), role: 'user', text: trimmed }])
@@ -55,6 +61,11 @@ export function useIntakeChat() {
         if (reply) setMessages((list) => [...list, { ...reply, id: nextMessageId() }])
       } catch (err) {
         if (ask.signal.aborted) return
+        if (isUnauthorized(err)) {
+          setNeedsLogin(true)
+          setError('登录后继续规划，你已填的想法会保留。')
+          return
+        }
         setError(
           isOfflineError(err)
             ? '暂时连不上规划服务，稍后再说一句试试。'
@@ -88,10 +99,11 @@ export function useIntakeChat() {
     setFirstMessage('')
     setReady(false)
     setError('')
+    setNeedsLogin(false)
     setSending(false)
   }, [])
 
-  return { messages, slots, firstMessage, ready, sending, error, send, updateSlots, reset }
+  return { messages, slots, firstMessage, ready, sending, error, needsLogin, send, updateSlots, reset }
 }
 
 export type IntakeChat = ReturnType<typeof useIntakeChat>

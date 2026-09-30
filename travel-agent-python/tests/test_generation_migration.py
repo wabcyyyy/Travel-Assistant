@@ -96,7 +96,10 @@ def _plan(
                 poi_name=name,
                 item_type="hotel" if name.startswith("酒店") else "attraction",
                 cost=300 if name.startswith("酒店") else 45,
+                # 景点给足 4 小时窗口：过稀已是落库硬伤（day_delivery_gate），
+                # stub 也必须给出"可交付"形状，与 _wire_plan 的默认形状同基线
                 start_time="24:00" if name.startswith("酒店") else "09:30",
+                end_time=None if name.startswith("酒店") else "13:30",
                 why_this="离西湖步行十分钟" if name == "西湖" else None,
                 image="https://example.com/a.jpg" if name == "西湖" else None,
             )

@@ -130,3 +130,26 @@ def test_enrich_preserves_order_and_merges_details(monkeypatch):
 
 def test_enrich_handles_empty_pool():
     assert places.enrich_with_details([]) == []
+
+
+def test_otm_kinds_mapping_only_contains_verified_categories():
+    """kinds 合法集合锁死（2026-09-30 对真实 API 逐值实测，成都 30.66,104.06）。
+
+    住宿类上游拼 **accomodations**（单 m）：按正确英语 accommodations 发送必 400
+    "Unknown category name"，整个酒店域 OTM 池静默归零——这个拼写曾在代码里
+    存活近月、被误记成"免费 key 不支持"。往映射里加/改 kinds 前必须先用真实
+    key 复测（OTM 无 kinds 列表端点，只能实测），并同步扩充本集合。
+    """
+    from app.agent.tools import impl as tools
+
+    verified = {
+        "interesting_places",
+        "foods",
+        "accomodations",
+        "theatres_and_entertainments",
+        "amusements",
+        "cultural",
+    }
+    used = {kind for kinds in tools._OTM_KINDS_BY_CATEGORY.values() for kind in kinds}
+    assert used <= verified, f"未经实测的 kinds: {sorted(used - verified)}"
+    assert tools._OTM_KINDS_BY_CATEGORY["hotel"] == ("accomodations",), "上游单 m 拼写，双 m 必 400"

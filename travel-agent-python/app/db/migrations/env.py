@@ -26,7 +26,11 @@ from app.db.schema_source import SQL_MIGRATION_DIR  # noqa: E402
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers 默认 True：alembic 一跑就会把进程里已创建的
+    # logger 全部禁用——生产"启动即迁移"先于 uvicorn 建好 app.* logger，
+    # 迁移一结束全站日志静默（全量测试里 schema bootstrap 之后的用例
+    # caplog 全空即此因，2026-09-30 实录）。显式关掉这个行为。
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # 刻意留空：见模块 docstring
 target_metadata = None

@@ -51,6 +51,7 @@ from .hotel_intent import (
 from .intent import (
     _increase_target_days,
     _is_reduction_request,
+    _is_time_adjustment_request,
     _is_vague_poi_browse_request,
     _reduce_target_days,
     _requested_day_count,
@@ -78,8 +79,9 @@ def _decide_plan_change(req: ChatTurnRequest, hotels: list[dict], feedback: str 
     system = (
         "你是旅行计划 JSON 编辑器。你必须先理解用户自然语言，再从下列【封闭动作集】中选择一种，且只输出JSON。"
         "动作集是有限、封闭的能力，无法穷举用户说法，但任何要求都应被归约到其中之一："
-        "1) hotel_proposal：凡涉及住宿、酒店、宾馆、房型或某酒店品牌，无论措辞，都必须用它；"
-        "绝不直接修改 days 里的 hotel 项目，只填 hotel_request。"
+        "1) hotel_proposal：凡涉及更换、挑选、比价或升降档住宿（酒店/宾馆/房型/品牌），无论措辞，都必须用它；"
+        "绝不直接修改 days 里的 hotel 项目本身，只填 hotel_request。"
+        "仅调整现有住宿条目的入住时间（如“把酒店挪到晚上”）不算换住宿，走 plan_update。"
         "2) plan_update：对现有行程“小修小补”——移动单个项目、改时间、删/加个别景点；只返回短补丁 patches。"
         "3) rewrite_plan：对行程做“大改/重生成”，例如改变总天数（减少/增加/改成 N 天）、"
         "或“重新安排/重排/整体优化/重生成”景点。此时严禁用一堆 move/delete 补丁去表达，"
@@ -89,7 +91,8 @@ def _decide_plan_change(req: ChatTurnRequest, hotels: list[dict], feedback: str 
         "patches的op只能是delete、move、update、add、set_day_note。"
         "delete填item_id；move填item_id、day_no和可选position；"
         "update填item_id及fields，fields只允许start_time/end_time/duration_min/tag/remark；"
-        "add填day_no及item且不得新增酒店；set_day_note填day_no和note。酒店项目不得出现在patches中。"
+        "add填day_no及item且不得新增酒店；set_day_note填day_no和note。"
+        "酒店项目不得被delete或move，也不得add新酒店；允许对现有酒店用update只调时间字段。"
         "rewrite_plan 的 plan_document 必须是与“当前计划JSON”同结构的完整计划："
         '{"schema_version":1,"trip":{"city":"...","days":目标天数,"persons":...,"budget":...,'
         '"start_date":...,"end_date":...,"preferences":...,"hotel_tier":...},'
@@ -152,6 +155,11 @@ def _decide_plan_change(req: ChatTurnRequest, hotels: list[dict], feedback: str 
         return _parse_decision_json(repaired)
 
 
+def _has_existing_hotel_item(req: ChatTurnRequest) -> bool:
+    """当前计划里是否已有住宿条目（时间调整守卫的另一半：没有酒店就谈不上“挪酒店”）。"""
+    return any(item.get("item_type") == "hotel" for plan in (req.plans or []) for item in (plan.get("items") or []))
+
+
 def _chat_turn_response(req: ChatTurnRequest) -> ChatTurnResponse:
     hotels = tools.search_hotels(req.city, limit=30)
     if _is_vague_poi_browse_request(req.message) and not _is_hotel_request(req, hotels):
@@ -207,7 +215,15 @@ def _chat_turn_response(req: ChatTurnRequest) -> ChatTurnResponse:
     # 明确酒店请求必须优先进入候选流程。模型有时会把“我想换个酒店”
     # 误判成普通 plan_update（甚至带空 patches），这时不能返回一句无操作的
     # 普通回复，更不能让普通补丁绕过酒店/房型确认。
-    if _is_hotel_request(req, hotels) and mode != "hotel_proposal":
+    # 守卫（2026-09-30 评审误路由项）：仅调整已有条目时间（“把酒店挪到晚上，
+    # 博物馆放上午”）不是换住宿——放行给下方 plan_update（酒店条目也只允许
+    # 纯时间 update），否则会被“酒店”关键词劫持进候选流、回一句“没有候选”
+    # 而行程原封不动。
+    if (
+        _is_hotel_request(req, hotels)
+        and mode != "hotel_proposal"
+        and not (_is_time_adjustment_request(req.message) and _has_existing_hotel_item(req))
+    ):
         return _hotel_proposal_response(req, hotels, _understand_hotel_intent(req, hotels), operations)
     if mode == "hotel_proposal":
         intent = _hotel_intent_from_decision(req, hotels, decision)

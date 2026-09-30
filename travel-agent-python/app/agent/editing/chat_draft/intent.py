@@ -53,6 +53,11 @@ _REDUCTION_PHRASE_RE = re.compile(
     r"删除|删掉|去掉|移除|替换|换成|换掉|减少|精简|不重要|重复|宽松|轻松|别太赶|不要太赶|少一点"
 )
 
+# 「调整现有条目时间」的两路信号：动作（挪/放/改/移到某时段）+ 时段词。
+# 两者同现才算时间调整，避免“换个地方放东西”之类的误伤。
+_TIME_ADJUST_RE = re.compile(r"挪到|挪去|移到|放到|放在|改到|调到|调成|改下时间|改一下时间|调整.{0,4}时间")
+_TIME_OF_DAY_RE = re.compile(r"上午|早上|清晨|中午|下午|傍晚|晚上|夜里|夜晚|凌晨")
+
 
 def _cn_number(value: str) -> int | None:
     if value.isdigit():
@@ -144,3 +149,13 @@ def _is_vague_poi_browse_request(message: str) -> bool:
         )
     )
     return has_poi_object and has_browse_word and not has_mutation
+
+
+def _is_time_adjustment_request(message: str) -> bool:
+    """识别「调整现有条目时间」类请求（挪到晚上/放到上午/改到下午）。
+
+    2026-09-30 评审误路由项的守卫原语：这类请求即使提到“酒店”，也只是想
+    挪动已有条目的时间，不是要更换住宿，不应被拖进酒店候选流。
+    """
+    text = message or ""
+    return bool(_TIME_ADJUST_RE.search(text) and _TIME_OF_DAY_RE.search(text))

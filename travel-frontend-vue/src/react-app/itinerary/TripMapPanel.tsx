@@ -150,13 +150,13 @@ export function TripMapPanel({
     <div className="trip-map" ref={containerRef} aria-label="行程地图" />
     {tilesFailed && (
       <div className="map-tiles-fallback" role="status">
-        底图暂时加载不出来（可能是网络受限），各天点位仍标在图上，点 pin 可查核实深链。
+        底图暂时加载不出来（可能是网络受限），各天点位仍标在图上，点 pin 可跳转地图查看位置。
       </div>
     )}
     <p className="trip-map-note">
       {estimated > 0 && <span className="trip-map-estimated">估算点位 {estimated} 个（图上虚线角标）</span>}
       {hidden > 0 && <span>无坐标隐藏 {hidden} 个</span>}
-      <span>底图 OpenFreeMap · 点 pin 查核实深链</span>
+      <span>底图 OpenFreeMap · 点 pin 跳转地图核实位置</span>
     </p>
   </div>
 }

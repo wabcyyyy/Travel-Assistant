@@ -7,7 +7,9 @@
 - itineraryId 缺失完全不触碰 Redis；Redis 故障不向上抛异常。
 """
 
+import asyncio
 import json
+import logging
 
 import pytest
 
@@ -198,3 +200,47 @@ def test_client_lazy_singleton_uses_settings_url(monkeypatch):
     assert kwargs["decode_responses"] is True
     # 单例：二次获取返回同一实例
     assert event_publisher._get_client() is client
+
+
+def test_breaker_open_skips_redis_publish_but_local_hub_still_delivers(monkeypatch, caplog):
+    """熔断窗口：死信通道跳过+计数，进程内 SSE 订阅者照常收到事件（2026-09-30 评审遗留）。
+
+    评审曾把「Redis 熔断期 publish failed 告警」当成 research_start 丢失。本测钉住
+    真实语义：event_hub 广播先于 Redis 执行，本地订阅者不受熔断影响；Redis 侧
+    （gen:events 自 Java 退役后无订阅方）跳过留痕即可，不需要恢复后补发。
+    """
+    from app.common import event_hub, redis_client
+
+    monkeypatch.setattr(redis_client, "is_down", lambda: True)
+    touched: list[str] = []
+    monkeypatch.setattr(event_publisher, "_get_client", lambda: touched.append("called"))
+
+    async def scenario():
+        sub, rejected = event_hub.subscribe(77, "{}")
+        assert not rejected
+        event_publisher.publish_research_start(77, ["attraction", "food", "hotel"])
+        return await sub.take(1.0)
+
+    with caplog.at_level(logging.WARNING, logger="app.common.event_publisher"):
+        frame = asyncio.run(scenario())
+
+    envelope = json.loads(frame)
+    assert envelope["type"] == "research_start"
+    assert envelope["itineraryId"] == 77
+    assert touched == [], "熔断窗口内 seq 与发布两条路径都不得尝试创建 Redis 客户端"
+    assert event_publisher._redis_skip_publish_count == 1, "跳过必须计数留痕"
+    assert caplog.text == "", "窗口内是预期降级，不得刷 warning"
+
+
+def test_breaker_recovered_publishes_again_and_skip_count_isolated(monkeypatch):
+    """窗口关闭后恢复发布；autouse 夹具把跳过计数清零（用例间互不串状态）。"""
+    from app.common import redis_client
+
+    fake = FakeRedis()
+    monkeypatch.setattr(event_publisher, "_get_client", lambda: fake)
+    monkeypatch.setattr(redis_client, "is_down", lambda: False)
+
+    event_publisher.publish_event(9, "research_start", {"domains": ["attraction"]})
+
+    assert len(fake.published) == 1
+    assert event_publisher._redis_skip_publish_count == 0

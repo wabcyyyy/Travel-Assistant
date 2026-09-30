@@ -182,6 +182,9 @@ def _day_chain_snapshot() -> dict:
         day_no=1,
         needs_hotel=True,
         hotel_tier="豪华型",
+        # 不带日期 → season_factor 按 date.today() 算：国庆/春节窗口会把 golden
+        # 的酒店估价打上 ×1.8（2026-09-30 实录）——钉死平季日期保确定性。
+        start_date="2026-04-15",
         context=_fixture_context(CITY),
     )
     with ExitStack() as stack:

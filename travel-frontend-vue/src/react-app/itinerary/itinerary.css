@@ -127,8 +127,16 @@
 }
 /* —— 对话编排主面（CH3）：对话一列，行程保持可见 —— */
 .detail-workspace.has-chat { grid-template-columns: minmax(300px, 360px) 236px minmax(0, 1fr); }
+/* 折叠态（2026-09-30 评审拍板）：chat 收成窄条，内容列吃下释放的宽度 */
+.detail-workspace.has-chat.is-chat-collapsed { grid-template-columns: 56px 236px minmax(0, 1fr); }
 .chat-panel { position: sticky; top: 102px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 132px); padding: 20px; border: 1px solid var(--sinan-line); border-radius: var(--sinan-radius); background: var(--sinan-surface); }
+.chat-panel.is-collapsed { align-items: center; padding: 14px 8px; }
+.chat-panel.is-collapsed .chat-panel-head { flex-direction: column; gap: 8px; }
 .chat-panel-head { display: flex; align-items: center; gap: 10px; }
+.chat-panel-head .chat-collapse { margin-left: auto; flex-shrink: 0; }
+.chat-panel.is-collapsed .chat-panel-head .chat-collapse { margin-left: 0; }
+.chat-collapse { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 9px; background: transparent; color: var(--sinan-ink-soft); }
+.chat-collapse:hover { background: var(--sinan-accent-wash); color: var(--sinan-accent-dark); }
 .chat-symbol { display: grid; place-items: center; width: 38px; height: 38px; flex-shrink: 0; border-radius: 12px; color: var(--sinan-accent); background: var(--sinan-accent-wash); }
 .chat-panel-head h2 { margin: 0; font-size: 16px; font-weight: 650; }
 .chat-panel-head p { margin: 3px 0 0; font-size: 11px; color: var(--sinan-muted); }
@@ -167,9 +175,11 @@
 .chat-composer input:focus { outline: none; border-color: var(--sinan-accent); box-shadow: 0 0 0 3px var(--sinan-accent-wash); }
 @media (max-width: 1100px) {
   .detail-workspace.has-chat { grid-template-columns: minmax(280px, 320px) 205px minmax(0, 1fr); }
+  .detail-workspace.has-chat.is-chat-collapsed { grid-template-columns: 52px 205px minmax(0, 1fr); }
 }
 @media (max-width: 820px) {
   .detail-workspace.has-chat { grid-template-columns: 1fr; }
+  .detail-workspace.has-chat.is-chat-collapsed { grid-template-columns: 1fr; }
   .chat-panel { position: static; max-height: none; order: 2; }
   .chat-log { max-height: 320px; }
 }

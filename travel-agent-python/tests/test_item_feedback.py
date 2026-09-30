@@ -34,12 +34,25 @@ from app.services import user_service
 JWT_MATERIAL = "example-only-hs256-test-signing-material"
 
 
+@pytest.fixture(autouse=True)
+def _isolated_addon_cache():
+    """addons 模块级 5s TTL 缓存是跨文件时序雷：其他用例经管理端开启 item_feedback
+    后，缓存残值会让"默认关"用例在本文件自己的空库里看到 True（2026-09-30 全量
+    实录）。默认态用例必须看到真默认值——每个用例前后清缓存。"""
+    addons_module._cache.clear()
+    yield
+    addons_module._cache.clear()
+
+
 @pytest.fixture()
 def db(monkeypatch, tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'feedback.db'}")
     Base.metadata.create_all(engine)
     db_session.init_engine(engine, sessionmaker(bind=engine, expire_on_commit=False))
     monkeypatch.setattr(settings, "jwt_secret", JWT_MATERIAL)
+    # 密闭性：本地 .env 可能把 C3.5 实盘开的 ITEM_FEEDBACK_ENABLED=True 带进来，
+    # 抬高"env 默认"让默认关用例变红（CI 无 .env 不受影响）——钉回代码默认值。
+    monkeypatch.setattr(settings, "item_feedback_enabled", False)
     cache_store.reset_for_tests()
     _seed()
     yield

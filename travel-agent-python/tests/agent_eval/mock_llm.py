@@ -86,7 +86,9 @@ def _hotels(city: str, *, coords: bool = True) -> list[dict]:
             "description": "舒适型酒店",
             "tags": "住宿",
             "city": city,
-            # 酒店域走联网补池（真实 OTM 免费 key 不支持 kinds=accommodations）
+            # fixture 酒店行固定 web.search 源（eval 确定性选择）；真实链路的 OTM
+            # 住宿池 2026-09-30 起可用——上游拼 accomodations，此前 400 是拼写错误
+            # 而非"免费 key 不支持"。
             "source": "web.search",
         }
         for i in range(1, 3)

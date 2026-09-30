@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -42,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 DETAIL_CACHE_NAMESPACE = "itinerary:detail"
 DETAIL_CACHE_TTL_SECONDS = 600  # 与 Java RedisCacheConfig 的 itinerary:detail 10min 一致
-QUALITY_RULE_VERSION = "travel-quality-1.0"
+QUALITY_RULE_VERSION = "travel-quality-1.1"
 SCHEMA_VERSION = "1.0"
 
 _INCOMPLETE_DAY_STATUSES = {"PENDING", "RUNNING"}
@@ -327,8 +329,9 @@ def build_detail(user_id: int, itinerary_id: int) -> dict[str, Any]:
         for item in items
         if (item.review_requirement is None or item.review_requirement != "none") or item.freshness_status == "stale"
     )
-    quality_status = _quality_status(main.status, items, days, pending_facts)
-    issues = _quality_issues(quality_status, days, items, pending_facts)
+    narrative_mismatches = _narrative_hotel_mismatches(main.plan_note, main.trip_theme, items)
+    quality_status = _quality_status(main.status, items, days, pending_facts, narrative_mismatches)
+    issues = _quality_issues(quality_status, days, items, pending_facts, narrative_mismatches)
 
     return {
         "schemaVersion": SCHEMA_VERSION,
@@ -414,7 +417,11 @@ def _item_vo(item: ItineraryItem, intro_by_name: dict[str, ItineraryItem]) -> di
 
 
 def _quality_status(
-    status: int | None, items: list[ItineraryItem], days: list[ItineraryDay], pending_facts: int
+    status: int | None,
+    items: list[ItineraryItem],
+    days: list[ItineraryDay],
+    pending_facts: int,
+    narrative_mismatches: list[str] | None = None,
 ) -> str:
     has_failed_day = any(d.generation_status in _FAILED_DAY_STATUSES for d in days)
     has_incomplete_day = any(d.generation_status in _INCOMPLETE_DAY_STATUSES for d in days)
@@ -427,11 +434,68 @@ def _quality_status(
         return "BLOCKED"
     if has_stale:
         return "STALE"
-    return "READY_WITH_WARNINGS" if pending_facts > 0 else "READY"
+    # 叙事层与条目实体矛盾（planNote 提到的酒店 ≠ 实际住宿）与待复核事实同级：
+    # 条目本身可用，但"以 XX 为据点"这类引导若指错酒店会误导出发安排
+    if narrative_mismatches or pending_facts > 0:
+        return "READY_WITH_WARNINGS"
+    return "READY"
+
+
+#: 行程说明/主题里的「XX酒店/饭店/宾馆/民宿/客栈」提及（2 字以上专名前缀）。
+#: 泛指（"住在酒店""回酒店休息"）无前缀或前缀仅 1 字，天然不命中。
+_HOTEL_MENTION_RE = re.compile(r"([\u4e00-\u9fa5A-Za-z0-9·]{2,20}?)(酒店|饭店|宾馆|民宿|客栈)")
+#: 专名前缀里的修饰词与动词/介词（"以/在/订了/住在/旁边的…"）：剥掉后再比对，
+#: 避免「以成都首座万豪酒店为据点」这类合法提及被"以"字拖成误报。迭代剥离。
+_GENERIC_STEM_PREFIX_RE = re.compile(
+    r"^(?:旁边的?|附近的?|对面的?|隔壁的?|那家|这家|一家|某家|另一家|本地|当地"
+    r"|以|在|选了?|选定|订了?|入住了?|住进了?|住在?|回到?|去了?|进了?|换到?)"
+)
+
+
+def _clean_hotel_stem(raw: str) -> str:
+    stem = raw
+    while True:
+        stripped = _GENERIC_STEM_PREFIX_RE.sub("", stem, count=1)
+        if stripped == stem:
+            return stem
+        stem = stripped
+
+
+def _narrative_hotel_mismatches(
+    plan_note: str | None, trip_theme: str | None, items: Sequence[ItineraryItem]
+) -> list[str]:
+    """planNote/tripTheme 提到的具体酒店 vs 实际住宿条目的一致性（2026-09-30 评审遗留）。
+
+    评审实录：planNote 写「博舍酒店为据点」，实际条目是「成都首座万豪酒店」——
+    叙事在引导用户按错误的酒店安排出发。只做廉价双向包含比对（LLM 改写是
+    生成侧的事，读模型不付 LLM 成本）；泛指提及与纯前缀修饰不误报。
+    返回值 = 未能对应上任何住宿条目的提及（剥修饰词后，如「博舍酒店」）。
+    """
+    hotel_names = [item.poi_name for item in items if item.item_type == "hotel" and item.poi_name]
+    if not hotel_names:
+        return []
+    text = " ".join(part for part in (plan_note, trip_theme) if part)
+    if not text.strip():
+        return []
+    mismatches: list[str] = []
+    for match in _HOTEL_MENTION_RE.finditer(text):
+        stem = _clean_hotel_stem(match.group(1))
+        if len(stem) < 2:
+            continue
+        mention = f"{stem}{match.group(2)}"
+        if any(stem in name or name in mention for name in hotel_names):
+            continue
+        if mention not in mismatches:
+            mismatches.append(mention)
+    return mismatches
 
 
 def _quality_issues(
-    quality_status: str, days: list[ItineraryDay], items: list[ItineraryItem], pending_facts: int
+    quality_status: str,
+    days: list[ItineraryDay],
+    items: list[ItineraryItem],
+    pending_facts: int,
+    narrative_mismatches: list[str] | None = None,
 ) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
     if quality_status == "BLOCKED":
@@ -439,7 +503,15 @@ def _quality_issues(
             issues.append({"code": "NO_ITINERARY_ITEMS", "message": "没有可交付的行程地点"})
         if any(d.generation_status in _FAILED_DAY_STATUSES for d in days):
             issues.append({"code": "DAY_GENERATION_FAILED", "message": "至少一天的行程生成失败"})
-    elif pending_facts > 0:
+    if narrative_mismatches:
+        named = "、".join(narrative_mismatches[:3])
+        issues.append(
+            {
+                "code": "NARRATIVE_HOTEL_MISMATCH",
+                "message": f"行程说明提到的「{named}」与实际住宿条目不一致，请以行程条目为准",
+            }
+        )
+    if pending_facts > 0 and quality_status != "BLOCKED":
         issues.append({"code": "FACT_REQUIRES_REVIEW", "message": f"{pending_facts} 项事实需要出发前复核"})
     return issues
 

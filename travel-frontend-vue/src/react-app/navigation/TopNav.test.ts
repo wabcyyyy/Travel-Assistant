@@ -23,3 +23,11 @@ describe('TopNav 登录态入口', () => {
     expect(html).not.toContain('登出')
   })
 })
+
+describe('TopNav 外观入口（2026-09-30 评审拍板：暗色样式早已存在，只缺入口）', () => {
+  it('默认亮色：外观按钮以「切换到暗色」呈现，aria-pressed=false', () => {
+    const html = renderToStaticMarkup(createElement(TopNav, {}))
+    expect(html).toContain('切换到暗色')
+    expect(html).toContain('aria-pressed="false"')
+  })
+})
