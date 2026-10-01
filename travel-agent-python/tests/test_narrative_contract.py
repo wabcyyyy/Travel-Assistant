@@ -376,8 +376,8 @@ def test_llm_open_trip_sanitizes_plans_and_injects_trip_theme(monkeypatch):
     req = GenerateDayRequest(city="京都", day_no=1, days=2, needs_hotel=True)
     plans, suggestions = day_prompts.llm_open_trip(req)
 
-    # max_tokens 叙事增量：days*1150+1100，上限 8000（2 天 → 3400）
-    assert client.kwargs[0]["max_tokens"] == 2 * 1150 + 1100
+    # max_tokens 按天数等比：days*8000，上限 16000（2 天 → 16000；单日需 8000 实测口径）
+    assert client.kwargs[0]["max_tokens"] == 2 * 8000
     assert plans[0]["trip_theme"] == "题" * 40  # 顶层主题截 40 后注入
     assert plans[1]["trip_theme"] == "题" * 40  # 其余天兜底继承，随装配透传
     assert plans[0]["theme"] == "长" * 40

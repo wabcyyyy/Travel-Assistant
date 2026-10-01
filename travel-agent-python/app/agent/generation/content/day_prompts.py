@@ -350,7 +350,11 @@ def llm_open_trip(req: GenerateDayRequest) -> tuple[list[dict], list[dict]]:
     system, user = open_trip_prompt(req)
     days = req.days or 1
     output_schema = open_trip_output_schema()
-    repair_tokens = max(2800, min(8000, days * 1150 + 1100))
+    # 预算按天数等比：单日完整输出实测需 ~8000 token（2026-09-18 量测 6/6 城，3200 截断）。
+    # 旧公式 2 天仅给 3400 → 多天注定截断，每次白烧 2 次注定失败的调用再落逐日兜底
+    # （2026-10-01 金路径 E2E 三跑实证；网关实测接受 ≥24000 的 max_tokens）。上限
+    # 16000：2 天整段可用，3 天+仍走截断兜底，避免失败路径（主+修复各 16k）烧穿 run 预算。
+    repair_tokens = max(2800, min(16000, days * 8000))
     raw = client.complete(
         user,
         system_prompt=system,
