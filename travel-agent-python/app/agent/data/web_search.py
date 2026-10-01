@@ -183,7 +183,9 @@ def search_places_via_web(
         f"{city}有哪些{kind}？请给出 {limit} 个，优先高口碑、有代表性、名称可搜索到的。"
         f"必须全部是目的地「{city}」本地的真实地点，禁止给出中国同名/相似名地点。{tier_hint}{intent_hint}",
         schema_hint='{"items":[{"name":"地点名","intro":"一句话亮点","estimated_cost":人均或每晚人民币数字或null}]}',
-        max_tokens=700,
+        # 模型常无视 limit 多吐条目且 intro 偏长（10 家店 ≈ 1200+ 字符）：700 必截断
+        # （2026-10-01 三次金路径实跑同位截断实证），截断即整次搜索作废白烧预算。
+        max_tokens=1600,
     )
     rows = data.get("items") if isinstance(data, dict) else data
     if not isinstance(rows, list):
