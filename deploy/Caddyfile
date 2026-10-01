@@ -23,7 +23,8 @@
 
 	# route 块 = 显式保序（Caddy 规范序里 try_files 先于 respond/reverse_proxy，会把
 	# /api/** 先改写成 /index.html——预演实证；等价于 nginx 的 location 优先级语义）。
-	# 顺序即语义：先 deny（R1-8），再业务反代，最后 SPA fallback。
+	# 顺序即语义：先 deny（R1-8），再业务反代，再缓存头（只作用于其后的静态处理，
+	# 反代响应自带缓存语义、不被覆盖），最后 SPA fallback。
 	route {
 		# R1-8：agent 面（自带 X-Agent-Token 鉴权、接受调用方自备 user_id）与 MCP 出口
 		# 只允许内网直连，绝不对公网开放——与 nginx.conf 的 deny all 同义。
@@ -37,6 +38,20 @@
 			header_up X-Forwarded-For {http.request.remote.host}
 			flush_interval -1
 		}
+
+		# 分享卡外壳（P1-5）：/s/{token} 由后端注入 og meta 后整页返回（分享卡爬虫
+		# 不执行 JS，直接给静态 index.html 永远拿不到卡片）。XFF 同样必须替换——
+		# 外壳端点按 IP 分钟窗限速，不替换会把全站访客算进 caddy 一个桶。
+		reverse_proxy /s/* agent-python:8000 {
+			header_up X-Forwarded-For {http.request.remote.host}
+		}
+
+		# 缓存头（P1-4，与 nginx.conf 同源、改动必须同步）：默认 no-cache——SPA 外壳
+		# 与深链 fallback 都是可变 HTML；/assets/* 全部是构建 hash 产物名，内容永不
+		# 变（变即新 URL），immutable 一年让回访首屏近乎零请求。后写的 /assets/* 规则
+		# 覆盖前面的默认值；两条都在反代之后，不影响 /api 与 /s 的响应头。
+		header Cache-Control "no-cache"
+		header /assets/* Cache-Control "public, max-age=31536000, immutable"
 
 		try_files {path} /index.html
 		file_server

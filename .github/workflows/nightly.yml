@@ -2,7 +2,8 @@ name: nightly
 
 # 分层冒烟（评审报告 §4.2）：PR 层在 ci.yml；夜间跑集成冒烟：
 # 起 MySQL/Redis + FastAPI 后端（首启即自动迁移 schema），再跑 tests/api
-# 端到端（真实 LLM 生成，需 LLM_API_KEY secret，缺失时跳过）。
+# 端到端（真实 LLM 生成，需 LLM_API_KEY secret，缺失时跳过）；
+# 另起浏览器金路径 E2E（注册→ChatIntake 一句话创建→详情页地图）。
 # （语义检索评测已随 RAG 退役整体删除。）
 # 手动触发：Actions → nightly → Run workflow。
 
@@ -127,6 +128,114 @@ jobs:
             travel-agent-python/llm_eval_small.json
             travel-agent-python/llm_eval_graph_small.json
             travel-agent-python/tests/agent_eval/report
+
+  frontend-golden-e2e:
+    name: Golden path E2E (browser)
+    # 真浏览器金路径：注册登录 → ChatIntake 一句话创建 → 生成进度 → 详情页地图。
+    # 生成走真实 LLM（同 tests/api 口径），没有 LLM_API_KEY 时跳过；LLM/代理劣化
+    # 夜可能红——那是产品可观测的真实回归（生成卡死/永不终态），不是脚本抖动。
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-password
+          MYSQL_DATABASE: travel_assistant
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h127.0.0.1 -uroot -pci-only-password"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard (require LLM_API_KEY)
+        id: guard
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          if [ -z "$LLM_API_KEY" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::未配置 LLM_API_KEY secret，跳过浏览器金路径 E2E（需真实生成）"
+          fi
+      - uses: astral-sh/setup-uv@v5
+        if: steps.guard.outputs.skip != 'true'
+        with:
+          python-version: '3.12'
+          enable-cache: true
+      - name: Install python deps
+        if: steps.guard.outputs.skip != 'true'
+        working-directory: travel-agent-python
+        run: uv sync --frozen
+      - name: Start agent backend
+        if: steps.guard.outputs.skip != 'true'
+        working-directory: travel-agent-python
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          DB_HOST: 127.0.0.1
+          DB_PASSWORD: ci-only-password
+          DB_NAME: travel_assistant
+          REDIS_URL: redis://127.0.0.1:6379/0
+          AGENT_INTERNAL_TOKEN: ci-internal-token
+          JWT_SECRET: ci-example-jwt-secret-at-least-32-chars
+        run: |
+          nohup uv run python main.py > /tmp/agent.log 2>&1 &
+      - uses: actions/setup-node@v4
+        if: steps.guard.outputs.skip != 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: travel-frontend-vue/package-lock.json
+      - name: Install frontend deps
+        if: steps.guard.outputs.skip != 'true'
+        working-directory: travel-frontend-vue
+        run: npm ci
+      - name: Start vite dev server
+        if: steps.guard.outputs.skip != 'true'
+        working-directory: travel-frontend-vue
+        run: |
+          nohup npm run dev > /tmp/vite.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf http://localhost:5173/ >/dev/null && break || sleep 2
+          done
+          curl -sf http://localhost:5173/ >/dev/null
+      - name: Wait for backend
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8000/api/test/hello >/dev/null && break || sleep 2
+          done
+          curl -sf http://127.0.0.1:8000/api/test/hello
+      - name: Run golden path E2E
+        if: steps.guard.outputs.skip != 'true'
+        working-directory: travel-frontend-vue
+        env:
+          E2E_BASE_URL: http://localhost:5173
+          E2E_API_URL: http://127.0.0.1:8000
+          # ubuntu runner 预装 Chrome（无 Edge），指定 channel 免下载浏览器
+          E2E_CHANNEL: chrome
+        run: node e2e/golden-path.mjs
+      - name: Dump service logs on failure
+        if: failure()
+        run: |
+          echo "=== agent.log (tail) ==="; tail -200 /tmp/agent.log || true
+          echo "=== vite.log (tail) ==="; tail -60 /tmp/vite.log || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-golden-artifacts
+          path: travel-frontend-vue/e2e/artifacts/
 
   llm-judge:
     name: LLM-as-judge 校准（仅 nightly，D7：不进 PR 门禁）

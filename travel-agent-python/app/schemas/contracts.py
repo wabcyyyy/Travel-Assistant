@@ -48,6 +48,7 @@ from app.schemas.business.itinerary import (
     UpdateDayBody,
     VersionBody,
 )
+from app.schemas.client_errors import ClientErrorReport
 from app.schemas.collaboration import (
     InvitationAcceptRequest,
     InvitationAcceptVO,
@@ -179,6 +180,7 @@ CONTRACT_GROUPS: dict[str, tuple[type[BaseModel], ...]] = {
         TemplateForkVO,
         WeatherDay,
         WeatherVO,
+        ClientErrorReport,
     ),
 }
 

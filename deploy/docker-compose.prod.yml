@@ -15,3 +15,6 @@ services:
       # 丢弃）；生产在 Caddy 后面全链路 TLS，必须回到安全默认——漏掉这行时 deploy.sh
       # 会通过后端启动日志里的明文 Cookie 告警直接报红。
       AUTH_COOKIE_SECURE: "true"
+      # 分享卡外壳取壳地址（P1-5）：生产的静态源是 caddy 容器（同一份前端构建产物），
+      # 覆盖根编排里指向 frontend-vue 的演示值（apps profile 在生产不拉起）。
+      FRONTEND_SHELL_URL: http://caddy/index.html

@@ -47,6 +47,11 @@ def get_engine() -> Engine:
     if _engine is None:
         _engine = create_engine(
             database_url(),
+            # socket 超时与 app/common/db_pool.py 的 raw 池同口径（connect 3s / read/write 15s）。
+            # pymysql 默认 read_timeout=None：对端无声死掉的半开连接会让任何一条查询
+            # 永久挂死——生成编排任务曾因此卡在 session_scope 上，行程永远停在 status=1
+            # 无人收尾（2026-10-01 金路径 E2E 实证）。
+            connect_args={"connect_timeout": 3, "read_timeout": 15, "write_timeout": 15},
             pool_pre_ping=True,
             pool_size=settings.db_pool_max,
             max_overflow=0,

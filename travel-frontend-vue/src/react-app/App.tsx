@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { logout } from '../api/sinan'
 import { AppShell } from './layout/AppShell'
@@ -7,10 +7,17 @@ import { GuideDetailPage, GuidesPage } from './guides/GuidesPages'
 import { HomePage } from './home/HomePage'
 import { InspirationPage } from './inspiration/InspirationPage'
 import { LoginPage } from './auth/LoginPage'
-import { TripDetailPage } from './itinerary/TripDetailPage'
 import { TripsPage } from './itinerary/TripsPage'
 import { navigate, useLocation } from './router'
+import { LoadingBlock } from './shared/States'
 import { SharePage } from './shared/SharePage'
+
+// 行程详情页是 maplibre-gl 的唯一消费链（全站最重依赖），路由级懒加载让
+// 登录/首页/列表的首屏不必先下载地图库；chunk 拉取失败会作为渲染错误
+// 冒泡到根 ErrorBoundary（重试=整页刷新）。
+const TripDetailPage = lazy(() =>
+  import('./itinerary/TripDetailPage').then((module) => ({ default: module.TripDetailPage })),
+)
 
 function pageTitle(path: string) {
   if (path === '/') return '司南 Sinan · 让每一段旅程找到方向'
@@ -45,5 +52,10 @@ export default function App() {
   else if (location.path === '/trips') page = <TripsPage />
   else if (location.path.startsWith('/trips/')) page = <TripDetailPage path={location.path} />
   else page = <HomePage />
-  return <AppShell onLogin={() => navigate('/login')} username={username} onLogout={handleLogout}>{page}{username && <span className="sr-only">已登录：{username}</span>}</AppShell>
+  return (
+    <AppShell onLogin={() => navigate('/login')} username={username} onLogout={handleLogout}>
+      <Suspense fallback={<LoadingBlock label="正在打开行程…" />}>{page}</Suspense>
+      {username && <span className="sr-only">已登录：{username}</span>}
+    </AppShell>
+  )
 }

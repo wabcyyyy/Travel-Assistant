@@ -22,4 +22,5 @@ npm run build      # vite 构建
 npm run test:unit  # vitest
 npm run theme:lint # 外观门禁
 npm run ep:lint    # EP 用量门禁
+npm run e2e:golden # 金路径 E2E（先 start-all.ps1 起活栈；真实 LLM 生成，分钟级）
 ```

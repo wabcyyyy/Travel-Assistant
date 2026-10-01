@@ -60,6 +60,8 @@ docs/
 
 # 本地侦察/探针临时物（TREK 稀疏克隆、无头截图与 stub 等，不入库）
 .tmp-*
+# E2E 失败截图（travel-frontend-vue/e2e/golden-path.mjs 产物，不入库）
+travel-frontend-vue/e2e/artifacts/
 # G-3.4：diff-cover 的中间产物（CI 里生成，不入仓）
 coverage.xml
 .coverage

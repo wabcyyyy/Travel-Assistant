@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import type { ItineraryChatMessage } from '../../types/chat'
 import type { DayPlan, HotelOption, ItineraryDetail } from '../../types/itinerary'
+import { liveHotelQuotes } from '../../api/sinan'
 import { Icon } from '../shared/Icon'
 import { renderChatMarkdown } from './chatMarkdown'
 import { activeActionIndex, draftChanges, hotelDefaultSelection, pendingActionSummary, unverifiedNames } from './chatDraft'
+import { describeLiveQuotesError, liveQuotesCaption, quoteRowMeta } from './hotelLiveQuotes'
+import type { LiveQuotesState } from './hotelLiveQuotes'
 import { useTripChat } from './useTripChat'
 
 /** 对话编排主面（CH3）：对话在左、行程保持可见；草稿卡/确认卡长在对话流内。
@@ -69,6 +72,7 @@ export function ChatPanel({
             {isDraft && (
               <DraftCard
                 msg={msg}
+                itineraryId={itineraryId}
                 dayList={dayList}
                 applying={chat.applying}
                 onApply={() => void chat.applyDraft()}
@@ -105,12 +109,14 @@ export function ChatPanel({
 /** 草稿卡/确认卡：挂在带草稿的 AI 消息下方（导出仅供单测静态渲染）。 */
 export function DraftCard({
   msg,
+  itineraryId,
   dayList,
   applying,
   onApply,
   onApplyHotel,
 }: {
   msg: ItineraryChatMessage
+  itineraryId: number
   dayList: DayPlan[]
   applying: boolean
   onApply: () => void
@@ -128,7 +134,7 @@ export function DraftCard({
     {changes.length > 0 && <ul className="chat-diff">{changes.map((line) => <li key={line}>{line}</li>)}</ul>}
     {unverified.length > 0 && <p className="chat-unverified">这些点位 AI 没拿到坐标，出发前请自行核实：{unverified.join('、')}</p>}
     {msg.hotelOptions?.length ? (
-      <HotelChooser options={msg.hotelOptions} tripDays={dayList.length} applying={applying} onApply={onApplyHotel} />
+      <HotelChooser options={msg.hotelOptions} tripId={itineraryId} tripDays={dayList.length} applying={applying} onApply={onApplyHotel} />
     ) : null}
     {msg.plans?.length ? (
       <button className="button button-primary chat-apply" type="button" disabled={applying} onClick={onApply}>
@@ -140,11 +146,13 @@ export function DraftCard({
 
 function HotelChooser({
   options,
+  tripId,
   tripDays,
   applying,
   onApply,
 }: {
   options: HotelOption[]
+  tripId: number
   tripDays: number
   applying: boolean
   onApply: (option: HotelOption, roomType: string, dayNos: number[]) => void
@@ -155,6 +163,17 @@ function HotelChooser({
   useEffect(() => {
     setSelection(hotelDefaultSelection(option, tripDays))
   }, [option, tripDays])
+  // 实时价（L16）是城市+日期窗级的对照信息，不是单候选的属性——查询一次，
+  // 整个选择器共享；服务端按用户分钟窗限速，前端只做 loading 去抖。
+  const [live, setLive] = useState<LiveQuotesState>({ status: 'idle' })
+  const fetchLive = () => {
+    if (live.status === 'loading') return
+    setLive({ status: 'loading' })
+    liveHotelQuotes(tripId).then(
+      (data) => setLive({ status: 'ready', quotes: data }),
+      (err: unknown) => setLive({ status: 'error', message: describeLiveQuotesError(err) }),
+    )
+  }
 
   return <div className="chat-hotels">
     {options.length > 1 && (
@@ -167,7 +186,7 @@ function HotelChooser({
       </div>
     )}
     <div className="chat-hotel-body">
-      <div className="chat-hotel-line"><strong>{option.hotelName}</strong><span>{option.tier} · ￥{option.totalPrice ?? '--'}{option.nights ? ` / ${option.nights} 晚` : ''}{option.withinBudget === false ? ' · 超预算' : ''}</span></div>
+      <div className="chat-hotel-line"><strong>{option.hotelName}</strong><span>{option.tier} · ￥{option.totalPrice ?? '--'}{option.nights ? ` / ${option.nights} 晚` : ''}{option.withinBudget === false ? ' · 超预算' : ''}{option.searchLink && <> · <a className="chat-hotel-verify" href={option.searchLink} target="_blank" rel="noreferrer" aria-label={`在地图核实 ${option.hotelName}`}>地图核实</a></>}</span></div>
       {option.roomTypes?.length ? (
         <label className="chat-hotel-room">房型
           <select value={selection.roomType} onChange={(event) => setSelection((current) => ({ ...current, roomType: event.target.value }))}>
@@ -185,6 +204,28 @@ function HotelChooser({
           {applying ? '正在应用…' : '确认入住'}
         </button>
       </div>
+    </div>
+    <div className="chat-hotel-live">
+      <div className="chat-hotel-live-head">
+        <span>候选价是司南的估算，实付以酒店为准。</span>
+        <button className="text-action" type="button" disabled={live.status === 'loading'} onClick={fetchLive}>
+          {live.status === 'loading' ? '正在查…' : live.status === 'ready' ? '再查一次' : '查实时价'}
+        </button>
+      </div>
+      {live.status === 'ready' && live.quotes && (live.quotes.hotelQuotes.length ? (
+        <div className="chat-hotel-live-rows">
+          <p className="chat-hotel-live-cap">{liveQuotesCaption(live.quotes)}</p>
+          {live.quotes.hotelQuotes.map((row) => (
+            <div key={row.name} className="chat-hotel-live-row">
+              <strong>{row.name}</strong>
+              <span>￥{row.nightlyPrice}/晚{row.totalPrice != null ? ` · 共￥${row.totalPrice}` : ''}{quoteRowMeta(row) ? ` · ${quoteRowMeta(row)}` : ''}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="chat-hotel-live-empty">{live.quotes.reason || '没查到实时报价。'}</p>
+      ))}
+      {live.status === 'error' && <p className="chat-hotel-live-empty" role="alert">{live.message}</p>}
     </div>
   </div>
 }

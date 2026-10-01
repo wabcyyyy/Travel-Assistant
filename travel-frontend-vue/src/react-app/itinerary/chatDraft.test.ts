@@ -114,6 +114,7 @@ describe('ChatPanel/L2：确认卡渲染（draft 带 requiresConfirmation → �
     const html = renderToStaticMarkup(
       createElement(DraftCard, {
         msg: confirmMsg,
+        itineraryId: 7,
         dayList,
         applying: false,
         onApply: () => undefined,
@@ -125,7 +126,27 @@ describe('ChatPanel/L2：确认卡渲染（draft 带 requiresConfirmation → �
     expect(html).toContain('西湖国宾馆')
     expect(html).toContain('湖景大床房')
     expect(html).toContain('确认入住')
+    expect(html).toContain('查实时价')
     expect(html).not.toContain('应用到行程')
+  })
+
+  it('L16：候选带 searchLink 出「地图核实」深链，缺 link 如实不出', () => {
+    const withLink = renderToStaticMarkup(
+      createElement(DraftCard, {
+        msg: { ...confirmMsg, hotelOptions: [{ ...confirmMsg.hotelOptions![0], searchLink: 'https://amap.com/search?query=%E8%A5%BF%E6%B9%96%E5%9B%BD%E5%AE%BE%E9%A6%86' }] } as ItineraryChatMessage,
+        itineraryId: 7,
+        dayList,
+        applying: false,
+        onApply: () => undefined,
+        onApplyHotel: () => undefined,
+      }),
+    )
+    expect(withLink).toContain('地图核实')
+    expect(withLink).toContain('https://amap.com/search')
+    const withoutLink = renderToStaticMarkup(
+      createElement(DraftCard, { msg: confirmMsg, itineraryId: 7, dayList, applying: false, onApply: () => undefined, onApplyHotel: () => undefined }),
+    )
+    expect(withoutLink).not.toContain('地图核实')
   })
 
   it('纯计划草稿渲染 diff 与应用按钮，不出确认横幅', () => {
@@ -138,7 +159,7 @@ describe('ChatPanel/L2：确认卡渲染（draft 带 requiresConfirmation → �
       baseRevision: 'rev-2',
     }
     const html = renderToStaticMarkup(
-      createElement(DraftCard, { msg: planMsg, dayList, applying: false, onApply: () => undefined, onApplyHotel: () => undefined }),
+      createElement(DraftCard, { msg: planMsg, itineraryId: 7, dayList, applying: false, onApply: () => undefined, onApplyHotel: () => undefined }),
     )
     expect(html).toContain('第 1 天新增：博物馆')
     expect(html).toContain('应用到行程')

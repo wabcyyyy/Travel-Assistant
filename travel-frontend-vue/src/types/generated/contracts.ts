@@ -748,6 +748,15 @@ export interface WeatherVO {
   daily: WeatherDay[] | null
 }
 
+export interface ClientErrorReport {
+  message: string
+  stack: string | null
+  source: string | null
+  path: string | null
+  userAgent: string | null
+  ts: string | null
+}
+
 // ===== stream_events（JSON Lines 事件）=====
 export interface StartEvent {
   type: "start"

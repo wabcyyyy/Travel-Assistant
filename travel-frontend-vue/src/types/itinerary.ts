@@ -180,3 +180,23 @@ export type NightlyBreakdownRow = {
 export interface HotelRoomOption extends Contracts.HotelRoomOption {
   nightlyBreakdown: NightlyBreakdownRow[]
 }
+
+/** 酒店实时价行（LA2 按需通道，POST /hotel-quotes/live）：后端 live_hotel_quotes
+ * 返回开放 dict，视图层按实际消费键收窄（NightlyBreakdownRow 同款先例）。 */
+export type LiveHotelQuoteRow = {
+  name: string
+  nightlyPrice: number
+  totalPrice?: number | null
+  currency?: string | null
+  source?: string | null
+  rating?: number | null
+}
+
+/** /hotel-quotes/live 信封 data：城市+日期窗一律取行程自身（后端读库），行按每晚价升序。 */
+export interface LiveHotelQuotes {
+  hotelQuotes: LiveHotelQuoteRow[]
+  city: string
+  checkIn: string
+  checkOut: string
+  reason: string | null
+}

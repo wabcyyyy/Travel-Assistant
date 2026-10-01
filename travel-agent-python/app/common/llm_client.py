@@ -19,6 +19,7 @@
 
 import contextlib
 import json
+import logging
 import random
 import threading
 import time
@@ -31,6 +32,8 @@ from app.agent.runtime.run_limits import RunLimitExceeded, current_limits
 from app.agent.runtime.trace import current_run_id, record_event
 from app.agent.runtime.usage_store import usage_store
 from app.common.config import settings
+
+logger = logging.getLogger(__name__)
 
 _http_client: httpx.Client | None = None
 _http_lock = threading.Lock()
@@ -218,6 +221,10 @@ class LLMClient:
                     # 瞬时错误（超时/429/5xx）指数退避后重试一次；其余直接上抛。
                     if attempt + 1 >= _LLM_MAX_ATTEMPTS or not _is_retryable(exc):
                         raise
+                    # record_event 只进 trace 上下文——逐日兜底路径上上下文缺失时
+                    # 重试在服务端日志完全隐形（2026-10-01 金路径 E2E 排障 20 分钟
+                    # 才靠 py-spy 定位），这里同步落一条不依赖 trace 的日志。
+                    logger.warning("llm retryable failure (attempt %s): %s", attempt + 1, exc)
                     record_event("llm", "llm.retry", status="error", error=str(exc), metadata={"attempt": attempt + 1})
                     _retry_sleep(attempt)
         except RunLimitExceeded as exc:

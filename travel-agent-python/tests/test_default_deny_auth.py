@@ -37,7 +37,11 @@ _UNGUARDED_BUSINESS = frozenset(
 # `Depends(enforce_business_auth)`（它要知道是谁），但 `/api/auth/` 落在 PUBLIC_PATHS
 # 前缀里，所以不带票的请求同样能到达它——它自己用 ApiError(401) 挡住。
 # 这一份钉的是"前缀放行有没有把一条写端点变成匿名可写"。
-_ANONYMOUS_WRITES = _UNGUARDED_BUSINESS | frozenset({("POST", "/api/auth/logout-all")})
+# 例外登记（2026-09-30，前端错误探针）：POST /api/client-errors 刻意匿名可写——
+# 登录页自身的崩溃恰恰发生在拿不到会话时。滥用面有界：只写结构化日志不落库、
+# 全字段上限、按 IP 分钟窗 30 次超限 429（见 business/client_errors.py）。
+# 复核条件：日志面出现灌水即收回匿名性（改走强制会话），见 AGENTS.md 哲学 #2 注记。
+_ANONYMOUS_WRITES = _UNGUARDED_BUSINESS | frozenset({("POST", "/api/auth/logout-all"), ("POST", "/api/client-errors")})
 
 # agent 面走 X-Agent-Token 内部令牌，不是用户会话；两个探活端点必须匿名，
 # 否则 start-all.ps1 与 Dockerfile HEALTHCHECK 在拿到令牌前就判死。

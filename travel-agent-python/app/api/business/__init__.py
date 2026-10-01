@@ -12,6 +12,7 @@ from fastapi import APIRouter
 from app.api.business.admin import router as admin_router
 from app.api.business.atlas import router as atlas_router
 from app.api.business.auth import auth_router, user_router
+from app.api.business.client_errors import router as client_errors_router
 from app.api.business.covers import router as covers_router
 from app.api.business.expenses import router as expenses_router
 from app.api.business.export import router as export_router
@@ -22,6 +23,7 @@ from app.api.business.members import router as members_router
 from app.api.business.pois import router as pois_router
 from app.api.business.probe import router as probe_router
 from app.api.business.share import router as share_router
+from app.api.business.share_shell import router as share_shell_router
 from app.api.business.templates import router as templates_router
 from app.api.business.uploads import router as uploads_router
 from app.api.business.weather import router as weather_router
@@ -29,6 +31,7 @@ from app.api.business.weather import router as weather_router
 business_routers: tuple[APIRouter, ...] = (
     auth_router,
     user_router,
+    client_errors_router,
     itinerary_router,
     covers_router,
     expenses_router,
@@ -42,6 +45,7 @@ business_routers: tuple[APIRouter, ...] = (
     probe_router,
     uploads_router,
     share_router,
+    share_shell_router,
     atlas_router,
     templates_router,
 )

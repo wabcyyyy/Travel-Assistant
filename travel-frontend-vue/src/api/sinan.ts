@@ -1,6 +1,6 @@
 import type * as Contracts from '../types/generated/contracts'
 import type { ChatDraftPayload, ItineraryChatMessage } from '../types/chat'
-import type { HotelOption, ItineraryDetail, ItinerarySummary, TripItem } from '../types/itinerary'
+import type { HotelOption, ItineraryDetail, ItinerarySummary, LiveHotelQuotes, TripItem } from '../types/itinerary'
 
 export class ReactApiError extends Error {
   status?: number
@@ -290,7 +290,58 @@ export interface StreamHandlers {
  * Subscribe to the existing itinerary SSE endpoint. The caller owns the
  * AbortController so a route change never leaves a stream running.
  */
-export async function streamItineraryEvents(id: number | string, signal: AbortSignal, handlers: StreamHandlers) {
+export async function streamItineraryEvents(
+  id: number | string,
+  signal: AbortSignal,
+  handlers: StreamHandlers,
+  options: StreamReconnectOptions = {},
+) {
+  const maxReconnects = options.maxReconnects ?? 4
+  const baseDelayMs = options.baseDelayMs ?? 1500
+  let attempt = 0
+  let lastError: Error | null = null
+  for (;;) {
+    // 终态帧之后的干净关流不重连：服务端对终态行程只补一帧快照就关，
+    // 无脑重连会跟 snapshot 打成 ping-pong（每次都「连上→补帧→关流」）。
+    let terminal = false
+    const forwarding: StreamHandlers = {
+      onEvent: (event) => {
+        if (event.type === 'done' || event.type === 'error') terminal = true
+        handlers.onEvent(event)
+      },
+      // 中间失败静默（后面可能重连成功），最终失败由本函数收口时回调
+      onError: () => {},
+    }
+    try {
+      await readItineraryStream(id, signal, forwarding)
+      if (terminal || signal.aborted) return
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      if (signal.aborted) return
+      // 4xx 是鉴权/归属问题，重试只会原样再吃一次；5xx 与网络错才值得续
+      if (error instanceof ReactApiError && error.status && error.status < 500) {
+        handlers.onError(error)
+        throw error
+      }
+      lastError = error instanceof Error ? error : new Error('实时进度连接中断')
+    }
+    if (attempt >= maxReconnects) {
+      const finalError = lastError || new Error('实时进度连接多次中断')
+      handlers.onError(finalError)
+      throw finalError
+    }
+    attempt += 1
+    await waitFor(baseDelayMs * 2 ** (attempt - 1), signal)
+  }
+}
+
+export interface StreamReconnectOptions {
+  /** 断流自动重连次数上限（默认 4，指数退避 1.5s 起） */
+  maxReconnects?: number
+  baseDelayMs?: number
+}
+
+async function readItineraryStream(id: number | string, signal: AbortSignal, handlers: StreamHandlers) {
   const response = await fetch(`/api/itinerary/${id}/events`, {
     credentials: 'include',
     headers: { Accept: 'text/event-stream' },
@@ -456,4 +507,36 @@ export function applyHotelOption(
     method: 'POST',
     body: JSON.stringify({ ...input, actionMessageId, baseRevision }),
   })
+}
+
+// ===== 酒店实时价（POST /itinerary/{id}/hotel-quotes/live，LA2/L16）=====
+
+/** 按需查酒店实时价：城市与日期窗一律取行程自身（后端读库），不落库。
+ * 429=按用户分钟窗限速（审查 P1-8，与航班实时价共用 SerpApi 月池）；
+ * 400=行程缺城市/日期；200+空列表+reason=问过但没查到。 */
+export function liveHotelQuotes(id: number | string, body?: Contracts.LiveQuotesBody | null) {
+  return apiRequest<LiveHotelQuotes>(`/itinerary/${id}/hotel-quotes/live`, {
+    method: 'POST',
+    body: body ? JSON.stringify(body) : undefined,
+  })
+}
+
+// ===== 客户端错误探针（POST /api/client-errors，匿名可达）=====
+
+// 会话级防刷：同源同消息只报一次、总量封顶。上限刻意压在服务端分钟窗（30）之下，
+// 正常页面崩溃（个位数错误）不受影响，失控循环才有截断。
+const CLIENT_ERROR_SESSION_CAP = 20
+const reportedErrors = new Set<string>()
+
+/** fire-and-forget 上报：探针失败必须静默——它失败时再抛错会递归触发自身。 */
+export function reportClientError(report: Contracts.ClientErrorReport): void {
+  const key = `${report.source || 'unknown'}:${report.message}`
+  if (reportedErrors.has(key) || reportedErrors.size >= CLIENT_ERROR_SESSION_CAP) return
+  reportedErrors.add(key)
+  void apiRequest<void>('/client-errors', {
+    method: 'POST',
+    // keepalive：崩溃/卸载场景下浏览器也要把这最后一发发出去
+    keepalive: true,
+    body: JSON.stringify(report),
+  }).catch(() => {})
 }

@@ -202,8 +202,8 @@ class Settings(BaseSettings):
     # ---- 分享与调度 ----
     # 分享匿名访问限流（SPEC v2.3 §6.6 / E14）：按 IP 滑动窗口，每分钟上限
     share_rate_limit_per_minute: int = 60
-    # 匿名图片端点（/api/image-proxy、/api/poi-photo）按 IP 每分钟上限（R1-4）：落在
-    # PUBLIC_PATHS 里且未命中时各要打 1~6 次外网，无闸即能耗尽出网配额。归因见 client_ip.py。
+    frontend_shell_url: str = ""  # 分享卡取壳地址（P1-5）：空=关闭；compose 按拓扑注入（见 share_card.py）
+    # 匿名图片端点（/api/image-proxy、/api/poi-photo）按 IP 每分钟上限（R1-4）：无闸即能耗尽出网配额（client_ip.py）
     public_rate_limit_per_minute: int = 60
     schedule_optimizer_enabled: bool = True
     # MCP 出口（G-3.6）：默认关闭，管理员在后台开启后 /mcp 才可用

@@ -41,6 +41,7 @@ cd travel-frontend-vue && npm run build && npm run theme:lint && npm run ep:lint
 
 1. **单一真源**：每类事实只有一份权威定义（schema 在 app/schemas、SQL 在 db/migrations、env 键在 app/common/config.py + .env.example）。副本必然漂移，不允许出现第二份。
 2. **门禁只升不降**：静态检查、测试、eval 基线只许收紧。放宽门禁的改动需要在本文件留注释与期限。
+   - 登记项（2026-09-30，前端错误探针）：`POST /api/client-errors` 加入 `test_default_deny_auth` 的匿名写豁免清单——登录页自身崩溃时拿不到会话，探针必须匿名可达。滥用面有界（只写日志、字段上限、按 IP 分钟窗 30 次）。期限：上线后首次日志复盘（不晚于 2026-10-31）复核；日志面出现灌水即改走强制会话。
 3. **代码赢过文档**：文档与代码冲突时，先修文档使其对齐代码事实；描述"将要做的重构"的文档不放仓库。
 4. **接缝就地迁移，不加包装层**：改接口签名时直接迁移全部调用方，不保留兼容 shim/re-export 包装层。
 5. **AI 写的必须有人读懂**：不引入没人能解释清楚的代码；新增依赖必须在 commit message 里给出理由。

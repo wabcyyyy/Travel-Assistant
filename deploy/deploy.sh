@@ -76,6 +76,13 @@ if ! $COMPOSE exec -T agent-python python -c "from app.common.redis_client impor
   exit 1
 fi
 echo "  ✓ Redis 连通"
+# 6. 分享卡外壳（P1-5）：坏 token 也应返回注入前的原壳（200 HTML）——302/5xx 说明
+#    FRONTEND_SHELL_URL 没注入或 /s/ 反代没配，分享链接在爬虫里没有卡片
+if ! curl -fsS "https://$DOMAIN/s/smoke-invalid-token" | grep -q "<html"; then
+  echo "✗ /s/ 分享外壳不可用：查 FRONTEND_SHELL_URL 与边缘 /s/* 反代" >&2
+  exit 1
+fi
+echo "  ✓ /s/ 分享外壳可达"
 
 echo "✓ 部署完成：https://$DOMAIN"
 echo "  跟踪日志：docker compose -f docker-compose.yml logs -f agent-python"

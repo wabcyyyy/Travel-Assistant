@@ -100,6 +100,9 @@ services:
       # XFF 归因：只有这台代理**替换**过 XFF（nginx.conf 用 $remote_addr），
       # 才允许后端按可信网段从右往左取跳。网段是 compose 默认 bridge 段。
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1,::1,172.16.0.0/12}
+      # 分享卡外壳取壳地址（P1-5）：本地演示链路的静态源是 frontend-vue 容器；
+      # 生产叠加层按拓扑覆盖为 caddy。与 nginx.conf / deploy/Caddyfile 的 /s/ 反代配套。
+      FRONTEND_SHELL_URL: http://frontend-vue/index.html
       # compose 的 nginx 只 listen 80（明文），Secure Cookie 会被浏览器丢掉；
       # 上 TLS 后删掉这行，回到 config.py 的安全默认值（R1-6）。
       AUTH_COOKIE_SECURE: "false"

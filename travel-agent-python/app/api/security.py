@@ -23,6 +23,10 @@ from app.api.deps import AuthUser, authenticate, extract_token
 # - /api/poi-photo、/api/image-proxy：前端在登录前就要出图，且 R1-4 起各挂按 IP 限速、
 #   R1-1/R1-2 起流式截断 + 拒绝 SVG。它们仍是本清单里风险最高的两条，收紧前先想清楚
 #   "登录前首屏"这个理由是否还成立。
+# - /api/client-errors：前端错误探针，登录页自身崩溃也要能上报（匿名是覆盖面要求，
+#   不是疏漏）；滥用面由全字段上限 + 按 IP 分钟窗收（见 business/client_errors.py）。
+# - /s/：分享卡外壳（GET only）。分享链接的收件人没有会话，匿名是产品语义；
+#   与 /api/share/{token} 共用同一套按 IP 分钟窗限速。
 PUBLIC_PATHS: tuple[str, ...] = (
     "/api/test/hello",
     "/api/auth/",
@@ -30,6 +34,8 @@ PUBLIC_PATHS: tuple[str, ...] = (
     "/api/image-proxy",
     "/api/uploads/",
     "/api/share/",
+    "/api/client-errors",
+    "/s/",
 )
 
 ADMIN_PATHS: tuple[str, ...] = ("/api/admin",)
