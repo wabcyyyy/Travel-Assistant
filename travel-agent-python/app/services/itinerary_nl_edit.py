@@ -30,7 +30,14 @@ from app.common.vo_json import iso_time
 from app.db.models import ItineraryDay, ItineraryItem
 from app.db.session import session_scope
 from app.schemas.trip import EditOpRequest
-from app.services import budget_engine, itinerary_chat, itinerary_city, itinerary_query, itinerary_version
+from app.services import (
+    budget_engine,
+    itinerary_chat,
+    itinerary_city,
+    itinerary_query,
+    itinerary_version,
+    llm_gateway_service,
+)
 from app.services.itinerary_command import fresh_detail
 
 logger = logging.getLogger(__name__)
@@ -78,12 +85,15 @@ def nl_edit(user_id: int, itinerary_id: int, instruction: str) -> dict[str, Any]
         ]
         day_ids_by_no = {day.day_no: day.id for day in day_rows}
 
-    ops = itinerary_city.guard_agent_call(
-        "指令解析服务暂不可用",
-        lambda: run_edit_ops(
-            EditOpRequest(city=city or "", days=trip_days, plans=plans, instruction=instruction or "")
-        ),
-    )
+    # BYOK 路由：请求线程内直调 agent（run_edit_ops 及其下游 resolve_poi/search_hotels
+    # 烧 LLM），与 use_scene 同位进入 route_scope。
+    with llm_gateway_service.route_scope(user_id):
+        ops = itinerary_city.guard_agent_call(
+            "指令解析服务暂不可用",
+            lambda: run_edit_ops(
+                EditOpRequest(city=city or "", days=trip_days, plans=plans, instruction=instruction or "")
+            ),
+        )
 
     applied: list[str] = []
     with session_scope() as session:

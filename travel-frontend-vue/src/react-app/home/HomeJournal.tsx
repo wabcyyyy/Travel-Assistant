@@ -1,6 +1,7 @@
 import { guides } from '../data'
 import { navigate } from '../router'
 import { Icon } from '../shared/Icon'
+import { SmartImg } from '../shared/SmartImg'
 
 export function HomeJournal() {
   return <section className="home-journal" aria-labelledby="journal-title">
@@ -10,7 +11,7 @@ export function HomeJournal() {
       <button className="text-action" type="button" onClick={() => navigate('/guides')}>翻开旅行攻略<Icon name="arrowUpRight" size={17} /></button>
     </div>
     <div className="home-journal-list">{guides.slice(0, 2).map((guide) => <button key={guide.slug} className="home-journal-entry" type="button" onClick={() => navigate(`/guides/${guide.slug}`)}>
-      <img src={guide.image} alt={`${guide.city}城市风景`} width="160" height="120" loading="lazy" />
+      <SmartImg src={guide.image} alt={`${guide.city}城市风景`} />
       <span className="home-journal-copy"><small>{guide.tag} · {guide.readTime}</small><strong>{guide.title}</strong><span>{guide.excerpt}</span></span>
       <Icon name="arrowUpRight" size={20} />
     </button>)}</div>

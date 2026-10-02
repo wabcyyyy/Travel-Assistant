@@ -26,7 +26,8 @@ async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     headers: {
       Accept: 'application/json',
-      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+      // FormData 不能手写 Content-Type：multipart boundary 由浏览器生成，写了反而发不出
+      ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...(init.headers ?? {}),
     },
   })
@@ -539,4 +540,50 @@ export function reportClientError(report: Contracts.ClientErrorReport): void {
     keepalive: true,
     body: JSON.stringify(report),
   }).catch(() => {})
+}
+
+// ===== 图片意图理解（POST /image-intent，对话输入的图片腿）=====
+
+/** 旅行相关图片 → 可直接进对话的一句话：multipart 上传（file + 可选 context 表单域），
+ * 返回的 suggestedMessage 由调用方回填输入框交用户编辑后照常发送——不自动发送。 */
+export function interpretImageIntent(file: File, context?: string) {
+  const body = new FormData()
+  body.append('file', file)
+  if (context) body.append('context', context)
+  return apiRequest<Contracts.ImageIntentVO>('/image-intent', { method: 'POST', body })
+}
+
+// ===== 模型接入设置（/llm-gateway，BYOK 管理面；设置页专用）=====
+
+/** 配置列表：后端只回 apiKeyHint（尾 4 位），明文密钥永不回传。 */
+export function listLlmGateways() {
+  return apiRequest<Contracts.LlmGatewayVO[]>('/llm-gateway')
+}
+
+export function createLlmGateway(data: Contracts.LlmGatewayCreateBody) {
+  return apiRequest<Contracts.LlmGatewayVO>('/llm-gateway', { method: 'POST', body: JSON.stringify(data) })
+}
+
+/** 更新：apiKey 传 null/空串 = 不改密钥，其余字段非空即覆盖。 */
+export function updateLlmGateway(id: number, data: Contracts.LlmGatewayUpdateBody) {
+  return apiRequest<Contracts.LlmGatewayVO>(`/llm-gateway/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+/** 删除启用中的配置视同同时停用（生效通道自然回到司南默认）。 */
+export function deleteLlmGateway(id: number) {
+  return apiRequest<null>(`/llm-gateway/${id}`, { method: 'DELETE' })
+}
+
+/** 启用互斥：启用这条会自动停用同账号的其他配置（单一生效通道）。 */
+export function enableLlmGateway(id: number) {
+  return apiRequest<Contracts.LlmGatewayVO>(`/llm-gateway/${id}/enable`, { method: 'POST' })
+}
+
+export function disableLlmGateway(id: number) {
+  return apiRequest<Contracts.LlmGatewayVO>(`/llm-gateway/${id}/disable`, { method: 'POST' })
+}
+
+/** 连通性测试：后端经该配置发一条 1-token 消息，返回 ok/延迟/脱敏错误摘要。 */
+export function testLlmGateway(id: number) {
+  return apiRequest<Contracts.LlmGatewayTestVO>(`/llm-gateway/${id}/test`, { method: 'POST' })
 }

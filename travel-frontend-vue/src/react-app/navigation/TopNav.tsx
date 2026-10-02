@@ -30,6 +30,7 @@ export function TopNav({ onLogin, onLogout, username }: { onLogin?: () => void; 
         {links.map((link) => <button key={link.path} className={isActive(link.path) ? 'top-nav-link active' : 'top-nav-link'} type="button" onClick={() => go(link.path)}>{link.label}</button>)}
         <span className="top-nav-divider" />
         <button className={isActive('/trips') ? 'top-nav-link active' : 'top-nav-link'} type="button" onClick={() => go('/trips')}>我的行程</button>
+        {username && <button className={isActive('/settings') ? 'top-nav-link active' : 'top-nav-link'} type="button" onClick={() => go('/settings')}>设置</button>}
         <button className="top-nav-appearance" type="button" aria-label={dark ? '切换到亮色' : '切换到暗色'} aria-pressed={dark} onClick={() => { setOpen(false); toggleDark() }}><Icon name={dark ? 'sun' : 'moon'} size={18} /></button>
         {username
           ? <><span>{username}</span><button className="top-nav-login" type="button" onClick={() => { setOpen(false); if (onLogout) onLogout() }}>登出</button></>

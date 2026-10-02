@@ -1,24 +1,24 @@
-/* Sinan: forest green, soft paper and natural destination photography. */
+/* Sinan: cinnabar needle on pure white — 朱砂磁针落白纸，热情交给摄影与点缀，界面保持干净。 */
 :root {
-  --sinan-ink: #203c33;
-  --sinan-ink-soft: #46594f;
-  --sinan-muted: #657168;
-  --sinan-faint: #727970;
-  --sinan-accent: #2e5945;
-  --sinan-accent-dark: #1e4131;
-  --sinan-accent-soft: #e0e8d9;
-  --sinan-accent-wash: #eef2e9;
-  --sinan-paper: #fafbf7;
+  --sinan-ink: #241a14;
+  --sinan-ink-soft: #5d5049;
+  --sinan-muted: #86796f;
+  --sinan-faint: #9a8d83;
+  --sinan-accent: #d63a1e;
+  --sinan-accent-dark: #b02e12;
+  --sinan-accent-soft: #f9d8c7;
+  --sinan-accent-wash: #fdf0e8;
+  --sinan-paper: #ffffff;
   --sinan-surface: #ffffff;
-  --sinan-line: #d5ddcf;
-  --sinan-line-soft: #e6eade;
-  --sinan-warm: #f3f0e6;
+  --sinan-line: #e9e0d8;
+  --sinan-line-soft: #f2ebe5;
+  --sinan-warm: #f6f2ee;
   --sinan-on-image: #ffffff;
-  --sinan-photo-shade: #142d24;
-  --sinan-danger: #a53d32;
-  --sinan-shadow: 0 20px 48px -24px rgba(33, 62, 45, .2);
-  --sinan-shadow-soft: 0 8px 24px -18px rgba(33, 62, 45, .15);
-  --sinan-composer-shadow: 0 24px 60px -30px rgba(33, 62, 45, .25);
+  --sinan-photo-shade: #2b1710;
+  --sinan-danger: #bf2830;
+  --sinan-shadow: 0 20px 48px -24px rgba(62, 32, 18, .2);
+  --sinan-shadow-soft: 0 8px 24px -18px rgba(62, 32, 18, .15);
+  --sinan-composer-shadow: 0 24px 60px -30px rgba(62, 32, 18, .25);
   --sinan-radius: 20px;
   --sinan-radius-sm: 12px;
   --sinan-ease: cubic-bezier(.23, 1, .32, 1);
@@ -27,19 +27,19 @@
 }
 
 .dark {
-  --sinan-ink: #e4ecdf;
-  --sinan-ink-soft: #c0cbbb;
-  --sinan-muted: #a4b19d;
-  --sinan-faint: #9ca995;
-  --sinan-accent: #42694e;
-  --sinan-accent-dark: #527d5e;
-  --sinan-accent-soft: #344a38;
-  --sinan-accent-wash: #233429;
-  --sinan-paper: #17221b;
-  --sinan-surface: #1d2b22;
-  --sinan-line: #40533e;
-  --sinan-line-soft: #2b3e2c;
-  --sinan-warm: #2f3327;
+  --sinan-ink: #f5ede6;
+  --sinan-ink-soft: #d8ccc3;
+  --sinan-muted: #aea297;
+  --sinan-faint: #8f8479;
+  --sinan-accent: #c74420;
+  --sinan-accent-dark: #e0753f;
+  --sinan-accent-soft: #4f2a1c;
+  --sinan-accent-wash: #381d12;
+  --sinan-paper: #171210;
+  --sinan-surface: #201916;
+  --sinan-line: #463a32;
+  --sinan-line-soft: #2f2721;
+  --sinan-warm: #2d2520;
   --sinan-danger: #edaca0;
 }
 
@@ -290,7 +290,7 @@
   --lp-theme-accent: linear-gradient(90deg, var(--lp-accent), var(--lp-accent-hover));
   --lp-why-ink: var(--lp-text-muted);
   --lp-branch-b: #4f52b5;
-  --lp-stream-glow: rgb(14 116 144 / 18%);
+  --lp-stream-glow: rgb(185 61 26 / 14%);
   --lp-cover-gradient: linear-gradient(125deg, #0b1220 0%, #12303e 48%, #155e75 100%);
   --lp-cover-scrim: linear-gradient(to top, rgb(2 6 23 / 55%), rgb(2 6 23 / 0%));
 }
@@ -438,7 +438,7 @@
   --lp-shadow-sm: 0 1px 3px rgb(0 0 0 / 50%), 0 1px 2px rgb(0 0 0 / 35%);
   --lp-shadow-md: 0 4px 16px rgb(0 0 0 / 55%);
   --lp-shadow-lg: 0 12px 32px rgb(0 0 0 / 60%);
-  --lp-stream-glow: rgb(34 211 238 / 16%);
+  --lp-stream-glow: rgb(255 133 87 / 16%);
   /* 天色相暗色档：亮度提到 0.72（仍在 [l-min, l-max] 内），彩度微降保证与深底的区分 */
   --lp-day-l: 0.72;
   --lp-day-c: 0.1;
@@ -588,11 +588,15 @@ h3 {
 :root {
   --lp-ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
   --lp-ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --lp-ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
   --lp-dur-press: 80ms;
   --lp-dur-fast: 150ms;
   --lp-dur-base: 180ms;
   --lp-dur-modal: 220ms;
   --lp-dur-theme: 320ms;
+  --lp-dur-reveal: 420ms;
+  /* 中文字面是满幅方块，负字距会让笔画粘连；标题允许的收紧上限就到这 */
+  --lp-track-display: -0.01em;
 }
 
 button:not(:disabled):not([data-no-press]),

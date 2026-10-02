@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { logout } from '../api/sinan'
+import { getUserInfo, logout } from '../api/sinan'
 import { AppShell } from './layout/AppShell'
 import { DestinationsPage } from './destination/DestinationsPage'
 import { GuideDetailPage, GuidesPage } from './guides/GuidesPages'
@@ -8,6 +8,7 @@ import { HomePage } from './home/HomePage'
 import { InspirationPage } from './inspiration/InspirationPage'
 import { LoginPage } from './auth/LoginPage'
 import { TripsPage } from './itinerary/TripsPage'
+import { SettingsPage } from './settings/SettingsPage'
 import { navigate, useLocation } from './router'
 import { LoadingBlock } from './shared/States'
 import { SharePage } from './shared/SharePage'
@@ -25,6 +26,7 @@ function pageTitle(path: string) {
   if (path === '/inspiration') return '旅行灵感 · 司南 Sinan'
   if (path === '/guides' || path.startsWith('/guides/')) return '旅行攻略 · 司南 Sinan'
   if (path === '/trips' || path.startsWith('/trips/')) return '我的行程 · 司南 Sinan'
+  if (path === '/settings') return '设置 · 司南 Sinan'
   if (path === '/login') return '登录 · 司南 Sinan'
   return '司南 Sinan'
 }
@@ -33,6 +35,26 @@ export default function App() {
   const location = useLocation()
   const [username, setUsername] = useState(() => localStorage.getItem('sinan-username') || '')
   useEffect(() => { document.title = pageTitle(location.path) }, [location.path])
+  // 用户名以服务端为准：localStorage 只是首帧占位，启动后对账 /user/info，
+  // 防止换账号/登出后导航仍显示上一个用户（401 时连占位一起清掉）。
+  useEffect(() => {
+    let cancelled = false
+    getUserInfo().then(
+      (info) => {
+        if (cancelled) return
+        if (info?.username) {
+          setUsername(info.username)
+          localStorage.setItem('sinan-username', info.username)
+        }
+      },
+      () => {
+        if (cancelled) return
+        setUsername('')
+        localStorage.removeItem('sinan-username')
+      },
+    )
+    return () => { cancelled = true }
+  }, [])
   const authenticated = (value: string) => { setUsername(value); localStorage.setItem('sinan-username', value) }
   /** 登出（P1-7）：先清本地身份并回首页；POST /auth/logout 清 HttpOnly Cookie 是 best-effort，失败不阻塞。 */
   const handleLogout = () => {
@@ -50,6 +72,7 @@ export default function App() {
   else if (location.path === '/guides') page = <GuidesPage />
   else if (location.path.startsWith('/guides/')) page = <GuideDetailPage path={location.path} />
   else if (location.path === '/trips') page = <TripsPage />
+  else if (location.path === '/settings') page = <SettingsPage />
   else if (location.path.startsWith('/trips/')) page = <TripDetailPage path={location.path} />
   else page = <HomePage />
   return (

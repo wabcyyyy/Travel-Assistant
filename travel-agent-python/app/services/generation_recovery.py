@@ -20,9 +20,10 @@ from sqlalchemy import and_, or_, select, update
 
 from app.agent import resume_day
 from app.common import cron
+from app.common.envelope import ApiError
 from app.db.models import ItineraryDay, ItineraryItem, ItineraryMain
 from app.db.session import session_scope
-from app.services import day_persistence, generation_gate, itinerary_generation, itinerary_query
+from app.services import day_persistence, generation_gate, itinerary_generation, itinerary_query, llm_gateway_service
 
 logger = logging.getLogger(__name__)
 
@@ -156,17 +157,29 @@ def recover_one(itinerary_id: int, failed_resume: bool, active_after: datetime |
     remaining: list[int] = []
     resumed_any = False
     fingerprint = generation_gate.request_fingerprint(command)
-    for day_no in pending:
-        action_id = f"day-{itinerary_id}-{day_no}"
-        resumed = resume_day(action_id)
-        if resumed is not None and resumed.context is not None:
-            context = context or resumed.context
-        if resumed is None or resumed.plan is None:
-            remaining.append(day_no)
-            continue
-        day_persistence.persist(itinerary_id, command, day_no, resumed.plan, action_id, fingerprint)
-        logger.info("resumed itinerary %s day %s from checkpoint", itinerary_id, day_no)
-        resumed_any = True
+    # BYOK 路由（决策 5 的依据腿）：resume_day 在恢复线程内直接跑 day_stream →
+    # get_llm_client，不包 route_scope 会静默回落默认通道——续跑天与已生成天出自
+    # 不同模型家族且烧运营方 key。下方 submit_planning 腿由 plan_days 内部自覆盖。
+    # 密文解不开（ApiError 409）必须就地终态化并放 resume 锁：扫描周期重拉也必败，
+    # 漏放锁则这条行程永远进不了恢复（终审补丁）。
+    try:
+        with llm_gateway_service.route_scope(user_id):
+            for day_no in pending:
+                action_id = f"day-{itinerary_id}-{day_no}"
+                resumed = resume_day(action_id)
+                if resumed is not None and resumed.context is not None:
+                    context = context or resumed.context
+                if resumed is None or resumed.plan is None:
+                    remaining.append(day_no)
+                    continue
+                day_persistence.persist(itinerary_id, command, day_no, resumed.plan, action_id, fingerprint)
+                logger.info("resumed itinerary %s day %s from checkpoint", itinerary_id, day_no)
+                resumed_any = True
+    except ApiError as exc:
+        generation_gate.release_resume_lock(itinerary_id)
+        day_persistence.fail_trip(itinerary_id, str(exc) or None)
+        logger.warning("byok route broken, failed itinerary %s: %s", itinerary_id, exc)
+        return True
 
     if pending and not remaining:
         # 全部从检查点续完：补终态（与"数据齐了"分支同口径），不整段重排

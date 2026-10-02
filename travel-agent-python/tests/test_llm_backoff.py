@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import random
 
+import httpx
 import pytest
 
 import app.agent  # noqa: F401  先完成 agent 门面导入：存量导入环 llm_client→facade→web_search→llm_client（pyproject importlinter 豁免条目注明的既有债）。
@@ -49,3 +50,29 @@ def test_retry_sleep_sleeps_jittered_delay(monkeypatch):
     assert len(sleeps) == 1
     base = _base(1)
     assert base * 0.8 <= sleeps[0] <= base * 1.2
+
+
+def test_probe_knobs_single_attempt_short_read_no_redirects(monkeypatch):
+    """BYOK 连通性探测的紧约束（2026-10-02 终审）：不重试 + 短读超时 + 不跟随重定向。
+
+    黑洞地址 × 默认 240s 读超时 ×2 次尝试会把同步 /test 端点的线程占用放大到
+    ~480s；这里钉死三根旋钮真的传到了 httpx 层。
+    """
+    calls: list[dict] = []
+
+    class _Client:
+        def post(self, _url, **kwargs):
+            calls.append(kwargs)
+            raise httpx.ConnectTimeout("black-hole")
+
+        def is_closed(self):
+            return False
+
+    monkeypatch.setattr(llm_client, "_get_http_client", lambda: _Client())
+    probe = llm_client.LLMClient(timeout=15.0, max_attempts=1, follow_redirects=False)
+    with pytest.raises(httpx.ConnectTimeout):
+        probe.chat_response([{"role": "user", "content": "ping"}])
+    assert len(calls) == 1, "max_attempts=1 时超时不得重试"
+    assert calls[0]["follow_redirects"] is False
+    assert calls[0]["timeout"].read == 15.0
+    assert calls[0]["timeout"].connect == llm_client.settings.llm_connect_timeout

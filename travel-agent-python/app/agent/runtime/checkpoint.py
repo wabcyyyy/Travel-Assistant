@@ -100,7 +100,12 @@ def cleanup_old_threads(retention_seconds: int) -> int:
         latest[thread_id] = max(latest.get(thread_id, 0.0), moment)
     removed = 0
     for thread_id, moment in latest.items():
-        if moment < cutoff:
+        # `<=` 而非 `<`：Windows 系统时钟粒度实测 2ms（连续采样 99.99% 同值，
+        # min 正间隔 0.0020s），"刚写入的检查点 ts"与"retention=0 的 cutoff"会落
+        # 在同一刻度上——严格小于把它判成"未过期"漏删（test_confirm_flow 保留期
+        # 用例的偶发红，2026-10-02 全量复跑定位；加压复现 7/300）。保留期语义上
+        # "恰好到点"本就该删，生产日级保留期下该边界不可达。
+        if moment <= cutoff:
             saver.delete_thread(thread_id)
             removed += 1
     return removed

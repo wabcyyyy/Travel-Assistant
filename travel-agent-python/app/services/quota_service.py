@@ -50,3 +50,21 @@ def enforce_live_quote_budget(user_id: int) -> None:
     key = f"quota:live-quotes:min:{user_id}"
     if state_and_sessions.sliding_hit(key, _MINUTE_WINDOW_SECONDS) > settings.user_live_quotes_per_minute:
         raise ApiError(429, "查询过于频繁，请稍后再试")
+
+
+# 连通性测试的分钟窗上限。不走 settings：探测端点专属的紧闸（真实用户手动点
+# 不会一分钟 6 次），拉 env 键反而是配置面噪音（2026-10-02 终审修复，保守取整）。
+_GATEWAY_TESTS_PER_MINUTE = 5
+
+
+def enforce_gateway_test_budget(user_id: int) -> None:
+    """BYOK 网关连通性测试（POST /api/llm-gateway/{id}/test）的按用户分钟窗。
+
+    /test 是同步阻塞端点且会真实发起上游调用：没有这道闸，一个已认证用户并发
+    打几十个指向黑洞地址的 /test（配合慢读超时）就能占满 anyio 线程池，拖死全部
+    同步业务端点（2026-10-02 终审）。与 enforce_live_quote_budget 同口径只判分钟窗：
+    测试没有"今日已用完"的产品语义；服务端侧另配 15s 短超时 + 不重试收窄单次占用。
+    """
+    key = f"quota:gateway-test:min:{user_id}"
+    if state_and_sessions.sliding_hit(key, _MINUTE_WINDOW_SECONDS) > _GATEWAY_TESTS_PER_MINUTE:
+        raise ApiError(429, "测试过于频繁，请稍后再试")

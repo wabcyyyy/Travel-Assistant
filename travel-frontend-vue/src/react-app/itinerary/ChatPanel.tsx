@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ChangeEvent } from 'react'
 import type { ItineraryChatMessage } from '../../types/chat'
 import type { DayPlan, HotelOption, ItineraryDetail } from '../../types/itinerary'
-import { liveHotelQuotes } from '../../api/sinan'
+import { interpretImageIntent, isUnauthorized, liveHotelQuotes } from '../../api/sinan'
+import { ChatComposer, composeDraft, imageFeedbackText } from '../shared/ChatComposer'
 import { Icon } from '../shared/Icon'
 import { renderChatMarkdown } from './chatMarkdown'
 import { activeActionIndex, draftChanges, hotelDefaultSelection, pendingActionSummary, unverifiedNames } from './chatDraft'
@@ -31,6 +31,7 @@ export function ChatPanel({
 }) {
   const chat = useTripChat(itineraryId, onApplied, onReconcile)
   const [draft, setDraft] = useState('')
+  const [imageBusy, setImageBusy] = useState(false)
   const logRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -42,6 +43,22 @@ export function ChatPanel({
     setDraft('')
     void chat.send(text)
   }
+
+  // 图片→一句话：建议消息回填草稿交用户编辑后照常 send（不自动发送），
+  // 错误走 ChatPanel 既有 notice 通道
+  const handleImage = async (file: File) => {
+    chat.setNotice('')
+    setImageBusy(true)
+    try {
+      const res = await interpretImageIntent(file)
+      setDraft((current) => composeDraft(current, res.suggestedMessage, 2000))
+    } catch (err) {
+      chat.setNotice(isUnauthorized(err) ? '登录状态已过期，重新登录后就能识别图片。' : imageFeedbackText(err))
+    } finally {
+      setImageBusy(false)
+    }
+  }
+
   const activeIdx = activeActionIndex(chat.msgs)
 
   return <section className={collapsed ? 'chat-panel is-collapsed' : 'chat-panel'} aria-label="行程对话编排">
@@ -58,7 +75,14 @@ export function ChatPanel({
     <div className="chat-log" role="log" aria-live="polite" ref={logRef}>
       {!chat.loaded && <div className="chat-empty">正在载入对话…</div>}
       {chat.loaded && !chat.msgs.length && (
-        <div className="chat-empty">还没有对话。试试「第二天加个博物馆」或「换个舒服点的酒店」。</div>
+        <div className="chat-empty">
+          <span>还没有对话。想改什么，点一句试试：</span>
+          <div className="chat-suggest">
+            {['第二天加个博物馆', '换个舒服点的酒店', '把第二天安排松一点'].map((hint) => (
+              <button key={hint} type="button" onClick={() => setDraft(hint)}>{hint}</button>
+            ))}
+          </div>
+        </div>
       )}
       {chat.msgs.map((msg, index) => {
         const isUser = msg.role === 'user'
@@ -66,9 +90,10 @@ export function ChatPanel({
         return (
           <div key={msg.id ?? `idx-${index}`} className={isUser ? 'chat-msg is-user' : 'chat-msg is-ai'}>
             <div className="chat-bubble">{isUser
-              ? (msg.content || (chat.sending ? '司南正在想…' : ''))
-              // AI 文案带 ###/** 标记，走最小 MD 渲染；用户输入一律原文
-              : renderChatMarkdown(msg.content || (chat.sending ? '司南正在想…' : ''))}</div>
+              ? msg.content
+              // AI 文案带 ###/** 标记，走最小 MD 渲染；用户输入一律原文。
+              // 流式回合里 AI 消息先占位，正文到达前显示跳点思考态。
+              : (msg.content ? renderChatMarkdown(msg.content) : <span className="chat-thinking" aria-label="司南正在想"><i /><i /><i /></span>)}</div>
             {isDraft && (
               <DraftCard
                 msg={msg}
@@ -89,19 +114,19 @@ export function ChatPanel({
         <button type="button" aria-label="关闭提示" onClick={() => chat.setNotice('')}><Icon name="close" size={13} /></button>
       </p>
     )}
-    <form className="chat-composer" onSubmit={(event: ChangeEvent<HTMLFormElement> | undefined) => { event?.preventDefault(); submit() }}>
-      <input
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        placeholder="例如：第二天加个博物馆"
-        aria-label="对行程说话"
-        maxLength={2000}
-        disabled={chat.sending}
-      />
-      <button type="submit" className="button button-primary" disabled={chat.sending || !draft.trim()}>
-        发送<Icon name="arrow" size={15} />
-      </button>
-    </form>
+    <ChatComposer
+      className="chat-composer"
+      value={draft}
+      onChange={setDraft}
+      onSend={submit}
+      placeholder="例如：第二天加个博物馆"
+      ariaLabel="对行程说话"
+      maxLength={2000}
+      disabled={chat.sending}
+      onImage={handleImage}
+      imageBusy={imageBusy}
+      onNotice={chat.setNotice}
+    />
     </>}
   </section>
 }

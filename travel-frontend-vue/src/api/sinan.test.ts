@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { reportClientError, streamItineraryEvents } from './sinan'
+import { interpretImageIntent, reportClientError, streamItineraryEvents } from './sinan'
 
 /** SSE 断流重连与错误探针的传输层测试：fetch 以鸭子类型打桩
  * （streamItineraryEvents 只消费 ok/status/body.getReader）。 */
@@ -128,5 +128,44 @@ describe('reportClientError 会话防刷', () => {
     // 探针自身失败必须静默：不抛、不影响后续
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('offline') }))
     expect(() => report('late-error', 'window')).not.toThrow()
+  })
+})
+
+describe('apiRequest FormData 分支（interpretImageIntent）', () => {
+  const png = () => new File([new Uint8Array([1, 2, 3, 4])], 'shot.png', { type: 'image/png' })
+
+  it('multipart 上传：body 为 FormData、不手写 JSON Content-Type、带可选 context', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ code: 200, message: 'success', data: { text: '一张成都街头的照片', suggestedMessage: '想去成都逛逛' } }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const file = png()
+    const vo = await interpretImageIntent(file, '在改成都的行程')
+    expect(vo).toEqual({ text: '一张成都街头的照片', suggestedMessage: '想去成都逛逛' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/image-intent')
+    expect(init?.method).toBe('POST')
+    expect(init?.body).toBeInstanceOf(FormData)
+    expect((init?.body as FormData).get('file')).toBe(file)
+    expect((init?.body as FormData).get('context')).toBe('在改成都的行程')
+    const headers = init?.headers as Record<string, string>
+    expect(headers.Accept).toBe('application/json')
+    // multipart boundary 由浏览器生成，手写 Content-Type 反而发不出去
+    expect(headers['Content-Type']).toBeUndefined()
+  })
+
+  it('不传 context 时不追加该表单域', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ code: 200, message: 'success', data: { text: 't', suggestedMessage: 's' } }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    await interpretImageIntent(png())
+    const [, init] = fetchMock.mock.calls[0]
+    expect((init?.body as FormData).has('context')).toBe(false)
   })
 })

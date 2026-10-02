@@ -3258,6 +3258,333 @@
         }
       }
     },
+    "/api/llm-gateway": {
+      "get": {
+        "tags": [
+          "llm-gateway"
+        ],
+        "summary": "List Gateways",
+        "operationId": "list_gateways_api_llm_gateway_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response List Gateways Api Llm Gateway Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "llm-gateway"
+        ],
+        "summary": "Create Gateway",
+        "operationId": "create_gateway_api_llm_gateway_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmGatewayCreateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Create Gateway Api Llm Gateway Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/llm-gateway/{gateway_id}": {
+      "put": {
+        "tags": [
+          "llm-gateway"
+        ],
+        "summary": "Update Gateway",
+        "operationId": "update_gateway_api_llm_gateway__gateway_id__put",
+        "parameters": [
+          {
+            "name": "gateway_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Gateway Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmGatewayUpdateBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Update Gateway Api Llm Gateway  Gateway Id  Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "llm-gateway"
+        ],
+        "summary": "Delete Gateway",
+        "operationId": "delete_gateway_api_llm_gateway__gateway_id__delete",
+        "parameters": [
+          {
+            "name": "gateway_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Gateway Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Delete Gateway Api Llm Gateway  Gateway Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/llm-gateway/{gateway_id}/enable": {
+      "post": {
+        "tags": [
+          "llm-gateway"
+        ],
+        "summary": "Enable Gateway",
+        "operationId": "enable_gateway_api_llm_gateway__gateway_id__enable_post",
+        "parameters": [
+          {
+            "name": "gateway_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Gateway Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Enable Gateway Api Llm Gateway  Gateway Id  Enable Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/llm-gateway/{gateway_id}/disable": {
+      "post": {
+        "tags": [
+          "llm-gateway"
+        ],
+        "summary": "Disable Gateway",
+        "operationId": "disable_gateway_api_llm_gateway__gateway_id__disable_post",
+        "parameters": [
+          {
+            "name": "gateway_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Gateway Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Disable Gateway Api Llm Gateway  Gateway Id  Disable Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/llm-gateway/{gateway_id}/test": {
+      "post": {
+        "tags": [
+          "llm-gateway"
+        ],
+        "summary": "Test Gateway",
+        "operationId": "test_gateway_api_llm_gateway__gateway_id__test_post",
+        "parameters": [
+          {
+            "name": "gateway_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Gateway Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Test Gateway Api Llm Gateway  Gateway Id  Test Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/image-intent": {
+      "post": {
+        "tags": [
+          "image-intent"
+        ],
+        "summary": "Post Image Intent",
+        "operationId": "post_image_intent_api_image_intent_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_post_image_intent_api_image_intent_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Post Image Intent Api Image Intent Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/covers/search": {
       "get": {
         "tags": [
@@ -5869,6 +6196,31 @@
         "title": "BackupRule",
         "description": "备用方案规则（M3-① 叙事层）：if 触发条件 → action 替换动作。\n\nwire 键为 \"if\"（显式别名，覆盖 to_camel 生成器，因为 if_ 的 camel\n形态没有意义）；每日 0-3 条。"
       },
+      "Body_post_image_intent_api_image_intent_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_post_image_intent_api_image_intent_post"
+      },
       "Body_upload_cover_api_itinerary__id__cover_upload_post": {
         "properties": {
           "file": {
@@ -8374,6 +8726,86 @@
         "type": "object",
         "title": "LiveQuotesBody",
         "description": "`POST /api/itinerary/{id}/quotes/live` 的请求体（L14 按需实时价）。\n\n出发地/目的地不由前端指定：一律取行程自身的（origin_city + city），避免\n\"给别人的行程查我的出发地\"。日期可覆盖——默认用行程的出发/返程日，用户\n想比较别的时间窗时可以显式给。"
+      },
+      "LlmGatewayCreateBody": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "baseUrl": {
+            "type": "string",
+            "title": "Baseurl"
+          },
+          "apiKey": {
+            "type": "string",
+            "title": "Apikey"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "baseUrl",
+          "apiKey",
+          "model"
+        ],
+        "title": "LlmGatewayCreateBody",
+        "description": "`POST /api/llm-gateway` 请求体。"
+      },
+      "LlmGatewayUpdateBody": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "baseUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseurl"
+          },
+          "apiKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apikey"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "type": "object",
+        "title": "LlmGatewayUpdateBody",
+        "description": "`PUT /api/llm-gateway/{id}` 请求体：全部可空，apiKey 留空 = 不修改密钥。"
       },
       "LocalReplanRequest": {
         "properties": {

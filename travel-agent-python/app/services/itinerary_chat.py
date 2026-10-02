@@ -36,7 +36,7 @@ from app.db.models import (
 )
 from app.db.session import session_scope
 from app.schemas.trip import ChatTurnRequest
-from app.services import expense_service, itinerary_city, itinerary_query
+from app.services import expense_service, itinerary_city, itinerary_query, llm_gateway_service
 
 logger = logging.getLogger(__name__)
 
@@ -536,7 +536,10 @@ def finalize_chat_turn(
 def chat_edit(user_id: int, itinerary_id: int, message: str, history: list[dict[str, Any]] | None) -> dict[str, Any]:
     """阻塞版对话改行程（同 Java `chatEdit`）。"""
     ctx = build_chat_turn_context(user_id, itinerary_id, message, history)
-    return finalize_chat_turn(user_id, itinerary_id, message, ctx, run_chat_turn_in_process(ctx, itinerary_id))
+    # BYOK 路由：请求线程内直接跑 agent，route_scope 在此进入（与 use_scene 同位）。
+    with llm_gateway_service.route_scope(user_id):
+        turn = run_chat_turn_in_process(ctx, itinerary_id)
+    return finalize_chat_turn(user_id, itinerary_id, message, ctx, turn)
 
 
 def run_chat_turn_in_process(ctx: ChatTurnContext, itinerary_id: int) -> dict[str, Any]:
@@ -643,7 +646,10 @@ def _stream_turn(
     阻塞 put 会把池线程永久 park 住。
     """
     try:
-        out = finalize_chat_turn(user_id, itinerary_id, message, ctx, run_chat_turn_in_process(ctx, itinerary_id))
+        # BYOK 路由：chat_pool 工作线程不继承请求线程的 contextvars，user_id 是
+        # 显式参数——路由上下文必须在这里进入（研究/生成同理见 plan_days）。
+        with llm_gateway_service.route_scope(user_id):
+            out = finalize_chat_turn(user_id, itinerary_id, message, ctx, run_chat_turn_in_process(ctx, itinerary_id))
         _offer(outcomes, loop, (out, None))
     except Exception as exc:
         logger.warning("chat stream turn failed for itinerary %s: %s", itinerary_id, exc, exc_info=True)

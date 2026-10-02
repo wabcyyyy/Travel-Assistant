@@ -8,7 +8,8 @@
 - connect/read 超时分层：连接超时短、读超时对齐 LLM_TIMEOUT / run deadline；
 - LLMClient.chat 支持 system/user 消息、temperature、max_tokens、
   enable_search（百炼联网搜索）与 json_mode（response_format=json_object）；
-- complete 是单轮 user 提示的便捷封装；get_llm_client 提供进程内单例；
+- complete 是单轮 user 提示的便捷封装；get_llm_client 提供进程内单例，
+  BYOK 路由（app.common.llm_route 的 ContextVar）生效时改返回该路由的专属 client；
 - 结构化意图/草稿编辑走可配置 fast 通道 llm_fast_model（见 config；默认与
   主模型同款，切档才省钱）；
 - stream_chat 支持流式输出，适用于多日整段生成场景。
@@ -18,6 +19,7 @@
 """
 
 import contextlib
+import hashlib
 import json
 import logging
 import random
@@ -32,6 +34,7 @@ from app.agent.runtime.run_limits import RunLimitExceeded, current_limits
 from app.agent.runtime.trace import current_run_id, record_event
 from app.agent.runtime.usage_store import usage_store
 from app.common.config import settings
+from app.common.llm_route import LLMRoute, current_route
 
 logger = logging.getLogger(__name__)
 
@@ -152,12 +155,20 @@ class LLMClient:
         base_url: str | None = None,
         api_key: str | None = None,
         model: str | None = None,
+        timeout: float | None = None,
+        max_attempts: int | None = None,
+        follow_redirects: bool | None = None,
     ) -> None:
         # 显式传入即覆盖（judge 等独立配置键走这里），缺省回落 settings 主配置
         self._base_url = base_url or settings.llm_base_url
         self._api_key = api_key or settings.llm_api_key
         self._model = model or settings.llm_model
-        self._timeout = settings.llm_timeout
+        self._timeout = settings.llm_timeout if timeout is None else timeout
+        self._max_attempts = _LLM_MAX_ATTEMPTS if max_attempts is None else max(1, max_attempts)
+        # BYOK 网关地址不可信：30x 重定向可把携带用户密钥的 POST 引向内网地址
+        # （SSRF 面），路由专属 client 与连通性探测一律不跟随（2026-10-02 终审）；
+        # None = 沿用共享 httpx client 的默认（跟随）。
+        self._follow_redirects = True if follow_redirects is None else follow_redirects
 
     def chat_response(
         self,
@@ -203,7 +214,7 @@ class LLMClient:
                 remaining = limits.deadline_seconds - (time.monotonic() - limits.started_at)
                 timeout = min(timeout, max(0.1, remaining))
             started = time.monotonic()
-            for attempt in range(_LLM_MAX_ATTEMPTS):
+            for attempt in range(self._max_attempts):
                 try:
                     # 每次真实 HTTP 调用都消耗 run 预算，重试同样受限额约束。
                     if limits and attempt > 0:
@@ -213,13 +224,14 @@ class LLMClient:
                         json=payload,
                         headers=headers,
                         timeout=_build_timeout(timeout),
+                        follow_redirects=self._follow_redirects,
                     )
                     resp.raise_for_status()
                     body = resp.json()
                     break
                 except Exception as exc:
                     # 瞬时错误（超时/429/5xx）指数退避后重试一次；其余直接上抛。
-                    if attempt + 1 >= _LLM_MAX_ATTEMPTS or not _is_retryable(exc):
+                    if attempt + 1 >= self._max_attempts or not _is_retryable(exc):
                         raise
                     # record_event 只进 trace 上下文——逐日兜底路径上上下文缺失时
                     # 重试在服务端日志完全隐形（2026-10-01 金路径 E2E 排障 20 分钟
@@ -335,6 +347,7 @@ class LLMClient:
             json=payload,
             headers=headers,
             timeout=_build_timeout(timeout),
+            follow_redirects=self._follow_redirects,
         ) as resp:
             resp.raise_for_status()
             for line in resp.iter_lines():
@@ -508,9 +521,41 @@ class LLMClient:
 
 _llm_client: LLMClient | None = None
 
+# BYOK 路由专属 client 缓存：键 = (base_url, model, sha256(api_key)[:16])——api_key 只以
+# 摘要形式进键，缓存本身不构成第二份明文落点。容量到顶整体清空重建：BYOK 是低频
+# 配置面（单用户至多一条启用），LRU 精细化没有收益；LLMClient 不持有连接（共用
+# _get_http_client 池），清空无资源泄漏。
+_route_clients: dict[tuple[str, str, str], LLMClient] = {}
+_route_clients_lock = threading.Lock()
+_ROUTE_CLIENT_CAPACITY = 8
+
+
+def _routed_client(route: LLMRoute) -> LLMClient:
+    digest = hashlib.sha256(route.api_key.encode("utf-8")).hexdigest()[:16]
+    key = (route.base_url, route.model, digest)
+    with _route_clients_lock:
+        client = _route_clients.get(key)
+        if client is None:
+            if len(_route_clients) >= _ROUTE_CLIENT_CAPACITY:
+                _route_clients.clear()
+            # follow_redirects=False：用户网关不可信，30x 不得把 POST 引向别处（SSRF）
+            client = LLMClient(
+                base_url=route.base_url, api_key=route.api_key, model=route.model, follow_redirects=False
+            )
+            _route_clients[key] = client
+        return client
+
 
 def get_llm_client() -> LLMClient:
+    """进程内 client 工厂：BYOK 路由生效时返回该路由的专属 client，否则返回默认单例。
+
+    名字与签名保持不变（agent 层 16 处调用与测试 mock 契约全靠它）；路由上下文由
+    services 层的 route_scope 在 worker 入口设置（contextvars 不跨线程池传播）。
+    """
     global _llm_client
+    route = current_route()
+    if route is not None:
+        return _routed_client(route)
     if _llm_client is None:
         _llm_client = LLMClient()
     return _llm_client

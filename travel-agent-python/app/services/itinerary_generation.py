@@ -40,6 +40,7 @@ from app.agent import (
 from app.common import cache_store
 from app.common.config import settings
 from app.common.envelope import ApiError
+from app.common.llm_route import use_route
 from app.common.task_pool import SlotExecutor, TaskRejected
 from app.db.models import ItineraryDay, ItineraryItem, ItineraryMain
 from app.db.session import session_scope
@@ -54,6 +55,7 @@ from app.services import (
     itinerary_enricher,
     itinerary_query,
     itinerary_version,
+    llm_gateway_service,
 )
 from app.services import preferences as preferences_service
 
@@ -159,95 +161,111 @@ def submit_planning(
 
 
 def plan_days(user_id: int, itinerary_id: int, command: GenerateCommand, context: dict[str, Any] | None = None) -> None:
+    # BYOK 路由（2026-10-02 拍板）：contextvars 不跨线程池传播，必须在显式持 user_id 的
+    # 工作线程入口内进入。plan_days 一处覆盖研究段/整段流式/逐日兜底全部 agent 调用；
+    # 网关失败响亮报错、不回退默认通道（成本不转嫁 + 模型家族不割裂）。
+    # 路由解析先于 with 单独兜 ApiError：密文解不开（加密 key 轮换）若从 route_scope
+    # 直接抛出，会绕过下方 try 的失败收尾（fail_trip / SSE 错误 / finally 解注册），
+    # 409 裸穿 generation_pool 还会漏 _unregister_planning 造成注册表泄漏（终审补丁）。
     try:
-        if not _shell_exists(itinerary_id):
-            logger.error("itinerary shell %s not visible before planning; abort", itinerary_id)
-            raise ApiError(500, "行程壳数据不存在，无法开始生成")
-        day_persistence.mark_generating(itinerary_id)
-
-        used_names: list[str] = []
-        chosen_hotel: str | None = None
-        first_day_suggestions: list[Any] | None = None
-        fingerprint = generation_gate.request_fingerprint(command)
-        if context is None:
-            # 不包 observe_run：与迁移前的 /v1/plan-context 口径一致（研究事件不带 runId）。
-            # 但 scene 必须归位（P1-7）：研究段的 LLM 调用此前落 scene="other"，
-            # 用量报表把"生成的研究成本"记到匿名桶里。
-            # start_date+days 供城市级天气一次取整趟预报窗（C3.1）；无日期自然为 None。
-            with use_scene("research"):
-                context = run_plan_context(
-                    command.city,
-                    command.preferences,
-                    itinerary_id=itinerary_id,
-                    start_date=command.start_date.isoformat() if command.start_date else None,
-                    days=command.days,
-                    origin_city=command.origin_city,
-                )
-        # L14：报价随研究上下文一次落库；空即写 NULL（续跑取回的 context 同样带它）
-        day_persistence.save_flight_quotes(itinerary_id, context.get("flight_quotes"))
-        day_persistence.save_origin_city(itinerary_id, command.origin_city)
-
-        suggestions_persisted = False
-        unfinished = day_persistence.unfinished_day_nos(itinerary_id)
-        fresh_trip = len(unfinished) >= command.days
-        if fresh_trip:
-            try:
-                suggestions_persisted = _plan_whole_trip(user_id, itinerary_id, command, context, fingerprint)
-            except Exception as stream_exc:
-                logger.warning("whole-trip stream failed for itinerary %s: %s", itinerary_id, stream_exc)
-            # 整段流式的后置终检（stream 产出的天不再零校验直落库）：对已落库天跑
-            # validate_plans，违规天重置 PENDING，交下方既有逐日兜底循环重生成。
-            _revalidate_stream_days(itinerary_id, command, fingerprint)
-
-        for day_no in range(1, command.days + 1):
-            action_id = f"day-{itinerary_id}-{day_no}"
-            if not generation_gate.try_day_lock(itinerary_id, day_no):
-                logger.warning("day lock busy, skip itinerary %s day %s", itinerary_id, day_no)
-                continue
-            try:
-                day = day_persistence.find_day(itinerary_id, day_no)
-                if day is None:
-                    raise ApiError(500, "行程日不存在")
-                if day.generation_status == "SUCCEEDED":
-                    # 已成功的天只做幂等校验与跨天去重登记，不重写（也跳过收尾失效：无变更）
-                    generation_gate.verify_action(day, action_id, fingerprint)
-                    day_persistence.append_existing_items(day.id, used_names)
-                    if chosen_hotel is None:
-                        chosen_hotel = day_persistence.existing_hotel(day.id)
-                    continue
-                day_persistence.mark_running(day.id, action_id, fingerprint)
-                generation_events.day_start(itinerary_id, day_no)
-                try:
-                    plan = _generate_day_with_trace(
-                        itinerary_id, command, context, day_no, used_names, chosen_hotel, action_id, fingerprint
-                    )
-                    if day_no == 1:
-                        first_day_suggestions = plan.suggestions
-                        day_persistence.set_trip_theme(itinerary_id, plan.trip_theme)
-                except Exception as day_exc:
-                    day_persistence.mark_failed(day.id, action_id, fingerprint, str(day_exc) or None)
-                    generation_events.degraded(itinerary_id, f"day_{day_no}", str(day_exc), "待重试")
-                    raise
-                persisted = day_persistence.find_day(itinerary_id, day_no)
-                if persisted is not None:
-                    day_persistence.append_existing_items(persisted.id, used_names)
-                    if chosen_hotel is None:
-                        chosen_hotel = day_persistence.existing_hotel(persisted.id)
-            finally:
-                generation_gate.release_day_lock(itinerary_id, day_no)
-            itinerary_query.evict_detail(user_id, itinerary_id)
-            _submit_budget_recalculate(itinerary_id)
-
-        if not suggestions_persisted:
-            itinerary_enricher.persist_suggestions(itinerary_id, first_day_suggestions)
-        _finish(user_id, itinerary_id, command)
-    except Exception as exc:
-        logger.error("async planning failed for itinerary %s", itinerary_id, exc_info=True)
+        route = llm_gateway_service.resolve_route(user_id)
+    except ApiError as exc:
+        logger.error("byok route broken for itinerary %s", itinerary_id, exc_info=True)
         generation_events.error(itinerary_id, "AGENT_ERROR", str(exc), True)
         day_persistence.fail_trip(itinerary_id, str(exc) or None)
         itinerary_query.evict_detail(user_id, itinerary_id)
-    finally:
         _unregister_planning(itinerary_id)
+        return
+    with use_route(route):
+        try:
+            if not _shell_exists(itinerary_id):
+                logger.error("itinerary shell %s not visible before planning; abort", itinerary_id)
+                raise ApiError(500, "行程壳数据不存在，无法开始生成")
+            day_persistence.mark_generating(itinerary_id)
+
+            used_names: list[str] = []
+            chosen_hotel: str | None = None
+            first_day_suggestions: list[Any] | None = None
+            fingerprint = generation_gate.request_fingerprint(command)
+            if context is None:
+                # 不包 observe_run：与迁移前的 /v1/plan-context 口径一致（研究事件不带 runId）。
+                # 但 scene 必须归位（P1-7）：研究段的 LLM 调用此前落 scene="other"，
+                # 用量报表把"生成的研究成本"记到匿名桶里。
+                # start_date+days 供城市级天气一次取整趟预报窗（C3.1）；无日期自然为 None。
+                with use_scene("research"):
+                    context = run_plan_context(
+                        command.city,
+                        command.preferences,
+                        itinerary_id=itinerary_id,
+                        start_date=command.start_date.isoformat() if command.start_date else None,
+                        days=command.days,
+                        origin_city=command.origin_city,
+                    )
+            # L14：报价随研究上下文一次落库；空即写 NULL（续跑取回的 context 同样带它）
+            day_persistence.save_flight_quotes(itinerary_id, context.get("flight_quotes"))
+            day_persistence.save_origin_city(itinerary_id, command.origin_city)
+
+            suggestions_persisted = False
+            unfinished = day_persistence.unfinished_day_nos(itinerary_id)
+            fresh_trip = len(unfinished) >= command.days
+            if fresh_trip:
+                try:
+                    suggestions_persisted = _plan_whole_trip(user_id, itinerary_id, command, context, fingerprint)
+                except Exception as stream_exc:
+                    logger.warning("whole-trip stream failed for itinerary %s: %s", itinerary_id, stream_exc)
+                # 整段流式的后置终检（stream 产出的天不再零校验直落库）：对已落库天跑
+                # validate_plans，违规天重置 PENDING，交下方既有逐日兜底循环重生成。
+                _revalidate_stream_days(itinerary_id, command, fingerprint)
+
+            for day_no in range(1, command.days + 1):
+                action_id = f"day-{itinerary_id}-{day_no}"
+                if not generation_gate.try_day_lock(itinerary_id, day_no):
+                    logger.warning("day lock busy, skip itinerary %s day %s", itinerary_id, day_no)
+                    continue
+                try:
+                    day = day_persistence.find_day(itinerary_id, day_no)
+                    if day is None:
+                        raise ApiError(500, "行程日不存在")
+                    if day.generation_status == "SUCCEEDED":
+                        # 已成功的天只做幂等校验与跨天去重登记，不重写（也跳过收尾失效：无变更）
+                        generation_gate.verify_action(day, action_id, fingerprint)
+                        day_persistence.append_existing_items(day.id, used_names)
+                        if chosen_hotel is None:
+                            chosen_hotel = day_persistence.existing_hotel(day.id)
+                        continue
+                    day_persistence.mark_running(day.id, action_id, fingerprint)
+                    generation_events.day_start(itinerary_id, day_no)
+                    try:
+                        plan = _generate_day_with_trace(
+                            itinerary_id, command, context, day_no, used_names, chosen_hotel, action_id, fingerprint
+                        )
+                        if day_no == 1:
+                            first_day_suggestions = plan.suggestions
+                            day_persistence.set_trip_theme(itinerary_id, plan.trip_theme)
+                    except Exception as day_exc:
+                        day_persistence.mark_failed(day.id, action_id, fingerprint, str(day_exc) or None)
+                        generation_events.degraded(itinerary_id, f"day_{day_no}", str(day_exc), "待重试")
+                        raise
+                    persisted = day_persistence.find_day(itinerary_id, day_no)
+                    if persisted is not None:
+                        day_persistence.append_existing_items(persisted.id, used_names)
+                        if chosen_hotel is None:
+                            chosen_hotel = day_persistence.existing_hotel(persisted.id)
+                finally:
+                    generation_gate.release_day_lock(itinerary_id, day_no)
+                itinerary_query.evict_detail(user_id, itinerary_id)
+                _submit_budget_recalculate(itinerary_id)
+
+            if not suggestions_persisted:
+                itinerary_enricher.persist_suggestions(itinerary_id, first_day_suggestions)
+            _finish(user_id, itinerary_id, command)
+        except Exception as exc:
+            logger.error("async planning failed for itinerary %s", itinerary_id, exc_info=True)
+            generation_events.error(itinerary_id, "AGENT_ERROR", str(exc), True)
+            day_persistence.fail_trip(itinerary_id, str(exc) or None)
+            itinerary_query.evict_detail(user_id, itinerary_id)
+        finally:
+            _unregister_planning(itinerary_id)
 
 
 def _generate_day_with_trace(

@@ -21,10 +21,12 @@ from typing import Any
 from sqlalchemy import select, update
 
 from app.agent import run_butler_note, run_poi_intros, verify_suggestion_rows
+from app.common.envelope import ApiError
+from app.common.llm_route import use_route
 from app.db.models import ItineraryDay, ItineraryItem, ItineraryMain
 from app.db.session import session_scope
 from app.schemas.trip import Suggestion
-from app.services import itinerary_query
+from app.services import itinerary_query, llm_gateway_service
 
 logger = logging.getLogger(__name__)
 
@@ -52,21 +54,31 @@ def persist_suggestions(itinerary_id: int, suggestions: list[Suggestion] | list[
 
 def enrich_itinerary(user_id: int, itinerary_id: int, request: Any) -> None:
     """生成完成后的富化主入口（编排层提交到富化线程池执行）。"""
-    with session_scope() as session:
-        main = session.get(ItineraryMain, itinerary_id)
-    if main is None:
+    # BYOK 路由：enricher_pool 工作线程不继承 plan_days 的 contextvars（实测），
+    # 入口自带 user_id——这里进入，A/B/C 三段的 LLM 调用全部走用户网关。
+    # 密文解不开（ApiError 409）只跳过富化：行程本体已成功，富化是锦上添花，
+    # 不能让 409 裸穿线程池（任务体自己负责异常处理的池契约，终审补丁）。
+    try:
+        route = llm_gateway_service.resolve_route(user_id)
+    except ApiError as exc:
+        logger.warning("byok route broken, skip enrichment for itinerary %s: %s", itinerary_id, exc)
         return
-    _write_butler_note(user_id, main, request, itinerary_id)
-    _fill_item_intros(user_id, main, request, itinerary_id)
-    try:
-        _verify_suggestions(user_id, itinerary_id)
-    except Exception as exc:
-        logger.warning("suggestion verification failed for %s: %s", itinerary_id, exc)
-    try:
-        _enrich_suggestion_intros(main, request, itinerary_id)
-    except Exception as exc:
-        logger.warning("suggestion intros failed for %s: %s", itinerary_id, exc)
-    itinerary_query.evict_detail(user_id, itinerary_id)
+    with use_route(route):
+        with session_scope() as session:
+            main = session.get(ItineraryMain, itinerary_id)
+        if main is None:
+            return
+        _write_butler_note(user_id, main, request, itinerary_id)
+        _fill_item_intros(user_id, main, request, itinerary_id)
+        try:
+            _verify_suggestions(user_id, itinerary_id)
+        except Exception as exc:
+            logger.warning("suggestion verification failed for %s: %s", itinerary_id, exc)
+        try:
+            _enrich_suggestion_intros(main, request, itinerary_id)
+        except Exception as exc:
+            logger.warning("suggestion intros failed for %s: %s", itinerary_id, exc)
+        itinerary_query.evict_detail(user_id, itinerary_id)
 
 
 def _plans_for_butler(itinerary_id: int) -> list[dict[str, Any]]:

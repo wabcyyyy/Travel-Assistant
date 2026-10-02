@@ -385,6 +385,32 @@ class AddonAudit(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
 
+class UserLlmGateway(Base):
+    """用户自带 LLM 网关（V11，BYOK）。**刻意不继承 SoftDelete**：配置是凭据面，
+    删除即硬删（启用中删除视为同时停用），不保留墓碑行。
+
+    脱敏红线（同 V8 惯例）：api_key_cipher 是 Fernet 密文、api_key_hint 只存尾 4 位，
+    两者都不进任何公开 VO/日志/异常；单用户至多一条 enabled=1 由 service 层事务保证
+    （MySQL 无法简洁表达部分唯一）。
+    """
+
+    __tablename__ = "user_llm_gateway"
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_gateway_user_name"),)
+
+    id: Mapped[int] = mapped_column(PkBigInt, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, comment="属主;跨用户读写一律404")
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    base_url: Mapped[str] = mapped_column(String(512), nullable=False, comment="OpenAI兼容网关地址")
+    api_key_cipher: Mapped[str] = mapped_column(String(512), nullable=False, comment="Fernet密文,绝不进任何VO/日志")
+    api_key_hint: Mapped[str | None] = mapped_column(String(16), comment="尾4位提示")
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class ItemFeedback(Base):
     """条目对/错反馈（V8，SPEC C3.5）：一人一条可改（UNIQUE(item_id,user_id) upsert），
     撤销=硬删行（Q5，不留墓碑）。**刻意不继承 SoftDelete**：行程/条目软删后反馈行

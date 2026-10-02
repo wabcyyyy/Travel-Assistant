@@ -5,6 +5,7 @@ import { navigate, useLocation } from '../router'
 import { Brand } from '../shared/Brand'
 import hangzhou from '../../assets/img/cover-hangzhou.webp'
 import { Icon } from '../shared/Icon'
+import { SmartImg } from '../shared/SmartImg'
 
 export function LoginPage({ onAuthenticated }: { onAuthenticated: (username: string) => void }) {
   const location = useLocation()
@@ -32,7 +33,7 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: (username: str
   }
   return <div className="auth-page">
     <div className="auth-story">
-      <img src={hangzhou} alt="杭州西湖的落日与远山" width="1280" height="728" />
+      <SmartImg src={hangzhou} alt="杭州西湖的落日与远山" eager />
       <div className="auth-story-copy"><h2>把生活调慢，<br />把世界看近。</h2><p>从一个想法开始，去遇见下一段风景。</p><span>杭州 · 西湖</span></div>
     </div>
     <div className="auth-panel">

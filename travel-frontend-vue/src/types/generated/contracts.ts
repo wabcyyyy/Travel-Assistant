@@ -757,6 +757,42 @@ export interface ClientErrorReport {
   ts: string | null
 }
 
+export interface LlmGatewayCreateBody {
+  name: string
+  baseUrl: string
+  apiKey: string
+  model: string
+}
+
+export interface LlmGatewayUpdateBody {
+  name: string | null
+  baseUrl: string | null
+  apiKey: string | null
+  model: string | null
+}
+
+export interface LlmGatewayVO {
+  id: number
+  name: string
+  baseUrl: string
+  model: string
+  apiKeyHint: string | null
+  enabled: boolean
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface LlmGatewayTestVO {
+  ok: boolean
+  latencyMs: number
+  message: string
+}
+
+export interface ImageIntentVO {
+  text: string
+  suggestedMessage: string
+}
+
 // ===== stream_events（JSON Lines 事件）=====
 export interface StartEvent {
   type: "start"

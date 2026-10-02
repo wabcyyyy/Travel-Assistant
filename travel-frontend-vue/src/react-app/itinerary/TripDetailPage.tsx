@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import {
   createPdfExport,
   createShare,
@@ -22,6 +22,7 @@ import { destinations, sampleItinerary } from '../data'
 import { loginRedirect, navigate, routeId } from '../router'
 import { safeAppLink } from '../../shared/map-link'
 import { Icon } from '../shared/Icon'
+import { SmartImg } from '../shared/SmartImg'
 import { EmptyBlock, ErrorBlock, LoadingBlock, QualityNotice } from '../shared/States'
 import { DraftOnlyBanner, ItemEvidence, TripMetrics } from './TripBadges'
 import { ChatPanel } from './ChatPanel'
@@ -29,6 +30,15 @@ import { feedbackIndex } from './itemFeedback'
 import { ItemFeedbackControl } from './ItemFeedbackControl'
 import { TripMapPanel } from './TripMapPanel'
 import type { MapPin } from './mapPins'
+
+/** 时间线与类型徽章共用的图标映射（新类型先落到 pin，不裸奔）。 */
+const ITEM_TYPE_ICONS: Record<string, 'camera' | 'utensils' | 'bed' | 'train' | 'ticket'> = {
+  attraction: 'camera',
+  food: 'utensils',
+  hotel: 'bed',
+  transport: 'train',
+  activity: 'ticket',
+}
 
 function displayDate(value: string | null | undefined) {
   if (!value) return ''
@@ -279,7 +289,7 @@ export function TripDetailPage({ path }: { path: string }) {
         />
         {weather?.daily?.length ? <div className="detail-weather" aria-label="天气参考"><span className="weather-label"><Icon name="sun" size={16} />天气参考</span>{weather.daily.slice(0, trip.days).map((item) => <span className="weather-day" key={item.date}><strong>{displayDate(item.date)}</strong><small>{item.text} · {item.tMin ?? '--'}–{item.tMax ?? '--'}℃</small></span>)}</div> : null}
       </div>
-      <figure className="detail-cover"><img src={destinations.find((item) => item.city === trip.city)?.image || destinations[0].image} alt="旅行目的地参考封面" width="720" height="480" /><figcaption><Icon name="pin" size={14} />{trip.city} · 城市印象</figcaption></figure>
+      <figure className="detail-cover"><SmartImg src={destinations.find((item) => item.city === trip.city)?.image || destinations[0].image} alt="旅行目的地参考封面" ratio="16 / 10" eager /><figcaption><Icon name="pin" size={14} />{trip.city} · 城市印象</figcaption></figure>
     </section>
     <div className={offline ? 'detail-workspace' : `detail-workspace has-chat${chatCollapsed ? ' is-chat-collapsed' : ''}`}>
       {!offline && <ChatPanel itineraryId={trip.id} dayList={trip.dayList} onApplied={setTrip} onReconcile={refreshDetail} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((value) => !value)} />}
@@ -287,7 +297,7 @@ export function TripDetailPage({ path }: { path: string }) {
       <section className="day-content">{day ? <>
         <TripMapPanel days={trip.dayList} activeKey={activePin} onSelect={selectPin} />
         <div className="day-content-head"><div><span className="section-eyebrow">DAY {String(day.dayNo).padStart(2, '0')}</span>{editingTheme ? <div className="day-theme-editor"><input value={themeDraft} maxLength={80} onChange={(event) => setThemeDraft(event.target.value)} aria-label="当天标题" /><div><button className="button button-primary" type="button" disabled={working} onClick={saveTheme}>保存</button><button className="button button-secondary" type="button" disabled={working} onClick={() => { setThemeDraft(day.theme || ''); setEditingTheme(false) }}>取消</button></div></div> : <><h2>{day.theme || `第 ${day.dayNo} 天`}</h2><p>{day.note}</p></>}</div><div className="day-head-actions">{!editingTheme && <button className="button button-secondary" type="button" onClick={() => offline ? setNotice('示例行程不会写入账号') : setEditingTheme(true)}><Icon name="edit" size={16} />编辑标题</button>}<button className="button button-secondary" type="button" disabled={working || editingTheme} onClick={regenerateDay}><Icon name="refresh" size={16} />{working ? '正在整理…' : '重新生成这一天'}</button></div></div>
-        <div className="day-items">{day.items.map((item, index) => <article className="day-item" key={`${item.poiName}-${index}`}><div className="day-item-time">{item.startTime || '--:--'}<span>{item.endTime || ''}</span></div><div className="day-item-line"><i /><span /></div><div className="day-item-copy"><div className="item-heading"><span className="item-type">{{ attraction: '游览', food: '用餐', hotel: '住宿', transport: '交通', activity: '活动' }[item.itemType] || '安排'}</span><h3>{item.poiName}</h3></div><p>{item.remark || item.whyThis || '为这一段旅程保留一点自由。'}</p><div className="item-meta"><span><Icon name="clock" size={14} />{item.durationMin ? `${item.durationMin} 分钟` : '时间可调整'}</span><ItemEvidence item={item} /></div>{feedbackOn && item.id ? <ItemFeedbackControl itemId={item.id} feedback={feedbacks.get(item.id)} onSet={applyFeedback} onRevoke={() => removeFeedback(item.id!)} /> : null}</div></article>)}</div>
+        <div className="day-items" key={day.dayNo}>{day.items.map((item, index) => <article className="day-item" style={{ '--stagger-i': index } as CSSProperties} key={`${item.poiName}-${index}`}><div className="day-item-time">{item.startTime || '--:--'}<span>{item.endTime || ''}</span></div><div className="day-item-line"><i><Icon name={ITEM_TYPE_ICONS[item.itemType] || 'pin'} size={11} strokeWidth={2.2} /></i><span /></div><div className="day-item-copy"><div className="item-heading"><span className="item-type"><Icon name={ITEM_TYPE_ICONS[item.itemType] || 'pin'} size={12} strokeWidth={2} />{{ attraction: '游览', food: '用餐', hotel: '住宿', transport: '交通', activity: '活动' }[item.itemType] || '安排'}</span><h3>{item.poiName}</h3></div><p>{item.remark || item.whyThis || '为这一段旅程保留一点自由。'}</p><div className="item-meta"><span><Icon name="clock" size={14} />{item.durationMin ? `${item.durationMin} 分钟` : '时间可调整'}</span><ItemEvidence item={item} /></div>{feedbackOn && item.id ? <ItemFeedbackControl itemId={item.id} feedback={feedbacks.get(item.id)} onSet={applyFeedback} onRevoke={() => removeFeedback(item.id!)} /> : null}</div></article>)}</div>
         {trip.status === 1 && !day.items.length && <div className="day-generating"><Icon name="compass" size={16} />这一天的安排正在生成，完成后自动出现。</div>}
         {day.practicalNotes?.length ? <div className="day-note"><Icon name="alert" size={17} /><div><strong>出发前看一眼</strong>{day.practicalNotes.map((note) => <p key={note}>{note}</p>)}</div></div> : null}
       </> : <EmptyBlock title="这一天还没有安排" description="可以先切换到其他天，或重新生成当天内容。" />}</section>

@@ -31,6 +31,7 @@ from app.schemas.agent_ops import (
     PoiNearbyResponse,
 )
 from app.schemas.business.auth import LoginBody, LoginData, RegisterBody, UserInfoVO
+from app.schemas.business.image_intent import ImageIntentVO
 from app.schemas.business.itinerary import (
     ApplyPlansBody,
     ArchiveBody,
@@ -47,6 +48,12 @@ from app.schemas.business.itinerary import (
     ShareCreateBody,
     UpdateDayBody,
     VersionBody,
+)
+from app.schemas.business.llm_gateway import (
+    LlmGatewayCreateBody,
+    LlmGatewayTestVO,
+    LlmGatewayUpdateBody,
+    LlmGatewayVO,
 )
 from app.schemas.client_errors import ClientErrorReport
 from app.schemas.collaboration import (
@@ -181,6 +188,11 @@ CONTRACT_GROUPS: dict[str, tuple[type[BaseModel], ...]] = {
         WeatherDay,
         WeatherVO,
         ClientErrorReport,
+        LlmGatewayCreateBody,
+        LlmGatewayUpdateBody,
+        LlmGatewayVO,
+        LlmGatewayTestVO,
+        ImageIntentVO,
     ),
 }
 

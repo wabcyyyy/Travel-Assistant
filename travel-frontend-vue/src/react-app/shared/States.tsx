@@ -1,11 +1,14 @@
+import type { CSSProperties } from 'react'
 import { Icon } from './Icon'
 
 export function LoadingBlock({ label = '正在读取…' }: { label?: string }) {
   return <div className="state-block loading-block" role="status" aria-live="polite"><span className="loading-orbit" /><strong>{label}</strong><span className="state-hint">司南正在整理可用信息</span></div>
 }
 
-export function EmptyBlock({ title, description, action }: { title: string; description: string; action?: { label: string; onClick: () => void } }) {
-  return <div className="state-block empty-block"><span className="empty-compass"><Icon name="compass" size={24} /></span><strong>{title}</strong><span className="state-hint">{description}</span>{action && <button className="button button-secondary" type="button" onClick={action.onClick}>{action.label}<Icon name="arrow" size={16} /></button>}</div>
+export function EmptyBlock({ title, description, action, photos }: { title: string; description: string; action?: { label: string; onClick: () => void }; photos?: string[] }) {
+  return <div className="state-block empty-block">{photos?.length
+    ? <div className="empty-photos" aria-hidden="true">{photos.slice(0, 4).map((src, index) => <img key={src} src={src} alt="" loading="lazy" style={{ '--i': index } as CSSProperties} />)}</div>
+    : <span className="empty-compass"><Icon name="compass" size={24} /></span>}<strong>{title}</strong><span className="state-hint">{description}</span>{action && <button className="button button-secondary" type="button" onClick={action.onClick}>{action.label}<Icon name="arrow" size={16} /></button>}</div>
 }
 
 export function ErrorBlock({ message, onRetry, onLogin }: { message: string; onRetry?: () => void; onLogin?: () => void }) {

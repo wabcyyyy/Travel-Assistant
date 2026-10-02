@@ -11,7 +11,7 @@ count 已无本地语料可数，恒为 null（字段保留是为了前端契约
 from __future__ import annotations
 
 from app.agent import workbench_search
-from app.services import itinerary_city
+from app.services import itinerary_city, llm_gateway_service
 
 CATEGORY_LABELS: dict[str, str] = {"attraction": "景点", "food": "餐饮", "hotel": "住宿"}
 MAX_LIMIT = 30
@@ -35,8 +35,13 @@ def _to_vo(row: dict) -> dict:
     }
 
 
-def search_local(city: str, keywords: str = "", category: str | None = None) -> dict:
-    rows = workbench_search(city, keywords=keywords, category=category, limit=MAX_LIMIT)
+def search_local(user_id: int, city: str, keywords: str = "", category: str | None = None) -> dict:
+    """加点工作台检索。user_id（BYOK 路由）：workbench_search → web_search 补池烧
+    联网搜索 LLM，路由上下文随调用进入；配额闸在端点层（/api/pois 先过
+    enforce_llm_budget 再进来，app/api/business/pois.py）。
+    """
+    with llm_gateway_service.route_scope(user_id):
+        rows = workbench_search(city, keywords=keywords, category=category, limit=MAX_LIMIT)
     return {
         "city": city,
         "category": category,

@@ -34,6 +34,10 @@ dependencies = [
     # 传递进锁；显式列为直接依赖，避免 reportlab 升级/替换时被连带移除。
     "pillow>=10,<13",
     "pydantic-settings>=2.7,<3",
+    # BYOK 网关密钥静态加密（V11）：Fernet（对称认证加密）。唯一成熟且全平台纯
+    # wheel 的方案——自造 XOR/流密码违反哲学 5 且更弱，明文落库对可烧钱的
+    # 凭据不可接受（INV-10 理由详见引入 commit message）。
+    "cryptography>=44,<47",
     # PR-3（D2）：图检查点存储——dev/单机用 SqliteSaver（自管建表，不动 MySQL 迁移，
     # INV-3 不受影响），生产路径预留 PostgresSaver（同一 BaseCheckpointSaver 协议，
     # 换存储不换恢复语义）；断点续跑与 time-travel 的地基。反序列化走白名单 +

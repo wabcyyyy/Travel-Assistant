@@ -15,12 +15,12 @@
 .detail-draft-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; padding: 12px 16px; border: 1px solid var(--sinan-line); border-radius: var(--sinan-radius-sm); color: var(--sinan-muted); background: var(--sinan-surface); font-size: 12px; line-height: 1.7; }
 .detail-draft-banner > span { padding: 2px 8px; border-radius: 999px; background: var(--sinan-warm); color: var(--sinan-ink-soft); font-weight: 600; }
 .trip-card { box-shadow: none; border-color: var(--sinan-line); }
-.trip-card-cover { position: relative; display: block; padding: 0; width: 100%; height: 218px; overflow: hidden; border: 0; background: var(--sinan-accent-wash); }
-.trip-card-cover > img { width: 100%; height: 100%; object-fit: cover; transition: transform .4s var(--sinan-ease); }
-.trip-card:hover .trip-card-cover > img { transform: scale(1.035); }
+.trip-card-cover { position: relative; display: block; padding: 0; width: 100%; overflow: hidden; border: 0; background: var(--sinan-accent-wash); }
+.trip-card-cover > .smart-img { height: 100%; }
+.trip-card:hover .trip-card-cover .smart-img > img { transform: scale(1.035); }
 .trip-card-arrow { position: absolute; right: 16px; bottom: 16px; display: grid; place-items: center; width: 36px; height: 36px; background: var(--sinan-surface); color: var(--sinan-ink); border-radius: 50%; }
 .trip-card-body { padding: 23px; }
-.trip-card-body h2 { font-size: 23px; font-weight: 600; margin: 13px 0 10px; }
+.trip-card-body h2 { font-size: 23px; font-weight: 700; margin: 13px 0 10px; }
 .trip-card-body p { font-size: 12px; color: var(--sinan-muted); line-height: 1.8; }
 .trip-card-meta { display: flex; align-items: center; justify-content: space-between; padding-top: 16px; margin-top: 20px; border-top: 1px solid var(--sinan-line-soft); color: var(--sinan-muted); font-size: 11px; }
 .trip-skeleton-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
@@ -30,12 +30,14 @@
 .detail-actions { display: flex; align-items: center; gap: 9px; }
 .icon-action { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid var(--sinan-line); background: var(--sinan-surface); color: var(--sinan-accent); border-radius: var(--sinan-radius-sm); }
 .detail-hero { display: grid; grid-template-columns: 1.1fr 1fr; gap: 60px; align-items: center; margin: 32px 0 44px; }
-.detail-hero h1 { margin: 14px 0; font-size: 41px; line-height: 1.3; font-weight: 600; letter-spacing: -.04em; }
+.detail-hero h1 { margin: 14px 0; font-size: 41px; line-height: 1.3; font-weight: 700; letter-spacing: var(--lp-track-display); }
 .detail-hero p { font-size: 14px; line-height: 1.8; color: var(--sinan-muted); margin: 0; }
 .detail-cover { margin: 0; position: relative; }
-.detail-cover img { display: block; width: 100%; height: 256px; object-fit: cover; border-radius: var(--sinan-radius); }
+.detail-cover > .smart-img { border-radius: var(--sinan-radius); }
 .detail-cover figcaption { position: absolute; bottom: 15px; left: 15px; display: flex; align-items: center; gap: 5px; padding: 7px 12px; border-radius: 8px; background: var(--sinan-surface); color: var(--sinan-ink-soft); font-size: 11px; }
 .detail-workspace { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 32px; align-items: start; border-top: 1px solid var(--sinan-line); padding-top: 30px; }
+/* 栅格项默认 min-width:auto，聊天面板（textarea 等固宽子件）会把 1fr 轨道撑出视口 */
+.detail-workspace > * { min-width: 0; }
 .day-sidebar { position: sticky; top: 102px; display: grid; gap: 8px; }
 .sidebar-head { display: grid; gap: 8px; margin-bottom: 15px; padding: 0 14px; }
 .sidebar-head strong { font-size: 18px; font-weight: 600; }
@@ -49,7 +51,7 @@
 .day-tab.active > span { color: var(--sinan-accent); font-weight: 700; }
 .day-content { min-width: 0; padding: 27px 30px; border: 1px solid var(--sinan-line); border-radius: var(--sinan-radius); background: var(--sinan-surface); }
 .day-content-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 24px; }
-.day-content-head h2 { margin: 10px 0; font-size: 25px; line-height: 1.4; font-weight: 600; }
+.day-content-head h2 { margin: 10px 0; font-size: 25px; line-height: 1.4; font-weight: 700; }
 .day-content-head p { margin: 0; color: var(--sinan-muted); font-size: 12px; line-height: 1.8; }
 .day-head-actions { margin-top: 5px; }
 .day-head-actions .button { font-size: 11px; padding: 0 11px; min-height: 36px; }
@@ -58,13 +60,14 @@
 .day-item-time { padding-top: 7px; color: var(--sinan-ink); font-size: 13px; font-variant-numeric: tabular-nums; }
 .day-item-time > span { display: block; font-size: 11px; color: var(--sinan-muted); margin-top: 8px; }
 .day-item-line { display: flex; align-items: center; flex-direction: column; padding-top: 11px; }
-.day-item-line > i { display: block; width: 9px; height: 9px; border: 2px solid var(--sinan-accent); border-radius: 50%; flex-shrink: 0; }
+.day-item-line > i { display: grid; place-items: center; width: 21px; height: 21px; border-radius: 50%; background: var(--sinan-accent-wash); color: var(--sinan-accent-dark); flex-shrink: 0; transition: transform var(--lp-dur-fast) var(--lp-ease-pop); }
+.day-item:hover .day-item-line > i { transform: scale(1.12); }
 .day-item-line > span { width: 1px; flex: 1; background: var(--sinan-line); margin-top: 7px; margin-bottom: 6px; min-height: 70px; }
 .day-item:last-child .day-item-line > span { background: transparent; }
 .day-item-copy { padding: 0 0 32px; }
 .item-heading { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.item-heading h3 { margin: 3px 0; font-size: 19px; font-weight: 600; }
-.item-type { order: 2; background: var(--sinan-accent-wash); color: var(--sinan-accent); padding: 4px 7px; border-radius: 5px; font-size: 10px; }
+.item-heading h3 { margin: 3px 0; font-size: 19px; font-weight: 700; }
+.item-type { order: 2; display: inline-flex; align-items: center; gap: 4px; background: var(--sinan-accent-wash); color: var(--sinan-accent-dark); padding: 4px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; }
 .day-item-copy > p { margin: 10px 0 14px; font-size: 13px; line-height: 1.8; color: var(--sinan-muted); }
 .item-meta { display: flex; gap: 16px; flex-wrap: wrap; color: var(--sinan-muted); font-size: 11px; }
 .item-meta > span { display: inline-flex; align-items: center; gap: 5px; }
@@ -116,7 +119,7 @@
   .detail-actions .button { padding: 0 10px; font-size: 11px; min-height: 36px; }
   .detail-actions .icon-action { width: 36px; height: 36px; }
   .detail-hero { grid-template-columns: 1fr; margin: 26px 0; }
-  .detail-cover img { height: 190px; }
+
   .detail-hero h1 { font-size: 32px; }
   .day-content { padding: 21px 16px; }
   .day-content-head h2 { font-size: 23px; }
@@ -141,7 +144,6 @@
 .chat-panel-head h2 { margin: 0; font-size: 16px; font-weight: 650; }
 .chat-panel-head p { margin: 3px 0 0; font-size: 11px; color: var(--sinan-muted); }
 .chat-log { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 200px; overflow-y: auto; padding-right: 2px; }
-.chat-empty { color: var(--sinan-faint); font-size: 12px; line-height: 1.9; padding: 10px 2px; }
 .chat-msg { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .chat-msg.is-user { align-items: flex-end; }
 .chat-bubble { max-width: 92%; padding: 9px 12px; border-radius: 14px; font-size: 13px; line-height: 1.8; white-space: pre-wrap; }
@@ -213,3 +215,36 @@
 .chat-hotel-live-empty { margin: 0; }
 .chat-hotel-verify { color: var(--sinan-accent-dark); font-weight: 600; text-decoration: none; }
 .chat-hotel-verify:hover { text-decoration: underline; text-underline-offset: 4px; }
+
+/* ---------- 时间线级联入场 + 地图 pin 落点（第 3 轮） ---------- */
+@keyframes sinan-item-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.day-item { animation: sinan-item-in var(--lp-dur-reveal) var(--lp-ease-out-quint) both; animation-delay: calc(var(--stagger-i, 0) * 55ms); }
+@keyframes sinan-pin-drop {
+  0% { opacity: 0; translate: 0 -14px; scale: .75; }
+  62% { opacity: 1; translate: 0 2px; scale: 1.04; }
+  100% { opacity: 1; translate: 0 0; scale: 1; }
+}
+.map-pin { animation: sinan-pin-drop 380ms var(--lp-ease-pop) both; transition: box-shadow var(--lp-dur-fast) var(--lp-ease-out-quint); }
+.map-pin:hover { box-shadow: 0 0 0 4px var(--sinan-accent-wash), var(--sinan-shadow-soft); }
+.trip-generating { display: inline-flex; align-items: center; gap: 5px; font-style: normal; color: var(--sinan-accent-dark); font-weight: 700; }
+.trip-generating i { width: 7px; height: 7px; border-radius: 50%; background: var(--sinan-accent); animation: trip-pulse 1.4s ease-in-out infinite; }
+@keyframes trip-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.72); } }
+
+/* ---------- 对话区：气泡方向感入场 + 思考跳点 ---------- */
+@keyframes sinan-msg-user { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+@keyframes sinan-msg-ai { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.chat-msg.is-user .chat-bubble { animation: sinan-msg-user var(--lp-dur-modal) var(--lp-ease-out-quint) both; }
+.chat-msg.is-ai .chat-bubble { animation: sinan-msg-ai var(--lp-dur-modal) var(--lp-ease-out-quint) both; }
+.chat-thinking { display: inline-flex; align-items: center; gap: 4px; padding: 3px 0; }
+.chat-thinking i { width: 5px; height: 5px; border-radius: 50%; background: var(--sinan-accent); animation: chat-think 1.1s ease-in-out infinite; }
+.chat-thinking i:nth-child(2) { animation-delay: .16s; }
+.chat-thinking i:nth-child(3) { animation-delay: .32s; }
+@keyframes chat-think { 0%, 100% { opacity: .3; transform: translateY(0); } 45% { opacity: 1; transform: translateY(-3px); } }
+
+.chat-empty { display: grid; justify-items: start; gap: 10px; padding: 18px 4px; color: var(--sinan-muted); font-size: 13px; line-height: 1.8; }
+.chat-suggest { display: flex; flex-wrap: wrap; gap: 6px; }
+.chat-suggest button { border: 1px solid var(--sinan-line); border-radius: 999px; padding: 6px 12px; background: var(--sinan-surface); color: var(--sinan-ink-soft); font-size: 12px; transition: border-color var(--lp-dur-fast) var(--lp-ease-out-quint), color var(--lp-dur-fast) var(--lp-ease-out-quint), transform var(--lp-dur-fast) var(--lp-ease-pop); }
+.chat-suggest button:hover { border-color: var(--sinan-accent); color: var(--sinan-accent-dark); transform: translateY(-1px); }

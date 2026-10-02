@@ -32,4 +32,4 @@ def list_pois(
     quota_service.enforce_llm_budget(user.id)
     if category and category not in CATEGORY_LABELS:
         raise ApiError(400, "未知的点位类别")
-    return ok(poi_search.search_local(city, keywords=keywords or "", category=category))
+    return ok(poi_search.search_local(user.id, city, keywords=keywords or "", category=category))

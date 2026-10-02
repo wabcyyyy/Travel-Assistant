@@ -18,6 +18,7 @@ from app.agent.editing.chat_draft import run_chat_turn
 from app.agent.editing.chat_draft.confirm_graph import ConfirmResume, confirm_thread, resume_confirmation
 from app.agent.editing.city_guide import run_city_guide
 from app.agent.editing.clarify import run_clarify
+from app.agent.editing.image_intent import run_image_intent
 from app.agent.editing.local_replan import run_local_replan
 from app.agent.editing.nl_edit import run_edit_ops
 from app.agent.generation.content.butler import run_butler_note, run_poi_intros
@@ -65,6 +66,7 @@ __all__ = [
     "run_generate",
     "run_generate_day",
     "run_generate_trip_stream",
+    "run_image_intent",
     "run_local_replan",
     "run_plan_context",
     "run_poi_intros",

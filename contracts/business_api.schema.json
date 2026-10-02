@@ -2503,6 +2503,206 @@
       ],
       "title": "ClientErrorReport",
       "type": "object"
+    },
+    "LlmGatewayCreateBody": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "baseUrl": {
+          "title": "Baseurl",
+          "type": "string"
+        },
+        "apiKey": {
+          "title": "Apikey",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "baseUrl",
+        "apiKey",
+        "model"
+      ],
+      "title": "LlmGatewayCreateBody",
+      "type": "object"
+    },
+    "LlmGatewayUpdateBody": {
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "baseUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baseurl"
+        },
+        "apiKey": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Apikey"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        }
+      },
+      "title": "LlmGatewayUpdateBody",
+      "type": "object",
+      "required": [
+        "name",
+        "baseUrl",
+        "apiKey",
+        "model"
+      ]
+    },
+    "LlmGatewayVO": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "baseUrl": {
+          "title": "Baseurl",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "apiKeyHint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Apikeyhint"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "createdAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Createdat"
+        },
+        "updatedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Updatedat"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "baseUrl",
+        "model",
+        "apiKeyHint",
+        "enabled",
+        "createdAt",
+        "updatedAt"
+      ],
+      "title": "LlmGatewayVO",
+      "type": "object"
+    },
+    "LlmGatewayTestVO": {
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "latencyMs": {
+          "title": "Latencyms",
+          "type": "integer"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "latencyMs",
+        "message"
+      ],
+      "title": "LlmGatewayTestVO",
+      "type": "object"
+    },
+    "ImageIntentVO": {
+      "properties": {
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "suggestedMessage": {
+          "title": "Suggestedmessage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "suggestedMessage"
+      ],
+      "title": "ImageIntentVO",
+      "type": "object"
     }
   }
 }

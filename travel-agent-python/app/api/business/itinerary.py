@@ -67,14 +67,16 @@ def post_clarify(body: dict[str, Any], user: AuthUser = Depends(enforce_business
     """槽位澄清：纯解析，不落库（同 Java `ItineraryCityService.clarify`）。"""
     quota_service.enforce_llm_budget(user.id)
     slots = body.get("slots")
-    return ok(itinerary_city.clarify(str(body.get("message") or ""), slots if isinstance(slots, dict) else {}))
+    return ok(itinerary_city.clarify(user.id, str(body.get("message") or ""), slots if isinstance(slots, dict) else {}))
 
 
 @router.post("/city-guide")
 def post_city_guide(body: dict[str, Any], user: AuthUser = Depends(enforce_business_auth)) -> dict:
     quota_service.enforce_llm_budget(user.id)
     history = body.get("history")
-    return ok(itinerary_city.city_guide(str(body.get("input") or ""), history if isinstance(history, list) else []))
+    return ok(
+        itinerary_city.city_guide(user.id, str(body.get("input") or ""), history if isinstance(history, list) else [])
+    )
 
 
 @router.post("/poi-nearby")

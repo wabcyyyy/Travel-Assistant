@@ -31,6 +31,7 @@ from app.db.models import CityGeo
 from app.db.session import session_scope
 from app.schemas.agent_ops import CityGuideRequest, PoiNearbyItem, PoiNearbyRequest
 from app.schemas.trip import ClarifyRequest
+from app.services import llm_gateway_service
 
 logger = logging.getLogger(__name__)
 
@@ -65,11 +66,15 @@ def guard_agent_call(unavailable_message: str, invoke: Callable[[], T]) -> T:
         raise ApiError(502, unavailable_message) from exc
 
 
-def clarify(message: str, slots: dict[str, Any]) -> dict[str, Any]:
-    """槽位澄清：抽取行程参数并返回缺失字段与追问（纯解析，不落库）。"""
-    response = guard_agent_call(
-        "意图解析服务暂不可用", lambda: run_clarify(ClarifyRequest(message=message, slots=slots or {}))
-    )
+def clarify(user_id: int, message: str, slots: dict[str, Any]) -> dict[str, Any]:
+    """槽位澄清：抽取行程参数并返回缺失字段与追问（纯解析，不落库）。
+
+    user_id（BYOK 路由）：clarify 烧 LLM，路由上下文随调用进入（调用方为请求线程）。
+    """
+    with llm_gateway_service.route_scope(user_id):
+        response = guard_agent_call(
+            "意图解析服务暂不可用", lambda: run_clarify(ClarifyRequest(message=message, slots=slots or {}))
+        )
     return {
         "slots": response.slots,
         "missing": response.missing,
@@ -80,13 +85,14 @@ def clarify(message: str, slots: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def city_guide(input_text: str, history: list[dict[str, Any]] | None) -> dict[str, Any]:
+def city_guide(user_id: int, input_text: str, history: list[dict[str, Any]] | None) -> dict[str, Any]:
     """目的地不确定时的城市推荐对话。`supported` 由服务端现算，不接受客户端伪造。"""
     request = CityGuideRequest(
         user_input=input_text or "", supported=supported_cities(), history=_guide_history(history)
     )
     # by_alias=True：user_input 落成 wire 键 "input"，与 run_city_guide 读取的键一致（同迁移前）
-    response = guard_agent_call("城市引导服务暂不可用", lambda: run_city_guide(request.model_dump(by_alias=True)))
+    with llm_gateway_service.route_scope(user_id):
+        response = guard_agent_call("城市引导服务暂不可用", lambda: run_city_guide(request.model_dump(by_alias=True)))
     suggestions = [
         {"name": item["name"], "reason": item.get("reason") or ""}
         for item in (response.get("suggestions") or [])

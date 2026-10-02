@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
+import { interpretImageIntent, isUnauthorized } from '../../api/sinan'
 import type { GenerateInput } from '../../api/sinan'
 import { fallbackCities } from '../data'
 import { loginRedirect, navigate } from '../router'
+import { ChatComposer, composeDraft, imageFeedbackText } from '../shared/ChatComposer'
 import { Icon } from '../shared/Icon'
 import { INTAKE_PREFERENCES, seedFromQuery, slotsReady, toGenerateInput } from './intakeSlots'
 import type { IntakeSlots } from './intakeSlots'
@@ -21,6 +23,9 @@ export function ChatIntake({
 }) {
   const chat = useIntakeChat()
   const [draft, setDraft] = useState(() => seedFromQuery(query))
+  const [imageBusy, setImageBusy] = useState(false)
+  const [imageNotice, setImageNotice] = useState('')
+  const [imageNeedsLogin, setImageNeedsLogin] = useState(false)
   const logRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -33,8 +38,31 @@ export function ChatIntake({
 
   const submit = () => {
     const text = draft
+    setImageNotice('')
+    setImageNeedsLogin(false)
     setDraft('')
     void chat.send(text)
+  }
+
+  // 图片→一句话：识别结果回填草稿交用户编辑后照常 send（不自动发送）；
+  // 401 沿用 needsLogin 通道给登录入口，其余错误走 intake 既有提示位
+  const handleImage = async (file: File) => {
+    setImageNotice('')
+    setImageNeedsLogin(false)
+    setImageBusy(true)
+    try {
+      const res = await interpretImageIntent(file)
+      setDraft((current) => composeDraft(current, res.suggestedMessage, 800))
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        setImageNeedsLogin(true)
+        setImageNotice('登录后就能识别图片，你已填的想法会保留。')
+        return
+      }
+      setImageNotice(imageFeedbackText(err))
+    } finally {
+      setImageBusy(false)
+    }
   }
 
   return <div className="intake" aria-label="对话式行程创建">
@@ -46,13 +74,14 @@ export function ChatIntake({
       {chat.messages.map((msg) => (
         <div key={msg.id} className={`intake-msg is-${msg.role}`}>{msg.text}</div>
       ))}
-      {chat.sending && <div className="intake-msg is-assistant is-typing">司南正在想…</div>}
+      {chat.sending && <div className="intake-msg is-assistant is-typing"><span className="chat-thinking" aria-label="司南正在想"><i /><i /><i /></span></div>}
       {chips && <div className="intake-chips">
         {chips.map((option) => <button key={option} type="button" onClick={() => void chat.send(option)}>{option}</button>)}
       </div>}
     </div>
     {chat.error && <p className="planning-retry-hint" role="alert">{chat.error}</p>}
-    {chat.needsLogin && (
+    {imageNotice && <p className="planning-retry-hint" role="alert">{imageNotice}</p>}
+    {(chat.needsLogin || imageNeedsLogin) && (
       <button className="button button-primary" type="button" onClick={() => navigate(loginRedirect())}>
         登录并继续<Icon name="arrow" size={16} />
       </button>
@@ -65,19 +94,19 @@ export function ChatIntake({
           onReset={chat.reset}
           onStart={() => onStart(toGenerateInput(chat.slots, chat.firstMessage))}
         />
-      : <form className="intake-composer" onSubmit={(event) => { event.preventDefault(); submit() }}>
-          <input
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="例如：国庆想去成都玩 4 天，两个人，预算 3000"
-            aria-label="说说你的旅行想法"
-            maxLength={800}
-            disabled={locked}
-          />
-          <button type="submit" className="button button-primary" disabled={locked || !draft.trim()}>
-            发送<Icon name="arrow" size={16} />
-          </button>
-        </form>}
+      : <ChatComposer
+          className="intake-composer"
+          value={draft}
+          onChange={setDraft}
+          onSend={submit}
+          placeholder="例如：国庆想去成都玩 4 天，两个人，预算 3000"
+          ariaLabel="说说你的旅行想法"
+          maxLength={800}
+          disabled={locked}
+          onImage={handleImage}
+          imageBusy={imageBusy}
+          onNotice={setImageNotice}
+        />}
   </div>
 }
 
