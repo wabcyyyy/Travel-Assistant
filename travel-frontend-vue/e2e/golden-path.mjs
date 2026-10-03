@@ -1,4 +1,6 @@
-// 金路径 E2E：注册/登录 → ChatIntake 一句话创建 → 生成进度 → 行程详情页地图出现。
+// 金路径 E2E：注册/登录 → ChatIntake 一句话创建 → 生成进度 → 首页预览板（拍板①
+// 2026-10-02：done 留在首页看预览，已无自动跳详情页）→ 点 CTA「打开完整行程」
+// 进行程详情页看地图。
 // 纯 playwright-core 脚本（无 @playwright/test，不引新依赖），浏览器用系统
 // Edge/Chrome（channel 探测），目标是活栈：前端 5173 + FastAPI 8000（start-all.ps1
 // 或 docker dev）。生成走真实 LLM（同 tests/api 口径），分钟级耗时属正常。
@@ -8,15 +10,16 @@
 // 环境变量：E2E_BASE_URL（默认 http://localhost:5173）、E2E_API_URL（默认
 // http://127.0.0.1:8000，仅探活）、E2E_CHANNEL（msedge|chrome|bundled，默认依次
 // 尝试 msedge→chrome）、E2E_HEADED=1（有头调试）、E2E_GEN_TIMEOUT_MS（默认
-// 420000——必须活得比后端 AGENT_DEADLINE_SECONDS（默认 300）更久，否则 LLM 慢
-// 时会在后端自己的终态边界上误判超时）。
+// 1200000——真实 LLM 全趟生成实测 8~15 分钟（2026-10-03 金路径 DB 实据：行程
+// 76/77 各 779s/820s 到终态），须活得比它久；只有失败场景才等满，成功路径
+// 预览板一出现即返回）。
 import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import pw from 'playwright-core'
 
 const BASE = process.env.E2E_BASE_URL || 'http://localhost:5173'
 const API = process.env.E2E_API_URL || 'http://127.0.0.1:8000'
-const GEN_TIMEOUT = Number(process.env.E2E_GEN_TIMEOUT_MS || 420_000)
+const GEN_TIMEOUT = Number(process.env.E2E_GEN_TIMEOUT_MS || 1_200_000)
 const ART = fileURLToPath(new URL('./artifacts/', import.meta.url))
 const PASSWORD = 'golden-path-pass-123'
 
@@ -104,12 +107,17 @@ try {
   await confirmBtn.click()
   step('② 一句话槽位集齐，已开始规划')
 
-  // ③ 生成进度：预览面板出四段进度条，ready 后自动跳 /trips/{id}
+  // ③ 生成进度 → 首页预览板：预览面板出四段进度条；完成判定不再等跳转（拍板①
+  //    移除了 900ms 自动跳详情页），改为等 .trip-board 预览板上屏（等满 GEN_TIMEOUT），
+  //    再点 .trip-board-cta「打开完整行程」走 SPA 路由进详情页。
   await page.locator('ol.planning-stages').waitFor({ state: 'visible', timeout: 20_000 })
   step('③ 生成进度已可见（SSE + 轮询并行监控）')
-  await page.waitForURL(/\/trips\/\d+/, { timeout: GEN_TIMEOUT })
+  await page.locator('.trip-board').waitFor({ state: 'visible', timeout: GEN_TIMEOUT })
+  step('③ 生成完成，首页预览板已出现')
+  await page.locator('.trip-board-cta').click()
+  await page.waitForURL(/\/trips\/\d+/, { timeout: 30_000 })
   const tripId = page.url().match(/\/trips\/(\d+)/)?.[1]
-  step(`③ 生成完成，已跳转行程 ${tripId}`)
+  step(`③ 已从预览板进入行程 ${tripId}`)
 
   // ④ 详情页地图：懒加载 chunk + maplibre 初始化；无坐标点位时是空态（金路径不该走到）
   await page.locator('.trip-map').waitFor({ state: 'visible', timeout: 60_000 })
@@ -130,10 +138,16 @@ try {
 } catch (err) {
   console.error(`\n[e2e] 金路径失败 ✘（${elapsed()}）`)
   console.error(err instanceof Error ? err.message : err)
-  try {
-    mkdirSync(ART, { recursive: true })
-    if (page) await page.screenshot({ path: `${ART}golden-path-failure.png`, fullPage: true })
-  } catch { /* 截图失败不影响失败结论 */ }
-  await browser?.close().catch(() => {})
+  // 收尾加固：失败截图/close 曾在失败路径挂死，进程迟迟不退、被外部按墙钟强杀——
+  // 整段收尾（截图 + close）用 Promise.race 兜底 15s，超时也必走 process.exit(1)。
+  const deadline = new Promise((resolve) => setTimeout(resolve, 15_000))
+  const cleanup = (async () => {
+    try {
+      mkdirSync(ART, { recursive: true })
+      if (page) await page.screenshot({ path: `${ART}golden-path-failure.png`, fullPage: true })
+    } catch { /* 截图失败不影响失败结论 */ }
+    await browser?.close().catch(() => {})
+  })()
+  await Promise.race([cleanup, deadline])
   process.exit(1)
 }

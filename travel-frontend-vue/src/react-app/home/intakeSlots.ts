@@ -43,17 +43,82 @@ export const GREETING: IntakeMessage = {
   text: '想去哪儿玩？大致天数、人数，一并说给司南听～',
 }
 
-/** 就绪门：与后端 _REQUIRED 三件套同口径，days 上限 7 不在前端放宽。 */
-export function slotsReady(slots: IntakeSlots): boolean {
-  return Boolean(slots.city?.trim()) && isDayCount(slots.days) && isPersonCount(slots.persons)
-}
-
 function isDayCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 7
 }
 
 function isPersonCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 20
+}
+
+/** 槽位元数据（PLAN 2026-10-02 §3.2）：右栏收集进度与就绪门的单一来源。
+ * 必填三项与后端 clarify 的 _REQUIRED 同口径，键名与后端抽取一致（snake_case）。 */
+export interface SlotDef {
+  key: keyof IntakeSlots
+  label: string
+  required: boolean
+}
+
+export const SLOT_DEFS: SlotDef[] = [
+  { key: 'city', label: '目的地', required: true },
+  { key: 'days', label: '天数', required: true },
+  { key: 'persons', label: '人数', required: true },
+  { key: 'start_date', label: '出发日期', required: false },
+  { key: 'origin_city', label: '出发城市', required: false },
+  { key: 'budget', label: '全程预算', required: false },
+  { key: 'hotel_tier', label: '酒店档次', required: false },
+  { key: 'preferences', label: '旅行偏好', required: false },
+]
+
+/** 单槽位是否已填：与 slotsReady 同一套判据（city 去空白、days/persons 走数值门）。 */
+export function slotIsFilled(slots: IntakeSlots, key: keyof IntakeSlots): boolean {
+  switch (key) {
+    case 'city': return Boolean(slots.city?.trim())
+    case 'days': return isDayCount(slots.days)
+    case 'persons': return isPersonCount(slots.persons)
+    case 'start_date': return Boolean(slots.start_date)
+    case 'origin_city': return Boolean(slots.origin_city?.trim())
+    case 'budget': return typeof slots.budget === 'number' && slots.budget > 0
+    case 'hotel_tier': return Boolean(slots.hotel_tier?.trim())
+    case 'preferences': return Boolean(slots.preferences?.length)
+  }
+}
+
+/** 就绪门：从 SLOT_DEFS 的必填项派生（=后端 _REQUIRED 三件套），days 上限 7 不在前端放宽。 */
+export function slotsReady(slots: IntakeSlots): boolean {
+  return SLOT_DEFS.filter((def) => def.required).every((def) => slotIsFilled(slots, def.key))
+}
+
+export interface SlotProgress {
+  requiredFilled: number
+  requiredTotal: number
+  filledKeys: Array<keyof IntakeSlots>
+  nextRequiredKey: keyof IntakeSlots | null
+}
+
+/** 右栏收集进度：必填计数 + 已填键 + 下一个待填必填键（可选项不算门）。 */
+export function slotProgress(slots: IntakeSlots): SlotProgress {
+  const required = SLOT_DEFS.filter((def) => def.required)
+  return {
+    requiredFilled: required.filter((def) => slotIsFilled(slots, def.key)).length,
+    requiredTotal: required.length,
+    filledKeys: SLOT_DEFS.filter((def) => slotIsFilled(slots, def.key)).map((def) => def.key),
+    nextRequiredKey: required.find((def) => !slotIsFilled(slots, def.key))?.key ?? null,
+  }
+}
+
+/** 槽位当前值的人话展示（右栏「越填越长出来」的值面）：数字带单位、预算带币符。 */
+export function slotDisplayValue(slots: IntakeSlots, key: keyof IntakeSlots): string {
+  switch (key) {
+    case 'city': return slots.city?.trim() || ''
+    case 'days': return isDayCount(slots.days) ? `${slots.days} 天` : ''
+    case 'persons': return isPersonCount(slots.persons) ? `${slots.persons} 人` : ''
+    case 'start_date': return slots.start_date || ''
+    case 'origin_city': return slots.origin_city?.trim() || ''
+    case 'budget': return slots.budget && slots.budget > 0 ? `¥${slots.budget}` : ''
+    case 'hotel_tier': return slots.hotel_tier?.trim() || ''
+    case 'preferences': return (slots.preferences || []).join(' · ')
+  }
 }
 
 /** 合并后端抽取结果：只认得动的键，形状不对的一律丢弃（槽位结构由前端决定）。 */

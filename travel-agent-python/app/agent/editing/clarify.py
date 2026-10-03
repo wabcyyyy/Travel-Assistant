@@ -28,21 +28,25 @@ _DEFAULT_OPTIONS = {
 }
 _BLOCKED_OPTIONS = [f"改成 {MAX_TRIP_DAYS} 天以内", "拆成两段行程"]
 _NEGOTIATION = f"单次行程最多排 {MAX_TRIP_DAYS} 天哦～要不要改成 {MAX_TRIP_DAYS} 天以内，或者拆成两段分开规划？"
+# F10：追问文本与点选选项由系统按必填优先顺序自动生成（缺槽分支强制同槽对齐），
+# LLM 的 question/options 只保留一个用途——天数超上限时的协商话术。
 _EXTRACT_SPEC = (
     '只输出 JSON：{"city":"城市名或null","origin_city":"出发城市或null",'
     '"start_date":"YYYY-MM-DD或null",'
     '"days":数字或null,"stay_nights":数字或null,"persons":数字或null,'
     '"budget":数字或null,"hotel_tier":"经济型/舒适型/高档型/豪华型/奢华型或null",'
     '"preferences":["偏好"]或null,'
-    '"question":"用自然口语说的下一句追问，没有要问的就给null",'
-    '"options":["配合question的2~4个短选项，让用户可以点选回答，没有就null"]}。'
+    '"question":"仅当用户要的天数超过上限时给一句自然口语的协商话术，否则null",'
+    '"options":["仅协商时给配合question的2~4个短选项，否则null"]}。'
 )
 _SYSTEM_PROMPT = (
     "你是旅行规划的信息收集助手。从用户最新一句话中抽取槽位，与已有槽位合并。"
+    "追问哪个槽位、给哪些点选选项由系统按必填优先（目的地→天数→人数，可选槽位靠后）"
+    "自动生成，你只负责抽取，不要替系统编追问或选项。"
     f"{_EXTRACT_SPEC}"
     "没提到的字段一律 null，不要猜测。"
     f"单次行程天数上限 {MAX_TRIP_DAYS} 天：用户要超过时 days 照实抽取，"
-    f"但 question 必须说明最多 {MAX_TRIP_DAYS} 天，并协商改天数或拆成两段。"
+    f"但此时 question 必须说明最多 {MAX_TRIP_DAYS} 天，并协商改天数或拆成两段。"
 )
 
 
@@ -102,7 +106,13 @@ def _extract(raw: str, slots: dict) -> tuple[str | None, list[str] | None]:
 
 
 def _respond(slots: dict, missing: list[str], question: str | None, options: list[str] | None) -> ClarifyResponse:
-    """三级出口：超天协商 > 缺槽追问 > 就绪（就绪时不带追问，选择交给确认条）。"""
+    """三级出口：超天协商 > 缺槽追问 > 就绪（就绪时不带追问，选择交给确认条）。
+
+    F10：缺槽追问的问题与选项一律按 ``missing[0]`` 槽位现生成——问哪个槽位就给哪个
+    槽位的候选，且必填（city→days→persons）未齐前可选槽位不可能成为追问对象；
+    LLM 自由发挥的 question/options 只在超天协商分支透传，杜绝「问出发城市却给
+    天数选项」「出发日期先于人数被问」。
+    """
     if isinstance(slots.get("days"), int) and slots["days"] > MAX_TRIP_DAYS:
         # 上限是产品红线：不静默截断，天数原样保留、协商话术交回对话
         return ClarifyResponse(
@@ -114,13 +124,14 @@ def _respond(slots: dict, missing: list[str], question: str | None, options: lis
             blocked=True,
         )
     if missing:
+        # 文本与 chips 强制同槽：不再让 LLM 的自由追问/选项越过 missing[0]
         slot = missing[0]
         return ClarifyResponse(
             slots=slots,
             missing=missing,
-            question=question or f"还想确认一下{_LABELS[slot]}～",
+            question=f"还想确认一下{_LABELS[slot]}～",
             ready=False,
-            options=options or _DEFAULT_OPTIONS.get(slot, []),
+            options=_DEFAULT_OPTIONS.get(slot, []),
         )
     return ClarifyResponse(slots=slots, missing=[], question=None, ready=True, options=[])
 

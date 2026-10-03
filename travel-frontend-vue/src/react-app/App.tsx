@@ -2,10 +2,9 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { getUserInfo, logout } from '../api/sinan'
 import { AppShell } from './layout/AppShell'
-import { DestinationsPage } from './destination/DestinationsPage'
-import { GuideDetailPage, GuidesPage } from './guides/GuidesPages'
+import { ExplorePage } from './explore/ExplorePage'
+import { GuideDetailPage } from './explore/GuideDetailPage'
 import { HomePage } from './home/HomePage'
-import { InspirationPage } from './inspiration/InspirationPage'
 import { LoginPage } from './auth/LoginPage'
 import { TripsPage } from './itinerary/TripsPage'
 import { SettingsPage } from './settings/SettingsPage'
@@ -22,9 +21,7 @@ const TripDetailPage = lazy(() =>
 
 function pageTitle(path: string) {
   if (path === '/') return '司南 Sinan · 让每一段旅程找到方向'
-  if (path === '/destinations') return '目的地探索 · 司南 Sinan'
-  if (path === '/inspiration') return '旅行灵感 · 司南 Sinan'
-  if (path === '/guides' || path.startsWith('/guides/')) return '旅行攻略 · 司南 Sinan'
+  if (path === '/explore' || path.startsWith('/explore/')) return '探索 · 司南 Sinan'
   if (path === '/trips' || path.startsWith('/trips/')) return '我的行程 · 司南 Sinan'
   if (path === '/settings') return '设置 · 司南 Sinan'
   if (path === '/login') return '登录 · 司南 Sinan'
@@ -67,10 +64,8 @@ export default function App() {
   if (location.path.startsWith('/s/')) return <SharePage path={location.path} />
   let page: ReactNode
   if (location.path === '/') page = <HomePage />
-  else if (location.path === '/destinations') page = <DestinationsPage />
-  else if (location.path === '/inspiration') page = <InspirationPage />
-  else if (location.path === '/guides') page = <GuidesPage />
-  else if (location.path.startsWith('/guides/')) page = <GuideDetailPage path={location.path} />
+  else if (location.path === '/explore' || location.path === '/explore/') page = <ExplorePage />
+  else if (location.path.startsWith('/explore/guide/')) page = <GuideDetailPage path={location.path} />
   else if (location.path === '/trips') page = <TripsPage />
   else if (location.path === '/settings') page = <SettingsPage />
   else if (location.path.startsWith('/trips/')) page = <TripDetailPage path={location.path} />

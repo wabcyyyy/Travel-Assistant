@@ -13,7 +13,9 @@ import type { ItineraryDetail } from '../../types/itinerary'
 
 export type PlanningStatus = 'idle' | 'creating' | 'planning' | 'ready' | 'pending' | 'error' | 'login'
 
-// 生成中的行程 id 暂存：刷新/断流后重挂载时据此续上监控（行程本身在服务端继续生成）
+// 生成中的行程 id 暂存：刷新/断流后重挂载时据此续上监控（行程本身在服务端继续生成）；
+// done 态也保留（F4，PLAN 2026-10-03 §2.4）——刷新后 resume 靠它拉详情恢复 ready+draft，
+// 唯一清空点是会话重置（reset），中途清掉就会落回 confirm 态、可一键重复生成。
 const GENERATION_KEY = 'sinan-intake-generation'
 
 function readGenerationId(): number | null {
@@ -72,7 +74,7 @@ export function useHomePlanning() {
         onUpdate: (detail) => { if (!controller.signal.aborted) setDraft(detail) },
       })
       if (controller.signal.aborted) return
-      clearGenerationId()
+      // done 不清 generationId：刷新后走 resume 恢复同一 ready 呈现（见 GENERATION_KEY 注）
       setDraft(result); setProgress(4); setStatus('ready'); setMessage('你的行程已准备好')
     } catch (error) {
       if (controller.signal.aborted) return
@@ -127,7 +129,8 @@ export function useHomePlanning() {
       }
       setDraft(shell)
       if (shell.status === 2) {
-        clearGenerationId()
+        // 刷新恢复 done 态：与刚生成完的 ready 同一呈现分支（TripPanel 的 TripBoard），
+        // id 继续保留——再刷新仍能恢复；清空只发生在会话重置
         setProgress(4); setStatus('ready'); setMessage('你的行程已准备好')
         return
       }
@@ -142,5 +145,16 @@ export function useHomePlanning() {
 
   useEffect(() => { void resumePending() }, [resumePending])
 
-  return { status, message, progress, draft, busy, submit }
+  /** 会话重置（「重新说」链路，HomeStudio.handleChatReset 调用）：done 态保留的
+   * generationId 在这里清——重置后的刷新不会被 resume 拉回旧行程，下次生成必是新行程。
+   * 生成态与草稿一并归零，重置解锁后右栏不残留旧预览板；abort 兜底在位请求
+   * （当前 reset 只在非 busy 态可达，正常为空）。 */
+  const reset = useCallback(() => {
+    request.current?.abort()
+    request.current = null
+    clearGenerationId()
+    setDraft(null); setProgress(0); setMessage(''); setStatus('idle')
+  }, [])
+
+  return { status, message, progress, draft, busy, submit, reset }
 }

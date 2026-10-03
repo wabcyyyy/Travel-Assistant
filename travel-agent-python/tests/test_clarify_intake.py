@@ -32,13 +32,36 @@ def test_merges_slots_and_reports_ready(monkeypatch) -> None:
     assert res.slots["days"] == 3
 
 
-def test_passes_through_llm_question_and_options(monkeypatch) -> None:
-    raw = '{"city":null,"days":null,"persons":null,"question":"几个人一起出发呀？","options":["2 人","4 人","一家人"]}'
+def test_question_and_options_align_with_first_missing_slot(monkeypatch) -> None:
+    """F10①：LLM 自由发挥的追问/选项不再透传——问哪个槽位就给哪个槽位的候选。"""
+    raw = '{"question":"从哪个城市出发？","options":["3 天","5 天","7 天"]}'
     res = _run(monkeypatch, raw)
     assert res.ready is False
     assert res.missing == ["city", "days", "persons"]
-    assert res.question == "几个人一起出发呀？"
+    assert res.question == "还想确认一下目的地城市～"
+    assert res.options == ["帮我推荐目的地"]
+
+
+def test_optional_slot_never_shadows_required(monkeypatch) -> None:
+    """F10②：必填未齐时可选槽位（出发日期）不可能成为追问对象，人数必填优先。"""
+    raw = (
+        '{"city":"成都","days":3,"start_date":"2026-10-01",'
+        '"question":"出发日期定在哪天？","options":["10月1日","10月2日","还没定"]}'
+    )
+    res = _run(monkeypatch, raw)
+    assert res.slots["start_date"] == "2026-10-01", "可选槽位照常抽取入库"
+    assert res.missing == ["persons"]
+    assert res.question == "还想确认一下出行人数～"
     assert res.options == ["2 人", "4 人", "一家人"]
+
+
+def test_ready_ignores_llm_question(monkeypatch) -> None:
+    """必填集齐即就绪：就绪分支恒不带追问，LLM 给了也不透传。"""
+    raw = '{"city":"成都","days":3,"persons":2,"question":"还想问点什么","options":["a"]}'
+    res = _run(monkeypatch, raw)
+    assert res.ready is True
+    assert res.question is None
+    assert res.options == []
 
 
 def test_llm_failure_falls_back_to_template(monkeypatch) -> None:
@@ -87,6 +110,8 @@ def test_nonpositive_or_wordy_numbers_are_reasked(monkeypatch) -> None:
 
 
 def test_options_capped_at_four(monkeypatch) -> None:
-    raw = '{"city":null,"question":"去哪？","options":["a","b","c","d","e"]}'
+    """选项截顶只剩超天协商分支在用（缺槽分支的选项已改为按槽位现生成）。"""
+    raw = '{"city":"成都","days":14,"question":"天数超了","options":["a","b","c","d","e"]}'
     res = _run(monkeypatch, raw)
+    assert res.blocked is True
     assert len(res.options) == 4

@@ -7,6 +7,10 @@ import {
   READY_TEXT,
   saveIntake,
   seedFromQuery,
+  SLOT_DEFS,
+  slotDisplayValue,
+  slotIsFilled,
+  slotProgress,
   slotsReady,
   toGenerateInput,
 } from './intakeSlots'
@@ -30,6 +34,53 @@ describe('slotsReady（就绪门 = 后端 _REQUIRED 同口径）', () => {
     expect(slotsReady({ ...fullSlots, days: 8 })).toBe(false)
     expect(slotsReady({ ...fullSlots, days: 0 })).toBe(false)
     expect(slotsReady({ ...fullSlots, persons: undefined })).toBe(false)
+  })
+})
+
+describe('SLOT_DEFS / slotProgress（右栏收集进度，与 slotsReady 同源）', () => {
+  it('八槽位元数据：必填恰好是 city/days/persons 三件套', () => {
+    expect(SLOT_DEFS).toHaveLength(8)
+    expect(SLOT_DEFS.filter((def) => def.required).map((def) => def.key)).toEqual(['city', 'days', 'persons'])
+  })
+  it('空槽位：进度 0/3，nextRequiredKey 指向第一个必填', () => {
+    expect(slotProgress({})).toEqual({
+      requiredFilled: 0,
+      requiredTotal: 3,
+      filledKeys: [],
+      nextRequiredKey: 'city',
+    })
+  })
+  it('随填随长：next 沿必填链推进，可选项不算门但进 filledKeys', () => {
+    const half = slotProgress({ city: '成都', budget: 3000 })
+    expect(half.nextRequiredKey).toBe('days')
+    expect(half.requiredFilled).toBe(1)
+    expect(half.filledKeys).toEqual(['city', 'budget'])
+    const full = slotProgress({ city: '成都', days: 4, persons: 2, hotel_tier: '舒适型' })
+    expect(full.nextRequiredKey).toBeNull()
+    expect(full.requiredFilled).toBe(3)
+  })
+  it('全填态：八键齐活，filledKeys 按 SLOT_DEFS 顺序排列', () => {
+    expect(slotProgress({ ...fullSlots, hotel_tier: '舒适型' })).toEqual({
+      requiredFilled: 3,
+      requiredTotal: 3,
+      filledKeys: ['city', 'days', 'persons', 'start_date', 'origin_city', 'budget', 'hotel_tier', 'preferences'],
+      nextRequiredKey: null,
+    })
+  })
+  it('与 slotsReady 同一套判据：越界天数不算填', () => {
+    expect(slotIsFilled({ days: 8 }, 'days')).toBe(false)
+    const bad = slotProgress({ city: '成都', days: 8, persons: 2 })
+    expect(bad.requiredFilled).toBe(2)
+    expect(bad.nextRequiredKey).toBe('days')
+  })
+  it('slotDisplayValue：数字带单位、预算带币符、偏好拼接', () => {
+    expect(slotDisplayValue(fullSlots, 'city')).toBe('成都')
+    expect(slotDisplayValue(fullSlots, 'days')).toBe('3 天')
+    expect(slotDisplayValue(fullSlots, 'persons')).toBe('2 人')
+    expect(slotDisplayValue(fullSlots, 'budget')).toBe('¥3000')
+    expect(slotDisplayValue(fullSlots, 'preferences')).toBe('美食 · 慢节奏')
+    expect(slotDisplayValue(fullSlots, 'start_date')).toBe('2026-10-01')
+    expect(slotDisplayValue(fullSlots, 'origin_city')).toBe('北京')
   })
 })
 

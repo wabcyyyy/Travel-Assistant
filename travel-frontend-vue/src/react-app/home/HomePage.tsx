@@ -1,27 +1,13 @@
 import { useLocation } from '../router'
 import { HomeStudio } from './HomeStudio'
-import { HomeInspiration } from './HomeInspiration'
-import { HomeJournal } from './HomeJournal'
-import { Icon } from '../shared/Icon'
-import { navigate } from '../router'
-import hangzhou from '../../assets/img/cover-hangzhou.webp'
-import { SmartImg } from '../shared/SmartImg'
 
+/** 首页 = HomeStudio 工作台（PLAN 2026-10-02 §2）：idle 一张居中对话卡，一屏余量
+ * 之后挂轻展示区 HomeShowcase（PLAN 2026-10-03 §2.2），开聊后变双栏。旧 home-story /
+ * 重型灵感 / 攻略区块不回归，只留轻导流；query 变化（/?city= 等深链）时重挂会话，
+ * 保 seedFromQuery 预填语义。 */
 export function HomePage() {
   const { query } = useLocation()
   return <div className="home-page">
-    <section className="home-intro" aria-labelledby="home-title">
-      <div className="home-story">
-        <h1 id="home-title">下一站，<br />想怎么过？</h1>
-        <p className="home-description">想去的地方，喜欢的节奏。<br />说给司南听，一起安排成行。</p>
-        <figure className="home-postcard">
-          <SmartImg src={hangzhou} alt="落日下的杭州西湖，湖面与荷叶映着金色的光" ratio="21 / 10" eager />
-          <figcaption><span><Icon name="pin" size={15} />杭州 · 把周末留给湖光</span><button type="button" aria-label="阅读杭州旅行攻略" onClick={() => navigate('/guides/hangzhou-by-the-lake')}><Icon name="arrowUpRight" size={20} /></button></figcaption>
-        </figure>
-      </div>
-      <HomeStudio key={query.toString()} query={query} />
-    </section>
-    <HomeInspiration />
-    <HomeJournal />
+    <HomeStudio key={query.toString()} query={query} />
   </div>
 }

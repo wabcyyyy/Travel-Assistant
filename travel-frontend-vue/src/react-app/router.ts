@@ -5,7 +5,22 @@ export interface LocationState {
   query: URLSearchParams
 }
 
+// 探索页三合一（2026-10-02，PLAN §1.1）：旧三页路径 → /explore 的 replace 重定向表，
+// 直达/刷新/后退都落到新地址，不留死链。导出仅供测试（表驱动用例）。
+export function legacyExploreRedirect(pathname: string): string | null {
+  if (pathname === '/destinations') return '/explore?tab=destinations'
+  if (pathname === '/inspiration') return '/explore?tab=inspiration'
+  if (pathname === '/guides' || pathname === '/guides/') return '/explore?tab=guides'
+  if (pathname.startsWith('/guides/')) {
+    const slug = pathname.slice('/guides/'.length).split('/').filter(Boolean)[0]
+    if (slug) return `/explore/guide/${slug}`
+  }
+  return null
+}
+
 function readLocation(): LocationState {
+  const redirected = legacyExploreRedirect(window.location.pathname)
+  if (redirected) window.history.replaceState({}, '', redirected)
   // Retired creation pages share the homepage form; preserve bookmarked input.
   if (['/plan', '/generate'].includes(window.location.pathname)) {
     window.history.replaceState({}, '', `/${window.location.search}`)

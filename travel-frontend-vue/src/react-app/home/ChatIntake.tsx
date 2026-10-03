@@ -2,26 +2,35 @@ import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { interpretImageIntent, isUnauthorized } from '../../api/sinan'
 import type { GenerateInput } from '../../api/sinan'
-import { fallbackCities } from '../data'
+import { fallbackCities, inspirationTemplates } from '../data'
 import { loginRedirect, navigate } from '../router'
 import { ChatComposer, composeDraft, imageFeedbackText } from '../shared/ChatComposer'
 import { Icon } from '../shared/Icon'
-import { INTAKE_PREFERENCES, seedFromQuery, slotsReady, toGenerateInput } from './intakeSlots'
+import { GREETING, INTAKE_PREFERENCES, seedFromQuery, slotsReady, toGenerateInput } from './intakeSlots'
 import type { IntakeSlots } from './intakeSlots'
-import { useIntakeChat } from './useIntakeChat'
+import type { IntakeChat } from './useIntakeChat'
+
+/** 冷启动开场模板：挂在 greeting 消息下（PLAN 2026-10-02 §2.2），点击只预填
+ * 草稿不自动发送——与 ?template= 深链的 seedFromQuery 同款语义。 */
+const GREETING_TEMPLATES = inspirationTemplates.slice(0, 4)
 
 /** 对话式创建壳：clarify 多轮收集（chips 点选即答），ready 后就地确认再开工。
- * 集齐 city/days/persons 前不出「开始规划」——不猜测、不零追问直出。 */
+ * 集齐 city/days/persons 前不出「开始规划」——不猜测、不零追问直出。
+ * 会话状态由宿主持有（HomeStudio 要用 messages 派生 idle/active）经 chat 下发；
+ * variant 给两种宽度变体：centered=idle 居中卡，dock=active 左栏（卡3 栏内复用）。 */
 export function ChatIntake({
   query,
+  chat,
   disabled,
+  variant,
   onStart,
 }: {
   query: URLSearchParams
+  chat: IntakeChat
   disabled?: boolean
+  variant?: 'centered' | 'dock'
   onStart: (input: GenerateInput) => void
 }) {
-  const chat = useIntakeChat()
   const [draft, setDraft] = useState(() => seedFromQuery(query))
   const [imageBusy, setImageBusy] = useState(false)
   const [imageNotice, setImageNotice] = useState('')
@@ -35,6 +44,8 @@ export function ChatIntake({
   const locked = disabled || chat.sending
   const last = chat.messages[chat.messages.length - 1]
   const chips = !chat.ready && !locked && last?.role === 'assistant' && last.options?.length ? last.options : null
+  // 纯 greeting 的冷启动会话：greeting 下挂模板 chips 导流，开聊即收起
+  const fresh = chat.messages.length === 1 && chat.messages[0].id === GREETING.id
 
   const submit = () => {
     const text = draft
@@ -65,15 +76,20 @@ export function ChatIntake({
     }
   }
 
-  return <div className="intake" aria-label="对话式行程创建">
+  return <div className={variant ? `intake intake-${variant}` : 'intake'} aria-label="对话式行程创建">
     <div className="intake-head">
       <span className="intake-symbol"><Icon name="compass" size={22} /></span>
-      <div><h2>说一句话，行程就有了</h2><p>信息不够司南会问你，不会瞎猜。</p></div>
+      <div><h1>说一句话，行程就有了</h1><p>信息不够司南会问你，不会瞎猜。</p></div>
     </div>
     <div className="intake-log" role="log" aria-live="polite" ref={logRef}>
       {chat.messages.map((msg) => (
         <div key={msg.id} className={`intake-msg is-${msg.role}`}>{msg.text}</div>
       ))}
+      {fresh && <div className="intake-chips" aria-label="试试这些开场">
+        {GREETING_TEMPLATES.map((item) => (
+          <button key={item.id} type="button" title={item.description} onClick={() => setDraft(item.intent.slice(0, 800))}>{item.title}</button>
+        ))}
+      </div>}
       {chat.sending && <div className="intake-msg is-assistant is-typing"><span className="chat-thinking" aria-label="司南正在想"><i /><i /><i /></span></div>}
       {chips && <div className="intake-chips">
         {chips.map((option) => <button key={option} type="button" onClick={() => void chat.send(option)}>{option}</button>)}

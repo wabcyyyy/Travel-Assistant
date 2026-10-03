@@ -4,10 +4,11 @@ import { Brand } from '../shared/Brand'
 import { Icon } from '../shared/Icon'
 import { applyAppearance, readAppearance, saveAppearance } from '../../styles/appearance'
 
+// 探索页三合一（2026-10-02）：目的地/灵感/攻略三项收敛为一项「探索」（PLAN §1.2）。
+// 导航补「首页」（PLAN §2.1，2026-10-03）：isActive('/') 现有实现天然只命中 '/'，不改判定。
 const links = [
-  { label: '目的地', path: '/destinations' },
-  { label: '旅行灵感', path: '/inspiration' },
-  { label: '旅行攻略', path: '/guides' },
+  { label: '首页', path: '/' },
+  { label: '探索', path: '/explore' },
 ]
 
 export function TopNav({ onLogin, onLogout, username }: { onLogin?: () => void; onLogout?: () => void; username?: string }) {
