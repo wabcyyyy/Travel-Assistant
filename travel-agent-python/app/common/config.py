@@ -104,17 +104,21 @@ class Settings(BaseSettings):
     trusted_proxies: str = "127.0.0.1,0:0:0:0:0:0:0:1,::1"
 
     # ---- LLM ----
-    llm_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    llm_base_url: str = "https://api.deepseek.com"
     llm_api_key: str = ""
-    llm_model: str = "qwen-plus"
-    # 内容生成统一走低延迟模型（qwen-turbo 省钱但对篇幅类软约束遵循差）；可留空复用主模型
-    llm_fast_model: str = "qwen-plus"
+    llm_model: str = "deepseek-flash"
+    # 内容生成统一走 fast model；可留空复用主模型
+    llm_fast_model: str = "deepseek-flash"
     llm_timeout: float = 240
     # httpx 连接池：限制对 LLM 网关的并发 TCP 连接，避免无界握手
     llm_pool_max_connections: int = 20
     llm_pool_max_keepalive: int = 10
     llm_connect_timeout: float = 5
     llm_generation_web_search: bool = False
+    # 思考模式开关：百炼用 enable_thinking(bool)；DeepSeek 官方用 thinking: {"type": "enabled"}
+    llm_enable_thinking: bool | None = True
+    # 思考强度（DeepSeek 官方 API reasoning_effort: "low" | "high" | "max"）
+    llm_reasoning_effort: str | None = "low"
 
     # ---- 实时信息与联网搜索 ----
     # 实时酒店价默认开启核实（额外触发联网搜索/模型调用）；追求首版速度可设 false。
@@ -123,8 +127,7 @@ class Settings(BaseSettings):
     # 餐饮实时价（百炼联网）：与酒店实时价独立开关，同样受 max_live_queries 约束
     live_food_price_search: bool = True
     max_live_food_queries: int = 4
-    # 研究/备选池证据不足时用联网搜索补候选（百炼 enable_search）。量上限只有一个
-    # 真源：run_limits 的 max_retrievals——再加回"第二个旋钮"之前先想清楚谁读它。
+    # 研究/备选池证据不足时用联网搜索补候选（百炼 enable_search）
     web_search_enabled: bool = True
 
     # ---- 预算与生成后处理 ----
@@ -137,8 +140,7 @@ class Settings(BaseSettings):
     meal_price_soft_cap_ratio: float = 4
 
     # ---- 路线 ----
-    # 路线矩阵校验：本地坐标估算（haversine × 道路系数）供排程校验与打分。默认关闭
-    # 保持既有生成结果不变；开启不产生任何外部调用（高德/Google 已随「去高德」移除）。
+    # 路线矩阵校验：本地坐标估算供排程校验与打分，默认关闭
     route_service_enabled: bool = False
     route_mode: str = "walking"
     route_cache_ttl: float = 900
@@ -146,10 +148,7 @@ class Settings(BaseSettings):
     route_max_calls: int = 64
 
     # ---- Agent 运行预算 ----
-    # 每次 Agent 请求允许的工具调用总数；单工具上限由 Tool Registry 控制。
     tool_max_calls: int = 32
-    # 研究三域（plan/evaluate×2 轮）+ 联网补池 + 整段生成 + 修复重试的总额；
-    # 旧默认 8 次会在研究阶段就耗尽（「开放研究重试耗尽」草案）。
     max_llm_calls: int = 32
     max_token_budget: int = 80000
     # 按用户的闸门（R1-9）：上面两份预算是"按次"的，单用户循环调用拿到的就是
@@ -181,9 +180,8 @@ class Settings(BaseSettings):
     # 图检查点存储（PR-3 / D2）：SqliteSaver 文件库自管建表，不动 MySQL 迁移（INV-3）
     checkpoint_db_path: str = Field(default_factory=lambda: str(BASE_DIR / "data" / "checkpoints.sqlite3"))
     # ---- LLM-as-judge（PR-7 / D7）----
-    # judge 与被评模型必须**不同家族**（机检在 tests/agent_eval/judge.py）防
-    # self-preference；空值回落主 LLM 配置（同网关跑异家族：被评 qwen 系 + judge deepseek 系）。
-    judge_llm_model: str = "deepseek-v3"
+    # judge 与被评模型必须不同家族（tests/agent_eval/judge.py）防自偏好
+    judge_llm_model: str = "qwen-max"
     judge_llm_base_url: str = ""
     judge_llm_api_key: str = ""
     # BYOK 网关密钥静态加密的 Fernet key（urlsafe b64，解码须恰 32B）；空 = 从

@@ -35,6 +35,17 @@ export function navigate(to: string) {
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
+/** 重置首页到最初的 idle 状态（清空临时对话与规划草稿，派发 reset 事件） */
+export function resetHomeSession() {
+  try {
+    sessionStorage.removeItem('sinan-intake-v1')
+    sessionStorage.removeItem('sinan-intake-generation')
+  } catch {
+    // ignore
+  }
+  window.dispatchEvent(new CustomEvent('sinan:reset-home'))
+}
+
 export function loginRedirect(path = `${window.location.pathname}${window.location.search}`) {
   return `/login?redirect=${encodeURIComponent(path || '/')}`
 }

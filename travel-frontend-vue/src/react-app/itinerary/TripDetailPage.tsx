@@ -29,6 +29,7 @@ import { ChatPanel } from './ChatPanel'
 import { feedbackIndex } from './itemFeedback'
 import { ItemFeedbackControl } from './ItemFeedbackControl'
 import { TripMapPanel } from './TripMapPanel'
+import { amapLink } from './mapPins'
 import type { MapPin } from './mapPins'
 
 /** 时间线与类型徽章共用的图标映射（新类型先落到 pin，不裸奔）。 */
@@ -44,6 +45,25 @@ function displayDate(value: string | null | undefined) {
   if (!value) return ''
   const date = new Date(`${value}T00:00:00`)
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+}
+
+function getExperienceTag(item: DayPlan['items'][0]): string | null {
+  const text = `${item.poiName} ${item.remark || ''} ${item.whyThis || ''}`
+  if (text.includes('日落') || (item.startTime && item.startTime >= '17:00' && item.startTime <= '19:30')) return '🌅 绝美日落'
+  if (text.includes('夜景') || (item.startTime && item.startTime > '19:30')) return '✨ 浪漫夜色'
+  if (text.includes('咖啡') || text.includes('茶馆') || text.includes('甜品')) return '☕ 慢调闲坐'
+  if (text.includes('古') || text.includes('寺') || text.includes('博物馆') || text.includes('历史') || text.includes('城墙')) return '🏛️ 历史人文'
+  if (text.includes('海') || text.includes('湖') || text.includes('山') || text.includes('自然') || text.includes('公园')) return '🌿 湖山漫步'
+  if (item.itemType === 'food') return '🍜 巷弄私藏'
+  return null
+}
+
+function getItemPriceTag(item: DayPlan['items'][0]): string | null {
+  if (item.cost === 0) return '免费开放'
+  if (item.cost && item.cost > 0) return `￥${item.cost}/人`
+  if (item.itemType === 'food') return '特色美食'
+  if (item.itemType === 'attraction') return '精选打卡'
+  return null
 }
 
 export function TripDetailPage({ path }: { path: string }) {
@@ -263,11 +283,19 @@ export function TripDetailPage({ path }: { path: string }) {
   const safeShareUrl = safeAppLink(shareUrl)
   const safeDownloadUrl = safeAppLink(downloadUrl)
 
+  useEffect(() => {
+    if (!activePin) return
+    const el = document.getElementById(`day-item-${activePin}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [activePin])
+
   return <div className="detail-page">
     <div className="detail-topbar">
       <button className="back-link" type="button" onClick={() => navigate('/trips')}><Icon name="arrow" size={16} />我的行程</button>
       <div className="detail-actions">
-        <button className="icon-action" type="button" aria-label={trip.favorite ? '取消收藏' : '收藏'} onClick={favorite}><Icon name="heart" size={18} /></button>
+        <button className={`icon-action${trip.favorite ? ' is-favorited' : ''}`} type="button" aria-label={trip.favorite ? '取消收藏' : '收藏'} aria-pressed={trip.favorite} onClick={favorite}><Icon name="heart" size={18} /></button>
         <button className="button button-secondary" type="button" onClick={share}><Icon name="share" size={16} />分享</button>
         <button className="button button-secondary" type="button" onClick={exportPdf}><Icon name="download" size={16} />导出</button>
       </div>
@@ -292,13 +320,107 @@ export function TripDetailPage({ path }: { path: string }) {
       <figure className="detail-cover"><SmartImg src={destinations.find((item) => item.city === trip.city)?.image || destinations[0].image} alt="旅行目的地参考封面" ratio="16 / 10" eager /><figcaption><Icon name="pin" size={14} />{trip.city} · 城市印象</figcaption></figure>
     </section>
     <div className={offline ? 'detail-workspace' : `detail-workspace has-chat${chatCollapsed ? ' is-chat-collapsed' : ''}`}>
-      {!offline && <ChatPanel itineraryId={trip.id} dayList={trip.dayList} onApplied={setTrip} onReconcile={refreshDetail} collapsed={chatCollapsed} onToggleCollapse={() => setChatCollapsed((value) => !value)} />}
+      {!offline && (
+        <ChatPanel
+          itineraryId={trip.id}
+          dayList={trip.dayList}
+          onApplied={setTrip}
+          onReconcile={refreshDetail}
+          collapsed={chatCollapsed}
+          onToggleCollapse={() => setChatCollapsed((value) => !value)}
+          currentDayNo={dayNo}
+          city={trip.city}
+        />
+      )}
       <aside className="day-sidebar"><div className="sidebar-head"><span className="section-eyebrow">Daily plan</span><strong>{trip.days} 天行程</strong></div>{trip.dayList.map((item) => <button key={item.dayNo} className={item.dayNo === dayNo ? 'day-tab active' : 'day-tab'} type="button" onClick={() => setDayNo(item.dayNo)}><span>DAY {String(item.dayNo).padStart(2, '0')}</span><strong>{item.theme || `第 ${item.dayNo} 天`}</strong><small>{trip.status === 1 && !item.items.length ? '生成中…' : `${item.items.length} 个安排`}</small></button>)}</aside>
       <section className="day-content">{day ? <>
-        <TripMapPanel days={trip.dayList} activeKey={activePin} onSelect={selectPin} />
-        <div className="day-content-head"><div><span className="section-eyebrow">DAY {String(day.dayNo).padStart(2, '0')}</span>{editingTheme ? <div className="day-theme-editor"><input value={themeDraft} maxLength={80} onChange={(event) => setThemeDraft(event.target.value)} aria-label="当天标题" /><div><button className="button button-primary" type="button" disabled={working} onClick={saveTheme}>保存</button><button className="button button-secondary" type="button" disabled={working} onClick={() => { setThemeDraft(day.theme || ''); setEditingTheme(false) }}>取消</button></div></div> : <><h2>{day.theme || `第 ${day.dayNo} 天`}</h2><p>{day.note}</p></>}</div><div className="day-head-actions">{!editingTheme && <button className="button button-secondary" type="button" onClick={() => offline ? setNotice('示例行程不会写入账号') : setEditingTheme(true)}><Icon name="edit" size={16} />编辑标题</button>}<button className="button button-secondary" type="button" disabled={working || editingTheme} onClick={regenerateDay}><Icon name="refresh" size={16} />{working ? '正在整理…' : '重新生成这一天'}</button></div></div>
-        <div className="day-items" key={day.dayNo}>{day.items.map((item, index) => <article className="day-item" style={{ '--stagger-i': index } as CSSProperties} key={`${item.poiName}-${index}`}><div className="day-item-time">{item.startTime || '--:--'}<span>{item.endTime || ''}</span></div><div className="day-item-line"><i><Icon name={ITEM_TYPE_ICONS[item.itemType] || 'pin'} size={11} strokeWidth={2.2} /></i><span /></div><div className="day-item-copy"><div className="item-heading"><span className="item-type"><Icon name={ITEM_TYPE_ICONS[item.itemType] || 'pin'} size={12} strokeWidth={2} />{{ attraction: '游览', food: '用餐', hotel: '住宿', transport: '交通', activity: '活动' }[item.itemType] || '安排'}</span><h3>{item.poiName}</h3></div><p>{item.remark || item.whyThis || '为这一段旅程保留一点自由。'}</p><div className="item-meta"><span><Icon name="clock" size={14} />{item.durationMin ? `${item.durationMin} 分钟` : '时间可调整'}</span><ItemEvidence item={item} /></div>{feedbackOn && item.id ? <ItemFeedbackControl itemId={item.id} feedback={feedbacks.get(item.id)} onSet={applyFeedback} onRevoke={() => removeFeedback(item.id!)} /> : null}</div></article>)}</div>
-        {trip.status === 1 && !day.items.length && <div className="day-generating"><Icon name="compass" size={16} />这一天的安排正在生成，完成后自动出现。</div>}
+        <TripMapPanel days={trip.dayList} activeKey={activePin} onSelect={selectPin} focusDayNo={dayNo} />
+        <div className="day-content-head"><div><span className="section-eyebrow">DAY {String(day.dayNo).padStart(2, '0')}</span>{editingTheme ? <div className="day-theme-editor"><input value={themeDraft} maxLength={80} onChange={(event) => setThemeDraft(event.target.value)} aria-label="当天标题" /><div><button className="button button-primary" type="button" disabled={working} onClick={saveTheme}>保存</button><button className="button button-secondary" type="button" disabled={working} onClick={() => { setThemeDraft(day.theme || ''); setEditingTheme(false) }}>取消</button></div></div> : <><h2>{day.theme || `第 ${day.dayNo} 天`}</h2><p>{day.note}</p></>}</div><div className="day-head-actions">{!offline && <button className="button button-secondary day-head-ai-btn" type="button" title="用对话微调当天的节奏、路线或美食" onClick={() => { setChatCollapsed(false); const input = document.querySelector('.chat-composer input, .chat-composer textarea') as HTMLInputElement | null; input?.focus() }}><Icon name="sparkles" size={15} />AI 编排此日</button>}{!editingTheme && <button className="button button-secondary" type="button" onClick={() => offline ? setNotice('示例行程不会写入账号') : setEditingTheme(true)}><Icon name="edit" size={16} />编辑标题</button>}<button className="button button-secondary" type="button" disabled={working || editingTheme} onClick={regenerateDay}><Icon name="refresh" size={16} />{working ? '正在整理…' : '重新生成这一天'}</button></div></div>
+        <div className="day-items" key={day.dayNo}>{day.items.map((item, index) => {
+          const itemKey = `${day.dayNo}:${index}`
+          const isItemActive = activePin === itemKey
+          const hasCoord = item.latitude != null && item.longitude != null
+          const nextItem = day.items[index + 1]
+          const cityCover = destinations.find((dest) => dest.city === trip.city)?.image || destinations[0].image
+          const itemImg = item.image || item.imageUrl || cityCover
+          return <div key={`${item.poiName}-${index}`} className="day-item-group">
+            <article className={`day-item${isItemActive ? ' is-active' : ''}`} id={`day-item-${itemKey}`} style={{ '--stagger-i': index } as CSSProperties} onClick={() => setActivePin(itemKey)} onMouseEnter={() => setActivePin(itemKey)}>
+              <div className="day-item-time">{item.startTime || '--:--'}<span>{item.endTime || ''}</span></div>
+              <div className="day-item-line"><i><Icon name={ITEM_TYPE_ICONS[item.itemType] || 'pin'} size={12} strokeWidth={2.2} /></i><span /></div>
+              <div className="day-item-copy">
+                <div className="item-heading">
+                  <span className={`item-type item-type-${item.itemType}`}><Icon name={ITEM_TYPE_ICONS[item.itemType] || 'pin'} size={12} strokeWidth={2} />{{ attraction: '游览', food: '用餐', hotel: '住宿', transport: '交通', activity: '活动' }[item.itemType] || '安排'}</span>
+                  <h3>{item.poiName}</h3>
+                  {getExperienceTag(item) && <span className="item-tag-exp">{getExperienceTag(item)}</span>}
+                  {item.itemType === 'food' && <span className="item-tag-flavor"><Icon name="utensils" size={11} />推荐打卡</span>}
+                  {getItemPriceTag(item) && <span className="item-tag-price"><Icon name="ticket" size={11} />{getItemPriceTag(item)}</span>}
+                </div>
+                <p>{item.remark || item.whyThis || '为这一段旅程保留一点自由。'}</p>
+                <div className="item-meta">
+                  <span><Icon name="clock" size={14} />{item.durationMin ? `${item.durationMin} 分钟` : '时间可调整'}</span>
+                  <ItemEvidence item={item} />
+                  {hasCoord && (
+                    <a
+                      className="item-nav-link"
+                      href={amapLink({ latitude: item.latitude!, longitude: item.longitude!, poiName: item.poiName || '' })}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="在高德地图中打开导航"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Icon name="pin" size={12} />
+                      地图导航
+                    </a>
+                  )}
+                </div>
+                {feedbackOn && item.id ? <ItemFeedbackControl itemId={item.id} feedback={feedbacks.get(item.id)} onSet={applyFeedback} onRevoke={() => removeFeedback(item.id!)} /> : null}
+              </div>
+              <div className="day-item-media" aria-hidden="true">
+                <SmartImg src={itemImg} alt={item.poiName || '地点实景'} ratio="1 / 1" />
+              </div>
+            </article>
+            {nextItem && (
+              <div className="day-transit-row" aria-label="前往下一站建议">
+                <div className="transit-track"><i /><span /></div>
+                <div className="transit-pill">
+                  <Icon name="train" size={11} />
+                  <span>前往下站建议 · 市内通勤约 15–25 分钟</span>
+                </div>
+              </div>
+            )}
+          </div>
+        })}</div>
+        {trip.status === 1 && !day.items.length && (
+          <div className="day-generating-skeleton" role="status" aria-label="正在生成这一天的安排">
+            <div className="day-generating-notice">
+              <span className="loading-orbit" aria-hidden="true" />
+              <span>司南正在细排第 {day.dayNo} 天的节奏、路线与推荐，完成后自动更新…</span>
+            </div>
+            <div className="day-skeleton-items" aria-hidden="true">
+              {[1, 2, 3].map((k) => (
+                <div key={k} className="day-skeleton-card" style={{ '--stagger-i': k } as CSSProperties}>
+                  <div className="skeleton-time-col">
+                    <span className="skeleton-bar skeleton-bar-time" />
+                  </div>
+                  <div className="skeleton-line-col">
+                    <i /><span />
+                  </div>
+                  <div className="skeleton-body-col">
+                    <div className="skeleton-heading-row">
+                      <span className="skeleton-bar skeleton-bar-pill" />
+                      <span className="skeleton-bar skeleton-bar-title" />
+                    </div>
+                    <span className="skeleton-bar skeleton-bar-desc" />
+                    <span className="skeleton-bar skeleton-bar-meta" />
+                  </div>
+                  <div className="skeleton-media-col">
+                    <span className="skeleton-bar skeleton-bar-thumb" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {day.practicalNotes?.length ? <div className="day-note"><Icon name="alert" size={17} /><div><strong>出发前看一眼</strong>{day.practicalNotes.map((note) => <p key={note}>{note}</p>)}</div></div> : null}
       </> : <EmptyBlock title="这一天还没有安排" description="可以先切换到其他天，或重新生成当天内容。" />}</section>
     </div>

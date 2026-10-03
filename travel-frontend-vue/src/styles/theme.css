@@ -1,46 +1,59 @@
-/* Sinan: cinnabar needle on pure white — 朱砂磁针落白纸，热情交给摄影与点缀，界面保持干净。 */
+/* Sinan: resort editorial canvas — 现代板岩黑配晨曦日落橙，通透纯净度假风，对标 Layla.ai。 */
 :root {
-  --sinan-ink: #241a14;
-  --sinan-ink-soft: #5d5049;
-  --sinan-muted: #86796f;
-  --sinan-faint: #9a8d83;
-  --sinan-accent: #d63a1e;
-  --sinan-accent-dark: #b02e12;
-  --sinan-accent-soft: #f9d8c7;
-  --sinan-accent-wash: #fdf0e8;
-  --sinan-paper: #ffffff;
-  --sinan-surface: #ffffff;
-  --sinan-line: #e9e0d8;
-  --sinan-line-soft: #f2ebe5;
-  --sinan-warm: #f6f2ee;
-  --sinan-on-image: #ffffff;
-  --sinan-photo-shade: #2b1710;
-  --sinan-danger: #bf2830;
-  --sinan-shadow: 0 20px 48px -24px rgba(62, 32, 18, .2);
-  --sinan-shadow-soft: 0 8px 24px -18px rgba(62, 32, 18, .15);
-  --sinan-composer-shadow: 0 24px 60px -30px rgba(62, 32, 18, .25);
-  --sinan-radius: 20px;
+  --sinan-ink: #0F172A;
+  --sinan-ink-soft: #334155;
+  --sinan-muted: #64748B;
+  --sinan-faint: #94A3B8;
+  --sinan-accent: #FF5A36;
+  --sinan-accent-dark: #E04018;
+  --sinan-accent-soft: #FFEBE5;
+  --sinan-accent-wash: #FFF5F2;
+  --sinan-azure: #0EA5E9;
+  --sinan-teal: #0D9488;
+  --sinan-paper: #F8FAFC;
+  --sinan-surface: #FFFFFF;
+  --sinan-line: #E2E8F0;
+  --sinan-line-soft: #F1F5F9;
+  --sinan-warm: #F1F5F9;
+  --sinan-on-image: #FFFFFF;
+  --sinan-photo-shade: #0F172A;
+  --sinan-danger: #EF4444;
+  --sinan-shadow: 0 20px 40px -15px rgba(15, 23, 42, .07), 0 0 1px 1px rgba(15, 23, 42, .03);
+  --sinan-shadow-soft: 0 8px 24px -6px rgba(15, 23, 42, .05), 0 0 1px rgba(15, 23, 42, .03);
+  --sinan-composer-shadow: 0 24px 48px -12px rgba(15, 23, 42, .09), 0 0 1px 1px rgba(15, 23, 42, .04);
+  --sinan-shadow-coral: 0 10px 24px -6px rgba(255, 90, 54, .35);
+  --sinan-radius-xs: 8px;
   --sinan-radius-sm: 12px;
-  --sinan-ease: cubic-bezier(.23, 1, .32, 1);
+  --sinan-radius: 18px;
+  --sinan-radius-lg: 24px;
+  --sinan-radius-pill: 999px;
+  --sinan-ease: cubic-bezier(.16, 1, .3, 1);
   --sinan-z-nav: var(--lp-z-bar);
   --sinan-z-modal: var(--lp-z-modal);
 }
 
 .dark {
-  --sinan-ink: #f5ede6;
-  --sinan-ink-soft: #d8ccc3;
-  --sinan-muted: #aea297;
-  --sinan-faint: #8f8479;
-  --sinan-accent: #c74420;
-  --sinan-accent-dark: #e0753f;
-  --sinan-accent-soft: #4f2a1c;
-  --sinan-accent-wash: #381d12;
-  --sinan-paper: #171210;
-  --sinan-surface: #201916;
-  --sinan-line: #463a32;
-  --sinan-line-soft: #2f2721;
-  --sinan-warm: #2d2520;
-  --sinan-danger: #edaca0;
+  --sinan-ink: #F8FAFC;
+  --sinan-ink-soft: #CBD5E1;
+  --sinan-muted: #94A3B8;
+  --sinan-faint: #64748B;
+  --sinan-accent: #FF6A47;
+  --sinan-accent-dark: #FF8A6B;
+  --sinan-accent-soft: #331A14;
+  --sinan-accent-wash: #1F120E;
+  --sinan-azure: #38BDF8;
+  --sinan-teal: #2DD4BF;
+  --sinan-paper: #0B0F17;
+  --sinan-surface: #131A26;
+  --sinan-line: #1E293B;
+  --sinan-line-soft: #182234;
+  --sinan-warm: #162032;
+  --sinan-photo-shade: #020617;
+  --sinan-danger: #F87171;
+  --sinan-shadow: 0 20px 40px -15px rgba(0, 0, 0, .45), 0 0 1px 1px rgba(255, 255, 255, .05);
+  --sinan-shadow-soft: 0 8px 24px -6px rgba(0, 0, 0, .35), 0 0 1px rgba(255, 255, 255, .05);
+  --sinan-composer-shadow: 0 24px 48px -12px rgba(0, 0, 0, .55), 0 0 1px 1px rgba(255, 255, 255, .08);
+  --sinan-shadow-coral: 0 10px 24px -6px rgba(255, 106, 71, .4);
 }
 
 /* ============================================================
@@ -290,7 +303,7 @@
   --lp-theme-accent: linear-gradient(90deg, var(--lp-accent), var(--lp-accent-hover));
   --lp-why-ink: var(--lp-text-muted);
   --lp-branch-b: #4f52b5;
-  --lp-stream-glow: rgb(185 61 26 / 14%);
+  --lp-stream-glow: rgb(255 90 54 / 16%);
   --lp-cover-gradient: linear-gradient(125deg, #0b1220 0%, #12303e 48%, #155e75 100%);
   --lp-cover-scrim: linear-gradient(to top, rgb(2 6 23 / 55%), rgb(2 6 23 / 0%));
 }

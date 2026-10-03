@@ -7,7 +7,8 @@
 - 进程内共享 httpx.Client（连接池 + keep-alive），避免每次请求新建 TCP；
 - connect/read 超时分层：连接超时短、读超时对齐 LLM_TIMEOUT / run deadline；
 - LLMClient.chat 支持 system/user 消息、temperature、max_tokens、
-  enable_search（百炼联网搜索）与 json_mode（response_format=json_object）；
+  enable_search（百炼联网搜索）、enable_thinking（思考开关，llm_enable_thinking
+  显式配置时才发送）与 json_mode（response_format=json_object）；
 - complete 是单轮 user 提示的便捷封装；get_llm_client 提供进程内单例，
   BYOK 路由（app.common.llm_route 的 ContextVar）生效时改返回该路由的专属 client；
 - 结构化意图/草稿编辑走可配置 fast 通道 llm_fast_model（见 config；默认与
@@ -148,6 +149,42 @@ def _retry_sleep(attempt: int) -> None:
     time.sleep(_backoff_delay(attempt))
 
 
+def _is_dashscope_url(base_url: str) -> bool:
+    return "dashscope" in (base_url or "").lower()
+
+
+def _is_deepseek_url(base_url: str) -> bool:
+    return "api.deepseek.com" in (base_url or "").lower()
+
+
+def _apply_provider_options(
+    payload: dict,
+    base_url: str,
+    enable_search: bool,
+    reasoning_effort: str | None = None,
+) -> None:
+    """按网关供应商规范填充扩展参数（搜索插件、思考模式与思考强度）。
+
+    - DashScope 百炼：顶层 enable_search（联网插件）与 enable_thinking（思考模式开关）；
+    - DeepSeek 官方 API：thinking: {"type": "enabled"|"disabled"} 与 reasoning_effort（思考强度），
+      不支持非标的 enable_search / enable_thinking（发送会触发 400 Bad Request）。
+    """
+    effort = reasoning_effort or settings.llm_reasoning_effort
+    if _is_deepseek_url(base_url):
+        if effort is not None:
+            payload["reasoning_effort"] = effort
+            payload["thinking"] = {"type": "enabled"}
+        elif settings.llm_enable_thinking is not None:
+            payload["thinking"] = {"type": "enabled" if settings.llm_enable_thinking else "disabled"}
+    else:
+        if enable_search and _is_dashscope_url(base_url):
+            payload["enable_search"] = True
+        if settings.llm_enable_thinking is not None:
+            payload["enable_thinking"] = settings.llm_enable_thinking
+        if effort is not None:
+            payload["reasoning_effort"] = effort
+
+
 class LLMClient:
     def __init__(
         self,
@@ -181,6 +218,7 @@ class LLMClient:
         response_format: dict | None = None,
         tools: list[dict] | None = None,
         tool_choice: str | dict | None = None,
+        reasoning_effort: str | None = None,
     ) -> dict:
         url = self._base_url.rstrip("/") + "/chat/completions"
         headers = {
@@ -193,9 +231,7 @@ class LLMClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        if enable_search:
-            # dashscope 兼容层：顶层 enable_search 开启百炼联网搜索插件
-            payload["enable_search"] = True
+        _apply_provider_options(payload, self._base_url, enable_search, reasoning_effort)
         if response_format is not None:
             # PR-5：json_schema（含 strict）经网关强约束输出（spike 2026-09-24 实测执行）
             payload["response_format"] = response_format
@@ -293,6 +329,7 @@ class LLMClient:
         json_mode: bool = False,
         response_format: dict | None = None,
         cancel: threading.Event | None = None,
+        reasoning_effort: str | None = None,
     ) -> Iterator[str]:
         """流式调用 LLM，逐段 yield 内容增量（不做重试；异常在迭代时抛出）。
 
@@ -317,8 +354,7 @@ class LLMClient:
             "max_tokens": max_tokens,
             "stream": True,
         }
-        if enable_search:
-            payload["enable_search"] = True
+        _apply_provider_options(payload, self._base_url, enable_search, reasoning_effort)
         if response_format is not None:
             payload["response_format"] = response_format
         elif json_mode:
@@ -423,6 +459,7 @@ class LLMClient:
         model: str | None = None,
         json_mode: bool = False,
         response_format: dict | None = None,
+        reasoning_effort: str | None = None,
     ) -> str:
         """流式调用 LLM，返回完整响应文本。适用于多日整段生成等长响应场景。"""
         started = time.monotonic()
@@ -436,6 +473,7 @@ class LLMClient:
                 model=model,
                 json_mode=json_mode,
                 response_format=response_format,
+                reasoning_effort=reasoning_effort,
             ):
                 content_parts.append(delta)
         except RunLimitExceeded as exc:
@@ -457,6 +495,7 @@ class LLMClient:
         model: str | None = None,
         json_mode: bool = False,
         response_format: dict | None = None,
+        reasoning_effort: str | None = None,
     ) -> str:
         response = self.chat_response(
             messages,
@@ -466,6 +505,7 @@ class LLMClient:
             model=model,
             json_mode=json_mode,
             response_format=response_format,
+            reasoning_effort=reasoning_effort,
         )
         return str(response["message"].get("content") or "")
 
@@ -479,6 +519,7 @@ class LLMClient:
         model: str | None = None,
         json_mode: bool = False,
         response_format: dict | None = None,
+        reasoning_effort: str | None = None,
     ) -> str:
         return self.chat(
             [
@@ -491,6 +532,7 @@ class LLMClient:
             model=model,
             json_mode=json_mode,
             response_format=response_format,
+            reasoning_effort=reasoning_effort,
         )
 
     def stream_complete(
@@ -503,6 +545,7 @@ class LLMClient:
         model: str | None = None,
         json_mode: bool = False,
         response_format: dict | None = None,
+        reasoning_effort: str | None = None,
     ) -> str:
         """流式单轮调用的便捷封装。"""
         return self.stream_chat(
@@ -516,6 +559,7 @@ class LLMClient:
             model=model,
             json_mode=json_mode,
             response_format=response_format,
+            reasoning_effort=reasoning_effort,
         )
 
 

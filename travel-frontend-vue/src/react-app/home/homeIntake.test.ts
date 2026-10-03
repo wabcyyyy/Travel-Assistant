@@ -89,6 +89,27 @@ describe('HomeStudio（首页 phase 状态机）', () => {
     expect(html).toContain('slot-checklist')
     expect(html).toContain('还差 2 项就能开工')
   })
+  it('idle 态若存在草稿记录，渲染恢复条提示与对话记录入口', () => {
+    localStorage.setItem(
+      'sinan-intake-sessions-v1',
+      JSON.stringify([
+        {
+          id: 'draft-1',
+          title: '成都 · 4天 · 2人',
+          updatedAt: Date.now() - 60000,
+          messages: [{ id: '1', role: 'user', text: '想去成都玩4天' }],
+          slots: { city: '成都', days: 4, persons: 2 },
+          firstMessage: '想去成都玩4天',
+        },
+      ]),
+    )
+    const html = renderToStaticMarkup(createElement(HomeStudio, { query: new URLSearchParams() }))
+    expect(html).toContain('intake-resume-bar')
+    expect(html).toContain('成都 · 4天 · 2人')
+    expect(html).toContain('继续上次对话')
+    expect(html).toContain('对话记录 (1)')
+    localStorage.removeItem('sinan-intake-sessions-v1')
+  })
 })
 
 describe('TripPanel（active 右栏容器）', () => {
@@ -109,14 +130,14 @@ describe('TripPanel（active 右栏容器）', () => {
     expect(html).toContain('is-next')
     expect(html).not.toContain('trip-confirm')
   })
-  it('confirm：槽位 chips 汇总 + 快捷开工（不占 .intake-start 契约类）', () => {
+  it('confirm：右栏呈现出发前确认表单（IntakeConfirm 承接开工契约 .intake-start）', () => {
     const html = panel({}, { ready: true, slots: { city: '成都', days: 4, persons: 2, budget: 3000 } })
     expect(html).toContain('trip-confirm')
-    expect(html).toContain('目的地 · 成都')
-    expect(html).toContain('4 天')
-    expect(html).toContain('信息齐了，回左侧确认或直接开工')
-    expect(html).toContain('panel-start')
-    expect(html).not.toContain('intake-start')
+    expect(html).toContain('intake-confirm')
+    expect(html).toContain('出发前确认')
+    expect(html).toContain('成都')
+    expect(html).toContain('intake-start')
+    expect(html).toContain('就这样，开始规划')
   })
   it('generating：四段阶段进度（SSE 文案）+ 逐日生长卡（原 TripPreview 逻辑卡4 迁入）', () => {
     const draft = {
@@ -323,7 +344,7 @@ describe('HomeStudio「重新说」锁（mock api 交互）', () => {
     expect(sessionStorage.getItem('sinan-intake-generation')).toBe('7')
 
     // 「重新说」：会话重置是 id 的唯一清空点，生成态与草稿一并归零，回 idle 居中
-    await act(async () => { (container.querySelector('.intake-confirm .text-action') as HTMLButtonElement).click() })
+    await act(async () => { (container.querySelector('.trip-board-reset') as HTMLButtonElement).click() })
     expect(studioClass(container)).toContain('is-idle')
     expect(container.querySelector('.home-studio-panel')).toBeNull()
     expect(sessionStorage.getItem('sinan-intake-generation')).toBeNull()
@@ -333,6 +354,20 @@ describe('HomeStudio「重新说」锁（mock api 交互）', () => {
     expect(studioClass(container)).toContain('is-active')
     expect(container.querySelector('.home-studio-panel')).not.toBeNull()
     expect(clarifyMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('active 对话态下点击「返回首页」（或派发 sinan:reset-home）：即刻退回 idle 居中，解锁展示区', async () => {
+    const { container } = await mountStudio()
+    await say(container, '想去成都玩 3 天')
+    expect(studioClass(container)).toContain('is-active')
+    expect(container.querySelector('.intake-reset-btn')).not.toBeNull()
+
+    // 点击左栏顶部的「返回首页」按钮
+    await act(async () => { (container.querySelector('.intake-reset-btn') as HTMLButtonElement).click() })
+    await flush()
+    expect(studioClass(container)).toContain('is-idle')
+    expect(container.querySelector('.home-studio-panel')).toBeNull()
+    expect(container.querySelector('.home-showcase')).not.toBeNull()
   })
 
   it('done 态「刷新」（卸载重挂）：保留的 generationId 经 resume 恢复 ready+TripBoard，不落 confirm（F4）', async () => {

@@ -14,10 +14,10 @@
 .auth-card > p { margin: 15px 0 30px; color: var(--sinan-muted); font-size: 14px; line-height: 1.8; }
 .auth-card form { display: grid; gap: 20px; }
 .auth-card label { display: grid; gap: 10px; font-size: 12px; font-weight: 600; }
-.auth-card input { width: 100%; min-height: 49px; border: 1px solid var(--sinan-line); border-radius: var(--sinan-radius-sm); padding: 12px 15px; background: var(--sinan-surface); color: var(--sinan-ink); font-size: 14px; }
-.auth-card input:focus { outline: 2px solid var(--sinan-accent-soft); outline-offset: 2px; border-color: var(--sinan-accent); }
+.auth-card input { width: 100%; min-height: 48px; border: 1px solid var(--sinan-line); border-radius: var(--sinan-radius-sm); padding: 12px 16px; background: var(--sinan-surface); color: var(--sinan-ink); font-size: 14px; box-shadow: var(--sinan-shadow-soft); transition: all 0.2s var(--sinan-ease); }
+.auth-card input:focus { outline: none; border-color: var(--sinan-accent); box-shadow: 0 0 0 3px var(--sinan-accent-soft), var(--sinan-shadow-soft); }
 .auth-card input::placeholder { color: var(--sinan-faint); }
-.auth-submit { width: 100%; min-height: 49px; margin-top: 4px; }
+.auth-submit { width: 100%; min-height: 48px; margin-top: 6px; box-shadow: var(--sinan-shadow-coral); }
 .auth-switch { width: 100%; margin-top: 22px; padding: 8px; border: 0; background: transparent; color: var(--sinan-accent); font-size: 13px; }
 .auth-card > .auth-footnote { font-size: 11px; text-align: center; margin: 32px 0 0; }
 .form-error { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--sinan-danger); }

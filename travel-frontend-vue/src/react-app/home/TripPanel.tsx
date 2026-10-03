@@ -1,7 +1,8 @@
 import type { GenerateInput } from '../../api/sinan'
 import { loginRedirect, navigate } from '../router'
 import { Icon } from '../shared/Icon'
-import { SLOT_DEFS, slotDisplayValue, slotIsFilled, toGenerateInput } from './intakeSlots'
+import { toGenerateInput } from './intakeSlots'
+import { IntakeConfirm } from './IntakeConfirm'
 import { SlotChecklist } from './SlotChecklist'
 import { TripBoard } from './TripBoard'
 import type { useHomePlanning } from './useHomePlanning'
@@ -31,7 +32,8 @@ const STEP_INDEX: Record<TripPanelState, number> = {
 }
 
 /** active 态右栏容器：常驻四步 stepper + 当态内容区。生成压过对话态
- * （planning.busy 优先），status idle 时由对话就绪度分流收集/确认。 */
+ * （planning.busy 优先），status idle 时由对话就绪度分流收集/确认。
+ * confirm 态就地展示出发前确认表单（IntakeConfirm），平衡左右分栏权重。 */
 export function TripPanel({ planning, chat, onStart }: {
   planning: ReturnType<typeof useHomePlanning>
   chat: IntakeChat
@@ -54,12 +56,20 @@ export function TripPanel({ planning, chat, onStart }: {
         </li>
       ))}
     </ol>
-    {state === 'collecting' && <SlotChecklist slots={chat.slots} />}
-    {state === 'confirm' && <ConfirmSummary chat={chat} onStart={onStart} />}
+    {state === 'collecting' && <SlotChecklist slots={chat.slots} onSelectPrompt={(text) => void chat.send(text)} />}
+    {state === 'confirm' && (
+      <IntakeConfirm
+        slots={chat.slots}
+        busy={chat.sending || planning.busy}
+        onSlots={chat.updateSlots}
+        onReset={chat.reset}
+        onStart={() => onStart(toGenerateInput(chat.slots, chat.firstMessage))}
+      />
+    )}
     {/* done 态（ready 且 draft 可用）上预览板；ready 但 draft 异常缺失的退化情形
         留在 PlanningPreview 露出结果文案，不白屏 */}
     {state === 'ready' && planning.draft && planning.draft.days > 0
-      ? <TripBoard draft={planning.draft} />
+      ? <TripBoard draft={planning.draft} onReset={chat.reset} />
       : (state === 'generating' || state === 'ready' || state === 'pending' || state === 'error' || state === 'login')
         && <PlanningPreview planning={planning} />}
   </section>
@@ -92,8 +102,14 @@ function PlanningPreview({ planning }: { planning: ReturnType<typeof useHomePlan
       {Array.from({ length: draft.days }, (_, index) => index + 1).map((dayNo) => {
         const day = draft.dayList.find((item) => item.dayNo === dayNo)
         const done = Boolean(day && day.items.length > 0)
-        return <li key={dayNo} className={done ? 'is-done' : 'is-pending'}>
-          <span className="trip-preview-dayno">第 {dayNo} 天</span>
+        const isRunning = day?.generationStatus === 'RUNNING'
+        const firstUnfinished = draft.dayList.find((item) => !item.items.length)?.dayNo
+        const isCurrentGenerating = !done && (isRunning || dayNo === firstUnfinished)
+        return <li key={dayNo} className={done ? 'is-done' : `is-pending${isCurrentGenerating ? ' is-generating' : ' is-queued'}`}>
+          <div className="trip-preview-dayhead">
+            <span className="trip-preview-dayno">第 {dayNo} 天</span>
+            {!done && <span className={`trip-preview-status-pill${isCurrentGenerating ? ' is-active' : ''}`}>{isCurrentGenerating ? '正在规划中' : '排队中'}</span>}
+          </div>
           {done
             ? <div className="trip-preview-daybody">
                 <strong>{day.theme || '当天安排'}</strong>
@@ -101,28 +117,15 @@ function PlanningPreview({ planning }: { planning: ReturnType<typeof useHomePlan
               </div>
             : <div className="trip-preview-daybody">
                 <strong>安排中…</strong>
-                <small>{day?.generationStatus === 'RUNNING' ? '司南正在排这一天的路线' : '排在队列里，马上就好'}</small>
+                <small>{isCurrentGenerating ? '司南正在排这一天的路线' : '排在队列里，马上就好'}</small>
+                <div className="trip-preview-shimmer" aria-hidden="true">
+                  <span className="shimmer-line shimmer-line-long" />
+                  <span className="shimmer-line shimmer-line-mid" />
+                </div>
               </div>}
         </li>
       })}
     </ol>}
     {status === 'error' && <p className="planning-retry-hint">对话里的信息还在，回到左边再点一次「开始规划」即可。</p>}
   </aside>
-}
-
-/** confirm 态摘要卡（PLAN §3.3）：全部槽位 chips 汇总 + 同义快捷开工。
- * 确认表单仍在左侧对话卡内（IntakeConfirm 现状不动）；按钮 class 特意不叫
- * .intake-start——那是金路径 E2E 指向左卡确认钮的选择器契约，不能出第二个。 */
-function ConfirmSummary({ chat, onStart }: { chat: IntakeChat; onStart: (input: GenerateInput) => void }) {
-  return <div className="trip-confirm">
-    <div className="trip-confirm-chips" aria-label="已收集的信息">
-      {SLOT_DEFS.filter((def) => slotIsFilled(chat.slots, def.key)).map((def) => (
-        <span key={def.key}>{def.label} · {slotDisplayValue(chat.slots, def.key)}</span>
-      ))}
-    </div>
-    <p className="trip-confirm-hint">信息齐了，回左侧确认或直接开工。</p>
-    <button className="button button-primary panel-start" type="button" onClick={() => onStart(toGenerateInput(chat.slots, chat.firstMessage))}>
-      就这样，开始规划<Icon name="arrow" size={16} />
-    </button>
-  </div>
 }

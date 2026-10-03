@@ -5,7 +5,8 @@ import { interpretImageIntent, isUnauthorized, liveHotelQuotes } from '../../api
 import { ChatComposer, composeDraft, imageFeedbackText } from '../shared/ChatComposer'
 import { Icon } from '../shared/Icon'
 import { renderChatMarkdown } from './chatMarkdown'
-import { activeActionIndex, draftChanges, hotelDefaultSelection, pendingActionSummary, unverifiedNames } from './chatDraft'
+import { activeActionIndex, draftChanges, hotelDefaultSelection, pendingActionSummary, structuredDraftChanges, unverifiedNames } from './chatDraft'
+import { getDayQuickPrompts, getPromptSceneGroups } from './chatPrompts'
 import { describeLiveQuotesError, liveQuotesCaption, quoteRowMeta } from './hotelLiveQuotes'
 import type { LiveQuotesState } from './hotelLiveQuotes'
 import { useTripChat } from './useTripChat'
@@ -21,6 +22,8 @@ export function ChatPanel({
   onReconcile,
   collapsed = false,
   onToggleCollapse,
+  currentDayNo = 1,
+  city,
 }: {
   itineraryId: number
   dayList: DayPlan[]
@@ -28,6 +31,8 @@ export function ChatPanel({
   onReconcile: () => void
   collapsed?: boolean
   onToggleCollapse?: () => void
+  currentDayNo?: number
+  city?: string
 }) {
   const chat = useTripChat(itineraryId, onApplied, onReconcile)
   const [draft, setDraft] = useState('')
@@ -40,6 +45,12 @@ export function ChatPanel({
 
   const submit = () => {
     const text = draft
+    setDraft('')
+    void chat.send(text)
+  }
+
+  const handleQuickSend = (text: string) => {
+    if (chat.sending) return
     setDraft('')
     void chat.send(text)
   }
@@ -60,6 +71,8 @@ export function ChatPanel({
   }
 
   const activeIdx = activeActionIndex(chat.msgs)
+  const quickPrompts = getDayQuickPrompts(currentDayNo, city)
+  const sceneGroups = getPromptSceneGroups(currentDayNo, city)
 
   return <section className={collapsed ? 'chat-panel is-collapsed' : 'chat-panel'} aria-label="行程对话编排">
     <div className="chat-panel-head">
@@ -76,10 +89,26 @@ export function ChatPanel({
       {!chat.loaded && <div className="chat-empty">正在载入对话…</div>}
       {chat.loaded && !chat.msgs.length && (
         <div className="chat-empty">
-          <span>还没有对话。想改什么，点一句试试：</span>
+          <div className="chat-empty-lead">
+            <span>还没有对话。对行程说一句话，立即智能微调：</span>
+          </div>
           <div className="chat-suggest">
             {['第二天加个博物馆', '换个舒服点的酒店', '把第二天安排松一点'].map((hint) => (
-              <button key={hint} type="button" onClick={() => setDraft(hint)}>{hint}</button>
+              <button key={hint} type="button" onClick={() => handleQuickSend(hint)}>{hint}</button>
+            ))}
+          </div>
+          <div className="chat-scenes-guide">
+            {sceneGroups.map((group) => (
+              <div key={group.sceneTitle} className="chat-scene-group">
+                <span className="chat-scene-title">{group.sceneTitle}</span>
+                <div className="chat-scene-chips">
+                  {group.prompts.map((p) => (
+                    <button key={p} type="button" className="chat-scene-chip" onClick={() => handleQuickSend(p)}>
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </div>
@@ -114,12 +143,35 @@ export function ChatPanel({
         <button type="button" aria-label="关闭提示" onClick={() => chat.setNotice('')}><Icon name="close" size={13} /></button>
       </p>
     )}
+
+    {/* 针对当前查看天数的智能微调指令条（对话改一切） */}
+    <div className="chat-quick-bar" aria-label="智能快捷微调">
+      <div className="chat-quick-label">
+        <Icon name="sparkles" size={12} />
+        <span>第 {currentDayNo} 天微调：</span>
+      </div>
+      <div className="chat-quick-scroll">
+        {quickPrompts.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className="chat-quick-chip"
+            title={item.prompt}
+            disabled={chat.sending}
+            onClick={() => handleQuickSend(item.prompt)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+    </div>
+
     <ChatComposer
       className="chat-composer"
       value={draft}
       onChange={setDraft}
       onSend={submit}
-      placeholder="例如：第二天加个博物馆"
+      placeholder="例如：第二天加个博物馆、顺路重排"
       ariaLabel="对行程说话"
       maxLength={2000}
       disabled={chat.sending}
@@ -153,10 +205,30 @@ export function DraftCard({
     {msg.requiresConfirmation && msg.pendingAction && (
       <div className="chat-confirm" role="status">
         <strong>需要你确认</strong>
-        <span>{pendingActionSummary(msg.pendingAction)}——从下方候选中点选即确认生效。</span>
+        <span>{pendingActionSummary(msg.pendingAction)}，从下方候选中点选即可确认生效。</span>
       </div>
     )}
-    {changes.length > 0 && <ul className="chat-diff">{changes.map((line) => <li key={line}>{line}</li>)}</ul>}
+    {changes.length > 0 && (
+      <div className="chat-diff-box">
+        <div className="chat-diff-head">
+          <Icon name="sparkles" size={13} />
+          <strong>AI 编排调整建议</strong>
+        </div>
+        <ul className="chat-diff">
+          {changes.map((line, idx) => {
+            const isAdd = line.includes('新增')
+            const isRemove = line.includes('删除') || line.includes('移除')
+            return (
+              <li key={idx} className={`chat-diff-line ${isAdd ? 'is-add' : isRemove ? 'is-remove' : ''}`}>
+                {isAdd && <span className="diff-badge is-add">+新增</span>}
+                {isRemove && <span className="diff-badge is-remove">−移除</span>}
+                <span className="diff-text">{line}</span>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    )}
     {unverified.length > 0 && <p className="chat-unverified">这些点位 AI 没拿到坐标，出发前请自行核实：{unverified.join('、')}</p>}
     {msg.hotelOptions?.length ? (
       <HotelChooser options={msg.hotelOptions} tripId={itineraryId} tripDays={dayList.length} applying={applying} onApply={onApplyHotel} />

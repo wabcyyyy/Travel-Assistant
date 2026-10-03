@@ -22,10 +22,12 @@ export function TripMapPanel({
   days,
   activeKey,
   onSelect,
+  focusDayNo,
 }: {
   days: DayPlan[]
   activeKey: string | null
   onSelect: (pin: MapPin) => void
+  focusDayNo?: number
 }) {
   const pins = useMemo(() => buildPins(days), [days])
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -35,6 +37,7 @@ export function TripMapPanel({
   pinsRef.current = pins
   const popupRef = useRef<Popup | null>(null)
   const markersRef = useRef<Marker[]>([])
+  const [expanded, setExpanded] = useState(false)
   // 底图拉取失败（403/断网）时地图是整片留白——DOM pin 仍在，给出可见解释而不是无声米色
   const [tilesFailed, setTilesFailed] = useState(false)
   // onSelect 由父组件内联传入（每次渲染都是新引用），经 ref 消费避免 pin 反复重建
@@ -59,6 +62,7 @@ export function TripMapPanel({
     map.on('load', () => {
       loadedRef.current = true
       syncRoutes(map, pinsRef.current)
+      resetBounds()
     })
     return () => {
       popupRef.current?.remove()
@@ -70,13 +74,50 @@ export function TripMapPanel({
     }
   }, [])
 
+  // 展开模式变化时自适应 resize
+  useEffect(() => {
+    if (mapRef.current) {
+      const timer = setTimeout(() => mapRef.current?.resize(), 260)
+      return () => clearTimeout(timer)
+    }
+  }, [expanded])
+
   // 路线层：style load 完成后写入；天数集合在本页固定，只更新数据
   useEffect(() => {
     const map = mapRef.current
     if (map && loadedRef.current) syncRoutes(map, pins)
   }, [pins])
 
-  // pin 重建 + 视野收敛
+  const resetBounds = () => {
+    const map = mapRef.current
+    if (!map || !pins.length) return
+    const bounds = new LngLatBounds([pins[0].longitude, pins[0].latitude], [pins[0].longitude, pins[0].latitude])
+    pins.forEach((pin) => bounds.extend([pin.longitude, pin.latitude]))
+    map.fitBounds(bounds, { padding: 56, maxZoom: 14, duration: 600 })
+  }
+
+  // 仅在行程点位集合变化时调整全局视野
+  useEffect(() => {
+    if (loadedRef.current) resetBounds()
+  }, [days.length])
+
+  // activeKey 单独联动：平滑飞移到对应点位，不重置全局视野
+  useEffect(() => {
+    if (!activeKey || !mapRef.current) return
+    const target = pins.find((p) => p.key === activeKey)
+    if (target) {
+      mapRef.current.flyTo({
+        center: [target.longitude, target.latitude],
+        zoom: Math.max(mapRef.current.getZoom(), 14),
+        speed: 0.85,
+        curve: 1.42,
+        essential: true,
+      })
+      showPopup(target)
+    }
+  }, [activeKey, pins])
+
+  // pin 重建
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -85,30 +126,38 @@ export function TripMapPanel({
       // maplibre 会把定位 transform 内联在标记根元素上，旋转视觉必须放内层
       const wrapper = document.createElement('div')
       wrapper.className = 'map-pin-wrap'
+      const isDimmed = focusDayNo != null && pin.dayNo !== focusDayNo
       const element = document.createElement('button')
       element.type = 'button'
       element.className =
-        'map-pin' + (pin.estimated ? ' is-estimated' : '') + (pin.key === activeKey ? ' is-active' : '')
+        'map-pin' +
+        (pin.estimated ? ' is-estimated' : '') +
+        (pin.key === activeKey ? ' is-active' : '') +
+        (isDimmed ? ' is-dimmed' : '')
       element.style.background = dayPinColor(pin.dayNo)
-      element.setAttribute('aria-label', `第 ${pin.dayNo} 天 ${pin.poiName}`)
+      element.setAttribute('aria-label', `第 ${pin.dayNo} 天 第 ${pin.orderInDay} 站 ${pin.poiName}`)
+      element.title = `第 ${pin.dayNo} 天 · 第 ${pin.orderInDay} 站：${pin.poiName}`
       const label = document.createElement('span')
-      label.textContent = pin.dayNo.toString()
+      // 展示当天点位序号（1, 2, 3...）展现游玩流向
+      label.textContent = pin.orderInDay.toString()
       element.append(label)
       element.addEventListener('click', (event) => {
         event.stopPropagation()
         selectRef.current(pin)
         showPopup(pin)
+        map.flyTo({
+          center: [pin.longitude, pin.latitude],
+          zoom: Math.max(map.getZoom(), 14),
+          speed: 0.85,
+          curve: 1.42,
+          essential: true,
+        })
       })
       wrapper.append(element)
       const marker = new Marker({ element: wrapper }).setLngLat([pin.longitude, pin.latitude]).addTo(map)
       return marker
     })
-    if (pins.length) {
-      const bounds = new LngLatBounds([pins[0].longitude, pins[0].latitude], [pins[0].longitude, pins[0].latitude])
-      pins.forEach((pin) => bounds.extend([pin.longitude, pin.latitude]))
-      map.fitBounds(bounds, { padding: 56, maxZoom: 14, duration: 0 })
-    }
-  }, [pins, activeKey])
+  }, [pins, activeKey, focusDayNo])
 
   const showPopup = (pin: MapPin) => {
     const map = mapRef.current
@@ -117,7 +166,7 @@ export function TripMapPanel({
     const content = document.createElement('div')
     content.className = 'map-pop'
     const name = document.createElement('strong')
-    name.textContent = pin.poiName
+    name.textContent = `第 ${pin.orderInDay} 站 · ${pin.poiName}`
     const meta = document.createElement('small')
     meta.textContent = `第 ${pin.dayNo} 天${pin.startTime ? ` · ${pin.startTime}` : ''}${pin.estimated ? ' · 位置为估算' : ''}`
     const links = document.createElement('div')
@@ -146,7 +195,33 @@ export function TripMapPanel({
   if (!pins.length) {
     return <div className="trip-map is-empty"><Icon name="pin" size={20} /><p>这一趟还没有带坐标的点位。</p></div>
   }
-  return <div className="trip-map-wrap">
+  return <div className={`trip-map-wrap${expanded ? ' is-expanded' : ''}`}>
+    <div className="trip-map-head">
+      <div className="map-summary">
+        <Icon name="pin" size={13} />
+        <span>第 {focusDayNo ?? 1} 天空间路线</span>
+      </div>
+      <div className="map-controls">
+        <button
+          type="button"
+          className="map-control-btn"
+          title={expanded ? '收起地图' : '展开大地图视图'}
+          onClick={() => setExpanded((prev) => !prev)}
+        >
+          <Icon name={expanded ? 'close' : 'compass'} size={13} />
+          <span>{expanded ? '收起大图' : '展开大图'}</span>
+        </button>
+        <button
+          type="button"
+          className="map-control-btn"
+          title="全览所有天数路线"
+          onClick={resetBounds}
+        >
+          <Icon name="refresh" size={12} />
+          <span>视野全览</span>
+        </button>
+      </div>
+    </div>
     <div className="trip-map" ref={containerRef} aria-label="行程地图" />
     {tilesFailed && (
       <div className="map-tiles-fallback" role="status">
@@ -156,7 +231,7 @@ export function TripMapPanel({
     <p className="trip-map-note">
       {estimated > 0 && <span className="trip-map-estimated">估算点位 {estimated} 个（图上虚线角标）</span>}
       {hidden > 0 && <span>无坐标隐藏 {hidden} 个</span>}
-      <span>底图 OpenFreeMap · 点 pin 跳转地图核实位置</span>
+      <span>底图 OpenFreeMap · 点位按顺序连线流动</span>
     </p>
   </div>
 }

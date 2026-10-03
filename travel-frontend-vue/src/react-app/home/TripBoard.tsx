@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { ItineraryDetail, TripItem } from '../../types/itinerary'
 import { navigate } from '../router'
+import { destinations } from '../data'
 import { Icon } from '../shared/Icon'
 import { SmartImg } from '../shared/SmartImg'
 
@@ -38,7 +39,7 @@ function displayDate(value: string | null | undefined) {
  * 紧凑化覆盖写在 home.css 的 .trip-board 作用域内。头部天气行不做：draft
  * （ItineraryDetail）不带天气字段，详情页天气走独立的 /itinerary/:id/weather 请求，
  * 本板「不新发请求」红线下该行恒无数据可显。 */
-export function TripBoard({ draft }: { draft: ItineraryDetail }) {
+export function TripBoard({ draft, onReset }: { draft: ItineraryDetail; onReset?: () => void }) {
   const dayList = draft.dayList
   // 点击切换当天；默认选中第一个已完成的天（逐日生成中途就绪的兜底：全空落第一天）
   const [pickedDay, setPickedDay] = useState<number | null>(null)
@@ -72,7 +73,10 @@ export function TripBoard({ draft }: { draft: ItineraryDetail }) {
       <h4 className="board-day-title">{activeDay.theme || `第 ${activeDay.dayNo} 天`}</h4>
       {activeDay.items.length
         ? <div className="day-items" key={activeDay.dayNo}>
-            {activeDay.items.map((item, index) => <BoardItem item={item} index={index} key={`${item.poiName}-${index}`} />)}
+            {activeDay.items.map((item, index) => {
+              const cityCover = draft.coverUrl || destinations.find((d) => d.city === draft.city)?.image || destinations[0].image
+              return <BoardItem item={item} index={index} key={`${item.poiName}-${index}`} cityCover={cityCover} />
+            })}
           </div>
         : <p className="board-day-empty">这一天还没有安排，去完整行程里重新生成即可。</p>}
     </section>}
@@ -83,34 +87,47 @@ export function TripBoard({ draft }: { draft: ItineraryDetail }) {
         {draft.budgetList.map((row) => <em key={row.category}>{row.category} ￥{row.amount}</em>)}
       </div>}
       <p className="board-map-hint"><Icon name="pin" size={13} />地图与逐点编辑在完整行程里</p>
-      <a
-        className="button button-primary trip-board-cta"
-        href={`/trips/${draft.id}`}
-        onClick={(event) => {
-          // 修饰键/非左键放行浏览器默认行为（新标签打开等），其余拦下走 SPA 路由
-          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return
-          event.preventDefault()
-          navigate(`/trips/${draft.id}`)
-        }}
-      >打开完整行程<Icon name="arrow" size={16} /></a>
+      <div className="board-actions">
+        {onReset && (
+          <button type="button" className="text-action trip-board-reset" onClick={onReset} title="返回首页重新开始">
+            返回首页
+          </button>
+        )}
+        <a
+          className="button button-primary trip-board-cta"
+          href={`/trips/${draft.id}`}
+          onClick={(event) => {
+            // 修饰键/非左键放行浏览器默认行为（新标签打开等），其余拦下走 SPA 路由
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return
+            event.preventDefault()
+            navigate(`/trips/${draft.id}`)
+          }}
+        >打开完整行程<Icon name="arrow" size={16} /></a>
+      </div>
     </footer>
   </div>
 }
 
 /** 只读时间线条目：09:30–11:30 | 类型图标 | 名称 | 备注。类名与详情页 .day-item
  * 共用（视觉语言同源），无 item-meta / 行内编辑 / 证据控件——预览板只读。 */
-function BoardItem({ item, index }: { item: TripItem; index: number }) {
+function BoardItem({ item, index, cityCover }: { item: TripItem; index: number; cityCover?: string }) {
   const icon = ITEM_TYPE_ICONS[item.itemType] || 'pin'
   const remark = item.remark || item.whyThis
+  const itemImg = item.image || item.imageUrl || cityCover
   return <article className="day-item" style={{ '--stagger-i': index } as CSSProperties}>
     <div className="day-item-time">{item.startTime || '--:--'}<span>{item.endTime || ''}</span></div>
     <div className="day-item-line"><i><Icon name={icon} size={11} strokeWidth={2.2} /></i><span /></div>
     <div className="day-item-copy">
       <div className="item-heading">
-        <span className="item-type"><Icon name={icon} size={12} strokeWidth={2} />{ITEM_TYPE_LABELS[item.itemType] || '安排'}</span>
+        <span className={`item-type item-type-${item.itemType}`}><Icon name={icon} size={12} strokeWidth={2} />{ITEM_TYPE_LABELS[item.itemType] || '安排'}</span>
         <h3>{item.poiName}</h3>
       </div>
       {remark && <p>{remark}</p>}
     </div>
+    {itemImg && (
+      <div className="day-item-media" aria-hidden="true">
+        <SmartImg src={itemImg} alt={item.poiName || '地点缩略'} ratio="1 / 1" />
+      </div>
+    )}
   </article>
 }

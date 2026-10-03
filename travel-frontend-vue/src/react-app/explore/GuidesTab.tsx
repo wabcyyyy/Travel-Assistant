@@ -13,6 +13,6 @@ export function GuidesTab() {
   return <>
     <div className="guide-offline"><OfflineBadge /></div>
     <div className="guide-filter">{tags.map((item) => <button key={item} className={tag === item ? 'filter-tab active' : 'filter-tab'} type="button" onClick={() => setTag(item)}>{item}</button>)}</div>
-    <div className="guide-grid">{filtered.map((guide) => <article className="guide-card" key={guide.slug}><button type="button" className="guide-image" onClick={() => navigate(`/explore/guide/${guide.slug}`)}><img src={guide.image} alt={`${guide.city}攻略`} ratio="3 / 2" /><span>{guide.tag}</span></button><div className="guide-copy"><span className="card-kicker">{guide.city} · {guide.readTime}</span><h2>{guide.title}</h2><p>{guide.excerpt}</p><button type="button" className="text-action" onClick={() => navigate(`/explore/guide/${guide.slug}`)}>阅读攻略 <Icon name="arrow" size={15} /></button></div></article>)}</div>
+    <div className="guide-grid">{filtered.map((guide) => <article className="guide-card" key={guide.slug}><button type="button" className="guide-image" onClick={() => navigate(`/explore/guide/${guide.slug}`)}><SmartImg src={guide.image} alt={`${guide.city}攻略`} ratio="3 / 2" /><span>{guide.tag}</span></button><div className="guide-copy"><span className="card-kicker">{guide.city} · {guide.readTime}</span><h2>{guide.title}</h2><p>{guide.excerpt}</p><button type="button" className="text-action" onClick={() => navigate(`/explore/guide/${guide.slug}`)}>阅读攻略 <Icon name="arrow" size={15} /></button></div></article>)}</div>
   </>
 }

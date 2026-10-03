@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { navigate, useLocation } from '../router'
+import { navigate, resetHomeSession, useLocation } from '../router'
 import { Brand } from '../shared/Brand'
 import { Icon } from '../shared/Icon'
 import { applyAppearance, readAppearance, saveAppearance } from '../../styles/appearance'
@@ -15,7 +15,11 @@ export function TopNav({ onLogin, onLogout, username }: { onLogin?: () => void; 
   const [open, setOpen] = useState(false)
   const location = useLocation()
   const isActive = (path: string) => location.path === path || location.path.startsWith(`${path}/`)
-  const go = (path: string) => { setOpen(false); navigate(path) }
+  const go = (path: string) => {
+    setOpen(false)
+    if (path === '/') resetHomeSession()
+    navigate(path)
+  }
   // 暗色开关（2026-09-30 评审拍板）：.dark 样式与 appearance.ts 早已完整，只缺入口。
   // 读写都走 appearance.ts 单点；saveAppearance 失败时本次会话仍生效。
   const [dark, setDark] = useState(() => readAppearance().dark)

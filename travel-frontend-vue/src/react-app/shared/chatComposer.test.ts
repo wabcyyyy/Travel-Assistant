@@ -62,6 +62,10 @@ describe('ChatComposer 静态渲染', () => {
     expect(html).toContain('composer-image is-busy')
     expect((html.match(/disabled=""/g) || []).length).toBe(1)
   })
+  it('传入 placeholderList 时优先使用列表首项作为占位符', () => {
+    const html = render({ placeholder: '默认占位符', placeholderList: ['建议占位符一', '建议占位符二'] })
+    expect(html).toContain('placeholder="建议占位符一"')
+  })
 })
 
 describe('composeDraft（图片建议消息回填）', () => {

@@ -35,6 +35,50 @@ export function draftChanges(current: DayPlan[], draft: ChatDayPlan[]): string[]
   return out.length ? out : ['计划内容已更新，请核对下方完整安排']
 }
 
+export interface StructuredChange {
+  type: 'add' | 'remove' | 'update'
+  dayNo?: number
+  label: string
+  items: string[]
+}
+
+/** 结构化草稿差异：供草稿卡渲染清晰的状态徽标与地点胶囊 */
+export function structuredDraftChanges(current: DayPlan[], draft: ChatDayPlan[]): StructuredChange[] {
+  const out: StructuredChange[] = []
+  for (const day of draft) {
+    const oldSet = new Set(tripNames(current.find((item) => item.dayNo === day.day_no)))
+    const added = draftNames(day).filter((name) => !oldSet.has(name))
+    if (added.length) {
+      out.push({
+        type: 'add',
+        dayNo: day.day_no,
+        label: `第 ${day.day_no} 天新增`,
+        items: added,
+      })
+    }
+  }
+  for (const day of draft) {
+    const newSet = new Set(draftNames(day))
+    const removed = tripNames(current.find((item) => item.dayNo === day.day_no)).filter((name) => !newSet.has(name))
+    if (removed.length) {
+      out.push({
+        type: 'remove',
+        dayNo: day.day_no,
+        label: `第 ${day.day_no} 天移除`,
+        items: removed,
+      })
+    }
+  }
+  if (!out.length) {
+    out.push({
+      type: 'update',
+      label: '计划内容已更新',
+      items: ['请核对下方完整安排'],
+    })
+  }
+  return out
+}
+
 /** AI 新增且没有坐标的点位：位置未经核实，应用前提醒一句（证据体系红线）。 */
 export function unverifiedNames(current: DayPlan[], draft: ChatDayPlan[]): string[] {
   const oldSet = new Set(current.flatMap((day) => tripNames(day)))

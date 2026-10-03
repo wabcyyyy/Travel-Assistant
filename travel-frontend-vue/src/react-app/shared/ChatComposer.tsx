@@ -1,13 +1,21 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { isOfflineError, isUnauthorized, ReactApiError } from '../../api/sinan'
 import { Icon } from './Icon'
 import { useSpeechInput } from './useSpeechInput'
 
-/** 对话输入共用件：ChatIntake（首页）与 ChatPanel（详情）的 composer 结构同构，
- * 各自的 className/maxLength/placeholder/locked 语义经 props 保留。
- * 麦克风（浏览器不支持 Web Speech 时整个不渲染）与图片按钮长在这里；
- * 文本提交仍是受控 input + form onSubmit——两个入口的 clarify/chat-edit 语义不变。 */
+/** 对话输入共用件：ChatIntake（首页）与 ChatPanel（详情）的 composer 结构同构。
+ * 布局对标主流 LLM 对话框：上部舒适输入，底部工具栏（左侧图片识图/语音输入，右侧字符统计与发送）。
+ * 支持动态轮播 placeholder 与平滑过渡。 */
+
+export const TRAVEL_PROMPT_SUGGESTIONS = [
+  '想去巴厘岛度蜜月，海边日落 + 悬崖 SPA，节奏慢一点…',
+  '国庆去京都 5 天，想看枫叶古寺，尝尝怀石料理…',
+  '周末两个人去厦门，吹吹海风吃海鲜，预算 2500…',
+  '带父母去西安 4 天，不早起，偏好历史文化与地道小吃…',
+  '巴黎 6 天深度游，卢浮宫、塞纳河游船与法式咖啡馆…',
+  '带小朋友去三亚 4 天，住海边亲子酒店，挖沙踏浪…',
+]
 
 const IMAGE_MAX_BYTES = 5 * 1024 * 1024
 const IMAGE_ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
@@ -24,6 +32,7 @@ export function ChatComposer({
   onImage,
   imageBusy = false,
   onNotice,
+  placeholderList,
 }: {
   value: string
   onChange: (value: string) => void
@@ -39,10 +48,25 @@ export function ChatComposer({
   imageBusy?: boolean
   /** 本地预检失败（类型不符/超 5MB）的就地提示，调用方接到自己现有的提示通道 */
   onNotice?: (message: string) => void
+  /** 定时轮播的占位符列表 */
+  placeholderList?: string[]
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null)
   const speech = useSpeechInput({ getBase: () => value, onResult: onChange })
   const locked = disabled || imageBusy
+
+  const list = placeholderList && placeholderList.length > 0 ? placeholderList : null
+  const [cycleIndex, setCycleIndex] = useState(0)
+
+  useEffect(() => {
+    if (!list || list.length <= 1 || value) return
+    const timer = setInterval(() => {
+      setCycleIndex((prev) => (prev + 1) % list.length)
+    }, 3800)
+    return () => clearInterval(timer)
+  }, [list, value])
+
+  const activePlaceholder = list ? list[cycleIndex] : placeholder
 
   const onFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -71,43 +95,68 @@ export function ChatComposer({
           if (!disabled) onSend()
         }}
       >
-        <input
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={placeholder}
-          aria-label={ariaLabel}
-          maxLength={maxLength}
-          disabled={disabled || speech.listening}
-        />
-        {speech.supported && (
-          <button
-            type="button"
-            className={speech.listening ? 'composer-mic is-listening' : 'composer-mic'}
-            aria-label={speech.listening ? '停止语音输入' : '语音输入'}
-            aria-pressed={speech.listening}
-            disabled={disabled}
-            onClick={speech.toggle}
-          >
-            <Icon name="mic" size={16} />
-          </button>
-        )}
-        {onImage && (
-          <>
-            <input ref={fileRef} type="file" hidden accept="image/jpeg,image/png,image/webp" onChange={onFileChange} />
-            <button
-              type="button"
-              className={imageBusy ? 'composer-image is-busy' : 'composer-image'}
-              aria-label={imageBusy ? '正在识别图片' : '识别图片'}
-              disabled={locked || speech.listening}
-              onClick={() => fileRef.current?.click()}
-            >
-              <Icon name="image" size={16} />
+        <div className="composer-input-row">
+          <input
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault()
+                speech.cancel()
+                if (!disabled && value.trim()) onSend()
+              }
+            }}
+            placeholder={activePlaceholder}
+            aria-label={ariaLabel}
+            maxLength={maxLength}
+            disabled={disabled || speech.listening}
+          />
+        </div>
+        <div className="composer-toolbar">
+          <div className="composer-tools-left">
+            {onImage && (
+              <>
+                <input ref={fileRef} type="file" hidden accept="image/jpeg,image/png,image/webp" onChange={onFileChange} />
+                <button
+                  type="button"
+                  className={imageBusy ? 'composer-image is-busy' : 'composer-image'}
+                  aria-label={imageBusy ? '正在识别图片' : '识别图片'}
+                  disabled={locked || speech.listening}
+                  onClick={() => fileRef.current?.click()}
+                  title="上传旅行/攻略图片识别意图"
+                >
+                  <Icon name="image" size={16} />
+                  <span className="composer-tool-label">识图</span>
+                </button>
+              </>
+            )}
+            {speech.supported && (
+              <button
+                type="button"
+                className={speech.listening ? 'composer-mic is-listening' : 'composer-mic'}
+                aria-label={speech.listening ? '停止语音输入' : '语音输入'}
+                aria-pressed={speech.listening}
+                disabled={disabled}
+                onClick={speech.toggle}
+                title="语音输入想法"
+              >
+                <Icon name="mic" size={16} />
+                <span className="composer-tool-label">语音</span>
+              </button>
+            )}
+          </div>
+          <div className="composer-tools-right">
+            {value.length > 0 && (
+              <span className="composer-counter" aria-hidden="true">
+                {value.length}/{maxLength}
+              </span>
+            )}
+            <button type="submit" className="button button-primary composer-submit" disabled={disabled || !value.trim()} title="发送旅行想法">
+              <span>发送</span>
+              <Icon name="arrow" size={15} />
             </button>
-          </>
-        )}
-        <button type="submit" className="button button-primary" disabled={disabled || !value.trim()}>
-          发送<Icon name="arrow" size={15} />
-        </button>
+          </div>
+        </div>
       </form>
       {speech.error
         ? <p className="composer-note" role="alert">{speech.error}</p>

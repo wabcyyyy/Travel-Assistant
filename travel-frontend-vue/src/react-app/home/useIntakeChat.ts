@@ -3,7 +3,11 @@ import { clarifyItinerary, isOfflineError, isUnauthorized } from '../../api/sina
 import {
   assistantReply,
   clearIntake,
+  extractPreferencesFromText,
   GREETING,
+  guessDateFromText,
+  isDatePending,
+  isSkipOrDirectStart,
   loadIntake,
   mergeSlots,
   saveIntake,
@@ -55,6 +59,8 @@ export function useIntakeChat() {
   const [slots, setSlots] = useState<IntakeSlots>(() => restored?.slots ?? {})
   const [firstMessage, setFirstMessage] = useState(() => restored?.firstMessage ?? '')
   const [ready, setReady] = useState(() => slotsReady(restored?.slots ?? {}))
+  const [dateAsked, setDateAsked] = useState(() => Boolean(restored?.slots?.start_date))
+  const [prefsAsked, setPrefsAsked] = useState(() => Boolean(restored?.slots?.preferences?.length))
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   // 未登录撞上 clarify 的 401：生成跳有「登录后即可开始规划」的引导，clarify 这
@@ -82,12 +88,45 @@ export function useIntakeChat() {
       const ask = (controller.current = new AbortController())
       setMessages((list) => [...list, { id: nextMessageId(), role: 'user', text: trimmed }])
       if (!firstMessage) setFirstMessage(trimmed)
+
+      // 自然语言直解与意图嗅探：
+      const userSkipped = isSkipOrDirectStart(trimmed)
+      const datePending = isDatePending(trimmed)
+      const guessedDate = guessDateFromText(trimmed)
+      const extractedPrefs = extractPreferencesFromText(trimmed)
+
+      const clientPatches: Partial<IntakeSlots> = {}
+      if (guessedDate && !slots.start_date) {
+        clientPatches.start_date = guessedDate
+      }
+      if (extractedPrefs.length) {
+        const existing = slots.preferences || []
+        clientPatches.preferences = Array.from(new Set([...existing, ...extractedPrefs]))
+      }
+
+      let nextDateAsked = dateAsked
+      let nextPrefsAsked = prefsAsked
+      if (guessedDate || datePending || slots.start_date) {
+        nextDateAsked = true
+        setDateAsked(true)
+      }
+      if (extractedPrefs.length || userSkipped || (slots.preferences && slots.preferences.length)) {
+        nextPrefsAsked = true
+        setPrefsAsked(true)
+      }
+
+      const activeSlots = { ...slots, ...clientPatches }
+
       try {
-        const res = await clarifyItinerary(trimmed, slots, ask.signal)
-        const merged = mergeSlots(slots, res.slots)
+        const res = await clarifyItinerary(trimmed, activeSlots, ask.signal)
+        const merged = mergeSlots(activeSlots, res.slots)
         setSlots(merged)
         setReady(slotsReady(merged))
-        const reply = assistantReply(res.ready, res.question ?? null, res.options)
+        const reply = assistantReply(res.ready, res.question ?? null, res.options, merged, {
+          dateAsked: nextDateAsked,
+          prefsAsked: nextPrefsAsked,
+          userSkipped,
+        })
         if (reply) setMessages((list) => [...list, { ...reply, id: nextMessageId() }])
       } catch (err) {
         if (ask.signal.aborted) return
@@ -147,12 +186,41 @@ export function useIntakeChat() {
     setSlots({})
     setFirstMessage('')
     setReady(false)
+    setDateAsked(false)
+    setPrefsAsked(false)
     setError('')
     setNeedsLogin(false)
     setSending(false)
   }, [])
 
-  return { messages, slots, firstMessage, ready, sending, error, needsLogin, send, updateSlots, reset }
+  const restoreSession = useCallback((record: {
+    messages: IntakeMessage[]
+    slots: IntakeSlots
+    firstMessage: string
+    generationId?: string | null
+  }) => {
+    controller.current?.abort()
+    controller.current = null
+    setMessages(record.messages)
+    setSlots(record.slots)
+    setFirstMessage(record.firstMessage)
+    setReady(slotsReady(record.slots))
+    setDateAsked(Boolean(record.slots.start_date))
+    setPrefsAsked(Boolean(record.slots.preferences?.length))
+    setError('')
+    setNeedsLogin(false)
+    setSending(false)
+    saveIntake({ messages: record.messages, slots: record.slots, firstMessage: record.firstMessage })
+    if (record.generationId) {
+      try {
+        sessionStorage.setItem('sinan-intake-generation', record.generationId)
+      } catch {
+        // ignore
+      }
+    }
+  }, [])
+
+  return { messages, slots, firstMessage, ready, sending, error, needsLogin, send, updateSlots, reset, restoreSession }
 }
 
 export type IntakeChat = ReturnType<typeof useIntakeChat>

@@ -4,6 +4,8 @@ import type { GenerateInput } from '../../api/sinan'
 import { ChatIntake } from './ChatIntake'
 import { HomeShowcase } from './HomeShowcase'
 import { TripPanel } from './TripPanel'
+import { saveIntakeSession } from './intakeHistory'
+import type { IntakeSessionRecord } from './intakeHistory'
 import { FLIP_DURATION_MS, useFlip } from './useFlip'
 import { useHomePlanning } from './useHomePlanning'
 import { useIntakeChat } from './useIntakeChat'
@@ -51,13 +53,34 @@ export function HomeStudio({ query }: { query: URLSearchParams }) {
   }, [active, chatCardRef])
 
   const startGeneration = (input: GenerateInput) => void planning.submit(input)
-  // ChatIntake 内 IntakeConfirm 的 onReset 换成这个包装：会话重置（对话+生成态一并归零，
-  // 含 done 态保留的 generationId）+ 回 idle 居中
+  // ChatIntake 内 IntakeConfirm 的 onReset 换成这个包装：自动暂存会话草稿，
+  // 会话重置（对话+生成态一并归零）+ 回 idle 居中
   const handleChatReset = () => {
+    if (chat.messages.some((m) => m.role === 'user') || chat.slots.city) {
+      saveIntakeSession({
+        slots: chat.slots,
+        messages: chat.messages,
+        firstMessage: chat.firstMessage,
+        generationId: planning.draft?.id ? String(planning.draft.id) : null,
+      })
+    }
     chat.reset()
     planning.reset()
     setResetToIdle(true)
   }
+
+  const handleResumeSession = (session: IntakeSessionRecord) => {
+    chat.restoreSession(session)
+    setResetToIdle(false)
+  }
+
+  useEffect(() => {
+    const onResetHome = () => {
+      handleChatReset()
+    }
+    window.addEventListener('sinan:reset-home', onResetHome)
+    return () => window.removeEventListener('sinan:reset-home', onResetHome)
+  }, [chat, planning])
 
   return <>
     <div
@@ -65,6 +88,13 @@ export function HomeStudio({ query }: { query: URLSearchParams }) {
       id="planning"
       style={{ '--flip-duration': `${FLIP_DURATION_MS}ms` } as CSSProperties}
     >
+      {!active && (
+        <div className="home-ambient-aurora" aria-hidden="true">
+          <div className="aurora-blob aurora-coral" />
+          <div className="aurora-blob aurora-azure" />
+          <div className="aurora-blob aurora-warm" />
+        </div>
+      )}
       <div className="home-studio-chat" ref={chatCardRef}>
         <ChatIntake
           query={query}
@@ -72,9 +102,10 @@ export function HomeStudio({ query }: { query: URLSearchParams }) {
           disabled={planning.busy}
           variant={active ? 'dock' : 'centered'}
           onStart={startGeneration}
+          onResumeSession={handleResumeSession}
         />
       </div>
-      {active && <div className="home-studio-panel"><TripPanel planning={planning} chat={chat} onStart={startGeneration} /></div>}
+      {active && <div className="home-studio-panel"><TripPanel planning={planning} chat={{ ...chat, reset: handleChatReset }} onStart={startGeneration} /></div>}
     </div>
     {/* idle 轻展示区（PLAN 2026-10-03 §2.2）：作为 studio 的兄弟块排在一屏余量之后，
        天然落在折叠线以下、不挤占对话卡的居中（FLIP 量的是卡带自身，几何不受影响）；

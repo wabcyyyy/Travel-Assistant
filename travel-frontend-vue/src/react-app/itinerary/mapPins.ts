@@ -8,6 +8,8 @@ export interface MapPin {
   /** 组件内点位标识：dayNo:items 序号（TripItem 契约无 id 字段） */
   key: string
   dayNo: number
+  /** 当天有序点位序号（从 1 开始）：让用户直观识别当天路线流动 */
+  orderInDay: number
   poiName: string
   latitude: number
   longitude: number
@@ -25,11 +27,13 @@ export function dayPinColor(dayNo: number): string {
 export function buildPins(days: DayPlan[]): MapPin[] {
   const pins: MapPin[] = []
   for (const day of days) {
+    let order = 1
     day.items.forEach((item, index) => {
       if (item.latitude == null || item.longitude == null) return
       pins.push({
         key: `${day.dayNo}:${index}`,
         dayNo: day.dayNo,
+        orderInDay: order++,
         poiName: item.poiName || '未命名地点',
         latitude: item.latitude,
         longitude: item.longitude,

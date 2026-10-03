@@ -6,6 +6,7 @@ import type { DayPlan, HotelOption } from '../../types/itinerary'
 import {
   activeActionIndex,
   draftChanges,
+  structuredDraftChanges,
   hotelDefaultSelection,
   pendingActionSummary,
   unverifiedNames,
@@ -46,6 +47,17 @@ describe('draftChanges（草稿 vs 现行程）', () => {
   })
   it('看不出差异给兜底文案', () => {
     expect(draftChanges([tripDay(1, ['西湖'])], [draftDay(1, [{ name: '西湖' }])])).toEqual(['计划内容已更新，请核对下方完整安排'])
+  })
+})
+
+describe('structuredDraftChanges（结构化草稿差异）', () => {
+  it('产出结构化对象供现代卡片渲染状态标签', () => {
+    const current = [tripDay(1, ['宽窄巷子', '人民公园'])]
+    const draft = [draftDay(1, [{ name: '宽窄巷子' }, { name: '博物馆' }])]
+    const structured = structuredDraftChanges(current, draft)
+    expect(structured.length).toBe(2)
+    expect(structured.find((s) => s.type === 'add')?.items).toEqual(['博物馆'])
+    expect(structured.find((s) => s.type === 'remove')?.items).toEqual(['人民公园'])
   })
 })
 
